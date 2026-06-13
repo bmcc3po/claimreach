@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claim Reach Command Center</title>
+<style>
+  :root{
+    --ink:#0F2A4A;--ink-700:#16395f;--ink-600:#1f4a78;
+    --gold:#C8A24A;--gold-700:#a8893a;
+    --paper:#eef1f5;--surface:#fff;--surface-2:#f7f9fb;--line:#e2e7ee;--line-2:#d6dde6;
+    --text:#16202b;--muted:#5c6877;
+    --go:#15885f;--go-bg:#e4f3ec;--warn:#b9791a;--warn-bg:#fbf0dc;
+    --stop:#c0433f;--stop-bg:#fae5e4;--info:#2f63a6;--info-bg:#e7eef8;
+    --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --shadow:0 1px 2px rgba(15,42,74,.06),0 4px 16px rgba(15,42,74,.06);--radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--font);color:var(--text);background:var(--paper);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer}
+  .app{display:flex;min-height:100vh}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{width:232px;flex:0 0 auto;background:var(--ink);color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+  .sb-brand{display:flex;align-items:center;gap:10px;padding:18px 18px 16px;font-weight:800;font-size:16px}
+  .sb-brand .reach{color:var(--gold)}
+  .sb-brand svg{flex:0 0 auto}
+  .sb-nav{padding:6px 10px;flex:1;overflow:auto}
+  .navitem{display:flex;align-items:center;gap:11px;width:100%;background:transparent;border:0;color:#aebfd2;padding:10px 12px;border-radius:8px;font-size:13.5px;font-weight:600;text-align:left;margin-bottom:2px}
+  .navitem svg{flex:0 0 auto;opacity:.85}
+  .navitem:hover{color:#fff;background:rgba(255,255,255,.07)}
+  .navitem.active{color:#fff;background:rgba(255,255,255,.13)}
+  .navitem.active svg{opacity:1;color:var(--gold)}
+  .navitem .pip{margin-left:auto;background:var(--gold);color:var(--ink);font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:10px}
+  .navitem.soon{opacity:.42}
+  .navitem.soon:hover{background:transparent;color:#aebfd2;cursor:not-allowed}
+  .navitem .soonpip{margin-left:auto;background:rgba(255,255,255,.12);color:#cdd9e6;font-size:9px;font-weight:800;letter-spacing:.5px;padding:2px 7px;border-radius:10px}
+  .sb-foot{border-top:1px solid rgba(255,255,255,.12);padding:14px 16px}
+  .sb-foot .who{display:flex;align-items:center;gap:10px}
+  .sb-foot .av{width:30px;height:30px;border-radius:50%;background:var(--gold);color:var(--ink);display:grid;place-items:center;font-weight:800;font-size:12px}
+  .sb-foot .nm{font-size:13px;font-weight:700}
+  .sb-foot .rl{font-size:11px;color:#9fb3c9}
+  .navlabel{display:inline}
+  @media(max-width:820px){.sidebar{width:62px}.sb-brand span,.navlabel,.sb-foot .nm,.sb-foot .rl,.navitem .pip{display:none}.navitem{justify-content:center}}
+
+  /* ---------- Topbar ---------- */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{display:flex;align-items:center;gap:14px;background:var(--surface);border-bottom:1px solid var(--line);padding:13px 22px;position:sticky;top:0;z-index:30}
+  .topbar h1{font-size:18px;margin:0;letter-spacing:-.2px}
+  .topbar .date{color:var(--muted);font-size:12.5px}
+  .topbar .spacer{flex:1}
+  .pp{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;color:var(--warn);background:var(--warn-bg);border:1px solid #ecd3a3;padding:5px 11px;border-radius:20px}
+  .roles{display:flex;gap:2px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:3px}
+  .roles button{background:transparent;border:0;color:var(--muted);padding:5px 11px;border-radius:6px;font-size:12px;font-weight:700}
+  .roles button.active{background:var(--ink);color:#fff}
+  .tsearch{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;min-width:200px}
+  .tsearch input{border:0;outline:0;background:transparent;font-size:13px;flex:1}
+  @media(max-width:980px){.tsearch{display:none}}
+
+  .content{padding:22px;max-width:1340px;width:100%;margin:0 auto}
+  .screen{display:none}.screen.show{display:block}
+
+  /* ---------- Shared ---------- */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card-h{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+  .card-h h3{margin:0;font-size:13.5px;letter-spacing:.2px}
+  .card-h .spacer{flex:1}
+  .card-h .more{font-size:12px;color:var(--info);font-weight:700;background:none;border:0}
+  .sub{color:var(--muted);font-size:12px}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .b-go{background:var(--go-bg);color:var(--go)}.b-warn{background:var(--warn-bg);color:var(--warn)}
+  .b-stop{background:var(--stop-bg);color:var(--stop)}.b-info{background:var(--info-bg);color:var(--info)}
+  .b-mut{background:#eef1f5;color:#54616f}
+
+  /* KPI tiles */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px}
+  .kpi .lab{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
+  .kpi .val{font-size:26px;font-weight:800;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}
+  .kpi .val small{font-size:13px;font-weight:600;color:var(--muted)}
+  .kpi.accent{background:linear-gradient(180deg,#16395f,#0F2A4A);border:0;color:#fff}
+  .kpi.accent .lab{color:#9fb3c9}
+
+  .row2{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;align-items:start}
+  @media(max-width:1040px){.row2{grid-template-columns:1fr}}
+  .stack{display:flex;flex-direction:column;gap:18px}
+
+  /* live floor */
+  .floor{padding:6px 6px}
+  .agentrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .agentrow:last-child{border-bottom:0}
+  .ava{width:32px;height:32px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px;flex:0 0 auto}
+  .ava.sr{background:var(--gold);color:var(--ink)}
+  .agentrow .nm{font-weight:700;font-size:13.5px}
+  .agentrow .meta{font-size:12px;color:var(--muted)}
+  .agentrow .spacer{flex:1}
+  .agentrow .tmr{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--muted);font-weight:600}
+  .pulse{width:8px;height:8px;border-radius:50%;background:#3ad492;animation:pulse 1.8s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(58,212,146,.6)}70%{box-shadow:0 0 0 7px rgba(58,212,146,0)}100%{box-shadow:0 0 0 0 rgba(58,212,146,0)}}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse}
+  thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#f3f7fc}
+  .lid{font-family:var(--mono);font-size:12px;color:var(--ink-600);font-weight:600}
+  .nm{font-weight:600}
+  .num{font-variant-numeric:tabular-nums;font-weight:700}
+  .right{text-align:right}
+  .money-hidden{display:none;color:var(--muted);font-style:italic}
+  body.r-blind .money,body.r-blind .money-val{display:none}
+  body.r-blind .money-hidden{display:inline}
+  .wsswitch{display:none;align-items:center;gap:7px;background:#fbf6ea;border:1px solid #ecdcb4;color:var(--gold-700);font-size:12px;font-weight:700;padding:6px 12px;border-radius:20px;text-decoration:none;margin-right:4px}
+  .wsswitch:hover{background:#f7efda}
+  .wsswitch.show{display:inline-flex}
+  .leadbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .lsearch{flex:1;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line-2);border-radius:9px;padding:9px 11px}
+  .lsearch input{border:0;outline:none;flex:1;font-size:13.5px;font-family:inherit;color:var(--text);background:transparent}
+  .intakebox{display:none;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;padding:14px;margin-bottom:14px}
+  .intakebox.open{display:block}
+  .ib-look{display:flex;gap:8px;margin:10px 0 0}
+  .ib-look input{flex:1;border:1px solid var(--line-2);border-radius:8px;padding:9px 11px;font-size:13.5px;font-family:inherit}
+  .ib-result{margin-top:11px;font-size:13px;line-height:1.5}
+  .ib-found{background:var(--warn-bg);border:1px solid #ecd3a3;color:#7d5a16;border-radius:9px;padding:11px 12px}
+  .ib-new{background:var(--go-bg);border:1px solid #bfe3c9;color:#1f6b3f;border-radius:9px;padding:11px 12px}
+  .ib-result .acts{margin-top:9px;display:flex;gap:8px;flex-wrap:wrap}
+  .claimchip2{display:inline-block;margin-left:8px;font-size:10.5px;font-weight:800;color:var(--ink);background:#eef1f6;border:1px solid var(--line);border-radius:10px;padding:1px 7px;vertical-align:middle}
+  .dupflag{display:inline-block;font-size:10.5px;font-weight:800;color:var(--stop);background:var(--stop-bg);border:1px solid #e7b4b1;border-radius:10px;padding:1px 7px;margin-left:8px;vertical-align:middle}
+
+  /* progress bar (tier A) */
+  .bar{height:7px;background:#e9edf2;border-radius:5px;overflow:hidden;width:90px;display:inline-block;vertical-align:middle}
+  .bar i{display:block;height:100%;background:var(--gold)}
+  .bar.met i{background:var(--go)}
+
+  /* attention feed */
+  .feed{padding:6px}
+  .fitem{display:flex;gap:11px;padding:11px 12px;border-bottom:1px solid var(--line)}
+  .fitem:last-child{border-bottom:0}
+  .fitem .ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;font-weight:800;font-size:13px}
+  .fitem.stop .ic{background:var(--stop-bg);color:var(--stop)}
+  .fitem.warn .ic{background:var(--warn-bg);color:var(--warn)}
+  .fitem.info .ic{background:var(--info-bg);color:var(--info)}
+  .fitem.go .ic{background:var(--go-bg);color:var(--go)}
+  .fitem .t{font-weight:700;font-size:13px}
+  .fitem .d{font-size:12px;color:var(--muted);margin-top:1px}
+
+  /* campaign bars */
+  .camp{padding:12px 16px}
+  .cbar{display:flex;align-items:center;gap:10px;margin-bottom:11px;font-size:12.5px}
+  .cbar .cn{width:120px;flex:0 0 auto;font-weight:600;color:#33414f}
+  .cbar .ct{flex:1;height:18px;background:#eef1f5;border-radius:5px;overflow:hidden}
+  .cbar .ct i{display:block;height:100%;background:linear-gradient(90deg,#1f4a78,#0F2A4A)}
+  .cbar .cv{width:42px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+
+  /* team grid */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:980px){.grid3{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:620px){.grid3{grid-template-columns:1fr}}
+  .pcard{padding:14px 16px}
+  .pcard .top{display:flex;align-items:center;gap:11px;margin-bottom:10px}
+  .pcard .nm{font-weight:700}
+  .pcard dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;font-size:12.5px}
+  .pcard dt{color:var(--muted)}.pcard dd{margin:0;font-weight:700;text-align:right}
+
+  .secthead{font-size:13px;font-weight:800;letter-spacing:.3px;color:#33414f;margin:24px 0 10px;text-transform:uppercase}
+  .note{background:var(--info-bg);border:1px solid #cfe0f3;border-radius:9px;padding:12px 14px;font-size:13px;color:#2c4a6e;margin-bottom:16px}
+
+  .settings-list{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  @media(max-width:760px){.settings-list{grid-template-columns:1fr}}
+  .sett{display:flex;gap:12px;align-items:flex-start;padding:14px 16px}
+  .sett .ic{width:34px;height:34px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);display:grid;place-items:center;flex:0 0 auto;font-weight:800;color:var(--ink)}
+  .sett .t{font-weight:700;font-size:13.5px}
+  .sett .d{font-size:12px;color:var(--muted);margin-top:2px}
+
+  /* notes fab */
+  .fab{position:fixed;right:20px;bottom:22px;z-index:70;border:0;border-radius:24px;padding:12px 18px;font-weight:800;font-size:13.5px;background:var(--ink);color:#fff;box-shadow:0 6px 20px rgba(15,42,74,.28);display:inline-flex;align-items:center;gap:8px}
+  .notes-pop{position:fixed;top:0;right:0;height:100vh;width:330px;max-width:92vw;background:#fff;border-left:1px solid var(--line);box-shadow:-12px 0 40px rgba(15,42,74,.16);z-index:90;transform:translateX(105%);transition:transform .26s ease;display:flex;flex-direction:column}
+  .notes-pop.open{transform:translateX(0)}
+  .drawer-h{display:flex;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line);font-size:15px}
+  .drawer-h b{flex:1}.dx{border:0;background:none;font-size:20px;color:var(--muted);line-height:1}
+  .notes-pop textarea{flex:1;border:0;outline:0;resize:none;padding:16px 18px;font-size:14px;font-family:inherit;line-height:1.5}
+  .notes-foot{padding:9px 18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);background:var(--surface-2)}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 8px 30px rgba(15,42,74,.3);opacity:0;pointer-events:none;transition:.28s;z-index:80}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body class="r-bmc">
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sb-brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="18" r="2.4" fill="#C8A24A"/><path d="M6 12a6 6 0 0 1 6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M6 6a12 12 0 0 1 12 12" stroke="#C8A24A" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <span><b>Claim</b> <span class="reach">Reach</span></span>
+    </div>
+    <nav class="sb-nav">
+      <button class="navitem active" data-screen="home" onclick="go('home',this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 11 12 4l9 7M5 10v10h14V10" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span class="navlabel">Home</span></button>
+      <button class="navitem" data-screen="leads" onclick="go('leads',this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="navlabel">Leads</span><span class="pip">128</span></button>
+      <button class="navitem" data-screen="queue" onclick="go('queue',this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="6" rx="2" stroke="currentColor" stroke-width="2"/><rect x="4" y="14" width="16" height="6" rx="2" stroke="currentColor" stroke-width="2"/></svg><span class="navlabel">My Queue</span></button>
+      <button class="navitem" data-screen="qa" onclick="go('qa',this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span class="navlabel">QA Review</span><span class="pip">5</span></button>
+      <button class="navitem soon" data-screen="pay" onclick="soon()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="navlabel">Pay &amp; Stats</span><span class="soonpip">Soon</span></button>
+      <button class="navitem" data-screen="team" onclick="go('team',this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a3 3 0 1 0-1-5.8M21 20c0-2.5-1.7-4.6-4-5.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="navlabel">Team</span></button>
+      <button class="navitem soon" data-screen="reports" onclick="soon()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M5 20V10M12 20V4M19 20v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="navlabel">Reports</span><span class="soonpip">Soon</span></button>
+      <button class="navitem" data-screen="grievous" onclick="go('grievous',this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 3 4 7v5c0 5 3.5 8 8 9 4.5-1 8-4 8-9V7l-8-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 8v4M12 15h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="navlabel">Grievous</span><span class="pip">3</span></button>
+      <button class="navitem" data-screen="settings" onclick="go('settings',this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.3 1a7 7 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L4.1 11a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.6c.1-.3.1-.7.1-1Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="navlabel">Settings</span></button>
+    </nav>
+    <div class="sb-foot">
+      <div class="who"><span class="av">T</span><div><div class="nm">Tony</div><div class="rl">Senior &middot; Floor Manager</div></div></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="ptitle">Floor</h1>
+        <div class="date">Thursday, June 11, 2026</div>
+      </div>
+      <div class="spacer"></div>
+      <a class="wsswitch" id="wsswitch" href="agent_home.html">In Floor workspace &middot; Switch to My Work &rarr;</a>
+      <span class="pp"><span class="dot"></span> Pay: wk of Jun 8 &middot; Processing</span>
+      <div class="roles" role="group" aria-label="View as">
+        <button class="active" onclick="setUser('bmc',this)">BMC</button>
+        <button onclick="setUser('tony',this)">Tony (Floor)</button>
+        <button onclick="setUser('ahniyah',this)">Ahniyah (QA)</button>
+      </div>
+      <div class="tsearch">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#5c6877" stroke-width="2"/><path d="m20 20-3.2-3.2" stroke="#5c6877" stroke-width="2" stroke-linecap="round"/></svg>
+        <input placeholder="Search leads, agents">
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ================= HOME ================= -->
+      <section class="screen show" id="s-home">
+        <div class="kpis">
+          <div class="kpi"><div class="lab">Signed today</div><div class="val">42</div></div>
+          <div class="kpi"><div class="lab">Team conversion</div><div class="val">31<small>%</small></div></div>
+          <div class="kpi"><div class="lab">In queue</div><div class="val">128</div></div>
+          <div class="kpi"><div class="lab">Open flags</div><div class="val">3</div></div>
+          <div class="kpi accent"><div class="lab">Agents live</div><div class="val">8<small> / 11</small></div></div>
+        </div>
+
+        <div class="row2">
+          <div class="stack">
+            <div class="card">
+              <div class="card-h"><h3>Live floor</h3><span class="badge b-go"><span class="pulse"></span> 8 active</span><div class="spacer"></div><button class="more" onclick="go('team',document.querySelectorAll('.navitem')[5])">Team view</button></div>
+              <div class="floor" id="floorList"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>Today's leaderboard</h3><div class="spacer"></div><span class="sub">Mon-Sun pay period</span></div>
+              <table>
+                <thead><tr><th>Agent</th><th>Signed</th><th>Tier A</th><th>B+ / C</th><th>Conv</th><th class="right money">Week pay</th></tr></thead>
+                <tbody id="leaderRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="card">
+              <div class="card-h"><h3>Needs attention</h3><div class="spacer"></div><span class="badge b-stop">3</span></div>
+              <div class="feed">
+                <div class="fitem stop"><div class="ic">!</div><div><div class="t">Transcript mismatch on #84012</div><div class="d">Grievous Tier 3: agent recorded a diagnosis the PNC did not state. Held from firm.</div></div></div>
+                <div class="fitem warn"><div class="ic">&#9866;</div><div><div class="t">Missing recording on #83771</div><div class="d">Commission on hold until the call recording lands.</div></div></div>
+                <div class="fitem warn"><div class="ic">&#8987;</div><div><div class="t">23 leads idle over 24h</div><div class="d">Aging in the queue, mostly LCA REV source.</div></div></div>
+                <div class="fitem info"><div class="ic">i</div><div><div class="t">Aubrie at 6 / 15 Tier A</div><div class="d">2 days left in period to clear the senior bonus threshold.</div></div></div>
+                <div class="fitem go"><div class="ic">&#10003;</div><div><div class="t">Gate blocked a non-qualifying file</div><div class="d">Eduardo: prior CL signup caught at entry. Nothing sent.</div></div></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>Signed by campaign</h3><div class="spacer"></div><span class="sub">today</span></div>
+              <div class="camp">
+                <div class="cbar"><span class="cn">NGUYEN PFAS</span><span class="ct"><i style="width:88%"></i></span><span class="cv">31</span></div>
+                <div class="cbar"><span class="cn">TMP BARD PP</span><span class="ct"><i style="width:24%"></i></span><span class="cv">7</span></div>
+                <div class="cbar"><span class="cn">Joel SMA</span><span class="ct"><i style="width:12%"></i></span><span class="cv">3</span></div>
+                <div class="cbar"><span class="cn">LCA</span><span class="ct"><i style="width:6%"></i></span><span class="cv">1</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= LEADS ================= -->
+      <section class="screen" id="s-leads">
+        <div class="note">Leads are organized by the person, not the claim. Searching looks up a contact first, so before anyone opens a new file you see whether that person already exists and what claims they hold. That is what stops duplicates and catches serial filers.</div>
+        <div class="leadbar">
+          <div class="lsearch">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#5c6877" stroke-width="2"/><path d="m20 20-3.2-3.2" stroke="#5c6877" stroke-width="2" stroke-linecap="round"/></svg>
+            <input id="contactSearch" placeholder="Find a person by name or phone" oninput="filterLeads()">
+          </div>
+          <button class="more" onclick="toggleIntake()">+ Start new intake</button>
+        </div>
+        <div class="intakebox" id="intakebox">
+          <b>New intake starts with the person, not the claim.</b> Look them up first so we never create a duplicate.
+          <div class="ib-look"><input id="ibPhone" placeholder="Phone or name (try Bob, or 702...)" onkeydown="if(event.key==='Enter')ibLookup()"><button class="more" onclick="ibLookup()">Look up</button></div>
+          <div class="ib-result" id="ibResult"></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Leads</h3><div class="spacer"></div><span class="sub" id="leadSource">connecting...</span></div>
+          <table>
+            <thead><tr><th>Lead</th><th>Name</th><th>Case type</th><th>Source</th><th>Agent</th><th>Status</th><th>Idle</th></tr></thead>
+            <tbody id="leadRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= MY QUEUE ================= -->
+      <section class="screen" id="s-queue">
+        <div class="note">My Queue is the agent's working stack. Open several leads at once and mow through them, or pull the next from the dial queue. The deep agent workspace (script, gates, comms, Grievous) opens from here. On the hosted site this links to lead.html.</div>
+        <div class="card">
+          <div class="card-h"><h3>Working now</h3><div class="spacer"></div><span class="badge b-info">12 queued</span></div>
+          <table>
+            <thead><tr><th>Lead</th><th>Name</th><th>Case type</th><th>Last called</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><span class="lid">#110496</span></td><td class="nm">Bob Builder</td><td>NGUYEN PFAS</td><td class="sub">1:52 PM &middot; 3rd</td><td class="right"><a href="lead.html" target="_blank" rel="noopener" style="color:var(--info);font-weight:700;text-decoration:none">Open &rarr;</a></td></tr>
+              <tr><td><span class="lid">#76613</span></td><td class="nm">Dirk Anderson</td><td>NGUYEN PFAS</td><td class="sub">1:40 PM &middot; 2nd</td><td class="right"><a href="lead.html" target="_blank" rel="noopener" style="color:var(--info);font-weight:700;text-decoration:none">Open &rarr;</a></td></tr>
+              <tr><td><span class="lid">#76572</span></td><td class="nm">Iselda Garza</td><td>NGUYEN PFAS</td><td class="sub">1:31 PM &middot; 1st</td><td class="right"><a href="lead.html" target="_blank" rel="noopener" style="color:var(--info);font-weight:700;text-decoration:none">Open &rarr;</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= QA REVIEW ================= -->
+      <section class="screen" id="s-qa">
+        <div class="note">QA Review is money-blind. Reviewers see the answers, the recording and transcript, and Grievous concerns, with every dollar figure hard-stripped at the role level. Switch the top-right user to Ahniyah (QA) to feel it.</div>
+        <div class="card">
+          <div class="card-h"><h3>Awaiting QA</h3><div class="spacer"></div><span class="badge b-info">5 files</span></div>
+          <table>
+            <thead><tr><th>Lead</th><th>Name</th><th>Agent</th><th>Grievous</th><th class="money">Value</th><th class="right">Action</th></tr></thead>
+            <tbody>
+              <tr><td><span class="lid">#84012</span></td><td class="nm">M. Cortez</td><td>Malik</td><td><span class="badge b-stop">Tier 3 flag</span></td><td><span class="money">$0</span><span class="money-hidden">Hidden</span></td><td class="right"><button class="more" onclick="toast('Flagged for RE-QA.')">Flag</button> <button class="more" onclick="toast('Approved.')" style="color:var(--go)">Approve</button></td></tr>
+              <tr><td><span class="lid">#83902</span></td><td class="nm">R. Patel</td><td>Katie</td><td><span class="badge b-go">Clean</span></td><td><span class="money">$52k</span><span class="money-hidden">Hidden</span></td><td class="right"><button class="more" onclick="toast('Flagged for RE-QA.')">Flag</button> <button class="more" onclick="toast('Approved.')" style="color:var(--go)">Approve</button></td></tr>
+              <tr><td><span class="lid">#83880</span></td><td class="nm">D. Cole</td><td>Thomas</td><td><span class="badge b-warn">Address</span></td><td><span class="money">$41k</span><span class="money-hidden">Hidden</span></td><td class="right"><button class="more" onclick="toast('Flagged for RE-QA.')">Flag</button> <button class="more" onclick="toast('Approved.')" style="color:var(--go)">Approve</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= PAY & STATS ================= -->
+      <section class="screen" id="s-pay">
+        <div class="note">This is the InnoDash pay-admin, folded into Claim Reach as the management lens. Pay periods run Monday to Sunday, auto-open Monday and auto-close Thursday. Seniors earn Tier A $25 / B+ $20 / C $10; others $20 / $10 / $5. Under 15 Tier A in a period forfeits Tier A commission; B and C still apply.</div>
+        <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+          <div class="kpi"><div class="lab">Period</div><div class="val" style="font-size:18px">Processing</div></div>
+          <div class="kpi"><div class="lab">Signed (period)</div><div class="val">214</div></div>
+          <div class="kpi money"><div class="lab">Commission (period)</div><div class="val">$4,180</div></div>
+          <div class="kpi"><div class="lab money-hidden" style="display:none">Hidden in QA</div><div class="lab money">WIP carried</div><div class="val money">37</div></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Commission by agent</h3><div class="spacer"></div><span class="sub">wk of Jun 8 &middot; processing</span></div>
+          <table>
+            <thead><tr><th>Agent</th><th>Tier</th><th>Tier A</th><th>B+</th><th>C</th><th class="right money">Earned</th></tr></thead>
+            <tbody>
+              <tr><td class="nm">Tony</td><td><span class="badge b-warn">Senior</span></td><td class="num">15 &#10003;</td><td class="num">9</td><td class="num">4</td><td class="right num"><span class="money">$595</span><span class="money-hidden">Hidden</span></td></tr>
+              <tr><td class="nm">Lisa</td><td><span class="badge b-warn">Senior</span></td><td class="num">17 &#10003;</td><td class="num">6</td><td class="num">2</td><td class="right num"><span class="money">$565</span><span class="money-hidden">Hidden</span></td></tr>
+              <tr><td class="nm">Katie</td><td><span class="badge b-mut">Standard</span></td><td class="num">12</td><td class="num">10</td><td class="num">5</td><td class="right num"><span class="money">$365</span><span class="money-hidden">Hidden</span></td></tr>
+              <tr><td class="nm">Malik</td><td><span class="badge b-mut">Standard</span></td><td class="num">9</td><td class="num">8</td><td class="num">3</td><td class="right num"><span class="money">$275</span><span class="money-hidden">Hidden</span></td></tr>
+              <tr><td class="nm">Aubrie</td><td><span class="badge b-mut">Standard</span></td><td class="num" style="color:var(--stop)">6</td><td class="num">7</td><td class="num">4</td><td class="right num"><span class="money">$90</span><span class="money-hidden">Hidden</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="sub" style="margin-top:10px">Aubrie shows in red: under the 15 Tier A threshold, so Tier A commission is currently forfeited (B and C still count) unless she clears it before the period closes.</p>
+      </section>
+
+      <!-- ================= TEAM ================= -->
+      <section class="screen" id="s-team">
+        <div class="secthead">Seniors</div>
+        <div class="grid3" id="teamSeniors"></div>
+        <div class="secthead">Standard agents</div>
+        <div class="grid3" id="teamStd"></div>
+      </section>
+
+      <!-- ================= REPORTS ================= -->
+      <section class="screen" id="s-reports">
+        <div class="note">Two reports carry over from the old system, both now accurate because Claim Reach keeps full status history in an append-only events log. You can finally report on every deal that ever touched a status, not only its current one.</div>
+        <div class="row2">
+          <div class="card"><div class="card-h"><h3>Status report</h3></div><div style="padding:16px"><p class="sub">Status changes across a date range, filtered by case type, agent, source, firm. Built on the status-events log.</p><button class="more" onclick="toast('Running status report...')">Run report &rarr;</button></div></div>
+          <div class="card"><div class="card-h"><h3>E-Sign report</h3></div><div style="padding:16px"><p class="sub">Sent, signed, and cancelled e-sign over time, by agent and campaign.</p><button class="more" onclick="toast('Running e-sign report...')">Run report &rarr;</button></div></div>
+        </div>
+      </section>
+
+      <!-- ================= GRIEVOUS ================= -->
+      <section class="screen" id="s-grievous">
+        <div class="note">Grievous runs advisory by default: he flags concerns, humans decide. The override "Grievous FULL QA these" escalates to full automation.</div>
+        <div class="card">
+          <div class="card-h"><h3>Open concerns</h3><div class="spacer"></div><span class="badge b-stop">3</span><button class="more" style="margin-left:10px" onclick="toast('Grievous FULL QA queued.')">Grievous FULL QA these</button></div>
+          <div class="feed">
+            <div class="fitem stop"><div class="ic">3</div><div><div class="t">#84012 &middot; transcript vs form mismatch</div><div class="d">Recorded diagnosis not found in the call transcript. Tier 3. Held from firm.</div></div></div>
+            <div class="fitem warn"><div class="ic">1</div><div><div class="t">#83880 &middot; address not deliverable</div><div class="d">Tier 1 guardrail flagged the entered address on save.</div></div></div>
+            <div class="fitem info"><div class="ic">2</div><div><div class="t">#83655 &middot; diagnosis year missing</div><div class="d">Tier 2 qualify review: capture treatment year before sending.</div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SETTINGS ================= -->
+      <section class="screen" id="s-settings">
+        <div class="settings-list">
+          <div class="card sett"><div class="ic">S</div><div><div class="t">Script &amp; questionnaire builder</div><div class="d">Build by paste or import. Human field names, inline DQ gates, versioned per campaign.</div></div></div>
+          <div class="card sett"><div class="ic">F</div><div><div class="t">Firms &amp; delivery</div><div class="d">Per firm adapter: document bundle now, Neos for TMP and Nguyen, Litify later.</div></div></div>
+          <div class="card sett"><div class="ic">V</div><div><div class="t">Vendors &amp; API keys</div><div class="d">One inbound key per vendor, attribution, rotate and revoke.</div></div></div>
+          <div class="card sett"><div class="ic">A</div><div><div class="t">Agents &amp; roles</div><div class="d">Roster, tiers, role scoping (agent, QA, floor manager, BMC).</div></div></div>
+          <div class="card sett"><div class="ic">E</div><div><div class="t">E-sign templates</div><div class="d">SignWell templates per campaign, merge tabs mapped to intake fields.</div></div></div>
+          <div class="card sett"><div class="ic">&#128274;</div><div><div class="t">Security &amp; audit</div><div class="d">PII encryption, audited reveals, record freeze, RLS policies.</div></div></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<button class="fab" onclick="toggleNotes()">&#128221; Notes</button>
+<aside class="notes-pop" id="notes">
+  <div class="drawer-h"><b>Notes to self</b><button class="dx" onclick="toggleNotes()">&times;</button></div>
+  <textarea id="notesArea" placeholder="Jot ideas while you play..." oninput="saveNotes()"></textarea>
+  <div class="notes-foot" id="notesFoot">Saves to this browser</div>
+</aside>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ---------- supabase ---------- */
+const SB_URL='https://gvtafevoisfxcfkugvoj.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2dGFmZXZvaXNmeGNma3Vndm9qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNzAxNTUsImV4cCI6MjA5Njk0NjE1NX0.TC8eJ6AHM_Q-qAhidFShp09nojKsr2yds_j0E2kvpjw';
+const sbClient = window.supabase.createClient(SB_URL, SB_KEY);
+
+/* ---------- data ---------- */
+const FLOOR=[
+  {n:"Tony",sr:1,st:"call",lab:"On call",lead:"#110496 Bob Builder",t:142},
+  {n:"Lisa",sr:1,st:"file",lab:"In file",lead:"#84943 C. Gibson",t:0},
+  {n:"Katie",sr:0,st:"call",lab:"On call",lead:"#83902 R. Patel",t:88},
+  {n:"Malik",sr:0,st:"file",lab:"In file",lead:"#84012 M. Cortez",t:0},
+  {n:"Thomas",sr:0,st:"call",lab:"On call",lead:"#83880 D. Cole",t:51},
+  {n:"Eduardo",sr:0,st:"idle",lab:"Idle 2m",lead:"",t:0},
+  {n:"Aubrie",sr:0,st:"call",lab:"On call",lead:"#83655 J. Ruiz",t:33},
+  {n:"Ty",sr:0,st:"break",lab:"Break",lead:"",t:0},
+];
+const stPill={call:'b-go',file:'b-info',idle:'b-mut',break:'b-warn'};
+function ini(n){return n.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();}
+function fmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+function renderFloor(){
+  document.getElementById('floorList').innerHTML=FLOOR.map((a,i)=>`
+    <div class="agentrow">
+      <span class="ava ${a.sr?'sr':''}">${ini(a.n)}</span>
+      <div><div class="nm">${a.n}</div><div class="meta">${a.lead||'No lead open'}</div></div>
+      <div class="spacer"></div>
+      ${a.st==='call'?`<span class="tmr" id="t${i}">${fmt(a.t)}</span>`:''}
+      <span class="badge ${stPill[a.st]}">${a.st==='call'?'<span class="pulse"></span> ':''}${a.lab}</span>
+    </div>`).join('');
+}
+renderFloor();
+
+const LEADER=[
+  {n:"Lisa",sr:1,signed:17,a:17,bc:"6 / 2",conv:38,pay:"$565"},
+  {n:"Tony",sr:1,signed:15,a:15,bc:"9 / 4",conv:34,pay:"$595"},
+  {n:"Katie",sr:0,signed:12,a:12,bc:"10 / 5",conv:29,pay:"$365"},
+  {n:"Malik",sr:0,signed:9,a:9,bc:"8 / 3",conv:27,pay:"$275"},
+  {n:"Thomas",sr:0,signed:8,a:8,bc:"7 / 4",conv:25,pay:"$245"},
+  {n:"Aubrie",sr:0,signed:6,a:6,bc:"7 / 4",conv:21,pay:"$90"},
+];
+document.getElementById('leaderRows').innerHTML=LEADER.map(r=>{
+  const met=r.a>=15, pct=Math.min(100,Math.round(r.a/15*100));
+  return `<tr>
+    <td class="nm">${r.n} ${r.sr?'<span class="badge b-warn" style="margin-left:4px">SR</span>':''}</td>
+    <td class="num">${r.signed}</td>
+    <td><span class="num">${r.a}/15</span> <span class="bar ${met?'met':''}"><i style="width:${pct}%"></i></span></td>
+    <td class="num">${r.bc}</td>
+    <td class="num">${r.conv}%</td>
+    <td class="right num money">${r.pay}</td>
+  </tr>`;
+}).join('');
+
+const LEADS=[
+  {id:"110496",name:"Bob Builder",ct:"NGUYEN PFAS",src:"CLAIMPOINTUSA",ag:"Tony",st:"Contact Attempted",b:"b-mut",idle:"21h",claims:3},
+  {id:"110599",name:"Robert Builder",ct:"NGUYEN PFAS",src:"CLAIMPOINTUSA",ag:"-",st:"New Lead",b:"b-mut",idle:"2m",dup:"110496"},
+  {id:"84943",name:"Cynthia Gibson",ct:"NGUYEN PFAS",src:"LCA PFAS",ag:"Lisa",st:"Sent e-Sign",b:"b-warn",idle:"4m"},
+  {id:"74616",name:"Theresa Rivero",ct:"NGUYEN PFAS",src:"LCA-pfas",ag:"Tony",st:"Signed, Ready to Send",b:"b-info",idle:"1m"},
+  {id:"82849",name:"Maureen Freed",ct:"NGUYEN PFAS",src:"LCA PFAS",ag:"Ty",st:"Signed e-Sign",b:"b-go",idle:"1m"},
+  {id:"84012",name:"Marco Cortez",ct:"NGUYEN PFAS",src:"Grit",ag:"Malik",st:"QA Flag, held",b:"b-stop",idle:"6m"},
+  {id:"110277",name:"Timothy Huber",ct:"NGUYEN PFAS",src:"CLAIMPOINTUSA",ag:"Katie",st:"Contact Attempted",b:"b-mut",idle:"5s"},
+  {id:"83880",name:"Dana Cole",ct:"TMP BARD PP",src:"Innovative",ag:"Thomas",st:"Needs QA",b:"b-info",idle:"12m",claims:2},
+];
+function leadRow(l){
+  const chip = l.claims>1 ? `<span class="claimchip2">${l.claims} claims</span>` : '';
+  const dup  = l.dup ? `<span class="dupflag" title="Same person already on file">Possible duplicate of #${l.dup}</span>` : '';
+  return `<tr data-name="${l.name.toLowerCase()}">
+    <td><span class="lid">#${l.id}</span></td>
+    <td class="nm">${l.name}${chip}${dup}</td>
+    <td>${l.ct}</td><td class="sub">${l.src}</td><td>${l.ag}</td>
+    <td><span class="badge ${l.b}"><span class="dot"></span> ${l.st}</span></td>
+    <td class="sub">${l.idle}</td></tr>`;
+}
+function badgeFor(st){const m={'New Lead':'b-mut','Contact Attempted':'b-mut','WIP':'b-info','Needs QA':'b-info','Sent e-Sign':'b-warn','Signed, Ready to Send':'b-info','Signed e-Sign':'b-go','Signed':'b-go','QA Flag, held':'b-stop','DQ':'b-stop','Delivered':'b-go'};return m[st]||'b-mut';}
+async function renderLeads(){
+  const src=document.getElementById('leadSource');
+  let list=LEADS, live=false;
+  try{
+    const { data, error } = await sbClient.from('lead_list').select('*').order('contact_name',{nullsFirst:false});
+    if(!error && data && data.length){
+      const noById={}; data.forEach(r=>{ noById[r.id]=r.lead_no; });
+      list=data.map(r=>({
+        id:r.lead_no||'(new)',
+        name:r.contact_name||r.claimant_name||'Unmatched lead',
+        ct:r.campaign, src:r.source||'', ag:r.assigned_agent||'-',
+        st:r.status, b:badgeFor(r.status), idle:'',
+        claims:r.contact_claim_count||1,
+        dup: r.possible_dup_of ? (noById[r.possible_dup_of]||'') : null
+      }));
+      live=true;
+    }
+  }catch(e){}
+  document.getElementById('leadRows').innerHTML=list.map(leadRow).join('');
+  if(src) src.textContent = live ? 'Live data from Supabase' : 'Sample data (sign in to load live)';
+}
+renderLeads();
+
+function filterLeads(){
+  const q=document.getElementById('contactSearch').value.trim().toLowerCase();
+  document.querySelectorAll('#leadRows tr').forEach(tr=>{
+    tr.style.display = (!q || tr.getAttribute('data-name').indexOf(q)>-1) ? '' : 'none';
+  });
+}
+function toggleIntake(){document.getElementById('intakebox').classList.toggle('open');document.getElementById('ibResult').innerHTML='';}
+function ibLookup(){
+  const v=document.getElementById('ibPhone').value.trim().toLowerCase();
+  const res=document.getElementById('ibResult');
+  if(!v){res.innerHTML='';return;}
+  const hit = v.indexOf('bob')>-1 || v.indexOf('builder')>-1 || v.indexOf('702')>-1;
+  if(hit){
+    res.innerHTML=`<div class="ib-found"><b>Found an existing contact: Bob Builder.</b> 3 claims on file (PFAS, Bard PowerPort, and PFAS for his late spouse). Do not create a new contact.
+      <div class="acts"><button class="more" onclick="toast('Opening Bob Builder.')">Open contact</button><button class="more" style="color:var(--gold-700)" onclick="toast('Create another claim under Bob, no duplicate made.')">Create another claim</button></div></div>`;
+  }else{
+    res.innerHTML=`<div class="ib-new"><b>No existing contact matches.</b> Safe to create a new person and their first claim.
+      <div class="acts"><button class="more" style="color:var(--go)" onclick="toast('New contact and first claim created.')">Create new contact</button></div></div>`;
+  }
+}
+
+const TEAM=[
+  {n:"Tony",sr:1,st:"On call",signed:15,a:"15/15",conv:34},
+  {n:"Lisa",sr:1,st:"In file",signed:17,a:"17/15",conv:38},
+  {n:"Katie",sr:0,st:"On call",signed:12,a:"12/15",conv:29},
+  {n:"Malik",sr:0,st:"In file",signed:9,a:"9/15",conv:27},
+  {n:"Thomas",sr:0,st:"On call",signed:8,a:"8/15",conv:25},
+  {n:"Aubrie",sr:0,st:"On call",signed:6,a:"6/15",conv:21},
+  {n:"Eduardo",sr:0,st:"Idle",signed:7,a:"7/15",conv:24},
+  {n:"Ty",sr:0,st:"Break",signed:5,a:"5/15",conv:19},
+  {n:"Damaris",sr:0,st:"On call",signed:10,a:"10/15",conv:28},
+];
+function pcard(a){return `<div class="card pcard">
+  <div class="top"><span class="ava ${a.sr?'sr':''}">${ini(a.n)}</span><div><div class="nm">${a.n}</div><div class="sub">${a.sr?'Senior':'Standard'}</div></div></div>
+  <dl><dt>Status</dt><dd>${a.st}</dd><dt>Signed</dt><dd>${a.signed}</dd><dt>Tier A</dt><dd>${a.a}</dd><dt>Conversion</dt><dd>${a.conv}%</dd></dl>
+</div>`;}
+document.getElementById('teamSeniors').innerHTML=TEAM.filter(a=>a.sr).map(pcard).join('');
+document.getElementById('teamStd').innerHTML=TEAM.filter(a=>!a.sr).map(pcard).join('');
+
+/* ---------- nav ---------- */
+const titles={home:"Floor",leads:"Leads",queue:"My Queue",qa:"QA Review",pay:"Pay & Stats",team:"Team",reports:"Reports",grievous:"Grievous",settings:"Settings"};
+function go(s,btn){
+  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('show'));
+  document.getElementById('s-'+s).classList.add('show');
+  document.querySelectorAll('.navitem').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.getElementById('ptitle').textContent=titles[s]||s;
+  document.querySelector('.content').scrollTo(0,0);window.scrollTo(0,0);
+}
+const USERS={
+  bmc:{blind:false, screens:['home','leads','queue','qa','pay','team','reports','grievous','settings'], land:'home', hybrid:false, msg:'BMC: full visibility, every figure shown.'},
+  tony:{blind:true, screens:['home','leads','team','qa','grievous','reports','settings'], land:'home', hybrid:true, msg:"Tony, Floor workspace. Manager view, but other agents' dollars are hidden. He also has a personal My Work dashboard."},
+  ahniyah:{blind:true, screens:['qa'], land:'qa', hybrid:false, msg:'Ahniyah, QA only (PFAS). Dollars hidden, review and flag.'}
+};
+function setUser(key,btn){
+  const u=USERS[key];
+  document.body.className = u.blind ? 'r-blind' : 'r-bmc';
+  document.querySelectorAll('.roles button').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  // show only the nav items this user can reach
+  let landBtn=null;
+  document.querySelectorAll('.navitem').forEach(it=>{
+    const sc=it.getAttribute('data-screen');
+    const ok=u.screens.indexOf(sc)>-1;
+    it.style.display = ok ? '' : 'none';
+    if(sc===u.land) landBtn=it;
+  });
+  // hybrid workspace switch
+  document.getElementById('wsswitch').classList.toggle('show', !!u.hybrid);
+  // land on an allowed screen
+  if(landBtn) go(u.land, landBtn);
+  toast(u.msg);
+}
+function setRole(r,btn){setUser(r,btn);} /* back-compat */
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2400);}
+function soon(){toast('Coming in a later phase. It lives in the shell now so the layout and nav are final before we wire it.');}
+function toggleNotes(){document.getElementById('notes').classList.toggle('open');}
+function saveNotes(){try{localStorage.setItem('cr_cc_notes',document.getElementById('notesArea').value);document.getElementById('notesFoot').textContent='Saved to this browser';}catch(e){document.getElementById('notesFoot').textContent='Saved for this session';}}
+(function(){try{var v=localStorage.getItem('cr_cc_notes');if(v)document.getElementById('notesArea').value=v;}catch(e){}})();
+
+/* live timers on floor */
+setInterval(()=>{FLOOR.forEach((a,i)=>{if(a.st==='call'){a.t++;const el=document.getElementById('t'+i);if(el)el.textContent=fmt(a.t);}});},1000);
+</script>
+</body>
+</html>
