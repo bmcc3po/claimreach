@@ -369,18 +369,6 @@
     <button data-role="bmc" onclick="applyRole('bmc',this)">BMC</button>
   </div>
   <div class="agentchip"><span class="avatar">T</span> Tony &middot; Senior</div>
-  <select id="leadStatus" title="Status" style="border-radius:8px;border:1px solid rgba(255,255,255,.25);background:#fff;color:#16202b;font-weight:700;font-size:12.5px;padding:7px 9px;margin-right:8px">
-    <option>New Lead</option>
-    <option>Contact Attempted</option>
-    <option>Qualified</option>
-    <option>DQ</option>
-    <option>Sent e-Sign</option>
-    <option>Signed, Ready to Send</option>
-    <option>QA Approved, Ready to Send</option>
-    <option>RE-QA</option>
-    <option>Needs QA</option>
-    <option>Delivered</option>
-  </select>
   <button class="closebtn" id="saveBtn" onclick="saveLead()">Save</button>
   <button class="closebtn" onclick="closeFile()">Save &amp; close</button>
 </header>
@@ -443,6 +431,20 @@
         <span class="tag">Source: CLAIMPOINTUSA</span>
         <span class="tag">Created Aug 27, 2025</span>
         <span class="badge b-attempt" id="headStatus"><span class="dot"></span> Contact Attempted</span>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.4px;color:var(--muted);text-transform:uppercase">Set status
+          <select id="leadStatus" title="Set status" onchange="saveLead()" style="text-transform:none;letter-spacing:0;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:700;font-size:12.5px;padding:6px 9px">
+            <option>New Lead</option>
+            <option>Contact Attempted</option>
+            <option>Qualified</option>
+            <option>DQ</option>
+            <option>Sent e-Sign</option>
+            <option>Signed, Ready to Send</option>
+            <option>QA Approved, Ready to Send</option>
+            <option>RE-QA</option>
+            <option>Needs QA</option>
+            <option>Delivered</option>
+          </select>
+        </label>
         <span class="tag">Last called: Today 1:52 PM &middot; 3rd attempt</span>
         <span class="presence"><span class="av">L</span> Lisa is also in this file</span>
       </div>
@@ -1051,7 +1053,21 @@ async function loadLead(){
     const bullEl=document.getElementById('bull'); if(bullEl) bullEl.innerHTML = a.bulletin_html || '';
     if(a.primary_diagnosis){ const dx=document.getElementById('primaryDx'); if(dx) dx.value=a.primary_diagnosis; }
     document.querySelectorAll('#pane-questions .opt').forEach(o=>o.classList.remove('sel-good','sel-bad','sel-neutral'));
-    gates.represented=null; gates.signedOther=null; gates.priorSignup=null;
+    gates.represented=null; gates.signedOther=null; gates.priorSignup=null; sent=false;
+    if(a.gates){
+      ['represented','signedOther','priorSignup'].forEach(k=>{
+        const gv=a.gates[k];
+        if(gv===true||gv===false){
+          gates[k]=gv;
+          const wrap=document.querySelector('.opts[data-gate="'+k+'"]');
+          if(wrap){const b=wrap.querySelector('.opt[data-good="'+(gv?'true':'false')+'"]'); if(b) b.classList.add(gv?'sel-good':'sel-bad');}
+        }
+      });
+    }
+    if(['Sent e-Sign','Signed, Ready to Send','QA Approved, Ready to Send','Delivered'].indexOf(data.status)>-1){
+      sent=true;
+      const sb=document.getElementById('sendBtn'); if(sb){sb.classList.add('sent');sb.disabled=true;sb.innerHTML='&#10003; Retainer sent';}
+    }
     if(typeof evaluate==='function') evaluate();
 
     // claims strip: show this contact's real claims
