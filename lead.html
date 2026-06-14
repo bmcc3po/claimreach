@@ -421,11 +421,11 @@
       <h2 id="leadName">Bob T. Builder</h2>
       <div class="idrow"><span class="bigcase">NGUYEN PFAS INNO</span><span class="biglid">Lead #110496</span></div>
       <div class="claimsrow">
-        <span class="clab">Bob's claims:</span>
-        <span class="claimchip active">PFAS INNO &middot; <i>self</i> &middot; this file</span>
+        <span class="clab" id="claimsLabel">Bob's claims:</span>
+        <span id="claimChips"><span class="claimchip active">PFAS INNO &middot; <i>self</i> &middot; this file</span>
         <span class="claimchip">Bard PowerPort &middot; <i>self</i> &middot; WIP</span>
-        <span class="claimchip dq">PFAS &middot; <i>Jane Builder, late spouse</i> &middot; DQ</span>
-        <button class="newclaim" onclick="toast('Create another claim under Bob: pick the claimant (Bob, a party he represents, or add a new one) and the campaign. The old claim is never overwritten.')">+ Create another claim</button>
+        <span class="claimchip dq">PFAS &middot; <i>Jane Builder, late spouse</i> &middot; DQ</span></span>
+        <button class="newclaim" onclick="toast('Create another claim under this contact: pick the claimant (self, a represented party, or add a new one) and the campaign. The old claim is never overwritten.')">+ Create another claim</button>
       </div>
       <div class="meta">
         <span class="tag">Source: CLAIMPOINTUSA</span>
@@ -622,10 +622,10 @@
       <div class="card">
         <div class="card-h"><h3>Vitals</h3><div class="spacer"></div><button class="pencil" onclick="toast('Vitals unlocked for editing. Every change is logged to the audit trail.')">&#9998; Edit</button></div>
         <dl class="vit">
-          <dt>Phone</dt><dd>(702) 738-2738</dd>
-          <dt>Email</dt><dd>brettmichael@me.com</dd>
+          <dt>Phone</dt><dd id="vPhone">(702) 738-2738</dd>
+          <dt>Email</dt><dd id="vEmail">brettmichael@me.com</dd>
           <div class="ln"></div>
-          <dt>Address</dt><dd>12300 Las Vegas Blvd S, Henderson NV</dd>
+          <dt>Address</dt><dd id="vAddress">12300 Las Vegas Blvd S, Henderson NV</dd>
           <dt>Best time</dt><dd>3:00 PM (PDT)</dd>
           <dt>Language</dt><dd>English</dd>
           <dt>Est. value</dt><dd><span class="money-val">$48,000</span><span class="money-hidden">Hidden in QA</span></dd>
@@ -1002,17 +1002,62 @@ async function loadLead(){
     if(error||!data) return;
     CURRENT_LEAD_ID=data.id; CURRENT_CONTACT_ID=data.contact_id||null;
     const name=data.contact_name||data.claimant_name||'Unmatched lead';
+    const first=(name||'').split(' ')[0]||'';
+    const a=data.answers||{};
+    const c=a.contact||{};
+    const setv=(eid,v)=>{const el=document.getElementById(eid); if(el) el.value=(v!=null?v:'');};
+    const settxt=(eid,v)=>{const el=document.getElementById(eid); if(el) el.textContent=(v!=null&&v!==''?v:'\u2014');};
+
+    // header
     const nameEl=document.getElementById('leadName'); if(nameEl) nameEl.textContent=name;
     const bc=document.querySelector('.bigcase'); if(bc) bc.textContent=data.campaign||'';
     const bl=document.querySelector('.biglid'); if(bl) bl.textContent='Lead #'+(data.lead_no||'');
     setHeadStatus(data.status||'New Lead');
+
+    // injured-party banner
+    const ipB=document.getElementById('ipBanner');
+    if(ipB){
+      const ic=ipB.querySelector('.ipicon'), t=ipB.querySelector('b'), s=ipB.querySelector('.ipsub');
+      if(data.is_deceased){ ipB.className='ipbanner stop'; ic.innerHTML='&#9888;'; t.textContent='Injured party is DECEASED. Never ask for them by name.'; s.textContent='Claimant: '+(data.claimant_name||name)+'. Speak only with the OBO, who signs the retainer.'; }
+      else if(data.is_minor){ ipB.className='ipbanner warn'; ic.innerHTML='&#9888;'; t.textContent='Injured party is a MINOR. Do not speak with the minor.'; s.textContent='Claimant: '+(data.claimant_name||name)+'. Speak only with the parent or guardian, who signs the retainer.'; }
+      else { ipB.className='ipbanner ok'; ic.innerHTML='&#10003;'; t.textContent='Injured Party (PNC): '+name; s.textContent='Speaking with the injured party. Signs for self, no OBO needed.'; }
+    }
+
+    // vitals + contact fields
+    settxt('vPhone', data.phone); settxt('vEmail', data.email);
+    settxt('vAddress', c.address ? [c.address,c.city,c.state].filter(Boolean).join(', ') : '');
     const nm=(name||'').split(' ');
-    const setv=(eid,v)=>{const el=document.getElementById(eid); if(el&&v!=null&&v!=='') el.value=v;};
     setv('cFirst',nm[0]); setv('cLast',nm.slice(1).join(' '));
-    setv('cPhone',data.phone); setv('cEmail',data.email);
-    const a=data.answers||{};
-    setv('caseSummary',a.case_summary);
-    if(a.contact){const c=a.contact; setv('addrInput',c.address);setv('addrCity',c.city);setv('addrState',c.state);setv('addrZip',c.zip);setv('cPhone',c.phone);setv('cEmail',c.email);}
+    setv('cPhone', c.phone||data.phone); setv('cEmail', c.email||data.email);
+    setv('addrInput',c.address); setv('addrCity',c.city); setv('addrState',c.state); setv('addrZip',c.zip);
+
+    // case questions: restore saved work, otherwise clear Bob's demo
+    setv('caseSummary', a.case_summary);
+    if(a.primary_diagnosis){ const dx=document.getElementById('primaryDx'); if(dx) dx.value=a.primary_diagnosis; }
+    document.querySelectorAll('#pane-questions .opt').forEach(o=>o.classList.remove('sel-good','sel-bad','sel-neutral'));
+    gates.represented=null; gates.signedOther=null; gates.priorSignup=null;
+    if(typeof evaluate==='function') evaluate();
+
+    // claims strip: show this contact's real claims
+    const label=document.getElementById('claimsLabel'), chips=document.getElementById('claimChips');
+    if(label) label.textContent=(first?first+"'s":'These')+' claims:';
+    if(chips){
+      if(data.contact_id){
+        try{
+          const { data: claims } = await sbClient.from('lead_list').select('lead_no,campaign,status,claimant_name,relationship').eq('contact_id',data.contact_id);
+          if(claims && claims.length){
+            chips.innerHTML=claims.map(cl=>{
+              const here=cl.lead_no===data.lead_no;
+              const cls=here?'claimchip active':(cl.status==='DQ'?'claimchip dq':'claimchip');
+              const who=(cl.relationship && cl.relationship!=='self')?(cl.claimant_name||'represented'):'self';
+              const tail=here?'this file':(cl.status||'');
+              return `<span class="${cls}">${cl.campaign} &middot; <i>${who}</i> &middot; ${tail}</span>`;
+            }).join('');
+          } else { chips.innerHTML=''; }
+        }catch(e){ chips.innerHTML=''; }
+      } else { chips.innerHTML=''; if(label) label.textContent='New lead, no contact linked yet'; }
+    }
+
     toast('Loaded '+name+' from Claim Reach');
   }catch(e){}
 }
