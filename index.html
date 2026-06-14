@@ -131,6 +131,8 @@
   .ib-result .acts{margin-top:9px;display:flex;gap:8px;flex-wrap:wrap}
   .claimchip2{display:inline-block;margin-left:8px;font-size:10.5px;font-weight:800;color:var(--ink);background:#eef1f6;border:1px solid var(--line);border-radius:10px;padding:1px 7px;vertical-align:middle}
   .dupflag{display:inline-block;font-size:10.5px;font-weight:800;color:var(--stop);background:var(--stop-bg);border:1px solid #e7b4b1;border-radius:10px;padding:1px 7px;margin-left:8px;vertical-align:middle}
+  .lidlink{text-decoration:none}
+  .lidlink:hover .lid{text-decoration:underline}
 
   /* progress bar (tier A) */
   .bar{height:7px;background:#e9edf2;border-radius:5px;overflow:hidden;width:90px;display:inline-block;vertical-align:middle}
@@ -492,7 +494,7 @@ function leadRow(l){
   const chip = l.claims>1 ? `<span class="claimchip2">${l.claims} claims</span>` : '';
   const dup  = l.dup ? `<span class="dupflag" title="Same person already on file">Possible duplicate of #${l.dup}</span>` : '';
   return `<tr data-name="${l.name.toLowerCase()}">
-    <td><span class="lid">#${l.id}</span></td>
+    <td><a class="lidlink" href="lead.html${l.uid?('?id='+encodeURIComponent(l.uid)):''}" target="_blank"><span class="lid">#${l.id}</span></a></td>
     <td class="nm">${l.name}${chip}${dup}</td>
     <td>${l.ct}</td><td class="sub">${l.src}</td><td>${l.ag}</td>
     <td><span class="badge ${l.b}"><span class="dot"></span> ${l.st}</span></td>
@@ -507,6 +509,7 @@ async function renderLeads(){
     if(!error && data && data.length){
       const noById={}; data.forEach(r=>{ noById[r.id]=r.lead_no; });
       list=data.map(r=>({
+        uid:r.id,
         id:r.lead_no||'(new)',
         name:r.contact_name||r.claimant_name||'Unmatched lead',
         ct:r.campaign, src:r.source||'', ag:r.assigned_agent||'-',
