@@ -369,6 +369,18 @@
     <button data-role="bmc" onclick="applyRole('bmc',this)">BMC</button>
   </div>
   <div class="agentchip"><span class="avatar">T</span> Tony &middot; Senior</div>
+  <select id="leadStatus" title="Status" style="border-radius:8px;border:1px solid rgba(255,255,255,.25);background:#fff;color:#16202b;font-weight:700;font-size:12.5px;padding:7px 9px;margin-right:8px">
+    <option>New Lead</option>
+    <option>Contact Attempted</option>
+    <option>Qualified</option>
+    <option>DQ</option>
+    <option>Sent e-Sign</option>
+    <option>Signed, Ready to Send</option>
+    <option>QA Approved, Ready to Send</option>
+    <option>RE-QA</option>
+    <option>Needs QA</option>
+    <option>Delivered</option>
+  </select>
   <button class="closebtn" id="saveBtn" onclick="saveLead()">Save</button>
   <button class="closebtn" onclick="closeFile()">Save &amp; close</button>
 </header>
@@ -967,6 +979,7 @@ function setHeadStatus(status){
   const h=document.getElementById('headStatus'); if(!h) return;
   h.className='badge '+(map[status]||'b-attempt');
   h.innerHTML='<span class="dot"></span> '+status;
+  const sel=document.getElementById('leadStatus'); if(sel) sel.value=status;
 }
 function currentStatus(){
   if(typeof sent!=='undefined' && sent) return 'Sent e-Sign';
@@ -980,12 +993,14 @@ function collectAnswers(){
     case_summary:_v('caseSummary'), primary_diagnosis:_v('primaryDx'),
     gates:Object.assign({},gates),
     contact:{first:_v('cFirst'),last:_v('cLast'),phone:_v('cPhone'),email:_v('cEmail'),address:_v('addrInput'),city:_v('addrCity'),state:_v('addrState'),zip:_v('addrZip')},
+    bulletin_html:(document.getElementById('bull')?document.getElementById('bull').innerHTML:''),
     saved_at:new Date().toISOString()
   };
 }
 async function saveLead(statusOverride){
   if(!CURRENT_LEAD_ID){ toast('Demo file, not linked to a record. Open it from the leads list to save.'); return false; }
-  const status=statusOverride||currentStatus();
+  const sel=document.getElementById('leadStatus');
+  const status=statusOverride || (sel?sel.value:null) || currentStatus();
   const btn=document.getElementById('saveBtn'); if(btn){btn.disabled=true;btn.textContent='Saving...';}
   try{
     const { error } = await sbClient.from('leads').update({status:status, answers:collectAnswers()}).eq('id',CURRENT_LEAD_ID);
@@ -1033,6 +1048,7 @@ async function loadLead(){
 
     // case questions: restore saved work, otherwise clear Bob's demo
     setv('caseSummary', a.case_summary);
+    const bullEl=document.getElementById('bull'); if(bullEl) bullEl.innerHTML = a.bulletin_html || '';
     if(a.primary_diagnosis){ const dx=document.getElementById('primaryDx'); if(dx) dx.value=a.primary_diagnosis; }
     document.querySelectorAll('#pane-questions .opt').forEach(o=>o.classList.remove('sel-good','sel-bad','sel-neutral'));
     gates.represented=null; gates.signedOther=null; gates.priorSignup=null;
