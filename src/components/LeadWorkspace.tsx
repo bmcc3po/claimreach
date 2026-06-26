@@ -124,6 +124,7 @@ export default function LeadWorkspace({
                   claimantName={lead.claimant_name ?? undefined}
                   claimantEmail={lead.email ?? undefined}
                   claimType={activeClaim.claim_type}
+                  leadId={lead.id}
                 />
               </div>
             )}
@@ -202,10 +203,7 @@ function CreateClaim({ leadId, firmId }: { leadId: string; firmId: string }) {
     { type: "motel_trafficking", label: "Hospitality Trafficking", campaign: "" },
     { type: "pfas", label: "PFAS", campaign: "NGUYEN PFAS INNO" },
     { type: "bard_powerport", label: "Bard PowerPort", campaign: "TMP BARD PP" },
-<<<<<<< HEAD
     { type: "medmal", label: "Medical Malpractice", campaign: "TMP MED MAL" },
-=======
->>>>>>> d050e52151f3d8acfc76d3841d29c2ec0f8f6e46
   ];
 
   async function create(type: string, campaign: string) {

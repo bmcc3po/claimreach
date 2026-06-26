@@ -10,11 +10,11 @@ const PROP_FIELDS = INTAKE.filter((f) => f.scope === "property");
 interface PropertyState { _key: string; resolved?: ResolvedProperty; values: Record<string, any>; }
 
 export default function ClaimIntake({
-  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail, claimType,
+  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail, claimType, leadId,
 }: {
   claimId: string; firmId: string;
   initialAnswers: Record<string, any>; initialProperties: any[];
-  claimantName?: string; claimantEmail?: string; claimType?: string;
+  claimantName?: string; claimantEmail?: string; claimType?: string; leadId?: string;
 }) {
   const segments = useMemo(() => segmentsForType(claimType ?? "motel_trafficking"), [claimType]);
   const steps = useMemo(
@@ -24,6 +24,8 @@ export default function ClaimIntake({
 
   const [step, setStep] = useState(0);
   const [viewAll, setViewAll] = useState(false);
+  const [scheduled, setScheduled] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers || {});
   const [props, setProps] = useState<PropertyState[]>(
     (initialProperties || []).map((p, i) => ({
@@ -55,15 +57,33 @@ export default function ClaimIntake({
     } : p));
   }
 
+  function isFilled(v: any) {
+    return v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0);
+  }
+
   function segAnswered(segId: string): boolean {
     if (isProps(segId)) return props.length > 0;
-    if (isSchedule(segId)) return false;
+    if (isSchedule(segId)) return scheduled;
     const seg = segments.find((s) => s.id === segId);
     if (!seg) return false;
-    return seg.fields.some((f) => {
-      const v = answers[f.id];
-      return v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0);
-    });
+    // Only count real input fields (skip scripts/gates/sections).
+    const inputs = seg.fields.filter((f) => !["script", "section", "gate"].includes(f.kind));
+    // A section with no inputs (e.g. Closing = statement only) is complete by default.
+    if (inputs.length === 0) return true;
+    // Complete only when every input field is filled.
+    return inputs.every((f) => isFilled(answers[f.id]));
+  }
+
+  async function finishWithStatus(status: string) {
+    setSaving(true);
+    await save(false);
+    await fetch("/api/claims", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "status", claim_id: claimId, status }),
+    }).catch(() => {});
+    setSaving(false);
+    setFinishing(false);
+    if (typeof window !== "undefined" && leadId) window.location.href = `/leads/${leadId}`;
   }
 
   async function save(advance = false) {
@@ -161,6 +181,12 @@ export default function ClaimIntake({
           <>
             <p className="seg-sub">Book the case manager call with the claimant before you wrap up.</p>
             <CalendlyEmbed name={claimantName} email={claimantEmail} />
+            <div style={{ marginTop: 14 }}>
+              <label className="perm">
+                <input type="checkbox" checked={scheduled} onChange={(e) => setScheduled(e.target.checked)} />
+                {" "}Call has been scheduled (or callback arranged)
+              </label>
+            </div>
           </>
         ) : isProps(curStep.id) ? (
           <>
@@ -227,10 +253,26 @@ export default function ClaimIntake({
           <button className="btn ghost" disabled={saving} onClick={() => save(false)}>{saving ? "Saving…" : "Save"}</button>
           {step < steps.length - 1
             ? <button className="btn" disabled={saving} onClick={() => save(true)}>Save &amp; next →</button>
-            : <button className="btn" disabled={saving} onClick={() => save(false)}>Finish</button>}
+            : <button className="btn" disabled={saving} onClick={() => setFinishing(true)}>Finish &amp; set status</button>}
         </div>
         )}
       </div>
+
+      {finishing && (
+        <div className="modal-back" onClick={() => setFinishing(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-h"><h3>Set claim status</h3><button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => setFinishing(false)}>Cancel</button></div>
+            <div className="modal-b">
+              <p className="muted" style={{ marginTop: 0 }}>Choose the disposition for this intake.</p>
+              <div style={{ display: "grid", gap: 8 }}>
+                <button className="btn" disabled={saving} onClick={() => finishWithStatus("qualified")}>✅ Qualified — submit to firm</button>
+                <button className="btn secondary" disabled={saving} onClick={() => finishWithStatus("in_progress")}>⏳ Incomplete — callback scheduled</button>
+                <button className="btn ghost" disabled={saving} onClick={() => finishWithStatus("dq")}>⛔ Disqualified</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
