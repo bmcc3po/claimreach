@@ -29,13 +29,13 @@ export function Logo({
   if (!wordmark) return mark;
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 11 }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
       {mark}
       <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 1 }}>
-        <span style={{ fontWeight: 800, fontSize: height * 0.62, letterSpacing: "0.01em", color: inkColor, whiteSpace: "nowrap" }}>
+        <span style={{ fontWeight: 800, fontSize: height * 0.5, letterSpacing: "0.005em", color: inkColor, whiteSpace: "nowrap" }}>
           CLAIM<span style={{ color: "var(--logo-accent)" }}>REACH</span>
         </span>
-        <span style={{ fontWeight: 600, fontSize: height * 0.21, letterSpacing: "0.34em", color: subColor, marginTop: 3, whiteSpace: "nowrap" }}>
+        <span style={{ fontWeight: 600, fontSize: height * 0.17, letterSpacing: "0.22em", color: subColor, marginTop: 3, whiteSpace: "nowrap" }}>
           CLAIM CONSOLE
         </span>
       </span>

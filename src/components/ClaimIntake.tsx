@@ -175,17 +175,46 @@ export default function ClaimIntake({
           </>
         ) : (
           <>
-            {curSegment?.fields.map((f) => {
-              if (f.kind === "script" || f.kind === "gate") {
-                return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />;
-              }
-              const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
-              return (
-                <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                  <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />
-                </div>
-              );
-            })}
+            {(() => {
+              const fields = curSegment?.fields ?? [];
+              const SHORT = new Set(["text", "phone", "email", "date", "int", "select"]);
+              const out: React.ReactNode[] = [];
+              let bucket: typeof fields = [];
+              const flush = (key: string) => {
+                if (!bucket.length) return;
+                out.push(
+                  <div className="grid2" key={`g-${key}`}>
+                    {bucket.map((f) => {
+                      const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
+                      return (
+                        <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
+                          <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+                bucket = [];
+              };
+              fields.forEach((f, i) => {
+                if (f.kind === "script" || f.kind === "gate") {
+                  flush(`b${i}`);
+                  out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />);
+                } else if (SHORT.has(f.kind)) {
+                  bucket.push(f);
+                } else {
+                  flush(`b${i}`);
+                  const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
+                  out.push(
+                    <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
+                      <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />
+                    </div>
+                  );
+                }
+              });
+              flush("end");
+              return out;
+            })()}
           </>
         )}
 
