@@ -352,3 +352,37 @@ export function fieldLabelMap(): Record<string, string> {
   }
   return m;
 }
+
+// ---- Multi-claim-type registry -------------------------------------------
+import { MEDMAL_INTAKE } from "./medmal";
+
+// Generic segment builder for any field set (excludes contact-surface fields).
+export function segmentsFrom(fields: Field[]): Segment[] {
+  const lead = fields.filter((f) => f.scope === "lead" && f.surface !== "contact");
+  const segs: Segment[] = [];
+  let cur: Segment | null = null;
+  for (const f of lead) {
+    if (f.kind === "section") { cur = { id: f.id, title: f.label, fields: [] }; segs.push(cur); }
+    else if (cur) cur.fields.push(f);
+    else { cur = { id: "s_start", title: "Start", fields: [f] }; segs.push(cur); }
+  }
+  return segs.filter((s) => s.fields.length > 0);
+}
+
+export function contactFieldsFrom(fields: Field[]): Field[] {
+  return fields.filter((f) => f.surface === "contact");
+}
+
+// Resolve the field set for a claim type.
+export function intakeForType(claimType: string): Field[] {
+  const t = (claimType || "").toLowerCase();
+  if (t.includes("medmal") || t.includes("malpractice")) return MEDMAL_INTAKE;
+  return INTAKE; // default: trafficking (Phase 1)
+}
+
+export function segmentsForType(claimType: string): Segment[] {
+  return segmentsFrom(intakeForType(claimType));
+}
+export function contactFieldsForType(claimType: string): Field[] {
+  return contactFieldsFrom(intakeForType(claimType));
+}

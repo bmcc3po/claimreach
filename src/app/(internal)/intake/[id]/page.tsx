@@ -38,6 +38,10 @@ export default async function IntakeEditor({ params }: { params: Promise<{ id: s
         initialProperties={props ?? []}
         claimantName={lead.claimant_name ?? undefined}
         claimantEmail={lead.email ?? undefined}
+<<<<<<< HEAD
+        claimType={claim.claim_type}
+=======
+>>>>>>> d050e52151f3d8acfc76d3841d29c2ec0f8f6e46
       />
     </div>
   );

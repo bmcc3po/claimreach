@@ -123,10 +123,11 @@ export default function LeadWorkspace({
                   initialProperties={claimProperties[activeClaim.id] ?? []}
                   claimantName={lead.claimant_name ?? undefined}
                   claimantEmail={lead.email ?? undefined}
+                  claimType={activeClaim.claim_type}
                 />
               </div>
             )}
-            {tab === "Contact Info" && <ContactInfo lead={lead} />}
+            {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} />}
             {tab === "Criteria" && <p className="muted">Campaign criteria checklist coming.</p>}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}
@@ -201,6 +202,10 @@ function CreateClaim({ leadId, firmId }: { leadId: string; firmId: string }) {
     { type: "motel_trafficking", label: "Hospitality Trafficking", campaign: "" },
     { type: "pfas", label: "PFAS", campaign: "NGUYEN PFAS INNO" },
     { type: "bard_powerport", label: "Bard PowerPort", campaign: "TMP BARD PP" },
+<<<<<<< HEAD
+    { type: "medmal", label: "Medical Malpractice", campaign: "TMP MED MAL" },
+=======
+>>>>>>> d050e52151f3d8acfc76d3841d29c2ec0f8f6e46
   ];
 
   async function create(type: string, campaign: string) {

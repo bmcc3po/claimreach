@@ -1,13 +1,22 @@
 "use client";
 import { useState } from "react";
+<<<<<<< HEAD
+import { contactFieldsForType } from "@/lib/questionnaire";
+=======
 import { getContactFields } from "@/lib/questionnaire";
+>>>>>>> d050e52151f3d8acfc76d3841d29c2ec0f8f6e46
 import FieldRenderer from "./FieldRenderer";
 
 // Contact Info tab — caller information + emergency contact. These fields are
 // the single source of truth (stored on the lead). Any inline-in-intake copy
 // reads/writes the same data, so they stay in sync (most recent write wins).
+<<<<<<< HEAD
+export default function ContactInfo({ lead, claimType }: { lead: any; claimType?: string }) {
+  const fields = contactFieldsForType(claimType ?? "motel_trafficking");
+=======
 export default function ContactInfo({ lead }: { lead: any }) {
   const fields = getContactFields();
+>>>>>>> d050e52151f3d8acfc76d3841d29c2ec0f8f6e46
   const [f, setF] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
     for (const fld of fields) if (fld.kind !== "section" && fld.kind !== "script") init[fld.id] = lead[fld.id] ?? "";

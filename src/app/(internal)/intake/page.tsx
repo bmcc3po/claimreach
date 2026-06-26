@@ -6,7 +6,8 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const CASE_TYPES = [
   { value: "motel_trafficking", label: "Motel Trafficking" },
-  // MedMal / MVA added here when those case types go live
+  { value: "medmal", label: "Medical Malpractice" },
+  // MVA and others added here as they go live
 ];
 
 export default function AddLead() {

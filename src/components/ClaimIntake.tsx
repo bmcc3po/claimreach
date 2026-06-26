@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { INTAKE, getSegments } from "@/lib/questionnaire";
+import { INTAKE, intakeForType, segmentsForType } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PropertyLookup, { type ResolvedProperty } from "./PropertyLookup";
 import CalendlyEmbed from "./CalendlyEmbed";
@@ -10,13 +10,13 @@ const PROP_FIELDS = INTAKE.filter((f) => f.scope === "property");
 interface PropertyState { _key: string; resolved?: ResolvedProperty; values: Record<string, any>; }
 
 export default function ClaimIntake({
-  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail,
+  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail, claimType,
 }: {
   claimId: string; firmId: string;
   initialAnswers: Record<string, any>; initialProperties: any[];
-  claimantName?: string; claimantEmail?: string;
+  claimantName?: string; claimantEmail?: string; claimType?: string;
 }) {
-  const segments = useMemo(() => getSegments(), []);
+  const segments = useMemo(() => segmentsForType(claimType ?? "motel_trafficking"), [claimType]);
   const steps = useMemo(
     () => [...segments.map((s) => ({ id: s.id, title: s.title })), { id: "schedule", title: "Schedule" }],
     [segments]
@@ -85,7 +85,7 @@ export default function ClaimIntake({
       }
       const r = await fetch("/api/claim-intake", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claim_id: claimId, firm_id: firmId, answers: cleanAnswers(answers), properties }),
+        body: JSON.stringify({ claim_id: claimId, firm_id: firmId, answers: cleanAnswers(answers, claimType), properties }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "save failed");
@@ -258,14 +258,17 @@ function PropertyCard({ index, state, onResolve, onChange, onRemove }: {
 
 function cleanTitle(t: string) { return t.replace(/\s*\(.*?\)\s*/g, "").trim(); }
 
-const SYNTH = new Set(INTAKE.filter((f) => ["section", "script", "gate"].includes(f.kind)).map((f) => f.id));
-function cleanAnswers(o: Record<string, any>) {
+function synthSet(claimType?: string) {
+  return new Set(intakeForType(claimType ?? "motel_trafficking").filter((f) => ["section","script","gate"].includes(f.kind)).map((f) => f.id));
+}
+function cleanAnswers(o: Record<string, any>, claimType?: string) {
+  const SYNTH = synthSet(claimType);
   const out: Record<string, any> = {};
   for (const k of Object.keys(o)) if (!SYNTH.has(k)) out[k] = o[k];
   return out;
 }
 function cleanProp(o: Record<string, any>) {
   const out: Record<string, any> = {};
-  for (const k of Object.keys(o)) if (!SYNTH.has(k) && k !== "name") out[k] = o[k];
+  for (const k of Object.keys(o)) if (k !== "name") out[k] = o[k];
   return out;
 }
