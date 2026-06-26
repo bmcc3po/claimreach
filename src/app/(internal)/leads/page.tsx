@@ -16,7 +16,7 @@ export default async function LeadsPage() {
       <div className="row" style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Leads</h2>
         <div className="spacer" />
-        <Link className="btn" href="/intake">+ New intake</Link>
+        <Link className="btn" href="/intake">+ Add lead</Link>
       </div>
 
       <table className="docket">

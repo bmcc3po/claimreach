@@ -20,7 +20,7 @@ export default async function InternalLayout({ children }: { children: React.Rea
         </div>
         <div className="row">
           <a href="/leads">Leads</a>
-          <a href="/intake">New intake</a>
+          <a href="/intake">Add lead</a>
           <SignOut />
         </div>
       </header>

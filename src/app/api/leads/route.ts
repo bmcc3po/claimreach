@@ -34,7 +34,11 @@ export async function POST(req: NextRequest) {
       lead_no: leadNo,
       firm_ref_no: payload.firm_ref_no ?? null,
       lawruler_ref_no: payload.lawruler_ref_no ?? null,
-      stage: "intake_in_progress",
+      case_type: payload.case_type ?? "motel_trafficking",
+      claimant_name: payload.claimant_name ?? null,
+      phone: payload.phone ?? null,
+      email: payload.email ?? null,
+      stage: payload.stage ?? "referral_received",
       created_by: u.uid,
       assigned_agent: u.uid,
     }).select("id, lead_no").single();
