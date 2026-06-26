@@ -18,7 +18,7 @@ export default async function FirmLayout({ children }: { children: React.ReactNo
   return (
     <div>
       <header className="app-header">
-        <Logo height={30} />
+        <Logo height={26} onDark />
         <div className="nav">
           <span className="badge stage">Firm Portal</span>
           <a href="/portal">Docket</a>

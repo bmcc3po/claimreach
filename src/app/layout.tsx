@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "ClaimReach — Intake Platform",
+  title: "ClaimReach — Claim Console",
   description: "Intake and case management",
 };
 
