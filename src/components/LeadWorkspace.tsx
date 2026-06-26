@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { STAGE_LABELS } from "@/lib/questionnaire";
 import { VitalsCard, GrievousPanel, ConversationPanel } from "./LeadSidebar";
+import ClaimIntake from "./ClaimIntake";
 
 interface Claim {
   id: string;
@@ -11,17 +12,19 @@ interface Claim {
   qualification: string;
   on_behalf_of: boolean;
   is_this_file: boolean;
+  answers?: Record<string, any>;
 }
 
 const TABS = ["Case Questions", "Contact Info", "Criteria", "Notes", "Activity"];
 
 export default function LeadWorkspace({
-  lead, claims, activity, stats,
+  lead, claims, activity, stats, claimProperties,
 }: {
   lead: any;
   claims: Claim[];
   activity: any[];
   stats: { signed: number; tierA: number; weekPay: number; wip: number };
+  claimProperties: Record<string, any[]>;
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -107,17 +110,19 @@ export default function LeadWorkspace({
             </span>
           </div>
           <div className="formbody">
-            {tab === "Case Questions" && (
+            {tab === "Case Questions" && activeClaim && (
               <div>
                 <div className="gate" style={{ marginBottom: 16 }}>
                   <span className="tag">Compliance notice</span>
                   Leading statements of any kind result in forfeiture of file credit and disciplinary
                   action. Ask every question in order and verbatim.
                 </div>
-                <p className="muted">
-                  Open the full intake to work this claim's questionnaire.
-                </p>
-                <a className="btn" href={`/intake/${lead.id}`}>Open intake</a>
+                <ClaimIntake
+                  claimId={activeClaim.id}
+                  firmId={lead.firm_id}
+                  initialAnswers={activeClaim.answers ?? {}}
+                  initialProperties={claimProperties[activeClaim.id] ?? []}
+                />
               </div>
             )}
             {tab === "Contact Info" && (

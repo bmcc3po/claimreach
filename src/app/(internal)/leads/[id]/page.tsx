@@ -27,6 +27,17 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     .select("kind, body, created_at").eq("lead_id", id)
     .order("created_at", { ascending: false });
 
+  // Properties for each claim, grouped by claim_id.
+  const claimIds = (claims ?? []).map((c) => c.id);
+  const claimProperties: Record<string, any[]> = {};
+  if (claimIds.length) {
+    const { data: cp } = await sb.from("claim_properties")
+      .select("*").in("claim_id", claimIds).order("sequence_order");
+    for (const row of cp ?? []) {
+      (claimProperties[row.claim_id] ||= []).push(row);
+    }
+  }
+
   // Lightweight my-day stats placeholder (wired to real metrics later).
   const stats = { signed: 0, tierA: 0, weekPay: 0, wip: claims?.length ?? 0 };
 
@@ -36,6 +47,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       claims={claims ?? []}
       activity={activity ?? []}
       stats={stats}
+      claimProperties={claimProperties}
     />
   );
 }
