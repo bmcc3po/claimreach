@@ -23,6 +23,7 @@ export default function ClaimIntake({
   );
 
   const [step, setStep] = useState(0);
+  const [viewAll, setViewAll] = useState(false);
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers || {});
   const [props, setProps] = useState<PropertyState[]>(
     (initialProperties || []).map((p, i) => ({
@@ -109,11 +110,54 @@ export default function ClaimIntake({
 
       <div>
         <div className="seg-head">
-          <h2>{cleanTitle(curStep.title)}</h2>
-          <span className="seg-count">Step {step + 1} of {steps.length}</span>
+          <h2>{viewAll ? "Full intake" : cleanTitle(curStep.title)}</h2>
+          {!viewAll && <span className="seg-count">Step {step + 1} of {steps.length}</span>}
+          <div className="spacer" />
+          <button className="btn ghost" onClick={() => setViewAll(!viewAll)}>
+            {viewAll ? "Stepped view" : "View entire intake"}
+          </button>
         </div>
 
-        {isSchedule(curStep.id) ? (
+        {viewAll ? (
+          <div>
+            {segments.map((seg) => (
+              <div key={seg.id} style={{ marginBottom: 28 }}>
+                <div className="section-title">{cleanTitle(seg.title)}</div>
+                {seg.id === "s_properties" ? (
+                  <>
+                    {props.map((p, idx) => (
+                      <PropertyCard key={p._key} index={idx} state={p}
+                        onResolve={(r) => resolveProp(p._key, r)}
+                        onChange={(id, v) => setPropVal(p._key, id, v)}
+                        onRemove={() => removeProperty(p._key)} />
+                    ))}
+                    <button className="btn secondary" onClick={addProperty}>+ Add another property</button>
+                  </>
+                ) : (
+                  seg.fields.map((f) => {
+                    if (f.kind === "script" || f.kind === "gate") {
+                      return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />;
+                    }
+                    const ans = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
+                    return (
+                      <div key={f.id} className={`qcard ${ans ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
+                        <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ))}
+            <div className="section-title">Schedule</div>
+            <CalendlyEmbed name={claimantName} email={claimantEmail} />
+            <div className="seg-nav">
+              <div className="spacer" />
+              {savedAt && <span className="muted">Saved {savedAt}</span>}
+              {err && <span style={{ color: "var(--danger)" }}>{err}</span>}
+              <button className="btn" disabled={saving} onClick={() => save(false)}>{saving ? "Saving…" : "Save claim"}</button>
+            </div>
+          </div>
+        ) : isSchedule(curStep.id) ? (
           <>
             <p className="seg-sub">Book the case manager call with the claimant before you wrap up.</p>
             <CalendlyEmbed name={claimantName} email={claimantEmail} />
@@ -145,6 +189,7 @@ export default function ClaimIntake({
           </>
         )}
 
+        {!viewAll && (
         <div className="seg-nav">
           <button className="btn ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>← Back</button>
           <div className="spacer" />
@@ -155,6 +200,7 @@ export default function ClaimIntake({
             ? <button className="btn" disabled={saving} onClick={() => save(true)}>Save &amp; next →</button>
             : <button className="btn" disabled={saving} onClick={() => save(false)}>Finish</button>}
         </div>
+        )}
       </div>
     </div>
   );

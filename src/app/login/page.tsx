@@ -19,7 +19,7 @@ export default function Login() {
     const { error } = await sb.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (error) { setErr(error.message); return; }
-    router.push("/leads");
+    router.push("/dashboard");
   }
 
   return (

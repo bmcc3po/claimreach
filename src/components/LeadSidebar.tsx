@@ -60,17 +60,26 @@ export function ConversationPanel({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, lead_id: leadId, to: phone, body: msg }),
       });
-      const d = await r.json();
+      let d: any = {};
+      try { d = await r.json(); } catch { d = { error: "service unavailable" }; }
       if (r.ok) {
         setLog((l) => [...l, { kind: action === "text" ? "text_out" : "call", body: action === "text" ? msg : "Call initiated", created_at: new Date().toISOString() }]);
         if (action === "text") setMsg("");
       } else {
-        setLog((l) => [...l, { kind: "system", body: `Error: ${d.error}`, created_at: new Date().toISOString() }]);
+        setLog((l) => [...l, { kind: "system", body: `Couldn't ${action === "text" ? "send text" : "Reach"}: ${typeof d.error === "string" ? d.error : "service error"}`, created_at: new Date().toISOString() }]);
       }
     } catch (e: any) {
-      setLog((l) => [...l, { kind: "system", body: e.message, created_at: new Date().toISOString() }]);
+      setLog((l) => [...l, { kind: "system", body: "Connection error", created_at: new Date().toISOString() }]);
     }
     setBusy(false);
+  }
+
+  // Hide malformed/legacy error bodies (e.g. stored HTML parse errors).
+  function clean(entries: any[]) {
+    return entries.filter((a) => {
+      const b = String(a.body ?? "");
+      return !b.includes("Unexpected token") && !b.includes("<!DOCTYPE") && !b.includes("not valid JSON");
+    });
   }
 
   return (
@@ -88,7 +97,7 @@ export function ConversationPanel({
       )}
 
       <div className="convbody">
-        {log.filter((a) => tab === "sms" ? (a.kind?.startsWith("text") || a.kind === "system") : tab === "calls" ? a.kind === "call" : false)
+        {clean(log).filter((a) => tab === "sms" ? (a.kind?.startsWith("text") || a.kind === "system") : tab === "calls" ? a.kind === "call" : false)
           .map((a, i) => (
             <div key={i} className={`bubble ${a.kind === "text_out" ? "outb" : "inb"}`}>
               {a.body}
