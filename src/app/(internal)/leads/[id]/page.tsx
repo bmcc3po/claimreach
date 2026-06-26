@@ -38,6 +38,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     }
   }
 
+  // Audit trail for this file (Activity Log).
+  const { data: audit } = await sb.from("audit_log")
+    .select("id, created_at, actor_name, category, description")
+    .eq("lead_id", id).order("created_at", { ascending: false }).limit(200);
+
   // Lightweight my-day stats placeholder (wired to real metrics later).
   const stats = { signed: 0, tierA: 0, weekPay: 0, wip: claims?.length ?? 0 };
 
@@ -48,6 +53,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       activity={activity ?? []}
       stats={stats}
       claimProperties={claimProperties}
+      audit={audit ?? []}
     />
   );
 }

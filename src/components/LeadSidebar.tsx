@@ -106,7 +106,7 @@ export function ConversationPanel({
       )}
       {tab === "calls" && (
         <div className="convsend">
-          <button className="btn" disabled={busy || !canCall} onClick={() => send("call")}>📞 Click to call</button>
+          <button className="btn" disabled={busy || !canCall} onClick={() => send("call")}>📞 Reach</button>
         </div>
       )}
       {tab === "email" && (

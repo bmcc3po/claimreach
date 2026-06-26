@@ -1,8 +1,10 @@
 "use client";
 import { useState } from "react";
 import { STAGE_LABELS } from "@/lib/questionnaire";
+import { LX } from "@/lib/lexicon";
 import { VitalsCard, GrievousPanel, ConversationPanel } from "./LeadSidebar";
 import ClaimIntake from "./ClaimIntake";
+import ActivityLog from "./ActivityLog";
 
 interface Claim {
   id: string;
@@ -15,16 +17,17 @@ interface Claim {
   answers?: Record<string, any>;
 }
 
-const TABS = ["Case Questions", "Contact Info", "Criteria", "Notes", "Activity"];
+const TABS = ["Case Questions", "Contact Info", "Criteria", "Notes", "Activity Log"];
 
 export default function LeadWorkspace({
-  lead, claims, activity, stats, claimProperties,
+  lead, claims, activity, stats, claimProperties, audit,
 }: {
   lead: any;
   claims: Claim[];
   activity: any[];
   stats: { signed: number; tierA: number; weekPay: number; wip: number };
   claimProperties: Record<string, any[]>;
+  audit: any[];
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -137,17 +140,7 @@ export default function LeadWorkspace({
             )}
             {tab === "Criteria" && <p className="muted">Campaign criteria checklist coming.</p>}
             {tab === "Notes" && <p className="muted">Notes thread coming.</p>}
-            {tab === "Activity" && (
-              <div>
-                {(activity ?? []).map((a, i) => (
-                  <div key={i} style={{ padding: "8px 0", borderBottom: "1px dashed var(--line)" }}>
-                    <span className="muted" style={{ fontSize: 12 }}>{new Date(a.created_at).toLocaleString()}</span>
-                    <div>{a.kind === "stage_change" ? `Stage → ${a.body}` : a.body ?? a.kind}</div>
-                  </div>
-                ))}
-                {(!activity || activity.length === 0) && <p className="muted">No activity yet.</p>}
-              </div>
-            )}
+            {tab === "Activity Log" && <ActivityLog entries={audit} />}
           </div>
         </div>
 
