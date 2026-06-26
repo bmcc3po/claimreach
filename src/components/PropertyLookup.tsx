@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import AreaPanel from "./AreaPanel";
 
 export interface ResolvedProperty {
   place_id: string;
@@ -12,6 +13,7 @@ export interface ResolvedProperty {
   current_brand?: string;
   canonical_id?: string;
   claimant_count?: number;
+  landmarks?: string;
 }
 
 export default function PropertyLookup({
@@ -25,6 +27,7 @@ export default function PropertyLookup({
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<any | null>(null);
   const [dedupe, setDedupe] = useState<{ count: number; name: string } | null>(null);
+  const [landmarks, setLandmarks] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   async function search() {
@@ -72,6 +75,7 @@ export default function PropertyLookup({
       lng: selected.lng,
       current_brand: guessBrand(selected.name),
       claimant_count: dedupe?.count ?? 0,
+      landmarks,
     });
   }
 
@@ -134,6 +138,15 @@ export default function PropertyLookup({
               {dedupe.count === 1 ? "" : "s"} on file ({dedupe.name}). If this is the same building,
               selecting it links them together for the attorney's cluster view.
             </div>
+          )}
+          {selected.lat && selected.lng && (
+            <AreaPanel
+              lat={selected.lat}
+              lng={selected.lng}
+              name={selected.name}
+              landmarks={landmarks}
+              onLandmarks={setLandmarks}
+            />
           )}
           <ConfirmBrand defaultBrand={guessBrand(selected.name)} onConfirm={confirm} />
         </div>

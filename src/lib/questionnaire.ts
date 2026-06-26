@@ -193,6 +193,7 @@ export const INTAKE: Field[] = [
   { id: "drug_paraphernalia", scope: "property", kind: "bool", label: "Was there drug paraphernalia visible in the room?" },
   { id: "staff_witnessed_drugs", scope: "property", kind: "bool", label: "Did any staff witness intoxication or drug use?" },
   { id: "staff_knowledge_other", scope: "property", kind: "longtext", label: "Anything else that made it obvious the motel knew what was happening?" },
+  { id: "landmarks", scope: "property", kind: "longtext", label: "Landmarks the claimant recognized nearby (corroborating detail)" },
 
   // Variance toggle
   { id: "hk_variance", scope: "property", kind: "section", label: "Variance (only if different at this property)" },

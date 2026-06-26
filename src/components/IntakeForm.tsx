@@ -67,6 +67,7 @@ export default function IntakeForm({
                 lng: r.lng,
                 current_brand: r.current_brand,
                 remembered_brand: p.values.remembered_brand ?? "Motel 6",
+                landmarks: r.landmarks ?? p.values.landmarks ?? "",
               },
             }
           : p

@@ -388,7 +388,7 @@ create policy au_self_read on app_users for select
 -- firms: internal staff read all firms; firm users read only their firm.
 drop policy if exists firms_read on firms;
 create policy firms_read on firms for select
-  using ( is_internal() or id = (select firm_id from app_users where id = auth.uid()) );
+  using ( is_internal() or id = my_firm_id() );
 
 -- Generic predicate helper expressed inline per-table below.
 -- INTERNAL staff: full access across firms (they run intake for everyone).
@@ -401,7 +401,7 @@ create policy leads_internal_all on leads for all
 
 drop policy if exists leads_firm_read on leads;
 create policy leads_firm_read on leads for select
-  using ( firm_id = (select firm_id from app_users where id = auth.uid()) );
+  using ( firm_id = my_firm_id() );
 
 -- Firm users may update ONLY their own firm's rows. To guarantee they can
 -- change ONLY the pipeline stage (never clinical/PII columns) we enforce it
@@ -435,7 +435,7 @@ create policy canon_internal_all on properties_canonical for all
   using ( is_internal() ) with check ( is_internal() );
 drop policy if exists canon_firm_read on properties_canonical;
 create policy canon_firm_read on properties_canonical for select
-  using ( firm_id = (select firm_id from app_users where id = auth.uid()) );
+  using ( firm_id = my_firm_id() );
 
 -- LEAD PROPERTIES -------------------------------------------------------
 drop policy if exists lp_internal_all on lead_properties;
@@ -443,7 +443,7 @@ create policy lp_internal_all on lead_properties for all
   using ( is_internal() ) with check ( is_internal() );
 drop policy if exists lp_firm_read on lead_properties;
 create policy lp_firm_read on lead_properties for select
-  using ( firm_id = (select firm_id from app_users where id = auth.uid()) );
+  using ( firm_id = my_firm_id() );
 
 -- LEAD NOTES ------------------------------------------------------------
 drop policy if exists notes_internal_all on lead_notes;
@@ -458,7 +458,7 @@ create policy activity_internal_all on lead_activity for all
   using ( is_internal() ) with check ( is_internal() );
 drop policy if exists activity_firm_read on lead_activity;
 create policy activity_firm_read on lead_activity for select
-  using ( firm_id = (select firm_id from app_users where id = auth.uid())
+  using ( firm_id = my_firm_id()
           and kind in ('stage_change','doc') );  -- firm sees stage + docs, not raw call/text bodies
 
 -- ----------------------------------------------------------------------------
