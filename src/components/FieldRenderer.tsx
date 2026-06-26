@@ -70,6 +70,24 @@ export default function FieldRenderer({
             onChange={(e) => onChange(e.target.value)} />
         </div>
       );
+    case "date":
+      return (
+        <div className="field">{label}{note}
+          <input type="date" value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+        </div>
+      );
+    case "phone":
+      return (
+        <div className="field">{label}{note}
+          <input type="tel" value={value ?? ""} placeholder="(###) ###-####" onChange={(e) => onChange(e.target.value)} />
+        </div>
+      );
+    case "email":
+      return (
+        <div className="field">{label}{note}
+          <input type="email" value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+        </div>
+      );
     case "longtext":
       return (
         <div className="field">{label}{note}
