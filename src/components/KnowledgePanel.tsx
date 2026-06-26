@@ -1,17 +1,18 @@
 "use client";
 import { useState } from "react";
-import { KNOWLEDGE } from "@/lib/knowledge";
+import { knowledgeFor } from "@/lib/knowledge";
 
-// Agent-assist reference. Collapsible chips that open read-only knowledge.
-export default function KnowledgePanel() {
+// Agent-assist reference, claim-type aware.
+export default function KnowledgePanel({ claimType }: { claimType: string }) {
+  const topics = knowledgeFor(claimType);
   const [open, setOpen] = useState<string | null>(null);
-  const topic = KNOWLEDGE.find((t) => t.id === open);
+  const topic = topics.find((t) => t.id === open);
 
   return (
     <div className="side-card">
       <h3>Agent assist</h3>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {KNOWLEDGE.map((t) => (
+        {topics.map((t) => (
           <button key={t.id}
             className={`chip ${open === t.id ? "active" : ""}`}
             onClick={() => setOpen(open === t.id ? null : t.id)}>

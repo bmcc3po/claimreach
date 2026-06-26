@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import SignOut from "@/components/SignOut";
 import ThemeToggle from "@/components/ThemeToggle";
 import SideNav from "@/components/SideNav";
+import NotifyBell from "@/components/NotifyBell";
 
 export default async function InternalLayout({ children }: { children: React.ReactNode }) {
   const sb = await supabaseServer();
@@ -18,7 +19,7 @@ export default async function InternalLayout({ children }: { children: React.Rea
       active=""
       userName={me.full_name ?? "Staff"}
       role={me.role}
-      topRight={<><ThemeToggle /><SignOut /></>}
+      topRight={<><NotifyBell /><ThemeToggle /><SignOut /></>}
     >
       {children}
     </SideNav>

@@ -6,6 +6,7 @@ import { VitalsCard, GrievousPanel, ConversationPanel } from "./LeadSidebar";
 import ClaimIntake from "./ClaimIntake";
 import ActivityLog from "./ActivityLog";
 import KnowledgePanel from "./KnowledgePanel";
+import ContactInfo from "./ContactInfo";
 
 interface Claim {
   id: string;
@@ -123,14 +124,7 @@ export default function LeadWorkspace({
                 />
               </div>
             )}
-            {tab === "Contact Info" && (
-              <div>
-                <div className="field"><label>Name</label><div>{lead.claimant_name ?? "—"}</div></div>
-                <div className="field"><label>Phone</label><div>{lead.phone ?? "—"}</div></div>
-                <div className="field"><label>Email</label><div>{lead.email ?? "—"}</div></div>
-                <div className="field"><label>Address</label><div>{lead.address ?? "—"}</div></div>
-              </div>
-            )}
+            {tab === "Contact Info" && <ContactInfo lead={lead} />}
             {tab === "Criteria" && <p className="muted">Campaign criteria checklist coming.</p>}
             {tab === "Notes" && <p className="muted">Notes thread coming.</p>}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}
@@ -140,7 +134,7 @@ export default function LeadWorkspace({
         {/* Right sidebar */}
         <div>
           <VitalsCard lead={lead} />
-          <KnowledgePanel />
+          <KnowledgePanel claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
           <GrievousPanel />
           <ConversationPanel
             leadId={lead.id}

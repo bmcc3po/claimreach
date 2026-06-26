@@ -9,6 +9,7 @@ const NAV = [
   { href: "/queue", icon: "📞", label: "My Queue" },
   { href: "/team", icon: "👥", label: "Team" },
   { href: "/maverick", icon: "⚡", label: "Grievous" },
+  { href: "/settings", icon: "⚙️", label: "Settings" },
 ];
 
 export default function SideNav({

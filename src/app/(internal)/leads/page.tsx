@@ -2,6 +2,7 @@ export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
 import { STAGE_LABELS } from "@/lib/questionnaire";
+import PersonSearch from "@/components/PersonSearch";
 
 export default async function LeadsPage() {
   const sb = await supabaseServer();
@@ -19,30 +20,33 @@ export default async function LeadsPage() {
         <Link className="btn" href="/intake">+ Add lead</Link>
       </div>
 
-      <table className="docket">
-        <thead>
-          <tr>
-            <th>Lead #</th><th>Claimant</th><th>Firm ref</th><th>Stage</th><th>Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(leads ?? []).map((l) => (
-            <tr key={l.id}>
-              <td><Link href={`/leads/${l.id}`}>{l.lead_no}</Link></td>
-              <td>{l.claimant_name ?? <span className="muted">—</span>}</td>
-              <td>{l.firm_ref_no ?? <span className="muted">—</span>}</td>
-              <td>
-                <span className="badge stage">{STAGE_LABELS[l.stage] ?? l.stage}</span>
-                {l.supervisor_flag && <span className="badge flag" style={{ marginLeft: 6 }}>flag</span>}
-              </td>
-              <td className="muted">{new Date(l.updated_at).toLocaleString()}</td>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "start" }}>
+        <table className="docket">
+          <thead>
+            <tr>
+              <th>Lead #</th><th>Claimant</th><th>Firm ref</th><th>Stage</th><th>Updated</th>
             </tr>
-          ))}
-          {(!leads || leads.length === 0) && (
-            <tr><td colSpan={5} className="muted">No leads yet. Start a new intake.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {(leads ?? []).map((l) => (
+              <tr key={l.id}>
+                <td><Link href={`/leads/${l.id}`}>{l.lead_no}</Link></td>
+                <td>{l.claimant_name ?? <span className="muted">—</span>}</td>
+                <td>{l.firm_ref_no ?? <span className="muted">—</span>}</td>
+                <td>
+                  <span className="badge stage">{STAGE_LABELS[l.stage] ?? l.stage}</span>
+                  {l.supervisor_flag && <span className="badge flag" style={{ marginLeft: 6 }}>flag</span>}
+                </td>
+                <td className="muted">{new Date(l.updated_at).toLocaleString()}</td>
+              </tr>
+            ))}
+            {(!leads || leads.length === 0) && (
+              <tr><td colSpan={5} className="muted">No leads yet. Start a new intake.</td></tr>
+            )}
+          </tbody>
+        </table>
+        <PersonSearch />
+      </div>
     </div>
   );
 }
