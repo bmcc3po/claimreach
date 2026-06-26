@@ -54,8 +54,6 @@ export default function LeadWorkspace({
         </div>
         <div className="myday">
           <div className="stat"><b>{stats.signed}</b><span>Signed today</span></div>
-          <div className="stat"><b>{stats.tierA}/15</b><span>Tier A</span></div>
-          <div className="stat"><b>${stats.weekPay.toLocaleString()}</b><span>Week pay</span></div>
           <div className="stat"><b>{stats.wip}</b><span>WIP</span></div>
         </div>
       </div>
