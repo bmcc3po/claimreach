@@ -1,19 +1,19 @@
 "use client";
 import { useState } from "react";
+import { getContactFields } from "@/lib/questionnaire";
+import FieldRenderer from "./FieldRenderer";
 
-// Full contact info for the person/file. Includes PII (DOB, SSN) with the
-// SSN reveal logged to audit, contact permissions, and two emergency contacts.
+// Contact Info tab — caller information + emergency contact. These fields are
+// the single source of truth (stored on the lead). Any inline-in-intake copy
+// reads/writes the same data, so they stay in sync (most recent write wins).
 export default function ContactInfo({ lead }: { lead: any }) {
-  const [f, setF] = useState<Record<string, any>>({
-    dob: lead.dob ?? "", ssn_last4: lead.ssn_last4 ?? "",
-    perm_call: lead.perm_call ?? true, perm_text: lead.perm_text ?? true, perm_email: lead.perm_email ?? true,
-    ec1_name: lead.ec1_name ?? "", ec1_phone: lead.ec1_phone ?? "", ec1_email: lead.ec1_email ?? "",
-    ec1_relation: lead.ec1_relation ?? "", ec1_perm_speak: lead.ec1_perm_speak ?? false, ec1_divulge: lead.ec1_divulge ?? false,
-    ec2_name: lead.ec2_name ?? "", ec2_phone: lead.ec2_phone ?? "", ec2_email: lead.ec2_email ?? "",
-    ec2_relation: lead.ec2_relation ?? "", ec2_perm_speak: lead.ec2_perm_speak ?? false, ec2_divulge: lead.ec2_divulge ?? false,
+  const fields = getContactFields();
+  const [f, setF] = useState<Record<string, any>>(() => {
+    const init: Record<string, any> = {};
+    for (const fld of fields) if (fld.kind !== "section" && fld.kind !== "script") init[fld.id] = lead[fld.id] ?? "";
+    return init;
   });
-  const [ssnRevealed, setSsnRevealed] = useState(false);
-  const [ssnFull, setSsnFull] = useState<string | null>(null);
+  const [ssnRevealed, setSsnRevealed] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -21,6 +21,7 @@ export default function ContactInfo({ lead }: { lead: any }) {
 
   async function save() {
     setSaving(true);
+    // Persist only real lead columns that exist; answers fields go to claim later.
     await fetch("/api/leads", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ op: "save", lead_id: lead.id, lead: f }),
@@ -28,69 +29,57 @@ export default function ContactInfo({ lead }: { lead: any }) {
     setSaving(false); setSavedAt(new Date().toLocaleTimeString());
   }
 
-  async function revealSsn() {
-    // Reveal is logged to the audit trail (who + when).
+  async function revealSsn(field: string) {
     const r = await fetch("/api/ssn-reveal", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lead_id: lead.id }),
+      body: JSON.stringify({ lead_id: lead.id, field }),
     });
-    const d = await r.json();
-    if (r.ok) { setSsnFull(d.ssn ?? "(not on file)"); setSsnRevealed(true); }
+    if (r.ok) setSsnRevealed((s) => ({ ...s, [field]: true }));
   }
+
+  // Group fields by section for layout; short fields render 2-up.
+  const SHORT = new Set(["text", "phone", "email", "date", "int", "select"]);
+  const blocks: React.ReactNode[] = [];
+  let bucket: typeof fields = [];
+  const flush = (key: string) => {
+    if (!bucket.length) return;
+    blocks.push(
+      <div className="grid2" key={`g-${key}`}>
+        {bucket.map((fld) => {
+          const isSsn = fld.id.includes("ssn");
+          if (isSsn) {
+            return (
+              <div className="field" key={fld.id}>
+                <label style={{ fontSize: 13 }}>{fld.label}</label>
+                <div className="row" style={{ gap: 8 }}>
+                  <input type={ssnRevealed[fld.id] ? "text" : "password"} value={f[fld.id] ?? ""} onChange={(e) => set(fld.id, e.target.value)} style={{ flex: 1 }} />
+                  {!ssnRevealed[fld.id] && <button className="btn ghost" onClick={() => revealSsn(fld.id)}>Reveal</button>}
+                </div>
+              </div>
+            );
+          }
+          return <FieldRenderer key={fld.id} field={fld} value={f[fld.id]} onChange={(v) => set(fld.id, v)} />;
+        })}
+      </div>
+    );
+    bucket = [];
+  };
+
+  fields.forEach((fld, i) => {
+    if (fld.kind === "section") { flush(`s${i}`); blocks.push(<div className="section-title" key={fld.id} style={{ marginTop: 18 }}>{fld.label}</div>); }
+    else if (fld.kind === "script") { flush(`s${i}`); blocks.push(<FieldRenderer key={fld.id} field={fld} value={null} onChange={() => {}} />); }
+    else if (SHORT.has(fld.kind)) bucket.push(fld);
+    else { flush(`s${i}`); blocks.push(<FieldRenderer key={fld.id} field={fld} value={f[fld.id]} onChange={(v) => set(fld.id, v)} />); }
+  });
+  flush("end");
 
   return (
     <div>
-      <div className="section-title">Claimant (PNC)</div>
-      <div className="grid2">
-        <div className="field"><label>Full name</label><div className="readonly">{lead.claimant_name ?? "—"}</div></div>
-        <div className="field"><label>Phone</label><div className="readonly">{lead.phone ?? "—"}</div></div>
-        <div className="field"><label>Email</label><div className="readonly">{lead.email ?? "—"}</div></div>
-        <div className="field"><label>Date of birth</label>
-          <input type="date" value={f.dob} onChange={(e) => set("dob", e.target.value)} /></div>
-        <div className="field"><label>SSN</label>
-          <div className="row" style={{ gap: 8 }}>
-            <div className="readonly" style={{ flex: 1, fontFamily: "var(--mono)" }}>
-              {ssnRevealed ? ssnFull : (f.ssn_last4 ? `•••-••-${f.ssn_last4}` : "—")}
-            </div>
-            {!ssnRevealed && <button className="btn ghost" onClick={revealSsn}>Reveal</button>}
-          </div>
-          <span className="muted" style={{ fontSize: 12 }}>Reveals are logged to the Activity Log.</span>
-        </div>
-      </div>
-
-      <div className="section-title" style={{ marginTop: 20 }}>Contact permissions</div>
-      <div className="perm-row">
-        <label className="perm"><input type="checkbox" checked={f.perm_call} onChange={(e) => set("perm_call", e.target.checked)} /> Permission to call</label>
-        <label className="perm"><input type="checkbox" checked={f.perm_text} onChange={(e) => set("perm_text", e.target.checked)} /> Permission to text</label>
-        <label className="perm"><input type="checkbox" checked={f.perm_email} onChange={(e) => set("perm_email", e.target.checked)} /> Permission to email</label>
-      </div>
-
-      <EmergencyContact n={1} f={f} set={set} />
-      <EmergencyContact n={2} f={f} set={set} />
-
+      {blocks}
       <div className="seg-nav">
         <div className="spacer" />
         {savedAt && <span className="muted">Saved {savedAt}</span>}
         <button className="btn" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save contact info"}</button>
-      </div>
-    </div>
-  );
-}
-
-function EmergencyContact({ n, f, set }: { n: number; f: any; set: (k: string, v: any) => void }) {
-  const p = `ec${n}_`;
-  return (
-    <div className="card" style={{ marginTop: 16, borderLeft: "4px solid var(--accent)" }}>
-      <div className="section-title">Emergency contact {n}</div>
-      <div className="grid2">
-        <div className="field"><label>Name</label><input value={f[p + "name"]} onChange={(e) => set(p + "name", e.target.value)} /></div>
-        <div className="field"><label>Relationship</label><input value={f[p + "relation"]} onChange={(e) => set(p + "relation", e.target.value)} /></div>
-        <div className="field"><label>Phone</label><input value={f[p + "phone"]} onChange={(e) => set(p + "phone", e.target.value)} /></div>
-        <div className="field"><label>Email</label><input value={f[p + "email"]} onChange={(e) => set(p + "email", e.target.value)} /></div>
-      </div>
-      <div className="perm-row">
-        <label className="perm"><input type="checkbox" checked={f[p + "perm_speak"]} onChange={(e) => set(p + "perm_speak", e.target.checked)} /> OK to speak with this contact</label>
-        <label className="perm"><input type="checkbox" checked={f[p + "divulge"]} onChange={(e) => set(p + "divulge", e.target.checked)} /> OK to divulge case detail</label>
       </div>
     </div>
   );

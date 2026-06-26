@@ -24,6 +24,7 @@ export interface Field {
   agentNote?: string;    // agent-only guidance, never read aloud
   vital?: boolean;       // highlighted as vital in the original
   gateType?: "dq" | "supervisor" | "safety" | "end_intake";
+  surface?: "intake" | "contact" | "both";  // where this field appears; default intake
 }
 
 export const INTAKE: Field[] = [
@@ -48,43 +49,43 @@ export const INTAKE: Field[] = [
 
   // ---- THRESHOLD / DQ GATES ----------------------------------------------
   // ---- CALLER INFORMATION -------------------------------------------------
-  { id: "s_caller", scope: "lead", kind: "section", label: "Caller Information" },
-  { id: "ip_first", scope: "lead", kind: "text", label: "First name (Injured Party)", vital: true },
-  { id: "ip_last", scope: "lead", kind: "text", label: "Last name (Injured Party)", vital: true },
-  { id: "caller_first", scope: "lead", kind: "text", label: "First name (Caller)", vital: true },
-  { id: "caller_last", scope: "lead", kind: "text", label: "Last name (Caller)", vital: true },
-  { id: "caller_type", scope: "lead", kind: "select", label: "Is the caller:", vital: true, options: ["Self / Injured Party", "OBO"] },
-  { id: "caller_phone", scope: "lead", kind: "phone", label: "Phone number (Caller)", vital: true },
-  { id: "caller_email", scope: "lead", kind: "email", label: "Email (Caller)", vital: true },
-  { id: "mail_addr1", scope: "lead", kind: "text", label: "Mailing address 1", vital: true },
-  { id: "mail_addr2", scope: "lead", kind: "text", label: "Apt, Bldg, Unit #" },
-  { id: "mail_city", scope: "lead", kind: "text", label: "City", vital: true },
-  { id: "mail_state", scope: "lead", kind: "select", label: "State", vital: true, options: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","DC","WV","WI","WY","PR"] },
-  { id: "mail_zip", scope: "lead", kind: "text", label: "Zip", vital: true },
-  { id: "ip_dob", scope: "lead", kind: "date", label: "Date of birth (Injured Party)", vital: true },
-  { id: "ip_ssn", scope: "lead", kind: "text", label: "SSN (Injured Party)" },
-  { id: "caller_dob", scope: "lead", kind: "date", label: "DOB (Caller)", vital: true },
-  { id: "caller_ssn", scope: "lead", kind: "text", label: "SSN (Caller)" },
-  { id: "best_time", scope: "lead", kind: "text", label: "Best time to contact" },
-  { id: "is_legal_rep", scope: "lead", kind: "bool", label: "Are you the Injured Party's legal representative?",
+  { id: "s_caller", surface: "contact", scope: "lead", kind: "section", label: "Caller Information" },
+  { id: "ip_first", surface: "contact", scope: "lead", kind: "text", label: "First name (Injured Party)", vital: true },
+  { id: "ip_last", surface: "contact", scope: "lead", kind: "text", label: "Last name (Injured Party)", vital: true },
+  { id: "caller_first", surface: "contact", scope: "lead", kind: "text", label: "First name (Caller)", vital: true },
+  { id: "caller_last", surface: "contact", scope: "lead", kind: "text", label: "Last name (Caller)", vital: true },
+  { id: "caller_type", surface: "contact", scope: "lead", kind: "select", label: "Is the caller:", vital: true, options: ["Self / Injured Party", "OBO"] },
+  { id: "caller_phone", surface: "contact", scope: "lead", kind: "phone", label: "Phone number (Caller)", vital: true },
+  { id: "caller_email", surface: "contact", scope: "lead", kind: "email", label: "Email (Caller)", vital: true },
+  { id: "mail_addr1", surface: "contact", scope: "lead", kind: "text", label: "Mailing address 1", vital: true },
+  { id: "mail_addr2", surface: "contact", scope: "lead", kind: "text", label: "Apt, Bldg, Unit #" },
+  { id: "mail_city", surface: "contact", scope: "lead", kind: "text", label: "City", vital: true },
+  { id: "mail_state", surface: "contact", scope: "lead", kind: "select", label: "State", vital: true, options: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","DC","WV","WI","WY","PR"] },
+  { id: "mail_zip", surface: "contact", scope: "lead", kind: "text", label: "Zip", vital: true },
+  { id: "ip_dob", surface: "contact", scope: "lead", kind: "date", label: "Date of birth (Injured Party)", vital: true },
+  { id: "ip_ssn", surface: "contact", scope: "lead", kind: "text", label: "SSN (Injured Party)" },
+  { id: "caller_dob", surface: "contact", scope: "lead", kind: "date", label: "DOB (Caller)", vital: true },
+  { id: "caller_ssn", surface: "contact", scope: "lead", kind: "text", label: "SSN (Caller)" },
+  { id: "best_time", surface: "contact", scope: "lead", kind: "text", label: "Best time to contact" },
+  { id: "is_legal_rep", surface: "contact", scope: "lead", kind: "bool", label: "Are you the Injured Party's legal representative?",
     agentNote: "If NO, stop and instruct the legal rep to call us directly." },
-  { id: "caller_relation_ip", scope: "lead", kind: "text", label: "If caller is NOT the injured, how related to injured?" },
-  { id: "ip_phone", scope: "lead", kind: "phone", label: "Phone number of injured" },
-  { id: "ip_email", scope: "lead", kind: "email", label: "Email of injured" },
+  { id: "caller_relation_ip", surface: "contact", scope: "lead", kind: "text", label: "If caller is NOT the injured, how related to injured?" },
+  { id: "ip_phone", surface: "contact", scope: "lead", kind: "phone", label: "Phone number of injured" },
+  { id: "ip_email", surface: "contact", scope: "lead", kind: "email", label: "Email of injured" },
 
   // ---- EMERGENCY CONTACT --------------------------------------------------
-  { id: "s_ec", scope: "lead", kind: "section", label: "Emergency Contact" },
-  { id: "script_ec", scope: "lead", kind: "script", label: "Emergency contact (read verbatim)",
+  { id: "s_ec", surface: "contact", scope: "lead", kind: "section", label: "Emergency Contact" },
+  { id: "script_ec", surface: "contact", scope: "lead", kind: "script", label: "Emergency contact (read verbatim)",
     script: "Our attorney does require that we identify an emergency contact in the event that we cannot reach you regarding an urgent update. We will not share any details of the claim with them." },
-  { id: "ec_first", scope: "lead", kind: "text", label: "First name (EC)", vital: true },
-  { id: "ec_last", scope: "lead", kind: "text", label: "Last name (EC)", vital: true },
-  { id: "ec_phone", scope: "lead", kind: "phone", label: "Phone (EC)", vital: true },
-  { id: "ec_address", scope: "lead", kind: "text", label: "Address (EC)" },
-  { id: "ec_relationship", scope: "lead", kind: "select", label: "Their relationship to you",
+  { id: "ec_first", surface: "contact", scope: "lead", kind: "text", label: "First name (EC)", vital: true },
+  { id: "ec_last", surface: "contact", scope: "lead", kind: "text", label: "Last name (EC)", vital: true },
+  { id: "ec_phone", surface: "contact", scope: "lead", kind: "phone", label: "Phone (EC)", vital: true },
+  { id: "ec_address", surface: "contact", scope: "lead", kind: "text", label: "Address (EC)" },
+  { id: "ec_relationship", surface: "contact", scope: "lead", kind: "select", label: "Their relationship to you",
     options: ["PNC's Mother","PNC's Father","PNC's Son","PNC's Daughter","PNC's Spouse","PNC's Brother","PNC's Sister","PNC's Friend","PNC's Caregiver","Other"] },
-  { id: "ec_permission", scope: "lead", kind: "bool", label: "Permission to discuss case details with EC?", vital: true },
-  { id: "ip_deceased", scope: "lead", kind: "bool", label: "Is the Injured Party deceased?", vital: true },
-  { id: "ip_dod", scope: "lead", kind: "date", label: "If yes, date of death" },
+  { id: "ec_permission", surface: "contact", scope: "lead", kind: "bool", label: "Permission to discuss case details with EC?", vital: true },
+  { id: "ip_deceased", surface: "contact", scope: "lead", kind: "bool", label: "Is the Injured Party deceased?", vital: true },
+  { id: "ip_dod", surface: "contact", scope: "lead", kind: "date", label: "If yes, date of death" },
 
   { id: "s_threshold", scope: "lead", kind: "section", label: "Threshold" },
   {
@@ -318,7 +319,8 @@ export const FIRM_WRITABLE_STAGES = [
 export interface Segment { id: string; title: string; fields: Field[]; }
 
 export function getSegments(): Segment[] {
-  const leadFields = INTAKE.filter((f) => f.scope === "lead");
+  // Intake wizard shows lead-scope fields EXCEPT those surfaced to the contact tab.
+  const leadFields = INTAKE.filter((f) => f.scope === "lead" && f.surface !== "contact");
   const segs: Segment[] = [];
   let cur: Segment | null = null;
   for (const f of leadFields) {
@@ -332,7 +334,13 @@ export function getSegments(): Segment[] {
       segs.push(cur);
     }
   }
-  return segs;
+  // Drop any now-empty sections (e.g. a section whose fields were all contact).
+  return segs.filter((s) => s.fields.length > 0);
+}
+
+// Fields that live on the Contact Info tab (caller info + emergency contact).
+export function getContactFields(): Field[] {
+  return INTAKE.filter((f) => f.surface === "contact");
 }
 
 // Map field id -> human label (for audit descriptions like "entered Q1 ...").
