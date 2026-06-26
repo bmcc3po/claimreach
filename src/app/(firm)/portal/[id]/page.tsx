@@ -1,3 +1,4 @@
+export const runtime = "edge";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { STAGE_LABELS } from "@/lib/questionnaire";

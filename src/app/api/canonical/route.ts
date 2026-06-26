@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 // GET /api/canonical?place_id=...
 // Live dedupe: does a canonical property already exist for this place_id, and

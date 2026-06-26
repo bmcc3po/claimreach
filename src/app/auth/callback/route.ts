@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 // Exchanges the magic-link / OAuth code for a session, then redirects.
 export async function GET(req: NextRequest) {

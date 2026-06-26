@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 // JustCall API v2.1. Keys stay server-side.
 // POST { action: 'text' | 'call', lead_id, to, body? }

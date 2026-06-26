@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { FIRM_WRITABLE_STAGES } from "@/lib/questionnaire";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 async function me(sb: Awaited<ReturnType<typeof supabaseServer>>) {
   const { data: auth } = await sb.auth.getUser();
