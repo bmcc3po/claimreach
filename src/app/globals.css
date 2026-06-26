@@ -304,3 +304,44 @@ table.docket tr:hover td { background: var(--surface-2); }
   .cmdbar { padding:10px; }
   .tabs button { padding:11px 12px; font-size:13px; }
 }
+
+/* ============================================================
+   STEPPED INTAKE — segment rail, question cards, scheduler
+   ============================================================ */
+.intake-shell { display:grid; grid-template-columns:220px 1fr; gap:18px; align-items:start; }
+@media(max-width:860px){ .intake-shell{grid-template-columns:1fr} }
+
+.steprail { position:sticky; top:72px; display:flex; flex-direction:column; gap:3px; }
+@media(max-width:860px){ .steprail{position:static; flex-direction:row; overflow-x:auto; padding-bottom:6px} }
+.steprail button { display:flex; align-items:center; gap:10px; text-align:left; background:transparent;
+  border:0; border-left:3px solid transparent; padding:9px 12px; border-radius:0 8px 8px 0;
+  font-size:13px; font-weight:600; color:var(--ink-soft); cursor:pointer; white-space:nowrap; }
+.steprail button:hover { background:var(--surface-2); color:var(--ink); }
+.steprail button.active { background:var(--script-bg); border-left-color:var(--accent); color:var(--brand); }
+.steprail button.done .stepnum { background:var(--ok); color:#fff; border-color:var(--ok); }
+.stepnum { flex:0 0 auto; width:22px; height:22px; border-radius:50%; border:1.5px solid var(--line);
+  display:grid; place-items:center; font-size:11px; font-weight:800; color:var(--ink-soft); background:var(--surface); }
+.steprail button.active .stepnum { border-color:var(--accent); color:var(--accent); }
+
+.seg-head { display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+.seg-head h2 { margin:0; font-size:19px; letter-spacing:-.2px; }
+.seg-head .seg-count { font-size:12px; color:var(--ink-soft); font-weight:600; }
+.seg-sub { color:var(--ink-soft); font-size:13px; margin:0 0 16px; }
+
+/* Question cards — clear separation, read-at-a-glance */
+.qcard { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+  padding:16px 18px; margin-bottom:12px; transition:border-color .12s, box-shadow .12s; }
+.qcard:hover { border-color:var(--line); box-shadow:0 2px 10px rgba(15,27,45,.05); }
+.qcard.answered { border-left:3px solid var(--ok); }
+.qcard.vital-q { border-left:3px solid var(--danger); }
+.qcard > .field { margin-bottom:0; }
+.qcard > .field > label { font-size:15px; margin-bottom:8px; }
+
+.seg-nav { display:flex; gap:10px; align-items:center; margin-top:18px;
+  position:sticky; bottom:0; background:var(--bg); padding:12px 0; }
+
+/* Scheduler / Calendly */
+.cal-wrap { border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--surface); }
+.cal-wrap iframe { width:100%; height:680px; border:0; display:block; }
+@media(max-width:640px){ .cal-wrap iframe{height:760px} }
+.cal-head { padding:14px 18px; border-bottom:1px solid var(--line); }

@@ -1,41 +1,43 @@
 "use client";
-import { useState } from "react";
-import { INTAKE } from "@/lib/questionnaire";
+import { useState, useMemo } from "react";
+import { INTAKE, getSegments } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PropertyLookup, { type ResolvedProperty } from "./PropertyLookup";
+import CalendlyEmbed from "./CalendlyEmbed";
 
-const ANSWER_FIELDS = INTAKE.filter((f) => f.scope === "lead");
 const PROP_FIELDS = INTAKE.filter((f) => f.scope === "property");
 
-interface PropertyState {
-  _key: string;
-  resolved?: ResolvedProperty;
-  values: Record<string, any>;
-}
+interface PropertyState { _key: string; resolved?: ResolvedProperty; values: Record<string, any>; }
 
-// Renders the questionnaire for ONE claim. Answers persist into claims.answers
-// (jsonb); properties persist into claim_properties.
 export default function ClaimIntake({
-  claimId, firmId, initialAnswers, initialProperties,
+  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail,
 }: {
-  claimId: string;
-  firmId: string;
-  initialAnswers: Record<string, any>;
-  initialProperties: any[];
+  claimId: string; firmId: string;
+  initialAnswers: Record<string, any>; initialProperties: any[];
+  claimantName?: string; claimantEmail?: string;
 }) {
+  const segments = useMemo(() => getSegments(), []);
+  const steps = useMemo(
+    () => [...segments.map((s) => ({ id: s.id, title: s.title })), { id: "schedule", title: "Schedule" }],
+    [segments]
+  );
+
+  const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers || {});
   const [props, setProps] = useState<PropertyState[]>(
     (initialProperties || []).map((p, i) => ({
-      _key: `p${i}`,
-      values: p,
-      resolved: p.place_id
-        ? { place_id: p.place_id, name: p.name_as_recalled, address: p.address, lat: p.lat, lng: p.lng }
-        : undefined,
+      _key: `p${i}`, values: p,
+      resolved: p.place_id ? { place_id: p.place_id, name: p.name_as_recalled, address: p.address, lat: p.lat, lng: p.lng } : undefined,
     }))
   );
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const isProps = (id: string) => id === "s_properties";
+  const isSchedule = (id: string) => id === "schedule";
+  const curStep = steps[step];
+  const curSegment = segments.find((s) => s.id === curStep.id);
 
   function setVal(id: string, v: any) { setAnswers((s) => ({ ...s, [id]: v })); }
   function addProperty() { setProps((s) => [...s, { _key: `p${Date.now()}`, values: {} }]); }
@@ -48,31 +50,38 @@ export default function ClaimIntake({
       ...p, resolved: r,
       values: { ...p.values, place_id: r.place_id, name_as_recalled: r.name, address: r.address,
         lat: r.lat, lng: r.lng, current_brand: r.current_brand,
-        remembered_brand: p.values.remembered_brand ?? "Motel 6",
-        landmarks: r.landmarks ?? p.values.landmarks ?? "" },
+        remembered_brand: p.values.remembered_brand ?? "Motel 6", landmarks: r.landmarks ?? p.values.landmarks ?? "" },
     } : p));
   }
 
-  async function save() {
+  function segAnswered(segId: string): boolean {
+    if (isProps(segId)) return props.length > 0;
+    if (isSchedule(segId)) return false;
+    const seg = segments.find((s) => s.id === segId);
+    if (!seg) return false;
+    return seg.fields.some((f) => {
+      const v = answers[f.id];
+      return v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0);
+    });
+  }
+
+  async function save(advance = false) {
     setSaving(true); setErr(null);
     try {
-      // canonical-link each resolved property
       const properties = [];
       for (const p of props) {
         let canonical_id: string | undefined;
         if (p.resolved?.place_id) {
           const r = await fetch("/api/canonical", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ place_id: p.resolved.place_id, name: p.resolved.name,
-              address: p.resolved.address, lat: p.resolved.lat, lng: p.resolved.lng,
-              current_brand: p.resolved.current_brand, firm_id: firmId }),
+            body: JSON.stringify({ place_id: p.resolved.place_id, name: p.resolved.name, address: p.resolved.address,
+              lat: p.resolved.lat, lng: p.resolved.lng, current_brand: p.resolved.current_brand, firm_id: firmId }),
           });
           const d = await r.json();
           if (r.ok) canonical_id = d.id;
         }
         properties.push({ ...cleanProp(p.values), canonical_id });
       }
-
       const r = await fetch("/api/claim-intake", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ claim_id: claimId, firm_id: firmId, answers: cleanAnswers(answers), properties }),
@@ -80,35 +89,71 @@ export default function ClaimIntake({
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "save failed");
       setSavedAt(new Date().toLocaleTimeString());
+      if (advance && step < steps.length - 1) setStep(step + 1);
     } catch (e: any) { setErr(e.message); }
     setSaving(false);
   }
 
   return (
-    <div>
-      {ANSWER_FIELDS.map((f) => {
-        if (f.id === "s_properties") {
-          return (
-            <div key={f.id}>
-              <FieldRenderer field={f} value={null} onChange={() => {}} />
-              {props.map((p, idx) => (
-                <PropertyCard key={p._key} index={idx} state={p}
-                  onResolve={(r) => resolveProp(p._key, r)}
-                  onChange={(id, v) => setPropVal(p._key, id, v)}
-                  onRemove={() => removeProperty(p._key)} />
-              ))}
-              <button className="btn secondary" onClick={addProperty}>+ Add another property</button>
-            </div>
-          );
-        }
-        return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />;
-      })}
+    <div className="intake-shell">
+      <nav className="steprail">
+        {steps.map((s, i) => (
+          <button key={s.id}
+            className={`${i === step ? "active" : ""} ${segAnswered(s.id) ? "done" : ""}`}
+            onClick={() => setStep(i)}>
+            <span className="stepnum">{segAnswered(s.id) ? "✓" : i + 1}</span>
+            {cleanTitle(s.title)}
+          </button>
+        ))}
+      </nav>
 
-      <div className="card" style={{ position: "sticky", bottom: 0 }}>
-        <div className="row">
-          <button className="btn" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save claim"}</button>
+      <div>
+        <div className="seg-head">
+          <h2>{cleanTitle(curStep.title)}</h2>
+          <span className="seg-count">Step {step + 1} of {steps.length}</span>
+        </div>
+
+        {isSchedule(curStep.id) ? (
+          <>
+            <p className="seg-sub">Book the case manager call with the claimant before you wrap up.</p>
+            <CalendlyEmbed name={claimantName} email={claimantEmail} />
+          </>
+        ) : isProps(curStep.id) ? (
+          <>
+            <p className="seg-sub">Add one property per hotel/motel the claimant can identify.</p>
+            {props.map((p, idx) => (
+              <PropertyCard key={p._key} index={idx} state={p}
+                onResolve={(r) => resolveProp(p._key, r)}
+                onChange={(id, v) => setPropVal(p._key, id, v)}
+                onRemove={() => removeProperty(p._key)} />
+            ))}
+            <button className="btn secondary" onClick={addProperty}>+ Add another property</button>
+          </>
+        ) : (
+          <>
+            {curSegment?.fields.map((f) => {
+              if (f.kind === "script" || f.kind === "gate") {
+                return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />;
+              }
+              const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
+              return (
+                <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
+                  <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />
+                </div>
+              );
+            })}
+          </>
+        )}
+
+        <div className="seg-nav">
+          <button className="btn ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>← Back</button>
+          <div className="spacer" />
           {savedAt && <span className="muted">Saved {savedAt}</span>}
           {err && <span style={{ color: "var(--danger)" }}>{err}</span>}
+          <button className="btn ghost" disabled={saving} onClick={() => save(false)}>{saving ? "Saving…" : "Save"}</button>
+          {step < steps.length - 1
+            ? <button className="btn" disabled={saving} onClick={() => save(true)}>Save &amp; next →</button>
+            : <button className="btn" disabled={saving} onClick={() => save(false)}>Finish</button>}
         </div>
       </div>
     </div>
@@ -118,8 +163,7 @@ export default function ClaimIntake({
 function PropertyCard({ index, state, onResolve, onChange, onRemove }: {
   index: number; state: PropertyState;
   onResolve: (r: ResolvedProperty) => void;
-  onChange: (id: string, v: any) => void;
-  onRemove: () => void;
+  onChange: (id: string, v: any) => void; onRemove: () => void;
 }) {
   return (
     <div className="card" style={{ borderLeft: "4px solid var(--accent)" }}>
@@ -136,6 +180,8 @@ function PropertyCard({ index, state, onResolve, onChange, onRemove }: {
     </div>
   );
 }
+
+function cleanTitle(t: string) { return t.replace(/\s*\(.*?\)\s*/g, "").trim(); }
 
 const SYNTH = new Set(INTAKE.filter((f) => ["section", "script", "gate"].includes(f.kind)).map((f) => f.id));
 function cleanAnswers(o: Record<string, any>) {

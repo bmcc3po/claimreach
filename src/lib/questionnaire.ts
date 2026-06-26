@@ -270,3 +270,27 @@ export const STAGE_LABELS: Record<string, string> = {
 export const FIRM_WRITABLE_STAGES = [
   "lor_sent","welcome_sent","signed_retained","in_litigation","closed",
 ];
+
+// Group the lead-scope questionnaire into stepped segments by section marker.
+// Each segment = a section header + the fields under it until the next section.
+// Properties is its own segment (special-rendered). A final "Schedule" segment
+// is appended by the intake component.
+export interface Segment { id: string; title: string; fields: Field[]; }
+
+export function getSegments(): Segment[] {
+  const leadFields = INTAKE.filter((f) => f.scope === "lead");
+  const segs: Segment[] = [];
+  let cur: Segment | null = null;
+  for (const f of leadFields) {
+    if (f.kind === "section") {
+      cur = { id: f.id, title: f.label, fields: [] };
+      segs.push(cur);
+    } else if (cur) {
+      cur.fields.push(f);
+    } else {
+      cur = { id: "s_start", title: "Start", fields: [f] };
+      segs.push(cur);
+    }
+  }
+  return segs;
+}

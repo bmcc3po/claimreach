@@ -122,6 +122,8 @@ export default function LeadWorkspace({
                   firmId={lead.firm_id}
                   initialAnswers={activeClaim.answers ?? {}}
                   initialProperties={claimProperties[activeClaim.id] ?? []}
+                  claimantName={lead.claimant_name ?? undefined}
+                  claimantEmail={lead.email ?? undefined}
                 />
               </div>
             )}

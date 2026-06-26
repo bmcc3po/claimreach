@@ -18,7 +18,7 @@ export default async function InternalLayout({ children }: { children: React.Rea
   return (
     <div>
       <header className="appbar">
-        <Logo height={26} onDark />
+        <Logo height={38} onDark />
         <nav className="anav">
           <a href="/leads">Leads</a>
           <a href="/intake">Add lead</a>
