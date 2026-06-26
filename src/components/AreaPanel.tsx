@@ -101,7 +101,7 @@ export default function AreaPanel({
           above still confirms the building.</div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+      <div className="area-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
         <div ref={mapRef} style={{ width: "100%", height: 300, borderRadius: 8, background: "#eef1f5" }} />
         <div ref={svRef} style={{ width: "100%", height: 300, borderRadius: 8, background: "#eef1f5" }} />
       </div>

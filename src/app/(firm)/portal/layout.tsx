@@ -2,6 +2,8 @@ export const runtime = "edge";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import SignOut from "@/components/SignOut";
+import { Logo } from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default async function FirmLayout({ children }: { children: React.ReactNode }) {
   const sb = await supabaseServer();
@@ -16,9 +18,11 @@ export default async function FirmLayout({ children }: { children: React.ReactNo
   return (
     <div>
       <header className="app-header">
-        <div className="brand">ClaimReach <small>· Firm Portal</small></div>
-        <div className="row">
+        <Logo height={30} />
+        <div className="nav">
+          <span className="badge stage">Firm Portal</span>
           <a href="/portal">Docket</a>
+          <ThemeToggle />
           <SignOut />
         </div>
       </header>

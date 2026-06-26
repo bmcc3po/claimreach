@@ -1,6 +1,9 @@
 "use client";
+export const runtime = "edge";
 import { useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { Logo } from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function FirmLogin() {
   const [email, setEmail] = useState("");
@@ -23,9 +26,11 @@ export default function FirmLogin() {
   return (
     <div className="login-wrap">
       <div className="card login-card">
-        <div className="brand" style={{ fontWeight: 700, fontSize: 20, marginBottom: 2 }}>
-          ClaimReach <small className="muted">Firm Portal</small>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+          <Logo height={34} />
+          <ThemeToggle />
         </div>
+        <p className="muted" style={{ marginTop: 0 }}>Firm Portal</p>
         {sent ? (
           <p>Check your email for a secure sign-in link. You can close this tab.</p>
         ) : (

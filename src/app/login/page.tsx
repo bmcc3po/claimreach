@@ -1,7 +1,10 @@
 "use client";
+export const runtime = "edge";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { Logo } from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Login() {
   const router = useRouter();
@@ -22,8 +25,9 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <div className="card login-card">
-        <div className="brand" style={{ fontWeight: 700, fontSize: 20, marginBottom: 2 }}>
-          ClaimReach
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+          <Logo height={34} />
+          <ThemeToggle />
         </div>
         <p className="muted" style={{ marginTop: 0 }}>Staff sign in</p>
         <div className="field">

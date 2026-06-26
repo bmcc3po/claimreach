@@ -2,6 +2,8 @@ export const runtime = "edge";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import SignOut from "@/components/SignOut";
+import { Logo } from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default async function InternalLayout({ children }: { children: React.ReactNode }) {
   const sb = await supabaseServer();
@@ -15,12 +17,12 @@ export default async function InternalLayout({ children }: { children: React.Rea
   return (
     <div>
       <header className="app-header">
-        <div className="brand">
-          ClaimReach <small>· {me.full_name ?? "Staff"}</small>
-        </div>
-        <div className="row">
+        <Logo height={30} />
+        <div className="nav">
           <a href="/leads">Leads</a>
           <a href="/intake">Add lead</a>
+          <span className="muted" style={{ marginLeft: 6 }}>{me.full_name ?? "Staff"}</span>
+          <ThemeToggle />
           <SignOut />
         </div>
       </header>
