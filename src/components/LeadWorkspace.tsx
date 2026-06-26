@@ -7,6 +7,7 @@ import ClaimIntake from "./ClaimIntake";
 import ActivityLog from "./ActivityLog";
 import KnowledgePanel from "./KnowledgePanel";
 import ContactInfo from "./ContactInfo";
+import NotesTab from "./NotesTab";
 
 interface Claim {
   id: string;
@@ -22,7 +23,7 @@ interface Claim {
 const TABS = ["Case Questions", "Contact Info", "Criteria", "Notes", "Activity Log"];
 
 export default function LeadWorkspace({
-  lead, claims, activity, stats, claimProperties, audit,
+  lead, claims, activity, stats, claimProperties, audit, notes,
 }: {
   lead: any;
   claims: Claim[];
@@ -30,6 +31,7 @@ export default function LeadWorkspace({
   stats: { signed: number; tierA: number; weekPay: number; wip: number };
   claimProperties: Record<string, any[]>;
   audit: any[];
+  notes: any[];
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -126,7 +128,7 @@ export default function LeadWorkspace({
             )}
             {tab === "Contact Info" && <ContactInfo lead={lead} />}
             {tab === "Criteria" && <p className="muted">Campaign criteria checklist coming.</p>}
-            {tab === "Notes" && <p className="muted">Notes thread coming.</p>}
+            {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}
           </div>
         </div>

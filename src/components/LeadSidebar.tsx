@@ -2,9 +2,40 @@
 import { useState } from "react";
 
 export function VitalsCard({ lead }: { lead: any }) {
+  const [edit, setEdit] = useState(false);
+  const [f, setF] = useState<Record<string, any>>({
+    phone: lead.phone ?? "", email: lead.email ?? "", address: lead.address ?? "",
+    best_time: lead.best_time ?? "", language: lead.language ?? "English", est_value: lead.est_value ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  function set(k: string, v: any) { setF((s) => ({ ...s, [k]: v })); }
+  async function save() {
+    setSaving(true);
+    await fetch("/api/leads", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "save", lead_id: lead.id, lead: f }),
+    }).catch(() => {});
+    setSaving(false); setEdit(false);
+  }
+
+  if (edit) {
+    return (
+      <div className="side-card">
+        <h3>Vitals <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button></h3>
+        {[["phone","Phone"],["email","Email"],["address","Address"],["best_time","Best time"],["language","Language"],["est_value","Est. value"]].map(([k,l]) => (
+          <div className="field" key={k} style={{ marginBottom: 8 }}>
+            <label style={{ fontSize: 12 }}>{l}</label>
+            <input value={f[k]} onChange={(e) => set(k, e.target.value)} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="side-card">
-      <h3>Vitals <span style={{ flex: 1 }} /></h3>
+      <h3>Vitals <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => setEdit(true)}>✎ Edit</button></h3>
       <div className="vrow"><span className="vk">Phone</span><span className="vv">{lead.phone ?? "—"}</span></div>
       <div className="vrow"><span className="vk">Email</span><span className="vv">{lead.email ?? "—"}</span></div>
       <div className="vrow"><span className="vk">Address</span><span className="vv">{lead.address ?? "—"}</span></div>
@@ -30,6 +61,11 @@ export function GrievousPanel() {
       <div className="gtier"><span className="gon">on</span> Tier 2 · qualify review</div>
       <div className="gtier"><span style={{ opacity: 0.6 }}>after call</span> Tier 3 · transcript vs form</div>
       <div className="gtier"><span style={{ opacity: 0.6 }}>soon</span> Tier 4 · live coaching</div>
+      <a href="https://www.youtube.com/watch?v=JsntlJZ9h1U" target="_blank" rel="noopener noreferrer"
+        style={{ display: "inline-block", marginTop: 12, color: "#fff", fontSize: 12.5, fontWeight: 700,
+          background: "rgba(255,255,255,.12)", padding: "8px 12px", borderRadius: 8, textDecoration: "none" }}>
+        ▶ Open Grievous (placeholder)
+      </a>
     </div>
   );
 }

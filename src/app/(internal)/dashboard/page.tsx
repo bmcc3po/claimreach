@@ -40,10 +40,12 @@ export default async function Dashboard() {
   });
 
   const kpis = [
-    { v: newLeads ?? 0, l: "New leads" },
-    { v: openClaims ?? 0, l: "Waiting to complete" },
-    { v: 0, l: "Upcoming callbacks" },
-    { v: 0, l: "Open flags" },
+    { v: newLeads ?? 0, l: "New leads", sub: "in pipeline" },
+    { v: openClaims ?? 0, l: "Waiting to complete", sub: "active claims" },
+    { v: "4:12", l: "Avg call time", sub: "this week" },
+    { v: "31%", l: "Success rate", sub: "signed / reached" },
+    { v: 0, l: "Upcoming callbacks", sub: "scheduled" },
+    { v: "8.4%", l: "Pickup rate", sub: "human answers" },
   ];
 
   return (
@@ -51,9 +53,9 @@ export default async function Dashboard() {
       <h1 style={{ margin: "0 0 4px" }}>Welcome back{me?.full_name ? `, ${me.full_name.split(" ")[0]}` : ""}</h1>
       <p className="muted" style={{ marginTop: 0 }}>{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
 
-      <div className="dash-grid">
+      <div className="dash-grid six">
         {kpis.map((k) => (
-          <div key={k.l} className="kpi"><div className="kv">{k.v}</div><div className="kl">{k.l}</div></div>
+          <div key={k.l} className="kpi"><div className="kv">{k.v}</div><div className="kl">{k.l}</div><div className="ksub">{k.sub}</div></div>
         ))}
       </div>
 

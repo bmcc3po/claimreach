@@ -43,6 +43,10 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     .select("id, created_at, actor_name, category, description")
     .eq("lead_id", id).order("created_at", { ascending: false }).limit(200);
 
+  // Notes for this file.
+  const { data: notes } = await sb.from("notes")
+    .select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100);
+
   // Lightweight my-day stats placeholder (wired to real metrics later).
   const stats = { signed: 0, tierA: 0, weekPay: 0, wip: claims?.length ?? 0 };
 
@@ -54,6 +58,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       stats={stats}
       claimProperties={claimProperties}
       audit={audit ?? []}
+      notes={notes ?? []}
     />
   );
 }
