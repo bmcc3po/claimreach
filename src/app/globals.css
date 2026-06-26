@@ -154,6 +154,8 @@ table.docket tr:hover td { background: var(--surface-2); }
 .badge.stage { background: var(--script-bg); color: var(--accent); }
 .badge.flag { background: var(--flag-bg); color: var(--flag); }
 .badge.count { background: var(--ok-bg); color: var(--ok); }
+.badge.signed { background: var(--ok-bg); color: var(--ok); }
+.badge.dq { background: var(--danger-bg); color: var(--danger); }
 
 .candidate { display: grid; grid-template-columns: 150px 1fr auto; gap: 14px;
   border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; background: var(--surface); }
@@ -249,8 +251,10 @@ table.docket tr:hover td { background: var(--surface-2); }
   border-left:4px solid var(--ok); border-radius:10px; padding:13px 15px; margin-bottom:16px; }
 .pnc .pncbadge { width:26px; height:26px; border-radius:50%; background:var(--ok); color:#fff;
   display:grid; place-items:center; font-weight:800; flex:0 0 auto; }
+.pnc.warn { background:var(--flag-bg); border-color:var(--flag); border-left-color:var(--flag); }
+.pnc.warn .pncbadge { background:var(--flag); }
 
-.lead-grid { display:grid; grid-template-columns:1fr 360px; gap:16px; align-items:start; }
+.lead-grid { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:20px; align-items:start; }
 @media(max-width:1040px){ .lead-grid{grid-template-columns:1fr} }
 
 .tabs { display:flex; gap:2px; padding:0 8px; border-bottom:1px solid var(--line);
@@ -370,7 +374,7 @@ table.docket tr:hover td { background: var(--surface-2); }
 .shell-main { flex:1; min-width:0; display:flex; flex-direction:column; }
 .topstrip { display:flex; align-items:center; gap:14px; padding:12px 22px; border-bottom:1px solid var(--line);
   background:var(--surface); position:sticky; top:0; z-index:40; }
-.shell-body { flex:1; padding:22px; max-width:1360px; width:100%; margin:0 auto; }
+.shell-body { flex:1; padding:22px 28px; max-width:1600px; width:100%; margin:0 auto; }
 @media(max-width:760px){
   .sidenav { position:fixed; z-index:60; width:230px; left:0; box-shadow:0 0 0 100vmax rgba(0,0,0,.4); }
   .sidenav.min { width:0; overflow:hidden; box-shadow:none; }

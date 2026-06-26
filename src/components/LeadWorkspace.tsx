@@ -5,6 +5,7 @@ import { LX } from "@/lib/lexicon";
 import { VitalsCard, GrievousPanel, ConversationPanel } from "./LeadSidebar";
 import ClaimIntake from "./ClaimIntake";
 import ActivityLog from "./ActivityLog";
+import KnowledgePanel from "./KnowledgePanel";
 
 interface Claim {
   id: string;
@@ -90,14 +91,8 @@ export default function LeadWorkspace({
         </div>
       </div>
 
-      {/* PNC banner */}
-      <div className="pnc">
-        <div className="pncbadge">✓</div>
-        <div style={{ flex: 1 }}>
-          <strong>Injured Party: {lead.claimant_name ?? "—"}</strong>
-          <div className="muted">{lead.pnc_relation ?? "Speaking with the injured party."}</div>
-        </div>
-      </div>
+      {/* PNC banner — interactive injured-party state */}
+      <PncBanner lead={lead} />
 
       {/* Main grid */}
       <div className="lead-grid">
@@ -145,6 +140,7 @@ export default function LeadWorkspace({
         {/* Right sidebar */}
         <div>
           <VitalsCard lead={lead} />
+          <KnowledgePanel />
           <GrievousPanel />
           <ConversationPanel
             leadId={lead.id}
@@ -154,6 +150,48 @@ export default function LeadWorkspace({
             activity={activity}
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PncBanner({ lead }: { lead: any }) {
+  const [state, setState] = useState<string>(lead.pnc_status ?? "speaking_with_ip");
+  const [saving, setSaving] = useState(false);
+
+  const STATES = [
+    { id: "speaking_with_ip", label: "Speaking with IP" },
+    { id: "deceased_ip", label: "Deceased IP" },
+    { id: "minor_ip", label: "Minor IP" },
+  ];
+
+  async function pick(s: string) {
+    setState(s); setSaving(true);
+    await fetch("/api/leads", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "save", lead_id: lead.id, lead: { pnc_status: s } }),
+    }).catch(() => {});
+    setSaving(false);
+  }
+
+  const note = state === "speaking_with_ip"
+    ? "Speaking with the injured party. They sign for themselves, no OBO needed."
+    : state === "deceased_ip"
+    ? "Injured party is deceased. Speak only with the OBO (surviving spouse/executor) who has legal authority and signs the retainer."
+    : "Injured party is a minor. Speak only with the parent/guardian (OBO) who signs the retainer.";
+
+  return (
+    <div className={state === "speaking_with_ip" ? "pnc" : "pnc warn"}>
+      <div className="pncbadge">{state === "speaking_with_ip" ? "✓" : "!"}</div>
+      <div style={{ flex: 1 }}>
+        <strong>Injured Party: {lead.claimant_name ?? "—"}</strong>
+        <div className="muted">{note}</div>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {STATES.map((s) => (
+          <button key={s.id} className={`chip ${state === s.id ? "active" : ""}`}
+            disabled={saving} onClick={() => pick(s.id)}>{s.label}</button>
+        ))}
       </div>
     </div>
   );

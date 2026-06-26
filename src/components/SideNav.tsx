@@ -28,7 +28,7 @@ export default function SideNav({
       <aside className={`sidenav ${min ? "min" : ""}`}>
         <div className="brandrow">
           <a href="/dashboard" aria-label="Home" style={{ lineHeight: 0 }}>
-            <Logo height={min ? 30 : 34} wordmark={!min} onDark />
+            <Logo height={min ? 34 : 40} wordmark={!min} onDark />
           </a>
         </div>
         <nav className="navlinks">

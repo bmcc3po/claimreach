@@ -294,3 +294,13 @@ export function getSegments(): Segment[] {
   }
   return segs;
 }
+
+// Map field id -> human label (for audit descriptions like "entered Q1 ...").
+export function fieldLabelMap(): Record<string, string> {
+  const m: Record<string, string> = {};
+  for (const f of INTAKE) {
+    if (f.kind === "section" || f.kind === "script" || f.kind === "gate") continue;
+    m[f.id] = (f as any).label ?? f.id;
+  }
+  return m;
+}

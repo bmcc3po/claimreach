@@ -20,6 +20,25 @@ export default async function Dashboard() {
   const byBoard: Record<string, any[]> = {};
   for (const b of bulletins ?? []) (byBoard[b.board_id] ||= []).push(b);
 
+  // Needs Attention feed — supervisor-flagged claims + stale in-progress.
+  const { data: flagged } = await sb.from("claims")
+    .select("id, lead_id, campaign, supervisor_flag, status, updated_at, leads(claimant_name)")
+    .eq("supervisor_flag", true).limit(10);
+  const dayAgo = new Date(Date.now() - 86400000).toISOString();
+  const { data: idle } = await sb.from("claims")
+    .select("id, lead_id, campaign, status, updated_at, leads(claimant_name)")
+    .in("status", ["new", "contact_attempted"]).lt("updated_at", dayAgo).limit(10);
+
+  const attention: { icon: string; title: string; sub: string; lead_id: string }[] = [];
+  for (const c of flagged ?? []) attention.push({
+    icon: "⚑", title: `Supervisor flag — ${(c as any).leads?.claimant_name ?? "claim"}`,
+    sub: `${c.campaign ?? "claim"} flagged for review.`, lead_id: c.lead_id,
+  });
+  for (const c of idle ?? []) attention.push({
+    icon: "⏳", title: `Idle over 24h — ${(c as any).leads?.claimant_name ?? "claim"}`,
+    sub: `Still ${c.status.replace("_", " ")}, no movement in a day.`, lead_id: c.lead_id,
+  });
+
   const kpis = [
     { v: newLeads ?? 0, l: "New leads" },
     { v: openClaims ?? 0, l: "Waiting to complete" },
@@ -46,6 +65,20 @@ export default async function Dashboard() {
         </div>
         <div>
           <QuoteBanner />
+          <div className="board">
+            <div className="board-h"><h3>Needs attention</h3>
+              {attention.length > 0 && <span className="badge dq" style={{ marginLeft: "auto" }}>{attention.length}</span>}
+            </div>
+            <div className="board-body">
+              {attention.length === 0 && <p className="muted">All clear. Nothing flagged.</p>}
+              {attention.map((a, i) => (
+                <a key={i} href={`/leads/${a.lead_id}`} className="post" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+                  <strong>{a.icon} {a.title}</strong>
+                  <div className="pmeta">{a.sub}</div>
+                </a>
+              ))}
+            </div>
+          </div>
           <div className="board">
             <div className="board-h"><h3>Quick links</h3></div>
             <div className="board-body">

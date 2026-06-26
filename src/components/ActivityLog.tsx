@@ -38,5 +38,7 @@ function catClass(c: string) {
   if (c === "status") return "stage";
   if (c === "comms") return "count";
   if (c === "access") return "flag";
+  if (c === "entered") return "signed";
+  if (c === "deleted") return "dq";
   return "stage";
 }
