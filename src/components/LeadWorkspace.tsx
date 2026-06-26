@@ -79,7 +79,7 @@ export default function LeadWorkspace({
                   {(c.campaign || c.claim_type)} · {c.on_behalf_of ? "OBO" : "self"} · {c.status}
                 </button>
               ))}
-              <span className="claimchip" style={{ opacity: 0.7 }}>+ Create another claim</span>
+              <CreateClaim leadId={lead.id} firmId={lead.firm_id} />
             </div>
 
             <div className="meta">
@@ -190,5 +190,38 @@ function PncBanner({ lead }: { lead: any }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function CreateClaim({ leadId, firmId }: { leadId: string; firmId: string }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const TYPES = [
+    { type: "motel_trafficking", label: "Hospitality Trafficking", campaign: "" },
+    { type: "pfas", label: "PFAS", campaign: "NGUYEN PFAS INNO" },
+    { type: "bard_powerport", label: "Bard PowerPort", campaign: "TMP BARD PP" },
+  ];
+
+  async function create(type: string, campaign: string) {
+    setBusy(true);
+    const r = await fetch("/api/claims", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "create", lead_id: leadId, firm_id: firmId, claim_type: type, campaign: campaign || null }),
+    });
+    setBusy(false);
+    if (r.ok) location.reload();
+  }
+
+  if (!open) {
+    return <button className="claimchip" onClick={() => setOpen(true)}>+ Create another claim</button>;
+  }
+  return (
+    <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      {TYPES.map((t) => (
+        <button key={t.type} className="chip" disabled={busy} onClick={() => create(t.type, t.campaign)}>{t.label}</button>
+      ))}
+      <button className="chip" onClick={() => setOpen(false)}>Cancel</button>
+    </span>
   );
 }

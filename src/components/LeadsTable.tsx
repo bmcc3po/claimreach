@@ -68,6 +68,7 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
         <span className="muted">{rows.length} of {leads.length}</span>
         <input className="leads-search" placeholder="Search name, phone, id, campaign…" value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="spacer" />
+        <a className="btn ghost" href="/api/export?format=neos">⬇ Export CSV</a>
         <button className="btn ghost" onClick={() => setShowLookup(!showLookup)}>Person lookup</button>
         <Link className="btn" href="/intake">+ Add lead</Link>
       </div>
