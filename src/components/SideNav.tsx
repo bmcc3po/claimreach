@@ -13,7 +13,8 @@ const STAFF_NAV = [
   { href: "/maverick", icon: "⚡", label: "Grievous" },
   { href: "/crissi", icon: "🆘", label: "Crissi" },
   { href: "/settings", icon: "⚙️", label: "Settings" },
-  { href: "/forms", icon: "🧩", label: "Form builder" },
+  { href: "/forms", icon: "🧩", label: "Form builder", adminOnly: true },
+  { href: "/users", icon: "👤", label: "Users", adminOnly: true },
   { href: "/profile", icon: "👤", label: "Profile" },
 ];
 
@@ -50,7 +51,7 @@ export default function SideNav({
           </a>
         </div>
         <nav className="navlinks">
-          {NAV.map((n) => (
+          {NAV.filter((n) => !(n as any).adminOnly || ["owner","admin"].includes(role)).map((n) => (
             <a key={n.href} href={n.href} className={`nl ${active === n.href ? "active" : ""}`}>
               <span className="ico">{n.icon}</span>
               <span className="nl-label">{n.label}</span>
