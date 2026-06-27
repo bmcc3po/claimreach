@@ -8,6 +8,9 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ k: string; dir: 1 | -1 }>({ k: "updated_at", dir: -1 });
   const [showLookup, setShowLookup] = useState(false);
+  const [view, setView] = useState<"table" | "board">("table");
+  const [fType, setFType] = useState("all");
+  const [fStatus, setFStatus] = useState("all");
 
   const rows = useMemo(() => {
     let r = leads.map((l) => {
@@ -32,6 +35,8 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
         needsAction,
       };
     });
+    if (fType !== "all") r = r.filter((x) => x.type === fType);
+    if (fStatus !== "all") r = r.filter((x) => x.status === fStatus);
     if (q.trim()) {
       const t = q.toLowerCase();
       r = r.filter((x) =>
@@ -45,7 +50,7 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
       return (av > bv ? 1 : av < bv ? -1 : 0) * sort.dir;
     });
     return r;
-  }, [leads, q, sort]);
+  }, [leads, q, sort, fType, fStatus]);
 
   function th(k: string, label: string) {
     return (
@@ -68,6 +73,22 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
         <span className="muted">{rows.length} of {leads.length}</span>
         <input className="leads-search" placeholder="Search name, phone, id, campaign…" value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="spacer" />
+        <select style={{ width: "auto" }} value={fType} onChange={(e) => setFType(e.target.value)}>
+          <option value="all">All types</option>
+          {Array.from(new Set(leads.map((l) => l.case_type ?? (l.claims?.[0]?.claim_type)).filter(Boolean))).map((t) => <option key={String(t)} value={String(t)}>{String(t)}</option>)}
+        </select>
+        <select style={{ width: "auto" }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+          <option value="all">All statuses</option>
+          <option value="new">Needs intake</option>
+          <option value="in_progress">In progress</option>
+          <option value="qualified">Qualified</option>
+          <option value="signed">Signed</option>
+          <option value="dq">Disqualified</option>
+        </select>
+        <div className="seg-toggle">
+          <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Table</button>
+          <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>Board</button>
+        </div>
         <a className="btn ghost" href="/api/export?format=neos">⬇ Export CSV</a>
         <button className="btn ghost" onClick={() => setShowLookup(!showLookup)}>Person lookup</button>
         <Link className="btn" href="/intake">+ Add lead</Link>
@@ -75,6 +96,7 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
 
       {showLookup && <div style={{ maxWidth: 420, marginBottom: 14 }}><PersonSearch /></div>}
 
+      {view === "table" && (
       <div className="table-scroll">
         <table className="docket leads">
           <thead>
@@ -114,6 +136,35 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
           </tbody>
         </table>
       </div>
+      )}
+
+      {view === "board" && (
+        <div className="kanban">
+          {["new", "in_progress", "qualified", "signed", "dq"].map((col) => {
+            const colRows = rows.filter((r) => r.status === col);
+            const titles: Record<string, string> = { new: "Needs intake", in_progress: "In progress", qualified: "Qualified", signed: "Signed", dq: "Disqualified" };
+            return (
+              <div key={col} className="kcol">
+                <div className="kcol-h"><span>{titles[col]}</span><span className="badge stage">{colRows.length}</span></div>
+                <div className="kcol-body">
+                  {colRows.map((r) => (
+                    <Link key={r.id} href={`/leads/${r.id}`} className={`kcard ${r.needsAction ? "needs-action" : ""}`}>
+                      <div className="row" style={{ justifyContent: "space-between" }}>
+                        <strong style={{ fontSize: 13 }}>{r.lead_no}</strong>
+                        {r.needsAction && <span className="dot" />}
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: 14, margin: "2px 0" }}>{r.name}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>{r.type} · {r.loc}</div>
+                      <div style={{ marginTop: 6 }}><span className="badge stage">{STAGE_LABELS[r.stage] ?? r.stage}</span></div>
+                    </Link>
+                  ))}
+                  {colRows.length === 0 && <p className="muted" style={{ fontSize: 12, padding: "8px 4px" }}>Empty</p>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

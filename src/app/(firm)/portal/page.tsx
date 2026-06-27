@@ -1,66 +1,98 @@
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
-import { STAGE_LABELS } from "@/lib/questionnaire";
 
-export default async function FirmDocket() {
+export default async function FirmHome() {
   const sb = await supabaseServer();
+  const { data: { user } } = await sb.auth.getUser();
+  const { data: me } = await sb.from("app_users").select("full_name, firm_id").eq("id", user!.id).maybeSingle();
+  const { data: firm } = await sb.from("firms").select("name").eq("id", me!.firm_id).maybeSingle();
 
-  // RLS scopes both queries to the firm automatically.
+  // RLS scopes to the firm.
   const { data: leads } = await sb.from("leads")
-    .select("id, lead_no, firm_ref_no, stage, updated_at")
+    .select("id, lead_no, firm_ref_no, stage, updated_at, claims(status, stage, supervisor_flag)")
     .order("updated_at", { ascending: false }).limit(500);
 
-  const { data: clusters } = await sb.from("properties_canonical")
-    .select("id, name, address, current_brand, claimant_count")
-    .order("claimant_count", { ascending: false }).limit(50);
+  const all = leads ?? [];
+  const now = Date.now();
+  const daysAgo = (d: string) => (now - new Date(d).getTime()) / 86400000;
+
+  // Counters
+  const total = all.length;
+  const intakeInProgress = all.filter((l) => (l.claims ?? []).some((c: any) => ["new","contact_attempted","in_progress"].includes(c.status))).length;
+  const qualified = all.filter((l) => (l.claims ?? []).some((c: any) => c.status === "qualified")).length;
+  const signed = all.filter((l) => (l.claims ?? []).some((c: any) => c.status === "signed")).length;
+
+  // Holes in the boat
+  const agingIntake = all.filter((l) => (l.claims ?? []).some((c: any) => ["new","contact_attempted","in_progress"].includes(c.status)) && daysAgo(l.updated_at) > 2);
+  const flagged = all.filter((l) => (l.claims ?? []).some((c: any) => c.supervisor_flag));
+  const awaitingFirm = all.filter((l) => (l.claims ?? []).some((c: any) => c.status === "qualified") && daysAgo(l.updated_at) > 1);
+
+  const kpis = [
+    { v: total, l: "Total cases", sub: "in your docket" },
+    { v: intakeInProgress, l: "Intake in progress", sub: "being worked" },
+    { v: qualified, l: "Qualified", sub: "ready for firm" },
+    { v: signed, l: "Signed / retained", sub: "active" },
+  ];
+
+  const holes = [
+    { n: agingIntake.length, label: "Aging intake (2+ days)", tone: "flag", items: agingIntake },
+    { n: awaitingFirm.length, label: "Awaiting firm reach-out", tone: "danger", items: awaitingFirm },
+    { n: flagged.length, label: "Flagged for attention", tone: "danger", items: flagged },
+  ];
 
   return (
     <div>
-      <h2>Docket</h2>
-
-      <div className="section-title">Property clusters (pattern strength)</div>
+      <h1 style={{ margin: "0 0 2px" }}>{firm?.name ?? "Firm"} command center</h1>
       <p className="muted" style={{ marginTop: 0 }}>
-        Properties ranked by how many claimants independently identified them.
+        {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
       </p>
-      <table className="docket">
-        <thead>
-          <tr><th>Property</th><th>Brand</th><th>Address</th><th>Claimants</th></tr>
-        </thead>
-        <tbody>
-          {(clusters ?? []).filter((c) => c.claimant_count > 0).map((c) => (
-            <tr key={c.id}>
-              <td>{c.name}</td>
-              <td>{c.current_brand ?? "—"}</td>
-              <td className="muted">{c.address}</td>
-              <td><span className="badge count">{c.claimant_count}</span></td>
-            </tr>
-          ))}
-          {(!clusters || clusters.every((c) => c.claimant_count === 0)) && (
-            <tr><td colSpan={4} className="muted">No clustered properties yet.</td></tr>
-          )}
-        </tbody>
-      </table>
 
-      <div className="section-title">Cases</div>
-      <table className="docket">
-        <thead>
-          <tr><th>Lead #</th><th>Firm ref</th><th>Stage</th><th>Updated</th></tr>
-        </thead>
-        <tbody>
-          {(leads ?? []).map((l) => (
-            <tr key={l.id}>
-              <td><Link href={`/portal/${l.id}`}>{l.lead_no}</Link></td>
-              <td>{l.firm_ref_no ?? <span className="muted">—</span>}</td>
-              <td><span className="badge stage">{STAGE_LABELS[l.stage]}</span></td>
-              <td className="muted">{new Date(l.updated_at).toLocaleString()}</td>
-            </tr>
-          ))}
-          {(!leads || leads.length === 0) && (
-            <tr><td colSpan={4} className="muted">No cases yet.</td></tr>
-          )}
-        </tbody>
-      </table>
+      <div className="dash-grid">
+        {kpis.map((k) => (
+          <div key={k.l} className="kpi"><div className="kv">{k.v}</div><div className="kl">{k.l}</div><div className="ksub">{k.sub}</div></div>
+        ))}
+      </div>
+
+      <div className="dash-cols">
+        <div>
+          <div className="board">
+            <div className="board-h"><h3>Holes in the boat</h3>
+              <Link href="/portal/cases" className="btn ghost sm" style={{ marginLeft: "auto" }}>All cases →</Link>
+            </div>
+            <div className="board-body">
+              {holes.every((h) => h.n === 0) && <p className="muted">All clear. Nothing needs attention.</p>}
+              {holes.filter((h) => h.n > 0).map((h) => (
+                <div key={h.label} style={{ marginBottom: 14 }}>
+                  <div className="row" style={{ marginBottom: 6 }}>
+                    <span className={`badge ${h.tone}`}>{h.n}</span>
+                    <strong style={{ fontSize: 14 }}>{h.label}</strong>
+                  </div>
+                  {h.items.slice(0, 5).map((l: any) => (
+                    <Link key={l.id} href={`/portal/cases/${l.id}`} className="post" style={{ display: "flex", gap: 10, textDecoration: "none", color: "inherit" }}>
+                      <span style={{ fontWeight: 600 }}>{l.lead_no}</span>
+                      <span className="muted">{l.firm_ref_no ?? "no ref"}</span>
+                      <span className="spacer" />
+                      <span className="muted" style={{ fontSize: 12 }}>{Math.floor(daysAgo(l.updated_at))}d</span>
+                    </Link>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div>
+          <div className="board">
+            <div className="board-h"><h3>Quick links</h3></div>
+            <div className="board-body">
+              <div className="post"><Link href="/portal/cases">View all cases →</Link></div>
+              <div className="post"><Link href="/portal/reports">Open reports →</Link></div>
+              <div className="post"><Link href="/portal/resources">Local resources →</Link></div>
+              <div className="post"><Link href="/portal/sop">Crisis SOP →</Link></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

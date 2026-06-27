@@ -1,36 +1,46 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;450;500;600;700&display=swap');
 
 /* ============================================================
-   ClaimReach brand system — navy + gold, light & dark.
-   Mobile-first. Tokens flip on [data-theme].
+   ClaimReach design system v2 — premium SaaS, navy + gold.
+   Display: Plus Jakarta Sans. Body/UI: Inter. Mobile-first.
    ============================================================ */
 
 :root,
 [data-theme="light"] {
-  --bg:        #f4f6f9;
+  --bg:        #f6f7f9;
   --surface:   #ffffff;
-  --surface-2: #f9fafc;
-  --ink:       #0f1b2d;
-  --ink-soft:  #5a6b82;
-  --line:      #e2e7ee;
-  --brand:     #16314f;
-  --brand-2:   #0f1b2d;
+  --surface-2: #f7f8fa;
+  --surface-3: #eef1f5;
+  --ink:       #11192a;
+  --ink-soft:  #67748c;
+  --ink-faint: #98a3b5;
+  --line:      #e7eaf0;
+  --line-soft: #eef1f5;
+  --brand:     #16324f;
+  --brand-2:   #0e1a2c;
   --brand-ink: #ffffff;
-  --accent:    #e0a028;
-  --accent-ink:#0f1b2d;
-  --script-bg: #eef3fa;
-  --script-bd: #c3d6ee;
-  --agent-bg:  #fdf4e3;
-  --agent-bd:  #ecd29a;
-  --danger:    #b22a3a;
-  --danger-bg: #fdeef0;
-  --ok:        #2c7a4b;
-  --ok-bg:     #eaf4ee;
-  --flag:      #c2410c;
-  --flag-bg:   #fff1e8;
-  --logo-ink:    #0f1b2d;
-  --logo-accent: #e0a028;
+  --accent:    #d9982a;
+  --accent-2:  #f0b94a;
+  --accent-ink:#0e1a2c;
+  --script-bg: #eff4fa;
+  --script-bd: #cdddef;
+  --agent-bg:  #fdf5e6;
+  --agent-bd:  #ecd49f;
+  --danger:    #c0392f;
+  --danger-bg: #fcecec;
+  --ok:        #2f8a52;
+  --ok-bg:     #eaf5ee;
+  --flag:      #c2540c;
+  --flag-bg:   #fdf0e6;
+  --logo-ink:    #11192a;
+  --logo-accent: #d9982a;
   --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --sh-1: 0 1px 2px rgba(17,25,42,.04), 0 1px 3px rgba(17,25,42,.03);
+  --sh-2: 0 2px 4px rgba(17,25,42,.05), 0 4px 12px rgba(17,25,42,.05);
+  --sh-3: 0 8px 24px rgba(17,25,42,.10), 0 2px 6px rgba(17,25,42,.05);
+  --ring: 0 0 0 3px rgba(217,152,42,.28);
 }
 
 [data-theme="dark"] {
@@ -57,6 +67,16 @@
   --flag-bg:   #2a1a10;
   --logo-ink:    #ffffff;
   --logo-accent: #e7ab35;
+  --surface-3: #1a2738;
+  --line-soft: #1b2a3e;
+  --ink-faint: #6b7c95;
+  --accent-2:  #f0bd55;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --sh-1: 0 1px 2px rgba(0,0,0,.3);
+  --sh-2: 0 2px 8px rgba(0,0,0,.35);
+  --sh-3: 0 10px 30px rgba(0,0,0,.45);
+  --ring: 0 0 0 3px rgba(231,171,53,.32);
 }
 
 * { box-sizing: border-box; }
@@ -64,7 +84,9 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.006em;
   font-size: 15px;
   line-height: 1.55;
   letter-spacing: 0.01em;
@@ -445,3 +467,96 @@ table.docket.leads tbody tr.needs-action:hover { background:linear-gradient(90de
 .docket.leads .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--accent);
   box-shadow:0 0 0 3px var(--agent-bg); }
 .docket.leads .trunc { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ============================================================
+   PREMIUM COMPONENT LAYER v2 — Close/Attio-grade polish
+   ============================================================ */
+h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.025em; }
+h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+
+/* Buttons — crisp, tactile, branded */
+.btn {
+  font-family: inherit; font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em;
+  padding: 9px 15px; border-radius: var(--radius-sm); border: 1px solid transparent;
+  background: var(--brand-2); color: #fff; cursor: pointer; display: inline-flex;
+  align-items: center; gap: 7px; transition: transform .08s ease, box-shadow .12s ease, background .12s ease;
+  box-shadow: var(--sh-1); white-space: nowrap;
+}
+.btn:hover { background: var(--brand); box-shadow: var(--sh-2); }
+.btn:active { transform: translateY(0.5px); }
+.btn:focus-visible { outline: none; box-shadow: var(--ring); }
+.btn.primary, .btn.gold { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover, .btn.gold:hover { background: var(--accent-2); }
+.btn.secondary { background: var(--surface-3); color: var(--ink); }
+.btn.secondary:hover { background: var(--line); }
+.btn.ghost { background: transparent; color: var(--ink-soft); border-color: var(--line); box-shadow: none; }
+.btn.ghost:hover { background: var(--surface-2); color: var(--ink); border-color: var(--line); }
+.btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+.btn.sm { padding: 6px 11px; font-size: 12.5px; }
+
+/* Inputs — quiet until focused */
+input, textarea, select {
+  font-family: inherit; font-size: 14px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 9px 12px;
+  width: 100%; transition: border-color .12s, box-shadow .12s;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+input::placeholder, textarea::placeholder { color: var(--ink-faint); }
+label { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+
+/* Cards — clean elevation */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--sh-1); }
+.card:hover { box-shadow: var(--sh-2); }
+
+/* Badges — pill, tight, semantic */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 650;
+  letter-spacing: -0.01em; padding: 3px 9px; border-radius: 100px; border: 1px solid transparent;
+  white-space: nowrap; line-height: 1.5;
+}
+.badge.stage { background: var(--script-bg); color: var(--brand); border-color: var(--script-bd); }
+.badge.signed, .badge.count { background: var(--ok-bg); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.badge.dq, .badge.danger { background: var(--danger-bg); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.badge.flag { background: var(--flag-bg); color: var(--flag); border-color: color-mix(in srgb, var(--flag) 30%, transparent); }
+.badge.gold { background: var(--agent-bg); color: var(--accent); border-color: var(--agent-bd); }
+
+/* Chips */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+  padding: 6px 11px; border-radius: 100px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink-soft); cursor: pointer; transition: all .12s;
+}
+.chip:hover { border-color: var(--accent); color: var(--ink); }
+.chip.active { background: var(--brand-2); color: #fff; border-color: var(--brand-2); }
+
+/* Tables — Attio-clean */
+table.docket { width: 100%; border-collapse: collapse; }
+table.docket thead th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-faint); text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+table.docket tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; }
+table.docket tbody tr:last-child td { border-bottom: 0; }
+table.docket tbody tr { transition: background .1s; }
+table.docket tbody tr:hover { background: var(--surface-2); }
+table.docket a { color: var(--brand); font-weight: 600; text-decoration: none; }
+table.docket a:hover { color: var(--accent); }
+
+a { color: var(--brand); }
+.muted { color: var(--ink-soft); }
+.spacer { flex: 1; }
+.row { display: flex; align-items: center; gap: 10px; }
+
+/* Segmented toggle (table/board) */
+.seg-toggle { display:inline-flex; background:var(--surface-3); border-radius:var(--radius-sm); padding:2px; gap:2px; }
+.seg-toggle button { font-size:12.5px; font-weight:600; padding:6px 12px; border:0; background:transparent; color:var(--ink-soft); border-radius:6px; cursor:pointer; }
+.seg-toggle button.active { background:var(--surface); color:var(--ink); box-shadow:var(--sh-1); }
+
+/* Monday-style kanban board */
+.kanban { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(260px,1fr); gap:12px; overflow-x:auto; padding-bottom:8px; }
+.kcol { background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius); display:flex; flex-direction:column; min-height:120px; }
+.kcol-h { display:flex; align-items:center; justify-content:space-between; padding:11px 13px; font-weight:700; font-size:13px; border-bottom:1px solid var(--line); }
+.kcol-body { padding:10px; display:flex; flex-direction:column; gap:9px; }
+.kcard { display:block; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:11px 12px; text-decoration:none; color:inherit; box-shadow:var(--sh-1); transition:transform .08s, box-shadow .12s; }
+.kcard:hover { transform:translateY(-1px); box-shadow:var(--sh-2); border-color:var(--accent); }
+.kcard.needs-action { border-left:3px solid var(--accent); }
+.kcard .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); display:inline-block; }

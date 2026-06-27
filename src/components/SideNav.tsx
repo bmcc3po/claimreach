@@ -2,33 +2,47 @@
 import { useState } from "react";
 import { Logo } from "./Logo";
 
-const NAV = [
+const STAFF_NAV = [
   { href: "/dashboard", icon: "🏠", label: "Home" },
   { href: "/leads", icon: "📁", label: "Leads" },
   { href: "/intake", icon: "➕", label: "Add lead" },
   { href: "/queue", icon: "📞", label: "My Queue" },
+  { href: "/reports", icon: "📊", label: "Reports" },
   { href: "/team", icon: "👥", label: "Team" },
   { href: "/maverick", icon: "⚡", label: "Grievous" },
   { href: "/settings", icon: "⚙️", label: "Settings" },
+  { href: "/profile", icon: "👤", label: "Profile" },
+];
+
+const FIRM_NAV = [
+  { href: "/portal", icon: "🏠", label: "Home" },
+  { href: "/portal/cases", icon: "📁", label: "Cases" },
+  { href: "/portal/reports", icon: "📊", label: "Reports" },
+  { href: "/portal/resources", icon: "🧰", label: "Resources" },
+  { href: "/portal/sop", icon: "📘", label: "SOP" },
+  { href: "/portal/profile", icon: "👤", label: "Profile" },
 ];
 
 export default function SideNav({
-  active, userName, role, topRight, children,
+  active, userName, role, topRight, children, variant = "staff",
 }: {
   active: string;
   userName: string;
   role: string;
   topRight?: React.ReactNode;
   children?: React.ReactNode;
+  variant?: "staff" | "firm";
 }) {
   const [min, setMin] = useState(false);
   const [crisis, setCrisis] = useState(false);
+  const NAV = variant === "firm" ? FIRM_NAV : STAFF_NAV;
+  const homeHref = variant === "firm" ? "/portal" : "/dashboard";
 
   return (
     <div className="shell">
       <aside className={`sidenav ${min ? "min" : ""}`}>
         <div className="brandrow">
-          <a href="/dashboard" aria-label="Home" style={{ lineHeight: 0 }}>
+          <a href={homeHref} aria-label="Home" style={{ lineHeight: 0 }}>
             <Logo height={min ? 30 : 32} wordmark={!min} onDark />
           </a>
         </div>
