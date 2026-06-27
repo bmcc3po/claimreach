@@ -28,3 +28,19 @@ export const HARD_LINES = [
 
 export const ESCALATION_LINE =
   "Stay with them. Connect to 988 (call/text) or 911 if immediate danger. Then notify Brett by all methods and document. The person's safety never waits on reaching anyone.";
+
+// ============================================================================
+// ABSOLUTE PROHIBITIONS — injected into EVERY Crissi AI system prompt. These are
+// non-negotiable and override anything else the model might generate.
+// ============================================================================
+export const CRISSI_NEVER = [
+  "NEVER tell the agent to ask the caller if they are thinking about hurting themselves, harming themselves, or suicide. Do NOT suggest any version of 'are you thinking about hurting yourself', 'are you suicidal', 'do you want to hurt yourself', or any self-harm screening question. Asking this can plant or amplify the idea and is a clinical risk-assessment the agent is NOT permitted to perform.",
+  "NEVER instruct the agent to assess, screen, or evaluate suicide or self-harm risk. That is a trained-clinician function (988), not the agent's. The agent stays present and connects to 988; the agent does NOT probe.",
+  "NEVER name, suggest, or ask about specific methods of self-harm or suicide.",
+  "If the CALLER spontaneously expresses thoughts of self-harm, do NOT have the agent ask follow-up screening questions. The agent acknowledges warmly, stays present, and bridges to 988 ('I'm really glad you told me. I'm not going anywhere. Can we get 988 on with us? I'll stay right here.'). Connect, don't interrogate.",
+  "NEVER tell the agent to diagnose, label, or give medical/psychiatric/legal advice.",
+  "Keep safety checks to gentle, NON-clinical presence only (e.g. 'I'm right here with you'). Do not turn it into a questionnaire.",
+];
+
+export const CRISSI_GUARDRAIL_PROMPT =
+  "ABSOLUTE RULES YOU MUST FOLLOW (these override everything else):\n- " + CRISSI_NEVER.join("\n- ");

@@ -77,7 +77,7 @@ export const BIBLE: BibleEntry[] = [
       { label: "1. Steady yourself first", detail: "One breath. Lower and slow your voice. They will feel your calm. You are the steady hand now." },
       { label: "2. Acknowledge, don't flinch", detail: "\"Thank you for telling me that. I'm really glad you did. I'm not going anywhere.\" Do not change the subject or go silent." },
       { label: "3. Stay present", detail: "\"I'm right here with you. We're going to take this slow, together.\" Let them talk. Don't lecture or argue." },
-      { label: "4. Gently assess immediacy without interrogating", detail: "\"Are you safe right now? Is there anything happening that I should know about so I can help?\" You are listening for immediate danger, not running a clinical screen." },
+      { label: "4. Stay present, do NOT screen or interrogate", detail: "Do NOT ask if they're thinking about hurting themselves, do NOT ask about methods, do NOT run any kind of safety assessment, that can plant the idea and it is not your role. Just stay warm and present: \"I'm so glad you're talking to me. I'm right here.\" Let them lead." },
       { label: "5. Bridge to 988", detail: "\"There are people trained for exactly this, and they're really good. Can we get them on with us? You can call or text 988 and I'll stay right here while you do.\" Offer to stay on the line." },
       { label: "6. If immediate, life-threatening danger", detail: "If they describe an act in progress or imminent harm, that's 911. Get city/state and address if you can. For out-of-area, 988 routes locally and can dispatch." },
       { label: "7. Don't hang up", detail: "Stay until they're connected to 988, a safe person, or the call ends safely. Then notify Brett by all methods and document." },
@@ -87,7 +87,7 @@ export const BIBLE: BibleEntry[] = [
     whatToListenFor: ["A specific plan or means (raises immediacy)", "Sudden calm/resolve after distress", "\"Goodbye\" language", "Giving away the sense they've decided"],
     pitfalls: ["Panicking and over-reacting (calling police on every mention)", "Under-reacting and moving on", "Making promises ('I promise it gets better')", "Treating it like a script interruption to get past"],
     why: "Most people expressing ideation are reaching for connection, not in the act. Presence + 988 is the right-sized response. Police can escalate danger and erode trust; reserve 911 for imminent, life-threatening situations.",
-    hardLines: ["You are not assessing suicide risk clinically — you are staying human and connecting to 988.", "Never promise it will be okay.", "Never abandon them mid-crisis."],
+    hardLines: ["NEVER ask if they're thinking about hurting themselves or about self-harm/suicide methods, asking can plant the idea and is not your role.", "You are not assessing suicide risk clinically, you are staying human and connecting to 988.", "Never promise it will be okay.", "Never abandon them mid-crisis."],
     escalate: "Stay until safely handed off → 988 (or 911 if imminent) → notify Brett by all methods → document factually.",
   },
   {

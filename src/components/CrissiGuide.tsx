@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
 import { BIBLE, BIBLE_GROUPS, searchBible, bibleFallback, type BibleEntry } from "@/lib/bible";
-import { DISCLAIMER_SHORT, DISCLAIMER_FULL, ESCALATION_LINE } from "@/lib/crissi-disclaimers";
+import { DISCLAIMER_SHORT, DISCLAIMER_FULL, ESCALATION_LINE, CRISSI_GUARDRAIL_PROMPT } from "@/lib/crissi-disclaimers";
 import { askAI } from "@/lib/ai";
 import { CrissiLogo } from "./CrissiLogo";
 import { SILVER_LINERS } from "@/lib/silver-liners";
@@ -23,7 +23,7 @@ export default function CrissiGuide() {
   async function ask(prompt?: string) {
     const text = prompt ?? q; if (!text.trim()) return;
     setThread((t) => [...t, { role: "you", text }]); setQ(""); setBusy(true);
-    const system = `You are Crissi, a warm crisis-support coach for legal-intake staff working with trafficking survivors. ${DISCLAIMER_SHORT} Coach the worker on handling the caller and steady them. Stay-with-them. Acute risk: connect to 988 (911 if imminent), don't over-call police for ideation. CRITICAL: never react, gush, or perform (never 'I can't believe you went through that' or 'I could never do it, you're so strong'); don't minimize or glorify; stay calm, neutral, warm, non-judgmental — a vehicle for the facts that get survivors justice, not a character in their story. Brief, concrete. Ground in:\n\n${bibleGrounding()}`;
+    const system = `${CRISSI_GUARDRAIL_PROMPT}\n\nYou are Crissi, a warm crisis-support coach for legal-intake staff working with trafficking survivors. ${DISCLAIMER_SHORT} Coach the worker on handling the caller and steady them. Stay-with-them. Acute risk: connect to 988 (911 if imminent), don't over-call police for ideation. CRITICAL: never react, gush, or perform (never 'I can't believe you went through that' or 'I could never do it, you're so strong'); don't minimize or glorify; stay calm, neutral, warm, non-judgmental — a vehicle for the facts that get survivors justice, not a character in their story. Brief, concrete. Ground in:\n\n${bibleGrounding()}`;
     const out = await askAI(system, text);
     if (out) setThread((t) => [...t, { role: "bot", text: out }]);
     else { const e = bibleFallback(text); setThread((t) => [...t, { role: "bot", text: e ? entryText(e) : ESCALATION_LINE, offline: true }]); }

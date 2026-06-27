@@ -4,7 +4,7 @@ import { COURSE, moduleById, type CourseModule, type QuizQ } from "@/lib/course"
 import { BIBLE } from "@/lib/bible";
 import { SILVER_LINERS } from "@/lib/silver-liners";
 import { askAI } from "@/lib/ai";
-import { DISCLAIMER_SHORT } from "@/lib/crissi-disclaimers";
+import { DISCLAIMER_SHORT, CRISSI_GUARDRAIL_PROMPT } from "@/lib/crissi-disclaimers";
 
 type Progress = Record<string, { status: string; quiz_score?: number; quiz_total?: number }>;
 
@@ -161,7 +161,7 @@ function Drill({ mod }: { mod: CourseModule }) {
   const [busy, setBusy] = useState(false);
   const [started, setStarted] = useState(false);
 
-  const system = `You are running a trauma-informed role-play DRILL for a legal-intake agent in training. ${mod.drill.crissiRole} Stay in character as the caller when role-playing, but when the agent does something notable, briefly step out in [coach: ...] to give one piece of feedback, then resume. Keep it realistic and supportive. Never produce graphic detail. ${DISCLAIMER_SHORT}`;
+  const system = `${CRISSI_GUARDRAIL_PROMPT}\n\nYou are running a trauma-informed role-play DRILL for a legal-intake agent in training. ${mod.drill.crissiRole} Stay in character as the caller when role-playing, but when the agent does something notable, briefly step out in [coach: ...] to give one piece of feedback, then resume. Keep it realistic and supportive. Never produce graphic detail. ${DISCLAIMER_SHORT}`;
 
   async function send(first?: boolean) {
     const text = first ? "Begin the role-play. Set the scene in one line, then start as the caller." : input;
