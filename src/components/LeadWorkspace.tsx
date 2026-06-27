@@ -7,6 +7,8 @@ import ClaimIntake from "./ClaimIntake";
 import ActivityLog from "./ActivityLog";
 import KnowledgePanel from "./KnowledgePanel";
 import ContactInfo from "./ContactInfo";
+import CaseDetails from "./CaseDetails";
+import RetainerTab from "./RetainerTab";
 import NotesTab from "./NotesTab";
 import CallLog from "./CallLog";
 import Crissi from "./Crissi";
@@ -23,10 +25,10 @@ interface Claim {
   answers?: Record<string, any>;
 }
 
-const TABS = ["Case Questions", "Contact Info", "Messages", "Calls", "Criteria", "Notes", "Activity Log"];
+const TABS = ["Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Activity Log"];
 
 export default function LeadWorkspace({
-  lead, claims, activity, stats, claimProperties, audit, notes, callLogs,
+  lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [],
 }: {
   lead: any;
   claims: Claim[];
@@ -36,6 +38,7 @@ export default function LeadWorkspace({
   audit: any[];
   notes: any[];
   callLogs: any[];
+  staff?: { id: string; full_name: string }[];
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -133,7 +136,8 @@ export default function LeadWorkspace({
               </div>
             )}
             {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} />}
-            {tab === "Criteria" && <p className="muted">Campaign criteria checklist coming.</p>}
+            {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} />}
+            {tab === "Retainer" && <RetainerTab leadId={lead.id} />}
             {tab === "Messages" && <CaseMessages leadId={lead.id} claimId={activeClaim?.id} me={lead.current_user_name ?? "Staff"} />}
             {tab === "Calls" && <CallLog leadId={lead.id} claimId={activeClaim?.id} initial={callLogs} />}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}

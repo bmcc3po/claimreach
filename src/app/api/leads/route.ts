@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
   if (op === "save") {
     if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const { lead_id, lead, properties } = payload;
+    if (lead && "full_name" in lead) delete lead.full_name;
 
     const { error: leadErr } = await sb.from("leads").update(lead).eq("id", lead_id);
     if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });

@@ -17,6 +17,18 @@ export default function ContactInfo({ lead, claimType }: { lead: any; claimType?
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
+  // New structured contact fields (names split + preferences + emergency permission).
+  const [x, setX] = useState<Record<string, any>>({
+    first_name: lead.first_name ?? "", last_name: lead.last_name ?? "",
+    dob: lead.dob ?? "", mail_addr1: lead.mail_addr1 ?? "", mail_addr2: lead.mail_addr2 ?? "",
+    mail_city: lead.mail_city ?? "", mail_state: lead.mail_state ?? "", mail_zip: lead.mail_zip ?? "",
+    preferred_language: lead.preferred_language ?? "", preferred_time: lead.preferred_time ?? "",
+    preferred_contact_method: lead.preferred_contact_method ?? "", client_time_zone: lead.client_time_zone ?? "",
+    ec_name: lead.ec_name ?? "", ec_relationship: lead.ec_relationship ?? "", ec_phone: lead.ec_phone ?? "",
+    ec_email: lead.ec_email ?? "", ec_mail: lead.ec_mail ?? "", ec_permission_to_discuss: lead.ec_permission_to_discuss ?? false,
+  });
+  function setx(k: string, v: any) { setX((s) => ({ ...s, [k]: v })); }
+
   function set(k: string, v: any) { setF((s) => ({ ...s, [k]: v })); }
 
   async function save() {
@@ -24,7 +36,7 @@ export default function ContactInfo({ lead, claimType }: { lead: any; claimType?
     // Persist only real lead columns that exist; answers fields go to claim later.
     await fetch("/api/leads", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "save", lead_id: lead.id, lead: f }),
+      body: JSON.stringify({ op: "save", lead_id: lead.id, lead: { ...f, ...x } }),
     }).catch(() => {});
     setSaving(false); setSavedAt(new Date().toLocaleTimeString());
   }
@@ -75,6 +87,41 @@ export default function ContactInfo({ lead, claimType }: { lead: any; claimType?
 
   return (
     <div>
+      <div className="section-title">Client Name</div>
+      <div className="grid2">
+        <div className="field"><label style={{ fontSize: 13 }}>First name</label><input value={x.first_name} onChange={(e) => setx("first_name", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Last name</label><input value={x.last_name} onChange={(e) => setx("last_name", e.target.value)} /></div>
+      </div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Full name (auto): <strong>{[x.first_name, x.last_name].filter(Boolean).join(" ") || "—"}</strong></div>
+
+      <div className="section-title" style={{ marginTop: 16 }}>Mailing Address</div>
+      <div className="field"><label style={{ fontSize: 13 }}>Address</label><input value={x.mail_addr1} onChange={(e) => setx("mail_addr1", e.target.value)} /></div>
+      <div className="grid2">
+        <div className="field"><label style={{ fontSize: 13 }}>City</label><input value={x.mail_city} onChange={(e) => setx("mail_city", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>State</label><input value={x.mail_state} onChange={(e) => setx("mail_state", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>ZIP</label><input value={x.mail_zip} onChange={(e) => setx("mail_zip", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Date of birth</label><input type="date" value={x.dob ?? ""} onChange={(e) => setx("dob", e.target.value)} /></div>
+      </div>
+
+      <div className="section-title" style={{ marginTop: 16 }}>Contact Preferences</div>
+      <div className="grid2">
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred language</label><input value={x.preferred_language} onChange={(e) => setx("preferred_language", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred time</label><input value={x.preferred_time} onChange={(e) => setx("preferred_time", e.target.value)} placeholder="e.g. mornings, after 5pm" /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred contact method</label><input value={x.preferred_contact_method} onChange={(e) => setx("preferred_contact_method", e.target.value)} placeholder="Phone / Text / Email" /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Client time zone</label><input value={x.client_time_zone} onChange={(e) => setx("client_time_zone", e.target.value)} placeholder="e.g. PT, ET" /></div>
+      </div>
+
+      <div className="section-title" style={{ marginTop: 16 }}>Emergency Contact</div>
+      <div className="grid2">
+        <div className="field"><label style={{ fontSize: 13 }}>Name</label><input value={x.ec_name} onChange={(e) => setx("ec_name", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Relationship to client</label><input value={x.ec_relationship} onChange={(e) => setx("ec_relationship", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Phone</label><input value={x.ec_phone} onChange={(e) => setx("ec_phone", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Email</label><input value={x.ec_email} onChange={(e) => setx("ec_email", e.target.value)} /></div>
+      </div>
+      <div className="field"><label style={{ fontSize: 13 }}>Mailing address</label><input value={x.ec_mail} onChange={(e) => setx("ec_mail", e.target.value)} /></div>
+      <label className="fld-row"><input type="checkbox" checked={!!x.ec_permission_to_discuss} onChange={(e) => setx("ec_permission_to_discuss", e.target.checked)} /> Permission to discuss the case with this contact</label>
+
+      {blocks.length > 0 && <div className="section-title" style={{ marginTop: 18 }}>Additional Contact Fields</div>}
       {blocks}
       <div className="seg-nav">
         <div className="spacer" />

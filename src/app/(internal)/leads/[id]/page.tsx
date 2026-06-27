@@ -54,6 +54,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   // Lightweight my-day stats placeholder (wired to real metrics later).
   const stats = { signed: 0, tierA: 0, weekPay: 0, wip: claims?.length ?? 0 };
 
+  const { data: staff } = await sb.from("app_users").select("id, full_name").order("full_name");
+
   return (
     <LeadWorkspace
       lead={lead}
@@ -64,6 +66,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       audit={audit ?? []}
       notes={notes ?? []}
       callLogs={callLogs ?? []}
+      staff={staff ?? []}
     />
   );
 }
