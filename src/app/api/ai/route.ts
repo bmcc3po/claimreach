@@ -2,35 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 export const runtime = "edge";
 
-// AI relay — forwards { system, user } to the Mac relay (Codex/OpenAI via OpenClaw),
-// adding the protected secret server-side. Same contract as maverick-qa.js: { answer }.
-const RELAY_URL = "https://bretts-macbook-air.hair-tarpon.ts.net/mav/qa";
-const HEALTH_URL = "https://bretts-macbook-air.hair-tarpon.ts.net/mav/health";
+// Cloudflare's edge can't resolve the Mac's .ts.net Funnel hostname (error 1016),
+// but Netlify CAN. So we forward through a thin Netlify relay function that calls
+// the Mac. Set AI_RELAY_URL (the Netlify function URL) + optional CR_AI_GATE.
+const DEFAULT_RELAY = "https://claimreach.netlify.app/.netlify/functions/ai-relay";
 
-// GET /api/ai?health=1 — diagnostic. Tells us exactly what's wrong without leaking the secret.
+function relayUrl() { return process.env.AI_RELAY_URL || DEFAULT_RELAY; }
+
+// GET ?health=1 — diagnostic passthrough to the Netlify relay.
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  if (!url.searchParams.get("health")) return NextResponse.json({ ok: true, hint: "POST { system, user } to use; ?health=1 to diagnose" });
-  const secret = process.env.MAVERICK_RELAY_SECRET;
-  const diag: Record<string, unknown> = { secretSet: !!secret, relay: RELAY_URL };
-  // 1. Can the edge even reach the Mac (health endpoint, no secret)?
+  if (!url.searchParams.get("health")) return NextResponse.json({ ok: true, relay: relayUrl() });
   try {
-    const h = await fetch(HEALTH_URL, { method: "GET" });
-    diag.healthStatus = h.status;
-    diag.healthBody = (await h.text()).slice(0, 200);
-  } catch (e: any) { diag.healthError = String(e?.message ?? e); }
-  // 2. Does an authed POST with the secret return an answer?
-  if (secret) {
-    try {
-      const r = await fetch(RELAY_URL, {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Maverick-Secret": secret },
-        body: JSON.stringify({ system: "You are a test.", user: "say OK" }),
-      });
-      diag.qaStatus = r.status;
-      diag.qaBody = (await r.text()).slice(0, 200);
-    } catch (e: any) { diag.qaError = String(e?.message ?? e); }
+    const r = await fetch(`${relayUrl()}?health=1`, { method: "GET" });
+    const body = await r.text();
+    return NextResponse.json({ relay: relayUrl(), status: r.status, body: body.slice(0, 300) });
+  } catch (e: any) {
+    return NextResponse.json({ relay: relayUrl(), error: String(e?.message ?? e) });
   }
-  return NextResponse.json(diag);
 }
 
 export async function POST(req: NextRequest) {
@@ -38,22 +27,17 @@ export async function POST(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const secret = process.env.MAVERICK_RELAY_SECRET;
-  if (!secret) return NextResponse.json({ answer: "", error: "no_secret" }, { status: 200 });
-
   const { system, user } = await req.json();
   try {
-    const r = await fetch(RELAY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Maverick-Secret": secret },
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (process.env.CR_AI_GATE) headers["X-CR-Secret"] = process.env.CR_AI_GATE;
+    const r = await fetch(relayUrl(), {
+      method: "POST", headers,
       body: JSON.stringify({ system: system ?? "", user: user ?? "" }),
     });
-    if (!r.ok) {
-      const body = (await r.text()).slice(0, 300);
-      return NextResponse.json({ answer: "", error: `relay_${r.status}`, detail: body }, { status: 200 });
-    }
+    if (!r.ok) return NextResponse.json({ answer: "", error: `relay_${r.status}` }, { status: 200 });
     const d = await r.json();
-    return NextResponse.json({ answer: d.answer ?? d.text ?? "" });
+    return NextResponse.json({ answer: d.answer ?? "" });
   } catch (e: any) {
     return NextResponse.json({ answer: "", error: "unreachable", detail: String(e?.message ?? e) }, { status: 200 });
   }
