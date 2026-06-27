@@ -737,3 +737,11 @@ a { color: var(--brand); }
 .builder-kinds { display:flex; flex-wrap:wrap; gap:6px; }
 .fld-label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); margin:10px 0 4px; }
 .fld-row { display:flex; align-items:center; gap:8px; font-size:13px; margin:10px 0; }
+
+/* Form builder — toolbar, conditions */
+.builder-toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; padding:10px; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-sm); }
+.cond-box { margin-top:12px; padding:10px 12px; background:var(--script-bg); border:1px solid var(--line); border-radius:var(--radius-sm); }
+.cond-note { font-size:12px; margin-top:10px; }
+.cond-rule { display:flex; gap:5px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
+.cond-rule select, .cond-rule input { font-size:12.5px; padding:5px 7px; }
+select.sm, input.sm { font-size:12.5px; padding:5px 8px; }

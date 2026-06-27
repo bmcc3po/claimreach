@@ -14,6 +14,17 @@ export type FieldKind =
   | "int" | "monthyear" | "script" | "section" | "gate" | "property_lookup"
   | "date" | "phone" | "email" | "facility_lookup";
 
+export interface Condition {
+  fieldId: string;                 // an earlier field's id
+  op: "is" | "is_not" | "any_of" | "is_blank" | "not_blank";
+  value?: string;                  // for is/is_not
+  values?: string[];              // for any_of
+}
+export interface ShowIf {
+  match: "all" | "any";            // AND vs OR
+  rules: Condition[];
+}
+
 export interface Field {
   id: string;            // db column (or synthetic for script/section/gate)
   scope: "lead" | "property";
@@ -26,6 +37,7 @@ export interface Field {
   gateType?: "dq" | "supervisor" | "safety" | "end_intake";
   surface?: "intake" | "contact" | "both";  // where this field appears; default intake
   locField?: string;     // for facility_lookup: id of the paired city/state field to auto-fill
+  showIf?: ShowIf;        // conditional visibility (AND/OR of rules on earlier answers)
 }
 
 export const INTAKE: Field[] = [
@@ -386,4 +398,27 @@ export function segmentsForType(claimType: string): Segment[] {
 }
 export function contactFieldsForType(claimType: string): Field[] {
   return contactFieldsFrom(intakeForType(claimType));
+}
+
+// Evaluate a field's showIf against the current answers. No condition = always show.
+export function fieldVisible(field: Field, answers: Record<string, any>): boolean {
+  const si = field.showIf;
+  if (!si || !si.rules || si.rules.length === 0) return true;
+  const test = (c: Condition): boolean => {
+    const v = answers[c.fieldId];
+    const sv = v == null ? "" : Array.isArray(v) ? v.join("|") : String(v);
+    switch (c.op) {
+      case "is": return sv === (c.value ?? "");
+      case "is_not": return sv !== (c.value ?? "");
+      case "any_of": {
+        const set = c.values ?? [];
+        if (Array.isArray(v)) return v.some((x) => set.includes(String(x)));
+        return set.includes(sv);
+      }
+      case "is_blank": return sv === "";
+      case "not_blank": return sv !== "";
+      default: return true;
+    }
+  };
+  return si.match === "any" ? si.rules.some(test) : si.rules.every(test);
 }

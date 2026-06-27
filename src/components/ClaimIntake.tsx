@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { INTAKE, intakeForType, segmentsForType, segmentsFrom } from "@/lib/questionnaire";
+import { INTAKE, intakeForType, segmentsForType, segmentsFrom, fieldVisible } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PropertyLookup, { type ResolvedProperty } from "./PropertyLookup";
 import CalendlyEmbed from "./CalendlyEmbed";
@@ -159,6 +159,7 @@ export default function ClaimIntake({
                   </>
                 ) : (
                   seg.fields.map((f) => {
+                    if (!fieldVisible(f, answers)) return null;
                     if (f.kind === "script" || f.kind === "gate") {
                       return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />;
                     }
@@ -215,6 +216,7 @@ export default function ClaimIntake({
                 out.push(
                   <div className="grid2" key={`g-${key}`}>
                     {bucket.map((f) => {
+                      if (!fieldVisible(f, answers)) return null;
                       const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                       return (
                         <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
