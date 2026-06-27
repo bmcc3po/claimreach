@@ -46,6 +46,11 @@ export async function POST(req: NextRequest) {
     if (p.dq_reason !== undefined) patch.dq_reason = p.dq_reason;
     const { error } = await sb.from("claims").update(patch).eq("id", p.claim_id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // On qualify/sign, enroll the lead into active drip rules.
+    if (["qualified", "signed"].includes(p.status)) {
+      const { data: cl } = await sb.from("claims").select("lead_id, firm_id").eq("id", p.claim_id).maybeSingle();
+      if (cl?.lead_id) { try { await sb.rpc("enroll_drips_for_lead", { p_lead: cl.lead_id, p_firm: cl.firm_id }); } catch {} }
+    }
     return NextResponse.json({ ok: true });
   }
 

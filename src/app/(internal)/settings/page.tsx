@@ -1,5 +1,6 @@
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
+import DripManager from "@/components/DripManager";
 
 export default async function SettingsPage() {
   const sb = await supabaseServer();
@@ -34,6 +35,7 @@ export default async function SettingsPage() {
           </tbody>
         </table>
       </div>
+      <DripManager />
       <div className="side-card" style={{ maxWidth: 620 }}>
         <h3>Calendly</h3>
         <p className="muted">Per-agent scheduling links are configured here (coming).</p>

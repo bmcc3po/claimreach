@@ -21,7 +21,8 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs }: 
   }
   async function sendNote(scope: string, body: string) {
     if (!body.trim()) return;
-    await fetch("/api/notes", { method: "POST", headers: { "Content-Type": "application/json" },
+    const endpoint = scope === "request_info" ? "/api/request-info" : "/api/notes";
+    await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lead_id: lead.id, claim_id: claim.id, scope, body }) }).catch(() => {});
   }
 

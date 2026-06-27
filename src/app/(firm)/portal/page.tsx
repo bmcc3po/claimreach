@@ -1,12 +1,19 @@
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
+import BoardCard from "@/components/BoardCard";
 
 export default async function FirmHome() {
   const sb = await supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
-  const { data: me } = await sb.from("app_users").select("full_name, firm_id").eq("id", user!.id).maybeSingle();
+  const { data: me } = await sb.from("app_users").select("full_name, firm_id, role").eq("id", user!.id).maybeSingle();
   const { data: firm } = await sb.from("firms").select("name").eq("id", me!.firm_id).maybeSingle();
+
+  // Shared bulletin boards (one team). Firm can post to firm-enabled boards.
+  const { data: boards } = await sb.from("boards").select("*").order("sort_order");
+  const { data: bulletins } = await sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(40);
+  const byBoard: Record<string, any[]> = {};
+  for (const b of bulletins ?? []) (byBoard[b.board_id] ||= []).push(b);
 
   // RLS scopes to the firm.
   const { data: leads } = await sb.from("leads")
@@ -91,6 +98,9 @@ export default async function FirmHome() {
               <div className="post"><Link href="/portal/sop">Crisis SOP →</Link></div>
             </div>
           </div>
+          {(boards ?? []).map((b) => (
+            <BoardCard key={b.id} board={b} posts={byBoard[b.id] ?? []} canPost={b.post_roles.includes(me!.role)} />
+          ))}
         </div>
       </div>
     </div>
