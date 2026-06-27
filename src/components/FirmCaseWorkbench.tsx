@@ -3,7 +3,7 @@ import { useState } from "react";
 import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
 import TierEditor from "./TierEditor";
 import CallLog from "./CallLog";
-import CrisisCoach from "./CrisisCoach";
+import CrisisBot from "./CrisisBot";
 import CaseDocuments from "./CaseDocuments";
 import CaseMessages from "./CaseMessages";
 
@@ -97,7 +97,7 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs }: 
 
         <div>
           <TierEditor claimId={claim.id} claimType={lead.case_type} letter={claim.tier_letter} number={claim.tier_number} />
-          <CrisisCoach />
+          <CrisisBot trigger="inline" />
         </div>
       </div>
     </div>

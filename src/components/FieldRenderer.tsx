@@ -1,17 +1,31 @@
 "use client";
 import type { Field } from "@/lib/questionnaire";
+import FacilityLookup from "./FacilityLookup";
 
 export default function FieldRenderer({
   field,
   value,
   onChange,
+  onSetField,
 }: {
   field: Field;
   value: any;
   onChange: (v: any) => void;
+  onSetField?: (id: string, v: any) => void;
 }) {
   if (field.kind === "section") {
     return <div className="section-title">{field.label}</div>;
+  }
+  if (field.kind === "facility_lookup") {
+    return (
+      <FacilityLookup
+        value={value}
+        onPick={(name, loc) => {
+          onChange(name);
+          if (field.locField && onSetField) onSetField(field.locField, loc);
+        }}
+      />
+    );
   }
   if (field.kind === "script") {
     return (

@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return NextResponse.json({ error: "maps key missing" }, { status: 500 });
 
-  const { query, lat, lng, motel6Only } = await req.json();
+  const { query, lat, lng, motel6Only, kind } = await req.json();
   if (!query || typeof query !== "string") {
     return NextResponse.json({ error: "query required" }, { status: 400 });
   }
@@ -19,8 +19,13 @@ export async function POST(req: NextRequest) {
   const body: Record<string, unknown> = {
     textQuery,
     maxResultCount: 10,
-    includedType: "lodging",
   };
+  // Default to lodging (trafficking property lookup); allow other types (e.g. medical facility).
+  if (kind === "facility") {
+    // No includedType filter — hospitals, clinics, surgery centers, offices all match.
+  } else {
+    body.includedType = "lodging";
+  }
   if (typeof lat === "number" && typeof lng === "number") {
     body.locationBias = {
       circle: { center: { latitude: lat, longitude: lng }, radius: 8000 },

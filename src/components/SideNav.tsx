@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Logo } from "./Logo";
+import CrisisBot from "./CrisisBot";
 
 const STAFF_NAV = [
   { href: "/dashboard", icon: "🏠", label: "Home" },
@@ -34,7 +35,6 @@ export default function SideNav({
   variant?: "staff" | "firm";
 }) {
   const [min, setMin] = useState(false);
-  const [crisis, setCrisis] = useState(false);
   const NAV = variant === "firm" ? FIRM_NAV : STAFF_NAV;
   const homeHref = variant === "firm" ? "/portal" : "/dashboard";
 
@@ -71,32 +71,7 @@ export default function SideNav({
         <div className="shell-body">{children}</div>
       </div>
 
-      <button className="crisis-fab" onClick={() => setCrisis(true)}>🆘 Crisis help</button>
-      {crisis && <CrisisModal onClose={() => setCrisis(false)} />}
-    </div>
-  );
-}
-
-function CrisisModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-h">
-          <h3>Crisis support</h3>
-          <button className="btn ghost" onClick={onClose}>Close</button>
-        </div>
-        <div className="modal-b">
-          <p className="muted">If the claimant is in immediate danger, call 911 first.</p>
-          <div className="board" style={{ marginBottom: 14 }}>
-            <div className="board-body">
-              <div className="post"><strong>988 Suicide &amp; Crisis Lifeline</strong><div className="pmeta">Call or text 988</div></div>
-              <div className="post"><strong>National Human Trafficking Hotline</strong><div className="pmeta">1-888-373-7888 · text 233733</div></div>
-              <div className="post"><strong>Internal escalation</strong><div className="pmeta">Flag a supervisor in the file and notify the floor.</div></div>
-            </div>
-          </div>
-          <p className="muted">In-the-moment coaching bot is coming next, it will help you find the right words for a claimant in distress.</p>
-        </div>
-      </div>
+      <CrisisBot trigger="fab" />
     </div>
   );
 }

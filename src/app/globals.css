@@ -590,3 +590,17 @@ a { color: var(--brand); }
 .msg-bubble { max-width:78%; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:9px 12px; font-size:13.5px; }
 .msg.mine .msg-bubble { background:var(--brand); color:#fff; border-color:var(--brand); }
 .msg.mine .msg-bubble div { color:#fff !important; }
+
+/* Facility lookup popover */
+.lookup-pop { position:absolute; top:100%; left:0; right:0; z-index:20; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-sm); box-shadow:var(--sh-3); margin-top:4px; max-height:280px; overflow-y:auto; }
+.lookup-item { display:flex; flex-direction:column; gap:2px; width:100%; text-align:left; padding:10px 12px; background:transparent; border:0; border-bottom:1px solid var(--line-soft); cursor:pointer; }
+.lookup-item:hover { background:var(--surface-2); }
+
+/* Crisis bot modal */
+.crisis-modal { max-width:760px; width:94vw; }
+.crisis-resources { display:flex; gap:6px; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--surface-2); }
+.crisis-body { max-height:62vh; overflow-y:auto; }
+.crisis-learn { display:grid; grid-template-columns:230px 1fr; gap:16px; }
+@media(max-width:680px){ .crisis-learn{grid-template-columns:1fr} }
+.crisis-topics { border-right:1px solid var(--line); padding-right:12px; max-height:50vh; overflow-y:auto; }
+.crisis-fab { position:fixed; right:18px; bottom:18px; z-index:50; background:var(--danger); color:#fff; border:0; border-radius:100px; padding:12px 18px; font-weight:700; font-size:14px; cursor:pointer; box-shadow:var(--sh-3); }

@@ -12,7 +12,7 @@
 export type FieldKind =
   | "text" | "longtext" | "bool" | "select" | "multiselect"
   | "int" | "monthyear" | "script" | "section" | "gate" | "property_lookup"
-  | "date" | "phone" | "email";
+  | "date" | "phone" | "email" | "facility_lookup";
 
 export interface Field {
   id: string;            // db column (or synthetic for script/section/gate)
@@ -25,6 +25,7 @@ export interface Field {
   vital?: boolean;       // highlighted as vital in the original
   gateType?: "dq" | "supervisor" | "safety" | "end_intake";
   surface?: "intake" | "contact" | "both";  // where this field appears; default intake
+  locField?: string;     // for facility_lookup: id of the paired city/state field to auto-fill
 }
 
 export const INTAKE: Field[] = [

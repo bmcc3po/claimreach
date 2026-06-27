@@ -9,7 +9,7 @@ import KnowledgePanel from "./KnowledgePanel";
 import ContactInfo from "./ContactInfo";
 import NotesTab from "./NotesTab";
 import CallLog from "./CallLog";
-import CrisisCoach from "./CrisisCoach";
+import CrisisBot from "./CrisisBot";
 import CaseMessages from "./CaseMessages";
 
 interface Claim {
@@ -145,7 +145,7 @@ export default function LeadWorkspace({
         <div>
           <VitalsCard lead={lead} />
           <KnowledgePanel claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
-          <CrisisCoach />
+          <CrisisBot trigger="inline" />
           <GrievousPanel />
           <ConversationPanel
             leadId={lead.id}
