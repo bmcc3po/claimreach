@@ -12,5 +12,6 @@ export default async function FirmCaseDetail({ params }: { params: Promise<{ id:
   const { data: activity } = await sb.from("audit_log")
     .select("created_at, actor_name, category, description").eq("lead_id", id)
     .order("created_at", { ascending: false }).limit(100);
-  return <FirmCaseWorkbench lead={lead} claims={claims ?? []} activity={activity ?? []} />;
+  const { data: callLogs } = await sb.from("call_logs").select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100);
+  return <FirmCaseWorkbench lead={lead} claims={claims ?? []} activity={activity ?? []} callLogs={callLogs ?? []} />;
 }

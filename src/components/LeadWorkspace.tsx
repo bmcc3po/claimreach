@@ -8,6 +8,8 @@ import ActivityLog from "./ActivityLog";
 import KnowledgePanel from "./KnowledgePanel";
 import ContactInfo from "./ContactInfo";
 import NotesTab from "./NotesTab";
+import CallLog from "./CallLog";
+import CrisisCoach from "./CrisisCoach";
 
 interface Claim {
   id: string;
@@ -20,10 +22,10 @@ interface Claim {
   answers?: Record<string, any>;
 }
 
-const TABS = ["Case Questions", "Contact Info", "Criteria", "Notes", "Activity Log"];
+const TABS = ["Case Questions", "Contact Info", "Calls", "Criteria", "Notes", "Activity Log"];
 
 export default function LeadWorkspace({
-  lead, claims, activity, stats, claimProperties, audit, notes,
+  lead, claims, activity, stats, claimProperties, audit, notes, callLogs,
 }: {
   lead: any;
   claims: Claim[];
@@ -32,6 +34,7 @@ export default function LeadWorkspace({
   claimProperties: Record<string, any[]>;
   audit: any[];
   notes: any[];
+  callLogs: any[];
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -130,6 +133,7 @@ export default function LeadWorkspace({
             )}
             {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} />}
             {tab === "Criteria" && <p className="muted">Campaign criteria checklist coming.</p>}
+            {tab === "Calls" && <CallLog leadId={lead.id} claimId={activeClaim?.id} initial={callLogs} />}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}
           </div>
@@ -139,6 +143,7 @@ export default function LeadWorkspace({
         <div>
           <VitalsCard lead={lead} />
           <KnowledgePanel claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
+          <CrisisCoach />
           <GrievousPanel />
           <ConversationPanel
             leadId={lead.id}

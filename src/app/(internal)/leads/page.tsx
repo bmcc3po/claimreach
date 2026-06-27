@@ -1,6 +1,6 @@
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
-import LeadsTable from "@/components/LeadsTable";
+import LeadsView from "@/components/LeadsView";
 
 export default async function LeadsPage() {
   const sb = await supabaseServer();
@@ -20,5 +20,5 @@ export default async function LeadsPage() {
   }
   const withClaims = (leads ?? []).map((l) => ({ ...l, claims: claimsByLead[l.id] ?? [] }));
 
-  return <LeadsTable leads={withClaims} />;
+  return <LeadsView leads={withClaims} basePath="/leads" addPath="/intake" />;
 }

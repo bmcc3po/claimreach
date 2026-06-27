@@ -2,8 +2,11 @@
 import { useState } from "react";
 import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
 import TierEditor from "./TierEditor";
+import CallLog from "./CallLog";
+import CrisisCoach from "./CrisisCoach";
+import CaseDocuments from "./CaseDocuments";
 
-export default function FirmCaseWorkbench({ lead, claims, activity }: { lead: any; claims: any[]; activity: any[] }) {
+export default function FirmCaseWorkbench({ lead, claims, activity, callLogs }: { lead: any; claims: any[]; activity: any[]; callLogs: any[] }) {
   const claim = claims[0] ?? {};
   const [stage, setStage] = useState(lead.stage);
   const [tab, setTab] = useState("overview");
@@ -22,7 +25,7 @@ export default function FirmCaseWorkbench({ lead, claims, activity }: { lead: an
       body: JSON.stringify({ lead_id: lead.id, claim_id: claim.id, scope, body }) }).catch(() => {});
   }
 
-  const TABS = ["overview", "intake", "documents", "messages", "activity"];
+  const TABS = ["overview", "intake", "calls", "documents", "messages", "activity"];
 
   return (
     <div>
@@ -66,16 +69,8 @@ export default function FirmCaseWorkbench({ lead, claims, activity }: { lead: an
                 ))}
               </div>
             )}
-            {tab === "documents" && (
-              <div>
-                <div className="section-title">Documents (LOR, retainer, records)</div>
-                <div className="card" style={{ padding: 20, textAlign: "center", borderStyle: "dashed" }}>
-                  <p className="muted">Drag a file here or click to upload the LOR.</p>
-                  <button className="btn">Upload document</button>
-                  <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Secure document vault — coming online with storage.</p>
-                </div>
-              </div>
-            )}
+            {tab === "calls" && <CallLog leadId={lead.id} claimId={claim.id} initial={callLogs} />}
+            {tab === "documents" && <CaseDocuments leadId={lead.id} claimId={claim.id} />}
             {tab === "messages" && (
               <div>
                 <div className="section-title">Text the client</div>
@@ -99,6 +94,7 @@ export default function FirmCaseWorkbench({ lead, claims, activity }: { lead: an
 
         <div>
           <TierEditor claimId={claim.id} claimType={lead.case_type} letter={claim.tier_letter} number={claim.tier_number} />
+          <CrisisCoach />
         </div>
       </div>
     </div>
