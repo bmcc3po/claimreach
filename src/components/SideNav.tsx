@@ -12,6 +12,7 @@ const STAFF_NAV = [
   { href: "/team", icon: "👥", label: "Team" },
   { href: "/maverick", icon: "⚡", label: "Grievous" },
   { href: "/crissi", icon: "🆘", label: "Crissi" },
+  { href: "/academy", icon: "🎓", label: "Academy" },
   { href: "/settings", icon: "⚙️", label: "Settings" },
   { href: "/profile", icon: "👤", label: "Profile" },
 ];
@@ -23,6 +24,7 @@ const FIRM_NAV = [
   { href: "/portal/resources", icon: "🧰", label: "Resources" },
   { href: "/portal/sop", icon: "📘", label: "SOP" },
   { href: "/portal/crissi", icon: "🆘", label: "Crissi" },
+  { href: "/portal/academy", icon: "🎓", label: "Academy" },
   { href: "/portal/profile", icon: "👤", label: "Profile" },
 ];
 

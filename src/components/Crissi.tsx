@@ -4,20 +4,12 @@ import { CRISIS_SOP } from "@/lib/sop";
 import { BIBLE, BIBLE_GROUPS, searchBible, bibleFallback, type BibleEntry } from "@/lib/bible";
 import { DISCLAIMER_SHORT, DISCLAIMER_FULL, ESCALATION_LINE } from "@/lib/crissi-disclaimers";
 import { askAI } from "@/lib/ai";
-import { Logo } from "./Logo";
+import { CrissiLogo } from "./CrissiLogo";
 import { SILVER_LINERS, linersFor } from "@/lib/silver-liners";
+import SilverLiners from "./SilverLiners";
 
-type Mode = "moment" | "bible" | "sop";
+type Mode = "moment" | "bible" | "liners" | "sop";
 
-function CrissiMark({ size = 22 }: { size?: number }) {
-  // CR logo mark + "issi" — her name belongs to ClaimReach.
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontWeight: 800, fontSize: size }}>
-      <Logo height={size + 4} wordmark={false} />
-      <span style={{ letterSpacing: "-0.02em", color: "var(--ink)" }}>issi</span>
-    </span>
-  );
-}
 
 function bibleGrounding() {
   return BIBLE.map((e) =>
@@ -46,7 +38,7 @@ export default function Crissi({ trigger = "fab" }: { trigger?: "fab" | "inline"
     if (!text.trim()) return;
     setThread((t) => [...t, { role: "you", text }]); setQ(""); setBusy(true);
 
-    const system = `You are Crissi, a warm, calm crisis-support coach for a legal-intake agent or case manager working with trafficking survivors (who often have histories of DV, sexual assault, incest, substance use, legal-system trauma, and suicidal ideation). ${DISCLAIMER_SHORT} Coach the worker on how to handle the CALLER (exact words, which resource, when to escalate) and steady the worker too. Stay-with-them, don't-abandon. For acute risk: stay, stabilize, connect to 988 (or 911 if imminent danger), don't over-call police for mere ideation. Empathy not sympathy. Be brief and concrete: 2-5 things to say or do now. Ground in this doctrine:\n\n${bibleGrounding()}\n\nSILVER LINERS (offer warmly when it fits): ${SILVER_LINERS.flatMap((g)=>g.liners.map((l)=>l.line)).join(" | ")}`;
+    const system = `You are Crissi, a warm, calm crisis-support coach for a legal-intake agent or case manager working with trafficking survivors (who often have histories of DV, sexual assault, incest, substance use, legal-system trauma, and suicidal ideation). ${DISCLAIMER_SHORT} Coach the worker on how to handle the CALLER (exact words, which resource, when to escalate) and steady the worker too. Stay-with-them, don't-abandon. For acute risk: stay, stabilize, connect to 988 (or 911 if imminent danger), don't over-call police for mere ideation. CRITICAL: never react, gush, or perform — never say things like 'I can't believe you went through that' or 'I could never do it, you're so strong.' Don't minimize and don't glorify. Stay calm, neutral, warm, non-judgmental; you are a vehicle for the facts that get survivors justice, not a character in their story. Empathy not sympathy. Be brief and concrete: 2-5 things to say or do now. Ground in this doctrine:\n\n${bibleGrounding()}\n\nSILVER LINERS (offer warmly when it fits): ${SILVER_LINERS.flatMap((g)=>g.liners.map((l)=>l.line)).join(" | ")}`;
 
     const out = await askAI(system, text);
     if (out) {
@@ -81,10 +73,11 @@ export default function Crissi({ trigger = "fab" }: { trigger?: "fab" | "inline"
     <div className="modal-back" onClick={() => setOpen(false)}>
       <div className={`modal crissi-modal ${full ? "full" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-h crissi-head">
-          <CrissiMark size={20} />
+          <CrissiLogo height={24} />
           <div className="seg-toggle" style={{ marginLeft: 12 }}>
             <button className={mode === "moment" ? "active" : ""} onClick={() => setMode("moment")}>In the moment</button>
             <button className={mode === "bible" ? "active" : ""} onClick={() => setMode("bible")}>The Bible</button>
+            <button className={mode === "liners" ? "active" : ""} onClick={() => setMode("liners")}>Silver Liners</button>
             <button className={mode === "sop" ? "active" : ""} onClick={() => setMode("sop")}>SOP</button>
           </div>
           <span className="spacer" />
@@ -165,6 +158,13 @@ export default function Crissi({ trigger = "fab" }: { trigger?: "fab" | "inline"
                 {!selected && <p className="muted">Pick a topic or search. In an emergency, the 🚨 entries are step-by-step.</p>}
                 {selected && <BibleDetail e={selected} onPractice={(t) => { setMode("moment"); ask(t); }} />}
               </div>
+            </div>
+          )}
+
+          {mode === "liners" && (
+            <div>
+              <div className="disclaimer-bar" style={{ marginBottom: 12 }}>Hopeful lines to get a caller through the call and the day — a bandage, not a fix. Use with warmth and timing, never to rush or minimize.</div>
+              <SilverLiners />
             </div>
           )}
 

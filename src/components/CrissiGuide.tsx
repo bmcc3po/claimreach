@@ -3,8 +3,9 @@ import { useState, useMemo } from "react";
 import { BIBLE, BIBLE_GROUPS, searchBible, bibleFallback, type BibleEntry } from "@/lib/bible";
 import { DISCLAIMER_SHORT, DISCLAIMER_FULL, ESCALATION_LINE } from "@/lib/crissi-disclaimers";
 import { askAI } from "@/lib/ai";
-import { Logo } from "./Logo";
-import { SILVER_LINERS, randomLiner } from "@/lib/silver-liners";
+import { CrissiLogo } from "./CrissiLogo";
+import { SILVER_LINERS } from "@/lib/silver-liners";
+import SilverLiners from "./SilverLiners";
 
 // Full-page Crissi — the whole Bible as a searchable guide, plus in-the-moment chat.
 export default function CrissiGuide() {
@@ -22,7 +23,7 @@ export default function CrissiGuide() {
   async function ask(prompt?: string) {
     const text = prompt ?? q; if (!text.trim()) return;
     setThread((t) => [...t, { role: "you", text }]); setQ(""); setBusy(true);
-    const system = `You are Crissi, a warm crisis-support coach for legal-intake staff working with trafficking survivors. ${DISCLAIMER_SHORT} Coach the worker on handling the caller and steady them. Stay-with-them. Acute risk: connect to 988 (911 if imminent), don't over-call police for ideation. Brief, concrete. Ground in:\n\n${bibleGrounding()}`;
+    const system = `You are Crissi, a warm crisis-support coach for legal-intake staff working with trafficking survivors. ${DISCLAIMER_SHORT} Coach the worker on handling the caller and steady them. Stay-with-them. Acute risk: connect to 988 (911 if imminent), don't over-call police for ideation. CRITICAL: never react, gush, or perform (never 'I can't believe you went through that' or 'I could never do it, you're so strong'); don't minimize or glorify; stay calm, neutral, warm, non-judgmental — a vehicle for the facts that get survivors justice, not a character in their story. Brief, concrete. Ground in:\n\n${bibleGrounding()}`;
     const out = await askAI(system, text);
     if (out) setThread((t) => [...t, { role: "bot", text: out }]);
     else { const e = bibleFallback(text); setThread((t) => [...t, { role: "bot", text: e ? entryText(e) : ESCALATION_LINE, offline: true }]); }
@@ -38,10 +39,7 @@ export default function CrissiGuide() {
   return (
     <div>
       <div className="row" style={{ marginBottom: 4 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-          <Logo height={30} wordmark={false} />
-          <span style={{ fontWeight: 800, fontSize: 26, letterSpacing: "-0.02em" }}>issi</span>
-        </span>
+<CrissiLogo height={38} />
         <span className="badge gold" style={{ marginLeft: 8 }}>Crisis support & trauma-informed guide</span>
       </div>
       <p className="muted" style={{ marginTop: 0 }}>Your empathic playbook and in-the-moment coach. Stabilize, connect, escalate.</p>
@@ -81,19 +79,8 @@ export default function CrissiGuide() {
             </div>
           )}
           <div className="card" style={{ padding: 18, marginTop: 16 }}>
-            <div className="row"><h3 style={{ margin: 0 }}>✨ Silver Liners</h3><span className="muted" style={{ marginLeft: 8, fontSize: 13 }}>hopeful one-liners to lift a chin — use with warmth, never to rush</span></div>
-            {SILVER_LINERS.map((g) => (
-              <div key={g.id} style={{ marginTop: 12 }}>
-                <div className="section-title">{g.label}</div>
-                <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>{g.intro}</p>
-                {g.liners.map((l, i) => (
-                  <div key={i} className="liner">
-                    <div className="liner-line">"{l.line}"</div>
-                    <div className="liner-when"><strong>When:</strong> {l.when}{l.note ? ` — ${l.note}` : ""}</div>
-                  </div>
-                ))}
-              </div>
-            ))}
+            <div className="row"><h3 style={{ margin: 0 }}>✨ Silver Liners</h3><span className="muted" style={{ marginLeft: 8, fontSize: 13 }}>hopeful lines to get them through the call and the day — a bandage, not a fix</span></div>
+            <div style={{ marginTop: 12 }}><SilverLiners /></div>
           </div>
           <div className="card" style={{ padding: 14, marginTop: 16 }}>
             <div className="section-title">Ask Crissi anything</div>

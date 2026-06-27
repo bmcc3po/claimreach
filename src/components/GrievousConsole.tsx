@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { askAI } from "@/lib/ai";
+import { ALL_LINERS } from "@/lib/silver-liners";
 
 // Grievous coaching console — pick a recent intake, get an AI QA review against
 // doctrine (one-call close, control, no leading statements, completeness).
@@ -28,7 +29,7 @@ ${answers}`
     if (!ask.trim()) return;
     setAnswer(""); setBusy(true);
     const text = await askAI(
-        "You are Grievous/Maverick, a sales+QA coach for a legal intake call center. Doctrine: one-call close, keep control, ask yes/no via the genie test, never lead the witness. Answer practically and briefly.",
+        `You are Grievous/Maverick, a sales+QA coach for a legal intake call center. Doctrine: one-call close, keep control, ask yes/no via the genie test, never lead the witness. You also know the Silver Liners — hopeful one-liners agents can use with callers: ${ALL_LINERS.slice(0,60).map((l)=>l.line).join(" | ")}. Answer practically and briefly.`,
         ask
       );
       setAnswer(text || "Could not reach Grievous (is the Mac relay up?).");

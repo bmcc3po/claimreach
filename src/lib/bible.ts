@@ -155,6 +155,39 @@ export const BIBLE: BibleEntry[] = [
 
   // ===================== TRAUMA-INFORMED CORE =====================
   {
+    id: "non-reactivity", group: "trauma", title: "Don't react, don't perform — you are the vehicle",
+    keywords: ["react", "reaction", "i couldn't do it", "i can't believe", "wow", "shock", "minimize", "glorify", "neutral", "non-judgmental", "document", "vehicle"],
+    whatYouMightHear: ["A disclosure that makes your stomach drop", "Something so heavy your instinct is to gasp or praise their strength"],
+    summary: "This is the most important habit you will build. When someone discloses something heavy, your instinct may be to react — to gasp, to say 'I can't believe you went through that,' or 'I could never survive that, you're so strong.' Both minimizing and glorifying are reactions that pull the focus onto YOU and your feelings. Don't react. Don't perform. Stay a calm, warm, neutral vehicle that helps the attorney get the facts that get these survivors justice.",
+    say: [
+      "\"Thank you for telling me. Let's keep going at your pace.\"",
+      "\"I hear you. I'm going to make sure this is written down accurately.\"",
+      "\"You're safe to share what you're comfortable with.\"",
+      "A calm, steady tone that doesn't flinch and doesn't gush.",
+    ],
+    avoid: [
+      "\"Oh my God, I can't believe you went through all that!\" (shock makes them a spectacle)",
+      "\"I could never do it, you're SO strong.\" (centers you; makes them 'other')",
+      "\"That's the worst thing I've ever heard.\" (glorifies/ranks the trauma)",
+      "\"At least you got out / it could've been worse.\" (minimizes)",
+      "Any gasp, long pause of horror, or visible discomfort that reads as judgment",
+    ],
+    whatToListenFor: ["Them watching to see if you'll react — your calm tells them it's safe to continue", "A disclosure offered like a test"],
+    pitfalls: [
+      "Reacting with shock and shutting the disclosure down",
+      "Praising their strength so much it becomes about your amazement",
+      "Minimizing to make yourself more comfortable",
+      "Letting your face or voice do the reacting your words avoid",
+    ],
+    why: "Survivors are reading you constantly. A neutral, warm, unflinching response tells them they are not a freak, not a spectacle, and not responsible for managing your feelings. Your job is to be the steady channel through which their truth reaches the attorney who can get them justice. Reactions, even loving ones, get in the way of that.",
+    hardLines: [
+      "Don't minimize. Don't glorify. Don't react. Don't perform.",
+      "Stay non-judgmental and neutral — you are a vehicle for the facts, not a character in their story.",
+      "Document accurately; that is how the justice gets done.",
+    ],
+    escalate: "If a disclosure raises a safety concern, follow the acute protocols — but still without reacting.",
+  },
+  {
     id: "stop-the-bleed", group: "trauma", title: "Stop the bleed — the first 30 seconds",
     keywords: ["first 30 seconds", "spiraling", "panic", "escalating", "calm them", "stop the bleed", "deescalate fast"],
     summary: "When someone is spiraling, your first job isn't to fix anything. It's to slow the moment and make them feel heard so they stay connected.",
@@ -193,6 +226,51 @@ export const BIBLE: BibleEntry[] = [
     why: "Recognizing a trigger lets you lower stimulation and restore safety instead of escalating it.",
   },
 
+  {
+    id: "how-trauma-memory-works", group: "trauma", title: "How trauma memory works (the snow globe)",
+    keywords: ["memory", "snow globe", "chronological", "timeline", "fragments", "critical incident amnesia", "can't remember", "out of order"],
+    summary: "Trauma changes how memories are stored. Survivors often have 'critical incident amnesia' — memories surface in fragments, out of order, not as a neat timeline. Picture snow in a snow globe: swirling, settling slowly, landing in place over time. A gap or an out-of-order account is NOT a lie or a red flag.",
+    say: ["\"However it comes to you is okay. It doesn't have to be in order.\"", "\"If something's fuzzy, that's normal. Just share what you can.\""],
+    avoid: ["Pushing for a clean chronological timeline", "Treating gaps or inconsistencies as dishonesty", "\"Wait, that doesn't add up.\""],
+    whatToListenFor: ["Fragmented or non-linear recall — expected, not suspicious", "Distress at not being able to remember — reassure them"],
+    why: "Experts (EVAWI, IACP) note professionals often misread fragmented memory as dishonesty. Understanding the neurobiology keeps you from creating inconsistencies that get held against a survivor later.",
+    hardLines: ["Never imply they're lying because the story isn't linear.", "Document what they say; don't 'fix' it into a timeline."],
+  },
+  {
+    id: "open-the-door", group: "trauma", title: "Open the door, don't push through it",
+    keywords: ["where would you like to start", "open ended", "let them lead", "control", "questions", "interrogation", "gradual"],
+    summary: "Start with open, choice-giving prompts that hand control back. 'Where would you like to start?' or 'Tell me what you're able to about what happened.' Avoid a rapid series of questions — that reads as interrogation. Be conversational and gradual. A victim's reality is your reality.",
+    say: ["\"Where would you like to start?\"", "\"Tell me what you're able to — there's no wrong way.\"", "\"We can take breaks any time. Want some water, a minute?\""],
+    avoid: ["Rapid-fire questions", "Leading or pressuring", "\"Why didn't you...\" questions"],
+    why: "IACP and DOJ/OVC guidance: open, choice-based prompts set a supportive tone, give control to someone who had none, and actually yield more complete information.",
+    hardLines: ["Avoid interrogation methods.", "Let them lead the pace."],
+  },
+  {
+    id: "freeze-is-real", group: "trauma", title: "Freeze is real — never ask why they didn't fight",
+    keywords: ["freeze", "fight back", "why didn't you", "tonic immobility", "frozen", "didn't run", "didn't leave", "didn't scream"],
+    summary: "Fight, flight, and freeze are involuntary survival responses. Many survivors experience tonic immobility — 'frozen fright' — and literally cannot move. Others don't resist out of fear of worse harm. Never ask, or even imply, why they didn't fight, run, scream, or leave.",
+    avoid: ["\"Why didn't you fight back / run / scream / leave?\"", "Any implication they could have done more", "Surprise that they froze"],
+    say: ["\"However you survived it was the right way to survive it.\"", "\"Your body did what it needed to keep you alive.\""],
+    why: "Tonic immobility is a documented, involuntary neurobiological response (IACP). 'Why didn't you' questions blame the victim and shut down disclosure.",
+    hardLines: ["Never question why they didn't resist.", "Freeze is not consent and not weakness."],
+  },
+  {
+    id: "normalize-responses", group: "trauma", title: "Normalize the counter-intuitive",
+    keywords: ["normalize", "self-blame", "confusion", "avoidance", "expected", "common", "is this normal"],
+    summary: "Survivors often show confusion, self-blame, flat affect, avoidance, or even laughter. Gently normalizing these — letting them know these reactions are common and expected — builds trust and opens the door.",
+    say: ["\"A lot of people feel exactly that way. It makes sense.\"", "\"There's no wrong way to feel about this.\""],
+    avoid: ["Reacting to flat affect or odd reactions as strange", "Reading calm or laughter as 'not really traumatized'"],
+    why: "Trauma-informed lawyering guidance: naming counter-intuitive responses as common normalizes the survivor's experience and builds the trust that makes them stay engaged.",
+  },
+  {
+    id: "patience-first-call", group: "trauma", title: "You won't get the whole story today, and that's right",
+    keywords: ["first call", "full story", "detail", "many interviews", "trust", "patience", "won't tell everything"],
+    summary: "Especially with trafficking survivors, don't expect the full story on the first contact. It can take many conversations before someone feels safe enough to share detail. Getting them to stay engaged matters more than getting everything now.",
+    say: ["\"You don't have to tell me everything today.\"", "\"We can go as far as you're comfortable and no further.\""],
+    avoid: ["Pressing for complete detail on call one", "Treating reluctance as non-cooperation"],
+    why: "DOJ/OVC trafficking guidance: building trust is the first step; full disclosure often takes time and multiple interviews. Rapport beats extraction.",
+    hardLines: ["Don't pressure for detail.", "A guarded survivor is normal, not difficult."],
+  },
   // ===================== SPECIFIC EXPERIENCES =====================
   {
     id: "dv", group: "populations", title: "Domestic violence — support vs intervention",
