@@ -8,13 +8,17 @@ type Row = any;
 
 // Shared leads surface used by BOTH staff and firm. Three views:
 // Table (dense, default), Board (Monday lanes, group-by toggle), Gantt (stages over time).
-export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake" }: { leads: Row[]; basePath?: string; addPath?: string }) {
+export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", agents = [], firms = [], canBulk = false }: { leads: Row[]; basePath?: string; addPath?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean }) {
   const [q, setQ] = useState("");
   const [view, setView] = useState<"table" | "board" | "gantt">("table");
   const [groupBy, setGroupBy] = useState<"status" | "stage" | "tier">("status");
   const [fType, setFType] = useState("all");
   const [fState, setFState] = useState("all");
   const [sort, setSort] = useState<{ k: string; dir: 1 | -1 }>({ k: "updated", dir: -1 });
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [allMatching, setAllMatching] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState("");
 
   const rows = useMemo(() => {
     let r = leads.map((l) => {
@@ -45,6 +49,39 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
 
   const types = Array.from(new Set(leads.map((l) => l.case_type ?? l.claims?.[0]?.claim_type).filter(Boolean)));
   const states = Array.from(new Set(rows.map((r) => r.state).filter(Boolean))).sort();
+
+  // ---- Bulk selection ----
+  const pageIds = rows.map((r) => r.id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => sel.has(id));
+  function toggleOne(id: string) {
+    setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setAllMatching(false);
+  }
+  function togglePage() {
+    setSel((s) => {
+      const n = new Set(s);
+      if (allPageSelected) pageIds.forEach((id) => n.delete(id));
+      else pageIds.forEach((id) => n.add(id));
+      return n;
+    });
+    setAllMatching(false);
+  }
+  function clearSel() { setSel(new Set()); setAllMatching(false); }
+  // effective target ids: if "all matching" chosen, every filtered row; else the checked set
+  const targetIds = allMatching ? pageIds : Array.from(sel);
+  const selCount = targetIds.length;
+
+  async function runBulk(body: any) {
+    if (selCount === 0) return;
+    setBusy(true); setBulkMsg("");
+    const r = await fetch("/api/leads/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, ids: targetIds }) });
+    const d = await r.json();
+    setBusy(false);
+    if (!r.ok) { setBulkMsg(d.error || "Bulk action failed"); return; }
+    setBulkMsg(`Done: ${d.count} updated. Refreshing…`);
+    setTimeout(() => window.location.reload(), 700);
+  }
 
   function statusBadge(s: string) {
     const cls = s === "dq" ? "dq" : s === "signed" ? "signed" : s === "qualified" ? "count" : "stage";
@@ -77,6 +114,43 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
 
   return (
     <div>
+      {canBulk && selCount > 0 && (
+        <div className="bulk-bar">
+          <span className="bulk-count">{selCount} selected</span>
+          {!allMatching && allPageSelected && rows.length > sel.size && (
+            <button className="btn ghost sm" onClick={() => setAllMatching(true)}>Select all {rows.length} matching</button>
+          )}
+          {allMatching && <span className="muted" style={{ fontSize: 12 }}>All {rows.length} matching selected</span>}
+          <span className="bulk-sep" />
+          <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_status", status: e.target.value }); e.target.value = ""; } }}>
+            <option value="">Change status…</option>
+            <option value="new">New</option><option value="in_progress">In progress</option>
+            <option value="qualified">Qualified</option><option value="signed">Signed</option><option value="dq">Disqualified</option>
+          </select>
+          <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_stage", stage: e.target.value }); e.target.value = ""; } }}>
+            <option value="">Change stage…</option>
+            {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s] ?? s}</option>)}
+          </select>
+          {agents.length > 0 && (
+            <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "assign", agentId: e.target.value === "_none" ? null : e.target.value }); e.target.value = ""; } }}>
+              <option value="">Assign to…</option>
+              <option value="_none">Unassign</option>
+              {agents.map((a) => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+            </select>
+          )}
+          {firms.length > 1 && (
+            <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "move_firm", firmId: e.target.value }); e.target.value = ""; } }}>
+              <option value="">Move to firm…</option>
+              {firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          )}
+          <button className="btn ghost sm danger" onClick={() => { if (confirm(`Delete ${selCount} lead(s)? This cannot be undone.`)) runBulk({ op: "delete" }); }}>Delete</button>
+          <span className="bulk-sep" />
+          <button className="btn ghost sm" onClick={clearSel}>Clear</button>
+          {busy && <span className="muted" style={{ fontSize: 12 }}>Working…</span>}
+          {bulkMsg && <span className="muted" style={{ fontSize: 12 }}>{bulkMsg}</span>}
+        </div>
+      )}
       <div className="leads-bar">
         <h1 style={{ margin: 0 }}>Leads</h1>
         <span className="muted">{rows.length} of {leads.length}</span>
@@ -109,10 +183,11 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       {view === "table" && (
         <div className="table-scroll">
           <table className="docket leads">
-            <thead><tr><th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("type", "Type")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("updated", "Updated")}</tr></thead>
+            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("type", "Type")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("updated", "Updated")}</tr></thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className={r.needsAction ? "needs-action" : ""}>
+                <tr key={r.id} className={`${r.needsAction ? "needs-action" : ""} ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
+                  {canBulk && <td><input type="checkbox" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} /></td>}
                   <td>{r.needsAction && <span className="dot" title="Needs action" />}</td>
                   <td><Link href={`${basePath}/${r.id}`}>{r.lead_no}</Link></td>
                   <td style={{ fontWeight: 600 }}>{r.name}</td>
@@ -127,7 +202,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.updated).toLocaleDateString()}</td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={12} className="muted">No leads match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={canBulk ? 13 : 12} className="muted">No leads match.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -143,7 +218,9 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                 <div className="kcol-h" style={{ borderTop: `3px solid ${lane.tone}` }}><span>{lane.label}</span><span className="badge stage">{laneRows.length}</span></div>
                 <div className="kcol-body">
                   {laneRows.map((r) => (
-                    <Link key={r.id} href={`${basePath}/${r.id}`} className={`kcard ${r.needsAction ? "needs-action" : ""}`}>
+                    <div key={r.id} className={`kcard-wrap ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
+                      {canBulk && <input type="checkbox" className="kcard-check" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />}
+                      <Link href={`${basePath}/${r.id}`} className={`kcard ${r.needsAction ? "needs-action" : ""}`}>
                       <div className="row" style={{ justifyContent: "space-between" }}>
                         <strong style={{ fontSize: 13 }}>{r.lead_no}</strong>
                         <TierBadge letter={r.tier_letter} number={r.tier_number} claimType={r.type} />
@@ -154,7 +231,8 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                         <span className="badge stage" style={{ fontSize: 10 }}>{STAGE_LABELS[r.stage] ?? r.stage}</span>
                         <span className="muted" style={{ fontSize: 11 }}>{Math.floor((Date.now() - new Date(r.updated).getTime()) / 86400000)}d</span>
                       </div>
-                    </Link>
+                      </Link>
+                    </div>
                   ))}
                   {laneRows.length === 0 && <p className="muted" style={{ fontSize: 12, padding: "8px 4px" }}>Empty</p>}
                 </div>

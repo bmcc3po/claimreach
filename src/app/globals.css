@@ -761,3 +761,22 @@ select.sm, input.sm { font-size:12.5px; padding:5px 8px; }
 .perm-toggle.off .perm-dot { background:transparent; }
 .perm-toggle.ovr { border-color:var(--accent); box-shadow:inset 0 0 0 1px rgba(217,152,42,.4); }
 .perm-toggle.ovr::after { content:"override"; margin-left:auto; font-size:9px; font-weight:800; color:var(--accent); text-transform:uppercase; letter-spacing:.04em; }
+
+/* ============================================================
+   BULK ACTIONS — floating action bar + selection
+   ============================================================ */
+.bulk-bar { position:sticky; top:8px; z-index:30; display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+  padding:10px 14px; margin-bottom:12px; border-radius:12px;
+  background:linear-gradient(135deg, var(--brand) 0%, #1b3a5c 100%); color:#fff; box-shadow:var(--sh-2); }
+.bulk-bar .bulk-count { font-weight:800; font-size:13px; }
+.bulk-bar .bulk-sep { width:1px; height:22px; background:rgba(255,255,255,.25); }
+.bulk-bar select.sm { background:rgba(255,255,255,.95); color:var(--ink); border:none; border-radius:8px; padding:6px 9px; font-size:12.5px; cursor:pointer; }
+.bulk-bar .btn.ghost { color:#fff; border-color:rgba(255,255,255,.4); }
+.bulk-bar .btn.ghost:hover { background:rgba(255,255,255,.15); }
+.bulk-bar .btn.ghost.danger { border-color:rgba(255,140,130,.7); color:#ffd9d4; }
+.bulk-bar .btn.ghost.danger:hover { background:rgba(192,57,47,.4); }
+tr.row-selected { background:var(--agent-bg) !important; }
+tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
+.kcard-wrap { position:relative; }
+.kcard-check { position:absolute; top:9px; left:9px; z-index:5; width:16px; height:16px; cursor:pointer; }
+.kcard-wrap.row-selected .kcard { border-color:var(--accent); box-shadow:0 0 0 2px rgba(217,152,42,.3); }
