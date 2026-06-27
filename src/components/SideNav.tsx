@@ -13,6 +13,7 @@ const STAFF_NAV = [
   { href: "/maverick", icon: "⚡", label: "Grievous" },
   { href: "/crissi", icon: "🆘", label: "Crissi" },
   { href: "/settings", icon: "⚙️", label: "Settings" },
+  { href: "/forms", icon: "🧩", label: "Form builder" },
   { href: "/profile", icon: "👤", label: "Profile" },
 ];
 

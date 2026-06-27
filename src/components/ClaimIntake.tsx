@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { INTAKE, intakeForType, segmentsForType } from "@/lib/questionnaire";
+import { INTAKE, intakeForType, segmentsForType, segmentsFrom } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PropertyLookup, { type ResolvedProperty } from "./PropertyLookup";
 import CalendlyEmbed from "./CalendlyEmbed";
@@ -10,13 +10,17 @@ const PROP_FIELDS = INTAKE.filter((f) => f.scope === "property");
 interface PropertyState { _key: string; resolved?: ResolvedProperty; values: Record<string, any>; }
 
 export default function ClaimIntake({
-  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail, claimType, leadId,
+  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail, claimType, leadId, customFields,
 }: {
   claimId: string; firmId: string;
   initialAnswers: Record<string, any>; initialProperties: any[];
   claimantName?: string; claimantEmail?: string; claimType?: string; leadId?: string;
+  customFields?: import("@/lib/questionnaire").Field[];
 }) {
-  const segments = useMemo(() => segmentsForType(claimType ?? "motel_trafficking"), [claimType]);
+  const segments = useMemo(
+    () => customFields && customFields.length ? segmentsFrom(customFields) : segmentsForType(claimType ?? "motel_trafficking"),
+    [claimType, customFields]
+  );
   const steps = useMemo(
     () => [...segments.map((s) => ({ id: s.id, title: s.title })), { id: "schedule", title: "Schedule" }],
     [segments]

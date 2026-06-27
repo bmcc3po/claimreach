@@ -3,6 +3,7 @@ import { useState, useMemo } from "react";
 import { BIBLE, BIBLE_GROUPS, searchBible, bibleFallback, type BibleEntry } from "@/lib/bible";
 import { DISCLAIMER_SHORT, DISCLAIMER_FULL, ESCALATION_LINE, CRISSI_GUARDRAIL_PROMPT } from "@/lib/crissi-disclaimers";
 import { askAI } from "@/lib/ai";
+import CrissiMessage from "./CrissiMessage";
 import { CrissiLogo } from "./CrissiLogo";
 import { SILVER_LINERS } from "@/lib/silver-liners";
 import SilverLiners from "./SilverLiners";
@@ -71,7 +72,7 @@ export default function CrissiGuide() {
               <div className="msg-thread" style={{ maxHeight: 320 }}>
                 {thread.map((m, i) => (
                   <div key={i} className={`msg ${m.role === "you" ? "mine" : ""}`}>
-                    <div className="msg-bubble" style={{ whiteSpace: "pre-wrap" }}>{m.offline && <span className="badge gold" style={{ fontSize: 10, marginBottom: 6, display: "inline-block" }}>📖 From the Bible (Crissi offline)</span>}{m.offline && <br />}{m.text}</div>
+                    <div className="msg-bubble">{m.offline && <span className="badge gold" style={{ fontSize: 10, marginBottom: 6, display: "inline-block" }}>📖 From the Bible (Crissi offline)</span>}{m.role === "bot" ? <CrissiMessage text={m.text} /> : m.text}</div>
                   </div>
                 ))}
                 {busy && <p className="muted">…</p>}

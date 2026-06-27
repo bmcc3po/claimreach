@@ -701,3 +701,39 @@ a { color: var(--brand); }
 .bible-topic.active { background:var(--surface-2); border-color:var(--brand); font-weight:600; }
 .bible-topic.acute.active { border-color:var(--danger); }
 .bible-topic-flag { font-size:11px; }
+
+/* ============================================================
+   CRISSI MESSAGE — scannable, color-coded for mid-call reading
+   ============================================================ */
+.crissi-msg { font-size:14px; line-height:1.5; }
+.crissi-step { display:flex; gap:9px; align-items:flex-start; margin:7px 0; }
+.crissi-step-num { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:21px; height:21px; border-radius:50%; background:var(--brand); color:#fff; font-size:12px; font-weight:800; margin-top:1px; }
+.crissi-step-body { flex:1; }
+.crissi-bullet { position:relative; padding-left:16px; margin:4px 0; }
+.crissi-bullet::before { content:"•"; position:absolute; left:3px; color:var(--accent); font-weight:800; }
+.crissi-line { margin:5px 0; }
+/* The lines an agent SAYS — highlighted callout so they pop at a glance */
+.crissi-say { display:flex; align-items:flex-start; gap:8px; margin:7px 0; padding:9px 12px; border-radius:10px;
+  background:linear-gradient(135deg, var(--script-bg) 0%, var(--surface) 100%); border-left:4px solid var(--accent); }
+.crissi-say-tag { flex:0 0 auto; font-size:9.5px; font-weight:800; letter-spacing:.06em; color:var(--accent); background:var(--surface); border:1px solid var(--accent); border-radius:5px; padding:2px 5px; margin-top:2px; }
+.crissi-say-text { font-size:15px; font-weight:700; color:var(--brand); font-family:'Plus Jakarta Sans', sans-serif; line-height:1.4; }
+.msg.mine .msg-bubble .crissi-say-text { color:var(--brand); }
+
+/* ============================================================
+   FORM BUILDER
+   ============================================================ */
+.builder { display:grid; grid-template-columns:1fr 380px; gap:16px; align-items:start; }
+@media(max-width:900px){ .builder{grid-template-columns:1fr} }
+.builder-list { border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); padding:14px; min-height:200px; }
+.builder-row { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid transparent; border-radius:var(--radius-sm); cursor:pointer; }
+.builder-row:hover { background:var(--surface-2); }
+.builder-row.active { background:var(--surface-2); border-color:var(--brand); }
+.builder-row.is-section { background:var(--script-bg); font-weight:700; margin-top:6px; }
+.builder-kind { width:18px; text-align:center; color:var(--ink-faint); }
+.builder-label { flex:1; font-size:13.5px; }
+.builder-tools { display:flex; gap:2px; opacity:.4; }
+.builder-row:hover .builder-tools { opacity:1; }
+.builder-inspect { border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); padding:14px; position:sticky; top:14px; }
+.builder-kinds { display:flex; flex-wrap:wrap; gap:6px; }
+.fld-label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); margin:10px 0 4px; }
+.fld-row { display:flex; align-items:center; gap:8px; font-size:13px; margin:10px 0; }

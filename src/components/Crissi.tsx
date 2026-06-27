@@ -7,6 +7,7 @@ import { askAI } from "@/lib/ai";
 import { CrissiLogo } from "./CrissiLogo";
 import { SILVER_LINERS, linersFor } from "@/lib/silver-liners";
 import SilverLiners from "./SilverLiners";
+import CrissiMessage from "./CrissiMessage";
 
 type Mode = "moment" | "bible" | "liners" | "sop";
 
@@ -106,10 +107,9 @@ export default function Crissi({ trigger = "fab" }: { trigger?: "fab" | "inline"
                 {thread.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Tell me what's happening. I'll give you the next thing to say, and stay with you.</p>}
                 {thread.map((m, i) => (
                   <div key={i} className={`msg ${m.role === "you" ? "mine" : ""}`}>
-                    <div className="msg-bubble" style={{ whiteSpace: "pre-wrap" }}>
-                      {m.offline && <span className="badge gold" style={{ marginBottom: 6, fontSize: 10 }}>📖 From the Bible (Crissi offline)</span>}
-                      {m.offline && <br />}
-                      {m.text}
+                    <div className="msg-bubble">
+                      {m.offline && <span className="badge gold" style={{ marginBottom: 6, fontSize: 10, display: "inline-block" }}>📖 From the Bible (Crissi offline)</span>}
+                      {m.role === "bot" ? <CrissiMessage text={m.text} /> : m.text}
                     </div>
                   </div>
                 ))}

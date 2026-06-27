@@ -23,6 +23,13 @@ export default async function IntakeEditor({ params }: { params: Promise<{ id: s
   const { data: props } = await sb.from("claim_properties")
     .select("*").eq("claim_id", claim.id).order("sequence_order");
 
+  // Use a published builder form for this claim type if one exists; else built-in.
+  const { resolveIntakeFields } = await import("@/lib/forms");
+  const { intakeForType } = await import("@/lib/questionnaire");
+  const resolved = await resolveIntakeFields(sb, claim.claim_type);
+  const builtIn = intakeForType(claim.claim_type);
+  const customFields = resolved !== builtIn ? resolved : undefined;
+
   return (
     <div>
       <div className="row" style={{ marginBottom: 12 }}>
@@ -40,6 +47,7 @@ export default async function IntakeEditor({ params }: { params: Promise<{ id: s
         claimantEmail={lead.email ?? undefined}
         claimType={claim.claim_type}
         leadId={lead.id}
+        customFields={customFields}
       />
     </div>
   );
