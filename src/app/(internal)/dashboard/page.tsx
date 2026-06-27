@@ -39,6 +39,25 @@ export default async function Dashboard() {
     sub: `Still ${c.status.replace("_", " ")}, no movement in a day.`, lead_id: c.lead_id,
   });
 
+  // Holes in the boat (the four priorities): aging intake, high-tier needing
+  // action, aging at any stage, qualified-but-firm-hasn't-reached-out.
+  const twoDayAgo = new Date(Date.now() - 2 * 86400000).toISOString();
+  const { data: agingIntake } = await sb.from("claims")
+    .select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
+    .in("status", ["new", "contact_attempted", "in_progress"]).lt("updated_at", twoDayAgo).limit(12);
+  const { data: highTier } = await sb.from("claims")
+    .select("lead_id, tier, tier_letter, tier_number, status, leads(claimant_name, lead_no)")
+    .in("tier_letter", ["A", "B"]).in("status", ["new", "contact_attempted", "in_progress", "qualified"]).limit(12);
+  const { data: awaitingFirm } = await sb.from("claims")
+    .select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
+    .eq("status", "qualified").lt("updated_at", new Date(Date.now() - 86400000).toISOString()).limit(12);
+
+  const holes = [
+    { n: (agingIntake ?? []).length, label: "Aging intake (2+ days)", tone: "flag", items: agingIntake ?? [] },
+    { n: (highTier ?? []).length, label: "High-tier needing action", tone: "danger", items: highTier ?? [] },
+    { n: (awaitingFirm ?? []).length, label: "Qualified, awaiting firm", tone: "danger", items: awaitingFirm ?? [] },
+  ];
+
   const kpis = [
     { v: newLeads ?? 0, l: "New leads", sub: "in pipeline" },
     { v: openClaims ?? 0, l: "Waiting to complete", sub: "active claims" },
@@ -57,6 +76,33 @@ export default async function Dashboard() {
         {kpis.map((k) => (
           <div key={k.l} className="kpi"><div className="kv">{k.v}</div><div className="kl">{k.l}</div><div className="ksub">{k.sub}</div></div>
         ))}
+      </div>
+
+      <div className="board" style={{ marginBottom: 16 }}>
+        <div className="board-h"><h3>Holes in the boat</h3>
+          <a href="/leads" className="btn ghost sm" style={{ marginLeft: "auto" }}>All leads →</a>
+        </div>
+        <div className="board-body">
+          {holes.every((h) => h.n === 0) && <p className="muted">All clear. Nothing slipping.</p>}
+          <div className="holes-grid">
+            {holes.filter((h) => h.n > 0).map((h) => (
+              <div key={h.label} className="hole-col">
+                <div className="row" style={{ marginBottom: 8 }}>
+                  <span className={`badge ${h.tone}`}>{h.n}</span>
+                  <strong style={{ fontSize: 13.5 }}>{h.label}</strong>
+                </div>
+                {h.items.slice(0, 5).map((c: any, i: number) => (
+                  <a key={i} href={`/leads/${c.lead_id}`} className="post" style={{ display: "flex", gap: 8, textDecoration: "none", color: "inherit", padding: "6px 0" }}>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{c.leads?.lead_no ?? "—"}</span>
+                    <span className="muted" style={{ fontSize: 13 }}>{c.leads?.claimant_name ?? "—"}</span>
+                    {c.tier && <span className="spacer" />}
+                    {c.tier && <span className="badge gold" style={{ fontSize: 10 }}>{c.tier}</span>}
+                  </a>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="dash-cols">

@@ -560,3 +560,8 @@ a { color: var(--brand); }
 .kcard:hover { transform:translateY(-1px); box-shadow:var(--sh-2); border-color:var(--accent); }
 .kcard.needs-action { border-left:3px solid var(--accent); }
 .kcard .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); display:inline-block; }
+
+/* Holes in the boat grid */
+.holes-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+@media(max-width:820px){ .holes-grid{grid-template-columns:1fr} }
+.hole-col { border-left:3px solid var(--line); padding-left:12px; }
