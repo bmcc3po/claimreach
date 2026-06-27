@@ -71,18 +71,39 @@ export default function FormBuilder({ formId }: { formId?: string }) {
 
   async function aiBuild(mode: "form" | "questions") {
     if (!aiDesc.trim()) return;
-    setAiBusy(true); setMsg("");
+    setAiBusy(true); setMsg("Building… this can take up to a minute.");
     const existingLabels = fields.filter((f) => f.kind === "section").map((f) => f.label).join(", ");
-    const r = await fetch("/api/forms/ai", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, description: aiDesc, existingLabels }) });
-    const d = await r.json();
-    setAiBusy(false);
-    if (d.fields && d.fields.length) {
-      setFields((arr) => mode === "form" ? d.fields : [...arr, ...d.fields]);
-      setAiOpen(false); setAiDesc("");
-      setMsg(`AI added ${d.fields.length} fields. Review and edit.`);
-    } else {
-      setMsg(d.error ? `AI: ${d.error}` : "AI returned nothing. Try rephrasing.");
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 75000); // 75s ceiling, then give up cleanly
+    try {
+      const r = await fetch("/api/forms/ai", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, description: aiDesc, existingLabels }), signal: ctrl.signal });
+      clearTimeout(timer);
+      const d = await r.json();
+      if (d.fields && d.fields.length) {
+        if (mode === "form") {
+          // Full build = Common Starter spine (opening/contact/close) + AI campaign questions,
+          // inserted before the close. Keeps output small AND gives a complete form.
+          const starter = TEMPLATES.find((t) => t.id === "common")?.fields ?? [];
+          const closeIdx = starter.findIndex((f) => f.id === "s_close");
+          const head = closeIdx >= 0 ? starter.slice(0, closeIdx) : starter;
+          const tail = closeIdx >= 0 ? starter.slice(closeIdx) : [];
+          setFields([...head.map((f) => ({ ...f })), ...d.fields, ...tail.map((f) => ({ ...f }))]);
+        } else {
+          setFields((arr) => [...arr, ...d.fields]);
+        }
+        setAiOpen(false); setAiDesc("");
+        setMsg(`AI added ${d.fields.length} campaign fields${mode === "form" ? " (plus the common opening, contact, and close)" : ""}. Review and edit.`);
+      } else {
+        setMsg(d.error ? `AI: ${d.error}${d.raw ? " — " + d.raw.slice(0, 120) : ""}` : "AI returned nothing. Try rephrasing or shorten the description.");
+      }
+    } catch (e: any) {
+      clearTimeout(timer);
+      setMsg(e?.name === "AbortError"
+        ? "Timed out after 75s. Try a shorter description, or use 'Just add these questions' for smaller chunks."
+        : "Request failed. Check the AI connection (the relay) and try again.");
+    } finally {
+      setAiBusy(false);
     }
   }
 
