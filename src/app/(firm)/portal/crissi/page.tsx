@@ -1,3 +1,3 @@
 export const runtime = "edge";
-import CrissiGuide from "@/components/CrissiGuide";
-export default function CrissiPortalPage() { return <CrissiGuide />; }
+import CrissiHub from "@/components/CrissiHub";
+export default function CrissiPortalPage() { return <CrissiHub isManager={false} />; }

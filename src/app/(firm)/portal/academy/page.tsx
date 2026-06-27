@@ -1,3 +1,3 @@
 export const runtime = "edge";
-import CrissiAcademy from "@/components/CrissiAcademy";
-export default function FirmAcademyPage() { return <CrissiAcademy />; }
+import { redirect } from "next/navigation";
+export default function FirmAcademyRedirect() { redirect("/portal/crissi"); }
