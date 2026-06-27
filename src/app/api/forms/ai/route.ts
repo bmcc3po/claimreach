@@ -81,15 +81,17 @@ export async function POST(req: NextRequest) {
   const system = `You build legal-intake questionnaires as STRICT JSON. ${FIELD_SPEC}`;
   const user = mode === "questions"
     ? `Generate ONLY fields for this need (no opening/contact/close). Existing sections: ${existingLabels || "none"}. Need: ${description}`
-    : `Generate the CAMPAIGN-SPECIFIC qualifying questions, DQ/safety gates, and conditional logic for this intake (no generic opening/contact/close). Compact. Campaign: ${description}`;
+    : `Generate the CAMPAIGN-SPECIFIC qualifying questions, DQ/safety gates, and conditional logic for this intake (no generic opening/contact/close). Be efficient: aim for the ~15 most important fields, short labels, no filler. Campaign: ${description}`;
 
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 50000);
+  const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
     let answer: string | null = null;
-    // Proxy FIRST (Netlify tolerates the slow generation better than the edge wall-clock).
-    try { answer = await tryProxy(system, user, ctrl.signal); } catch { answer = null; }
-    if (!answer) { try { answer = await tryDirect(secret, system, user, ctrl.signal); } catch { answer = null; } }
+    // Direct FIRST: Netlify functions hard-cap at ~10s, far too short for a ~40s
+    // form generation, so the proxy ALWAYS dies on big forms. The Cloudflare edge
+    // tolerates a longer fetch, so direct is the only viable path for slow gens.
+    try { answer = await tryDirect(secret, system, user, ctrl.signal); } catch { answer = null; }
+    if (!answer) { try { answer = await tryProxy(system, user, ctrl.signal); } catch { answer = null; } }
     clearTimeout(timer);
     if (!answer) return NextResponse.json({ error: "The AI service was slow or unavailable. Try again, or use 'Just add these questions' for smaller chunks." }, { status: 200 });
     const fields = parseFields(answer);

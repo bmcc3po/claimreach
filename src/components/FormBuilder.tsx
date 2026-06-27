@@ -74,7 +74,7 @@ export default function FormBuilder({ formId }: { formId?: string }) {
     setAiBusy(true); setMsg("Building… this can take up to a minute.");
     const existingLabels = fields.filter((f) => f.kind === "section").map((f) => f.label).join(", ");
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 75000); // 75s ceiling, then give up cleanly
+    const timer = setTimeout(() => ctrl.abort(), 95000); // 75s ceiling, then give up cleanly
     try {
       const r = await fetch("/api/forms/ai", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode, description: aiDesc, existingLabels }), signal: ctrl.signal });
