@@ -10,6 +10,7 @@ import ContactInfo from "./ContactInfo";
 import NotesTab from "./NotesTab";
 import CallLog from "./CallLog";
 import CrisisCoach from "./CrisisCoach";
+import CaseMessages from "./CaseMessages";
 
 interface Claim {
   id: string;
@@ -22,7 +23,7 @@ interface Claim {
   answers?: Record<string, any>;
 }
 
-const TABS = ["Case Questions", "Contact Info", "Calls", "Criteria", "Notes", "Activity Log"];
+const TABS = ["Case Questions", "Contact Info", "Messages", "Calls", "Criteria", "Notes", "Activity Log"];
 
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs,
@@ -133,6 +134,7 @@ export default function LeadWorkspace({
             )}
             {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} />}
             {tab === "Criteria" && <p className="muted">Campaign criteria checklist coming.</p>}
+            {tab === "Messages" && <CaseMessages leadId={lead.id} claimId={activeClaim?.id} me={lead.current_user_name ?? "Staff"} />}
             {tab === "Calls" && <CallLog leadId={lead.id} claimId={activeClaim?.id} initial={callLogs} />}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}

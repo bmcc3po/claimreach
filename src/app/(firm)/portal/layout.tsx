@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import SignOut from "@/components/SignOut";
 import ThemeToggle from "@/components/ThemeToggle";
 import SideNav from "@/components/SideNav";
+import NotifyBell from "@/components/NotifyBell";
 
 export default async function FirmLayout({ children }: { children: React.ReactNode }) {
   const sb = await supabaseServer();
@@ -23,7 +24,7 @@ export default async function FirmLayout({ children }: { children: React.ReactNo
       variant="firm"
       userName={me.full_name ?? "Firm"}
       role={firm?.name ?? "Firm"}
-      topRight={<><ThemeToggle /><SignOut /></>}
+      topRight={<><NotifyBell /><ThemeToggle /><SignOut /></>}
     >
       {children}
     </SideNav>

@@ -5,6 +5,7 @@ import TierEditor from "./TierEditor";
 import CallLog from "./CallLog";
 import CrisisCoach from "./CrisisCoach";
 import CaseDocuments from "./CaseDocuments";
+import CaseMessages from "./CaseMessages";
 
 export default function FirmCaseWorkbench({ lead, claims, activity, callLogs }: { lead: any; claims: any[]; activity: any[]; callLogs: any[] }) {
   const claim = claims[0] ?? {};
@@ -26,7 +27,7 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs }: 
       body: JSON.stringify({ lead_id: lead.id, claim_id: claim.id, scope, body }) }).catch(() => {});
   }
 
-  const TABS = ["overview", "intake", "calls", "documents", "messages", "activity"];
+  const TABS = ["overview", "intake", "messages", "calls", "documents", "text client", "activity"];
 
   return (
     <div>
@@ -72,7 +73,8 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs }: 
             )}
             {tab === "calls" && <CallLog leadId={lead.id} claimId={claim.id} initial={callLogs} />}
             {tab === "documents" && <CaseDocuments leadId={lead.id} claimId={claim.id} />}
-            {tab === "messages" && (
+            {tab === "messages" && <CaseMessages leadId={lead.id} claimId={claim.id} me="Firm" />}
+            {tab === "text client" && (
               <div>
                 <div className="section-title">Text the client</div>
                 <textarea rows={3} placeholder="Message to the client (JustCall, comms-safety enforced)" value={msg} onChange={(e) => setMsg(e.target.value)} />
