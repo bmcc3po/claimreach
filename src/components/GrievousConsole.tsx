@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { askAI } from "@/lib/ai";
 
 // Grievous coaching console — pick a recent intake, get an AI QA review against
 // doctrine (one-call close, control, no leading statements, completeness).
@@ -13,33 +14,24 @@ export default function GrievousConsole({ claims }: { claims: any[] }) {
   async function runReview(c: any) {
     setSel(c); setReview(""); setBusy(true);
     const answers = JSON.stringify(c.answers ?? {}, null, 1).slice(0, 6000);
-    try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 900,
-          messages: [{ role: "user", content: `You are Grievous, a QA coach for legal intake. Review this ${c.claim_type} intake against doctrine: no leading statements, all vital fields captured, control kept, claimant qualified correctly, completeness. Give: (1) a score out of 100, (2) what went well, (3) gaps or risks, (4) one concrete coaching tip. Be concise. Intake answers:\n\n${answers}` }],
-        }),
-      });
-      const data = await resp.json();
-      const text = (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
-      setReview(text || "No review generated.");
-    } catch { setReview("Could not reach the reviewer."); }
+    const text = await askAI(
+        "You are Grievous, a QA coach for legal intake. Review the intake against doctrine: no leading statements, all vital fields captured, control kept, claimant qualified correctly, completeness. Give (1) a score out of 100, (2) what went well, (3) gaps or risks, (4) one concrete coaching tip. Be concise.",
+        `Claim type: ${c.claim_type}. Intake answers:
+
+${answers}`
+      );
+      setReview(text || "Could not reach the reviewer (is the Mac relay up?).");
     setBusy(false);
   }
 
   async function askGrievous() {
     if (!ask.trim()) return;
     setAnswer(""); setBusy(true);
-    try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700,
-          messages: [{ role: "user", content: `You are Grievous, a sales/QA coach for a legal intake call center. Doctrine: one-call close, keep control, ask yes/no via the genie test, never lead the witness. Answer the agent's question practically and briefly:\n\n${ask}` }] }),
-      });
-      const data = await resp.json();
-      setAnswer((data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n"));
-    } catch { setAnswer("Could not reach Grievous."); }
+    const text = await askAI(
+        "You are Grievous/Maverick, a sales+QA coach for a legal intake call center. Doctrine: one-call close, keep control, ask yes/no via the genie test, never lead the witness. Answer practically and briefly.",
+        ask
+      );
+      setAnswer(text || "Could not reach Grievous (is the Mac relay up?).");
     setBusy(false);
   }
 

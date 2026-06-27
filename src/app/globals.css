@@ -604,3 +604,34 @@ a { color: var(--brand); }
 @media(max-width:680px){ .crisis-learn{grid-template-columns:1fr} }
 .crisis-topics { border-right:1px solid var(--line); padding-right:12px; max-height:50vh; overflow-y:auto; }
 .crisis-fab { position:fixed; right:18px; bottom:18px; z-index:50; background:var(--danger); color:#fff; border:0; border-radius:100px; padding:12px 18px; font-weight:700; font-size:14px; cursor:pointer; box-shadow:var(--sh-3); }
+
+/* ============================================================
+   CRISSI — disclaimers, bible, silver liners
+   ============================================================ */
+.disclaimer-bar { background:var(--agent-bg); border:1px solid var(--agent-bd); color:var(--ink); border-radius:var(--radius-sm); padding:9px 13px; font-size:12px; line-height:1.5; }
+.acute-banner { background:var(--danger-bg); border:1px solid var(--danger); color:var(--danger); border-radius:var(--radius-sm); padding:11px 14px; font-size:13px; font-weight:600; line-height:1.5; }
+.bible-list { margin:4px 0 12px; padding-left:18px; }
+.bible-list li { margin-bottom:5px; font-size:13.5px; line-height:1.5; }
+.bible-step { display:flex; flex-direction:column; gap:2px; padding:9px 0; border-bottom:1px solid var(--line-soft); }
+.bible-step strong { font-size:13px; color:var(--brand); }
+.bible-step span { font-size:13.5px; }
+.hardlines { background:var(--danger-bg); border:1px solid var(--danger); border-radius:var(--radius-sm); padding:10px 14px; margin:12px 0; }
+.escalate-line { background:var(--script-bg); border:1px solid var(--script-bd); border-radius:var(--radius-sm); padding:10px 14px; margin-top:12px; font-size:13px; font-weight:600; color:var(--brand); }
+
+/* Crissi modal fullscreen */
+.crissi-modal { max-width:780px; width:94vw; transition:none; }
+.crissi-modal.full { max-width:none; width:97vw; height:94vh; }
+.crissi-modal.full .crisis-body { max-height:none; height:calc(94vh - 150px); }
+.crissi-head { display:flex; align-items:center; }
+
+/* Crissi full-page guide */
+.crissi-guide { display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start; }
+@media(max-width:820px){ .crissi-guide{grid-template-columns:1fr} }
+.crissi-guide-nav { position:sticky; top:14px; max-height:80vh; overflow-y:auto; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); padding:14px; }
+.crissi-guide-main { min-width:0; }
+
+/* Silver Liners */
+.liner { padding:9px 0; border-bottom:1px solid var(--line-soft); }
+.liner-line { font-size:15px; font-weight:600; font-style:italic; color:var(--brand); font-family:'Plus Jakarta Sans', sans-serif; }
+.liner-when { font-size:12.5px; color:var(--ink-soft); margin-top:2px; }
+.liner-suggest { margin-top:10px; padding:8px 10px; background:var(--agent-bg); border:1px solid var(--agent-bd); border-radius:var(--radius-sm); }

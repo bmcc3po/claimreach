@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Logo } from "./Logo";
-import CrisisBot from "./CrisisBot";
+import Crissi from "./Crissi";
 
 const STAFF_NAV = [
   { href: "/dashboard", icon: "🏠", label: "Home" },
@@ -11,6 +11,7 @@ const STAFF_NAV = [
   { href: "/reports", icon: "📊", label: "Reports" },
   { href: "/team", icon: "👥", label: "Team" },
   { href: "/maverick", icon: "⚡", label: "Grievous" },
+  { href: "/crissi", icon: "🆘", label: "Crissi" },
   { href: "/settings", icon: "⚙️", label: "Settings" },
   { href: "/profile", icon: "👤", label: "Profile" },
 ];
@@ -21,6 +22,7 @@ const FIRM_NAV = [
   { href: "/portal/reports", icon: "📊", label: "Reports" },
   { href: "/portal/resources", icon: "🧰", label: "Resources" },
   { href: "/portal/sop", icon: "📘", label: "SOP" },
+  { href: "/portal/crissi", icon: "🆘", label: "Crissi" },
   { href: "/portal/profile", icon: "👤", label: "Profile" },
 ];
 
@@ -71,7 +73,7 @@ export default function SideNav({
         <div className="shell-body">{children}</div>
       </div>
 
-      <CrisisBot trigger="fab" />
+      <Crissi trigger="fab" />
     </div>
   );
 }

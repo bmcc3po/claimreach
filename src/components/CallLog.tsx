@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { askAI } from "@/lib/ai";
 
 const OUTCOMES = ["reached", "voicemail", "no_answer", "callback_scheduled", "question_answered"];
 
@@ -27,18 +28,11 @@ export default function CallLog({ leadId, claimId, initial }: { leadId: string; 
   async function aiClean() {
     if (!notes.trim()) return;
     setAiBusy(true);
-    try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 1000,
-          messages: [{ role: "user", content: `Clean up these rough call notes from a legal intake/case-management catch-up call into clear, professional case notes. Keep it factual, concise, and neutral. Add a one-line summary at top, then bullet the key points and any action items. Do not invent facts. Rough notes:\n\n${notes}` }],
-        }),
-      });
-      const data = await resp.json();
-      const text = (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
-      if (text) setNotes(text);
-    } catch { /* ignore */ }
+    const text = await askAI(
+      "You clean up rough call notes from a legal intake/case-management catch-up call into clear, professional case notes. Factual, concise, neutral. One-line summary at top, then bullet key points and action items. Do not invent facts.",
+      notes
+    );
+    if (text) setNotes(text);
     setAiBusy(false);
   }
 
