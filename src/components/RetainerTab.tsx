@@ -13,11 +13,14 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
   const [tplName, setTplName] = useState(""); const [tplBody, setTplBody] = useState("");
   const [msg, setMsg] = useState("");
   const [approved, setApproved] = useState(false);
+  const [signerName, setSignerName] = useState(""); const [signerEmail, setSignerEmail] = useState(""); const [signerPhone, setSignerPhone] = useState("");
+  const [sendVia, setSendVia] = useState("both");
 
   async function load() {
     const r = await fetch(`/api/retainer?lead_id=${leadId}`); const d = await r.json();
     setTemplates(d.templates ?? []); setRetainers(d.retainers ?? []);
     if (!tplId && d.templates?.[0]) setTplId(d.templates[0].id);
+    if (d.lead) { setSignerName((p) => p || d.lead.claimant_name || `${d.lead.first_name ?? ""} ${d.lead.last_name ?? ""}`.trim()); setSignerEmail((p) => p || d.lead.email || ""); setSignerPhone((p) => p || d.lead.phone || ""); }
     try { const g = await fetch(`/api/grievous?lead_id=${leadId}`); const gd = await g.json(); setApproved(!!gd.approved); } catch {}
   }
   useEffect(() => { load(); }, [leadId]);
@@ -33,7 +36,12 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
         return;
       }
     }
-    setStatus(id, "sent");
+    setMsg("Sending to SignWell…");
+    const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "send_retainer", retainer_id: id, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia }) });
+    const d = await r.json();
+    if (d.ok) { setMsg("Sent. The client will receive it by " + (sendVia === "both" ? "email and text" : sendVia) + "."); load(); if (preview?.id === id) setPreview({ ...preview, status: "sent" }); }
+    else setMsg(d.error || "Send failed");
   }
 
   async function generate() {
@@ -74,11 +82,28 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
           <span className="badge stage">{STATUS_LABEL[preview.status] ?? preview.status}</span>
           {approved ? <span className="badge signed">✓ Grievous approved</span> : <span className="badge dq">Grievous review required</span>}
           <span className="spacer" />
-          {preview.status === "draft" && <button className="btn gold" onClick={() => sendForSign(preview.id)}>Send for eSign</button>}
-          {preview.status !== "signed" && preview.status !== "declined" && <button className="btn ghost" onClick={() => setStatus(preview.id, "signed")}>Mark signed</button>}
+          {preview.status !== "signed" && preview.status !== "declined" && <button className="btn ghost" onClick={() => setStatus(preview.id, "signed")}>Mark signed manually</button>}
         </div>
         <div className="card" style={{ padding: 22, whiteSpace: "pre-wrap", fontFamily: "Georgia, serif", lineHeight: 1.55 }}>{preview.rendered_body}</div>
-        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>eSign provider integration (DocuSign/SignWell) wires in here next, this tracks the status now.</p>
+
+        {preview.status === "draft" && (
+          <div className="card" style={{ padding: 16, marginTop: 12 }}>
+            <div className="section-title">Send for signature (SignWell, certified)</div>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <input placeholder="Signer name" value={signerName} onChange={(e) => setSignerName(e.target.value)} style={{ flex: 1, minWidth: 150 }} />
+              <input placeholder="Signer email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} style={{ flex: 1, minWidth: 170 }} />
+              <input placeholder="Signer phone" value={signerPhone} onChange={(e) => setSignerPhone(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+              <select value={sendVia} onChange={(e) => setSendVia(e.target.value)} style={{ width: "auto" }}>
+                <option value="both">Email + text</option>
+                <option value="email">Email only</option>
+                <option value="sms">Text only</option>
+              </select>
+            </div>
+            <button className="btn gold" onClick={() => sendForSign(preview.id)}>Send retainer for eSign</button>
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>SignWell emails a secure, court-admissible signing link. Email is required; a text with the link is sent too when a phone is on file. Signature status updates here automatically.</p>
+          </div>
+        )}
+        {msg && <p className="save-msg" style={{ marginTop: 8 }}>{msg}</p>}
       </div>
     );
   }

@@ -66,5 +66,10 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
+  if (b.op === "save_esign") {
+    const { error } = await admin.from("esign_accounts").insert({ firm_id: b.firm_id || null, provider: "signwell", api_key: b.api_key, test_mode: b.test_mode !== false });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
   return NextResponse.json({ error: "unknown op" }, { status: 400 });
 }

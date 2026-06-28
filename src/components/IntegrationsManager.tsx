@@ -10,8 +10,9 @@ export default function IntegrationsManager() {
   const [firms, setFirms] = useState<any[]>([]);
   const [reveal, setReveal] = useState<{ key_id: string; secret: string } | null>(null);
   const [epSecret, setEpSecret] = useState<string | null>(null);
-  const [tab, setTab] = useState<"keys" | "webhooks" | "justcall" | "unmatched" | "log" | "docs">("keys");
+  const [tab, setTab] = useState<"keys" | "webhooks" | "justcall" | "esign" | "unmatched" | "log" | "docs">("keys");
   const [jcKey, setJcKey] = useState(""); const [jcSecret, setJcSecret] = useState(""); const [jcFirm, setJcFirm] = useState(""); const [jcNumber, setJcNumber] = useState("");
+  const [swKey, setSwKey] = useState(""); const [swFirm, setSwFirm] = useState(""); const [swTest, setSwTest] = useState(true);
   const [unmatched, setUnmatched] = useState<any[]>([]);
   const [canon, setCanon] = useState<any | null>(null);
 
@@ -53,6 +54,13 @@ export default function IntegrationsManager() {
     if (d.ok) { setJcKey(""); setJcSecret(""); setJcNumber(""); alert("JustCall account saved."); } else alert(d.error || "Failed");
   }
 
+  async function saveSignwell() {
+    if (!swKey) { alert("SignWell API key required."); return; }
+    const r = await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_esign", api_key: swKey, firm_id: swFirm || null, test_mode: swTest }) });
+    const d = await r.json();
+    if (d.ok) { setSwKey(""); alert("SignWell account saved."); } else alert(d.error || "Failed");
+  }
+
   const base = typeof window !== "undefined" ? window.location.origin : "https://claimreach.com";
   const firmName = (id: string) => firms.find((f) => f.id === id)?.name ?? (id ? "—" : "Master");
 
@@ -62,8 +70,8 @@ export default function IntegrationsManager() {
       <p className="muted" style={{ marginTop: 0 }}>API keys, inbound lead webhooks, and outbound event webhooks. HMAC-signed.</p>
 
       <div className="tabs" style={{ marginBottom: 16 }}>
-        {(["keys", "webhooks", "justcall", "unmatched", "log", "docs"] as const).map((t) => (
-          <button key={t} className={tab === t ? "active" : ""} onClick={() => { setTab(t); if (t === "unmatched") loadUnmatched(); }}>{t === "keys" ? "API Keys" : t === "webhooks" ? "Webhooks" : t === "justcall" ? "JustCall" : t === "unmatched" ? "Unmatched" : t === "log" ? "Event Log" : "Docs"}</button>
+        {(["keys", "webhooks", "justcall", "esign", "unmatched", "log", "docs"] as const).map((t) => (
+          <button key={t} className={tab === t ? "active" : ""} onClick={() => { setTab(t); if (t === "unmatched") loadUnmatched(); }}>{t === "keys" ? "API Keys" : t === "webhooks" ? "Webhooks" : t === "justcall" ? "JustCall" : t === "esign" ? "eSign" : t === "unmatched" ? "Unmatched" : t === "log" ? "Event Log" : "Docs"}</button>
         ))}
       </div>
 
@@ -155,6 +163,28 @@ export default function IntegrationsManager() {
             <p style={{ marginTop: 0 }}>In JustCall, point your call / SMS / voicemail webhooks at:</p>
             <pre style={{ background: "var(--surface-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: 12 }}>{`${base}/api/justcall/webhook`}</pre>
             <p className="muted" style={{ fontSize: 12 }}>Optional: set JUSTCALL_WEBHOOK_SECRET in Cloudflare and append ?secret=… or send X-JustCall-Secret to lock it down. Calls, SMS, and voicemails auto-attach to the matching file by phone number.</p>
+          </div>
+        </div>
+      )}
+
+      {tab === "esign" && (
+        <div>
+          <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+            <div className="section-title">Connect SignWell (certified eSign)</div>
+            <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Paste your SignWell API key (SignWell → Settings → API). Used for court-admissible retainer signing with full audit trail.</p>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <input placeholder="SignWell API Key" value={swKey} onChange={(e) => setSwKey(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+              <select value={swFirm} onChange={(e) => setSwFirm(e.target.value)} style={{ width: "auto" }}><option value="">Master / default</option>{firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select>
+              <label className="row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={swTest} onChange={(e) => setSwTest(e.target.checked)} style={{ width: "auto" }} /> Test mode</label>
+              <button className="btn" onClick={saveSignwell}>Save</button>
+            </div>
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>Leave Test mode ON until you are ready for live, legally binding documents. Test docs are free and not billed.</p>
+          </div>
+          <div className="card" style={{ padding: 16, fontSize: 13.5, lineHeight: 1.6 }}>
+            <div className="section-title">Webhook URL for SignWell</div>
+            <p style={{ marginTop: 0 }}>In SignWell, register this callback so signed documents flow back automatically:</p>
+            <pre style={{ background: "var(--surface-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: 12 }}>{`${base}/api/esign/webhook`}</pre>
+            <p className="muted" style={{ fontSize: 12 }}>When a retainer is signed, the file flips to Signed, the completed PDF is stored, and your outbound retainer.signed event fires. Lighter, non-certified documents use the built-in signing page at /sign/[id] (no SignWell needed).</p>
           </div>
         </div>
       )}

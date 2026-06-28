@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
   const lead_id = new URL(req.url).searchParams.get("lead_id");
   const { data: templates } = await sb.from("retainer_templates").select("id, name").order("name");
   const { data: retainers } = await sb.from("retainers").select("*").eq("lead_id", lead_id).order("created_at", { ascending: false });
-  return NextResponse.json({ templates: templates ?? [], retainers: retainers ?? [] });
+  const { data: lead } = await sb.from("leads").select("id, first_name, last_name, claimant_name, email, phone").eq("id", lead_id).maybeSingle();
+  return NextResponse.json({ templates: templates ?? [], retainers: retainers ?? [], lead: lead ?? null });
 }
 
 export async function POST(req: NextRequest) {
