@@ -11,7 +11,7 @@ export default function IntegrationsManager() {
   const [reveal, setReveal] = useState<{ key_id: string; secret: string } | null>(null);
   const [epSecret, setEpSecret] = useState<string | null>(null);
   const [tab, setTab] = useState<"keys" | "webhooks" | "justcall" | "unmatched" | "log" | "docs">("keys");
-  const [jcKey, setJcKey] = useState(""); const [jcSecret, setJcSecret] = useState(""); const [jcFirm, setJcFirm] = useState("");
+  const [jcKey, setJcKey] = useState(""); const [jcSecret, setJcSecret] = useState(""); const [jcFirm, setJcFirm] = useState(""); const [jcNumber, setJcNumber] = useState("");
   const [unmatched, setUnmatched] = useState<any[]>([]);
   const [canon, setCanon] = useState<any | null>(null);
 
@@ -48,9 +48,9 @@ export default function IntegrationsManager() {
   }
   async function saveJustcall() {
     if (!jcKey || !jcSecret) { alert("API key and secret required."); return; }
-    const r = await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_justcall", api_key: jcKey, api_secret: jcSecret, firm_id: jcFirm || null }) });
+    const r = await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_justcall", api_key: jcKey, api_secret: jcSecret, firm_id: jcFirm || null, justcall_number: jcNumber }) });
     const d = await r.json();
-    if (d.ok) { setJcKey(""); setJcSecret(""); alert("JustCall account saved."); } else alert(d.error || "Failed");
+    if (d.ok) { setJcKey(""); setJcSecret(""); setJcNumber(""); alert("JustCall account saved."); } else alert(d.error || "Failed");
   }
 
   const base = typeof window !== "undefined" ? window.location.origin : "https://claimreach.com";
@@ -144,9 +144,11 @@ export default function IntegrationsManager() {
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               <input placeholder="API Key" value={jcKey} onChange={(e) => setJcKey(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
               <input placeholder="API Secret" value={jcSecret} onChange={(e) => setJcSecret(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+              <input placeholder="Sending number +1702..." value={jcNumber} onChange={(e) => setJcNumber(e.target.value)} style={{ flex: 1, minWidth: 150 }} />
               <select value={jcFirm} onChange={(e) => setJcFirm(e.target.value)} style={{ width: "auto" }}><option value="">Master / default</option>{firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select>
               <button className="btn" onClick={saveJustcall}>Save</button>
             </div>
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>The sending number is the JustCall line texts go out from (E.164, e.g. +17025551212). Note: JustCall has no click-to-call API, the Call button opens your JustCall dialer; SMS sends through the API.</p>
           </div>
           <div className="card" style={{ padding: 16, fontSize: 13.5, lineHeight: 1.6 }}>
             <div className="section-title">Webhook URL for JustCall</div>

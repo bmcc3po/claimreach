@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
   if (b.op === "save_justcall") {
-    const { error } = await admin.from("justcall_accounts").insert({ firm_id: b.firm_id || null, label: b.label || "JustCall", api_key: b.api_key, api_secret: b.api_secret });
+    const { error } = await admin.from("justcall_accounts").insert({ firm_id: b.firm_id || null, label: b.label || "JustCall", api_key: b.api_key, api_secret: b.api_secret, justcall_number: b.justcall_number || null });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }

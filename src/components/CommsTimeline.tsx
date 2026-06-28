@@ -19,11 +19,13 @@ export default function CommsTimeline({ leadId, phone, channel }: { leadId: stri
 
   const filtered = comms.filter((c) => channel === "sms" ? c.channel === "sms" : channel === "call" ? c.channel !== "sms" : true);
 
-  async function call() {
-    setBusy(true); setMsg("");
-    const r = await fetch("/api/justcall/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "call", lead_id: leadId, to: phone }) });
-    const d = await r.json(); setBusy(false);
-    setMsg(d.ok ? "Calling… answer your JustCall device." : (d.error || "Call failed"));
+  function call() {
+    if (!phone) return;
+    // JustCall has no click-to-call REST endpoint; open the dialer. The JustCall
+    // desktop/web app registers tel: links, so this rings through JustCall.
+    const num = phone.replace(/[^\d+]/g, "");
+    window.open(`tel:${num}`, "_self");
+    setMsg("Opening dialer… place the call in JustCall.");
   }
   async function sendSms() {
     if (!smsBody.trim()) return;
