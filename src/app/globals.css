@@ -106,7 +106,7 @@ a:hover { text-decoration: underline; }
 .app-header .nav a { color: var(--ink-soft); font-weight: 500; padding: 7px 11px; border-radius: 8px; }
 .app-header .nav a:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
 
-.container { max-width: 1480px; margin: 0 auto; padding: 20px 28px 96px; }
+.container { max-width: 1680px; margin: 0 auto; padding: 20px 32px 96px; }
 
 .card { background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px; }
@@ -277,6 +277,7 @@ table.docket tr:hover td { background: var(--surface-2); }
 .pnc.warn .pncbadge { background:var(--flag); }
 
 .lead-grid { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start; }
+.lead-grid.solo { grid-template-columns:1fr; }
 @media(max-width:1040px){ .lead-grid{grid-template-columns:1fr} }
 
 .tabs { display:flex; gap:2px; padding:0 8px; border-bottom:1px solid var(--line);
@@ -845,3 +846,23 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .dock-pop-body { padding:14px 16px; }
 .grievous-result .bible-list { font-size:13px; }
 @media(max-width:680px){ .dock-pop{ width:calc(100vw - 36px) } }
+
+/* ============================================================
+   SIDENAV GROUPS (collapsible)
+   ============================================================ */
+.navgroup { margin-bottom:6px; }
+.navgroup-head { display:flex; align-items:center; justify-content:space-between; width:100%; background:transparent; border:0; cursor:pointer;
+  padding:10px 14px 4px; font-size:10.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.4); }
+.navgroup-head:hover { color:rgba(255,255,255,.7); }
+.navgroup-chev { font-size:13px; transition:transform .15s; }
+.navgroup-chev.closed { transform:rotate(-90deg); }
+
+/* Maverick console */
+.mav-topics { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.mav-thread { display:flex; flex-direction:column; gap:12px; min-height:120px; }
+.mav-msg { max-width:760px; }
+.mav-msg.you { align-self:flex-end; text-align:right; }
+.mav-msg-who { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); margin-bottom:3px; }
+.mav-msg-body { font-size:14px; line-height:1.5; padding:12px 14px; border-radius:12px; background:var(--surface); border:1px solid var(--line); }
+.mav-msg.you .mav-msg-body { background:var(--brand); color:#fff; border-color:var(--brand); }
+.mav-msg.mav .mav-msg-body { background:linear-gradient(135deg, var(--surface) 0%, #1b3a5c0a 100%); }

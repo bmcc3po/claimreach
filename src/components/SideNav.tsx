@@ -3,29 +3,45 @@ import { useState } from "react";
 import { Logo } from "./Logo";
 import Crissi from "./Crissi";
 
-const STAFF_NAV = [
-  { href: "/dashboard", icon: "🏠", label: "Home" },
-  { href: "/leads", icon: "📁", label: "Leads" },
-  { href: "/intake", icon: "➕", label: "Add lead" },
-  { href: "/queue", icon: "📞", label: "My Queue" },
-  { href: "/reports", icon: "📊", label: "Reports" },
-  { href: "/team", icon: "👥", label: "Team" },
-  { href: "/maverick", icon: "⚡", label: "Grievous" },
-  { href: "/crissi", icon: "🆘", label: "Crissi" },
-  { href: "/settings", icon: "⚙️", label: "Settings" },
-  { href: "/forms", icon: "🧩", label: "Form builder", adminOnly: true },
-  { href: "/users", icon: "👤", label: "Users", adminOnly: true },
-  { href: "/profile", icon: "👤", label: "Profile" },
+type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean };
+type NavGroup = { id: string; label: string | null; items: NavItem[] };
+
+const STAFF_GROUPS: NavGroup[] = [
+  { id: "main", label: null, items: [
+    { href: "/dashboard", icon: "🏠", label: "Home" },
+    { href: "/leads", icon: "📁", label: "Leads" },
+    { href: "/intake", icon: "➕", label: "Add lead" },
+    { href: "/queue", icon: "📞", label: "My Queue" },
+    { href: "/reports", icon: "📊", label: "Reports" },
+  ]},
+  { id: "ai", label: "AI", items: [
+    { href: "/crissi", icon: "🆘", label: "Crissi" },
+    { href: "/maverick", icon: "⚡", label: "Maverick" },
+    { href: "/grievous", icon: "🛡️", label: "Grievous" },
+  ]},
+  { id: "admin", label: "Settings", items: [
+    { href: "/team", icon: "👥", label: "Team" },
+    { href: "/users", icon: "👤", label: "Users", adminOnly: true },
+    { href: "/forms", icon: "🧩", label: "Form builder", adminOnly: true },
+    { href: "/settings", icon: "⚙️", label: "Settings" },
+    { href: "/profile", icon: "🙋", label: "Profile" },
+  ]},
 ];
 
-const FIRM_NAV = [
-  { href: "/portal", icon: "🏠", label: "Home" },
-  { href: "/portal/cases", icon: "📁", label: "Cases" },
-  { href: "/portal/reports", icon: "📊", label: "Reports" },
-  { href: "/portal/resources", icon: "🧰", label: "Resources" },
-  { href: "/portal/sop", icon: "📘", label: "SOP" },
-  { href: "/portal/crissi", icon: "🆘", label: "Crissi" },
-  { href: "/portal/profile", icon: "👤", label: "Profile" },
+const FIRM_GROUPS: NavGroup[] = [
+  { id: "main", label: null, items: [
+    { href: "/portal", icon: "🏠", label: "Home" },
+    { href: "/portal/cases", icon: "📁", label: "Cases" },
+    { href: "/portal/reports", icon: "📊", label: "Reports" },
+  ]},
+  { id: "resources", label: "Resources", items: [
+    { href: "/portal/resources", icon: "🧰", label: "Resources" },
+    { href: "/portal/sop", icon: "📘", label: "SOP" },
+    { href: "/portal/crissi", icon: "🆘", label: "Crissi" },
+  ]},
+  { id: "account", label: "Account", items: [
+    { href: "/portal/profile", icon: "🙋", label: "Profile" },
+  ]},
 ];
 
 export default function SideNav({
@@ -39,8 +55,10 @@ export default function SideNav({
   variant?: "staff" | "firm";
 }) {
   const [min, setMin] = useState(false);
-  const NAV = variant === "firm" ? FIRM_NAV : STAFF_NAV;
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const GROUPS = variant === "firm" ? FIRM_GROUPS : STAFF_GROUPS;
   const homeHref = variant === "firm" ? "/portal" : "/dashboard";
+  const toggleGroup = (id: string) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
 
   return (
     <div className="shell">
@@ -51,12 +69,27 @@ export default function SideNav({
           </a>
         </div>
         <nav className="navlinks">
-          {NAV.filter((n) => !(n as any).adminOnly || ["owner","admin"].includes(role)).map((n) => (
-            <a key={n.href} href={n.href} className={`nl ${active === n.href ? "active" : ""}`}>
-              <span className="ico">{n.icon}</span>
-              <span className="nl-label">{n.label}</span>
-            </a>
-          ))}
+          {GROUPS.map((g) => {
+            const items = g.items.filter((n) => !n.adminOnly || ["owner", "admin"].includes(role));
+            if (items.length === 0) return null;
+            const isCollapsed = collapsed[g.id];
+            return (
+              <div key={g.id} className="navgroup">
+                {g.label && !min && (
+                  <button className="navgroup-head" onClick={() => toggleGroup(g.id)}>
+                    <span>{g.label}</span>
+                    <span className={`navgroup-chev ${isCollapsed ? "closed" : ""}`}>⌄</span>
+                  </button>
+                )}
+                {!isCollapsed && items.map((n) => (
+                  <a key={n.href} href={n.href} className={`nl ${active === n.href ? "active" : ""}`} title={n.label}>
+                    <span className="ico">{n.icon}</span>
+                    <span className="nl-label">{n.label}</span>
+                  </a>
+                ))}
+              </div>
+            );
+          })}
         </nav>
         <div className="navfoot">
           <button className="minbtn" onClick={() => setMin(!min)} aria-label="Toggle menu">
