@@ -50,7 +50,10 @@ export default function ClaimIntake({
     const map: Record<string, number> = {};
     let n = 0;
     for (const seg of segments) for (const f of seg.fields) {
-      if (!["section", "script", "gate"].includes(f.kind)) { n += 1; map[f.id] = n; }
+      // Number every question the AGENT answers. Sections and read-aloud scripts
+      // are not questions, so they're skipped. Gates ARE questions (Yes/No), so
+      // they get numbered too — keeps the on-screen sequence clean and continuous.
+      if (!["section", "script"].includes(f.kind)) { n += 1; map[f.id] = n; }
     }
     return map;
   }, [segments]);
@@ -191,8 +194,16 @@ export default function ClaimIntake({
                 ) : (
                   seg.fields.map((f) => {
                     if (!fieldVisible(f, answers)) return null;
-                    if (f.kind === "script" || f.kind === "gate") {
+                    if (f.kind === "script") {
                       return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />;
+                    }
+                    if (f.kind === "gate") {
+                      return (
+                        <div key={f.id} className="qcard gate-wrap">
+                          {qNum[f.id] && <span className="qnum">Q{qNum[f.id]}</span>}
+                          <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />
+                        </div>
+                      );
                     }
                     const ans = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                     return (
