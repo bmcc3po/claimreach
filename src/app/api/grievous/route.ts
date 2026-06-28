@@ -47,9 +47,13 @@ export async function POST(req: NextRequest) {
   const answers = claim?.answers ?? {};
   const quick = b.kind === "quick";
 
+  // Grievous can now SEE the recordings/transcripts on the file (no more hunting).
+  const { data: comms } = await sb.from("communications").select("channel, direction, transcript, jc_summary, recording_url").eq("lead_id", b.lead_id).not("transcript", "is", null).order("occurred_at", { ascending: false }).limit(3);
+  const callContext = (comms ?? []).map((c: any) => `[${c.channel} ${c.direction}] ${c.jc_summary ? "JC summary: " + c.jc_summary + ". " : ""}${c.transcript ? "Transcript: " + String(c.transcript).slice(0, 1500) : ""}`).join("\n");
+
   const system = `You are Grievous, a strict, no-nonsense legal-intake QA reviewer. You enforce campaign doctrine and completeness. You do NOT coach gently — you flag every gap, missing vital field, contradiction, or disqualifier. Be precise and hard-nosed but fair.
 Return STRICT JSON only: {"verdict":"approved"|"rejected"|"advisory","score":0-100,"summary":"one line","issues":["..."]}. ${quick ? "QUICK mode: only the top 3 blocking issues." : "FULL mode: every issue, ordered by severity."} Approve only if the intake is complete and viable per doctrine.`;
-  const user = `Campaign/claim type: ${claim?.claim_type ?? "unknown"} (${claim?.campaign ?? ""}). Claimant: ${lead?.first_name ?? ""} ${lead?.last_name ?? ""}. Intake answers JSON: ${JSON.stringify(answers).slice(0, 6000)}`;
+  const user = `Campaign/claim type: ${claim?.claim_type ?? "unknown"} (${claim?.campaign ?? ""}). Claimant: ${lead?.first_name ?? ""} ${lead?.last_name ?? ""}. Intake answers JSON: ${JSON.stringify(answers).slice(0, 6000)}${callContext ? "\n\nCALL RECORDINGS/TRANSCRIPTS ON FILE (compare the intake answers against what was actually said):\n" + callContext.slice(0, 4000) : ""}`;
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 45000);

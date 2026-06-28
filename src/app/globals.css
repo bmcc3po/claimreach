@@ -904,3 +904,18 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 
 /* integrations chip-on state */
 .chip.on { background:var(--brand); color:#fff; border-color:var(--brand); }
+
+/* ============================================================
+   COMMUNICATIONS TIMELINE
+   ============================================================ */
+.comm-feed { display:flex; flex-direction:column; gap:10px; }
+.comm-item { border:1px solid var(--line); border-radius:10px; padding:11px 13px; background:var(--surface); }
+.comm-item.outbound { border-left:3px solid var(--accent); }
+.comm-item.inbound { border-left:3px solid var(--ok); }
+.comm-head { display:flex; align-items:center; gap:7px; font-size:13.5px; }
+.comm-icon { font-size:15px; }
+.comm-dir { font-size:11px; font-weight:700; text-transform:uppercase; color:var(--ink-faint); letter-spacing:.03em; }
+.comm-body { margin-top:6px; font-size:13.5px; line-height:1.45; }
+.comm-transcript { margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--ink-soft); background:var(--surface-2); border-radius:8px; padding:9px 11px; max-height:220px; overflow-y:auto; white-space:pre-wrap; }
+.comm-jc { margin-top:8px; padding:8px 10px; border-radius:8px; background:#eef3fb; border:1px solid #d6e2f2; }
+.comm-jc-tag { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#1b3a5c; }

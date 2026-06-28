@@ -9,9 +9,8 @@ import ContactInfo from "./ContactInfo";
 import CaseDetails from "./CaseDetails";
 import RetainerTab from "./RetainerTab";
 import NotesTab from "./NotesTab";
-import CallLog from "./CallLog";
+import CommsTimeline from "./CommsTimeline";
 import Crissi from "./Crissi";
-import CaseMessages from "./CaseMessages";
 
 interface Claim {
   id: string;
@@ -139,8 +138,8 @@ export default function LeadWorkspace({
             {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} />}
             {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} />}
             {tab === "Retainer" && <RetainerTab leadId={lead.id} role={lead.current_user_role} />}
-            {tab === "Messages" && <CaseMessages leadId={lead.id} claimId={activeClaim?.id} me={lead.current_user_name ?? "Staff"} />}
-            {tab === "Calls" && <CallLog leadId={lead.id} claimId={activeClaim?.id} initial={callLogs} />}
+            {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" />}
+            {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" />}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}
           </div>

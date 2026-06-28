@@ -57,6 +57,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ key
   await log(admin, firmId, "inbound", "lead.in", "received", 200, raw, null);
 
   // fire outbound lead.created to any subscribed endpoints
+  // claim any orphaned calls/SMS that arrived before this file existed
+  try { const { reconcileUnmatched } = await import("@/lib/comms"); await reconcileUnmatched(lead.id, insert.phone, firmId); } catch {}
+
   await fireEvent(firmId, "lead.created", { lead_id: lead.id, lead_no: lead.lead_no, ...insert });
 
   return NextResponse.json({ ok: true, lead_id: lead.id, lead_no: lead.lead_no });

@@ -61,5 +61,10 @@ export async function POST(req: NextRequest) {
     else await admin.from("field_mappings").insert({ firm_id: b.firm_id, direction: b.direction || "inbound", map: b.map ?? {}, transforms: b.transforms ?? {} });
     return NextResponse.json({ ok: true });
   }
+  if (b.op === "save_justcall") {
+    const { error } = await admin.from("justcall_accounts").insert({ firm_id: b.firm_id || null, label: b.label || "JustCall", api_key: b.api_key, api_secret: b.api_secret });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
   return NextResponse.json({ error: "unknown op" }, { status: 400 });
 }

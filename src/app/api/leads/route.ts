@@ -44,6 +44,8 @@ export async function POST(req: NextRequest) {
     }).select("id, lead_no").single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // claim any orphaned calls/SMS that arrived before this file existed
+    if (payload.phone) { try { const { reconcileUnmatched } = await import("@/lib/comms"); await reconcileUnmatched(data.id, payload.phone, firm_id); } catch {} }
     return NextResponse.json({ lead: data });
   }
 

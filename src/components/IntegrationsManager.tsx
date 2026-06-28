@@ -10,7 +10,9 @@ export default function IntegrationsManager() {
   const [firms, setFirms] = useState<any[]>([]);
   const [reveal, setReveal] = useState<{ key_id: string; secret: string } | null>(null);
   const [epSecret, setEpSecret] = useState<string | null>(null);
-  const [tab, setTab] = useState<"keys" | "webhooks" | "log" | "docs">("keys");
+  const [tab, setTab] = useState<"keys" | "webhooks" | "justcall" | "unmatched" | "log" | "docs">("keys");
+  const [jcKey, setJcKey] = useState(""); const [jcSecret, setJcSecret] = useState(""); const [jcFirm, setJcFirm] = useState("");
+  const [unmatched, setUnmatched] = useState<any[]>([]);
 
   // create-key form
   const [kLabel, setKLabel] = useState(""); const [kScope, setKScope] = useState<"firm" | "master">("firm"); const [kFirm, setKFirm] = useState("");
@@ -39,6 +41,17 @@ export default function IntegrationsManager() {
   }
   async function revokeEndpoint(id: string) { if (!confirm("Disable this webhook endpoint?")) return; await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "revoke_endpoint", id }) }); load(); }
 
+  async function loadUnmatched() {
+    const r = await fetch("/api/communications?unmatched=1"); const d = await r.json();
+    setUnmatched(d.comms ?? []);
+  }
+  async function saveJustcall() {
+    if (!jcKey || !jcSecret) { alert("API key and secret required."); return; }
+    const r = await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_justcall", api_key: jcKey, api_secret: jcSecret, firm_id: jcFirm || null }) });
+    const d = await r.json();
+    if (d.ok) { setJcKey(""); setJcSecret(""); alert("JustCall account saved."); } else alert(d.error || "Failed");
+  }
+
   const base = typeof window !== "undefined" ? window.location.origin : "https://claimreach.com";
   const firmName = (id: string) => firms.find((f) => f.id === id)?.name ?? (id ? "—" : "Master");
 
@@ -48,8 +61,8 @@ export default function IntegrationsManager() {
       <p className="muted" style={{ marginTop: 0 }}>API keys, inbound lead webhooks, and outbound event webhooks. HMAC-signed.</p>
 
       <div className="tabs" style={{ marginBottom: 16 }}>
-        {(["keys", "webhooks", "log", "docs"] as const).map((t) => (
-          <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t === "keys" ? "API Keys" : t === "webhooks" ? "Webhooks" : t === "log" ? "Event Log" : "Docs"}</button>
+        {(["keys", "webhooks", "justcall", "unmatched", "log", "docs"] as const).map((t) => (
+          <button key={t} className={tab === t ? "active" : ""} onClick={() => { setTab(t); if (t === "unmatched") loadUnmatched(); }}>{t === "keys" ? "API Keys" : t === "webhooks" ? "Webhooks" : t === "justcall" ? "JustCall" : t === "unmatched" ? "Unmatched" : t === "log" ? "Event Log" : "Docs"}</button>
         ))}
       </div>
 
@@ -122,6 +135,44 @@ export default function IntegrationsManager() {
         </div>
       )}
 
+      {tab === "justcall" && (
+        <div>
+          <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+            <div className="section-title">Connect JustCall</div>
+            <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Enter your JustCall API key + secret (JustCall → Settings → API). Used for click-to-call and outbound SMS.</p>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <input placeholder="API Key" value={jcKey} onChange={(e) => setJcKey(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+              <input placeholder="API Secret" value={jcSecret} onChange={(e) => setJcSecret(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+              <select value={jcFirm} onChange={(e) => setJcFirm(e.target.value)} style={{ width: "auto" }}><option value="">Master / default</option>{firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select>
+              <button className="btn" onClick={saveJustcall}>Save</button>
+            </div>
+          </div>
+          <div className="card" style={{ padding: 16, fontSize: 13.5, lineHeight: 1.6 }}>
+            <div className="section-title">Webhook URL for JustCall</div>
+            <p style={{ marginTop: 0 }}>In JustCall, point your call / SMS / voicemail webhooks at:</p>
+            <pre style={{ background: "var(--surface-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: 12 }}>{`${base}/api/justcall/webhook`}</pre>
+            <p className="muted" style={{ fontSize: 12 }}>Optional: set JUSTCALL_WEBHOOK_SECRET in Cloudflare and append ?secret=… or send X-JustCall-Secret to lock it down. Calls, SMS, and voicemails auto-attach to the matching file by phone number.</p>
+          </div>
+        </div>
+      )}
+
+      {tab === "unmatched" && (
+        <div>
+          <p className="muted" style={{ fontSize: 13 }}>Calls/SMS/voicemails whose phone number didn't match any file. Assign manually, or they auto-attach when a file with that number is created.</p>
+          <table className="data-table"><thead><tr><th>When</th><th>Type</th><th>Dir</th><th>Phone</th><th>Preview</th><th></th></tr></thead><tbody>
+            {unmatched.map((c) => (
+              <tr key={c.id}>
+                <td className="muted">{c.occurred_at ? new Date(c.occurred_at).toLocaleString() : ""}</td>
+                <td>{c.channel}</td><td>{c.direction}</td><td style={{ fontFamily: "monospace", fontSize: 12 }}>{c.phone_raw}</td>
+                <td className="muted" style={{ fontSize: 12, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.body || c.jc_summary || (c.recording_url ? "recording" : "")}</td>
+                <td><AssignComm id={c.id} onDone={loadUnmatched} /></td>
+              </tr>
+            ))}
+            {unmatched.length === 0 && <tr><td colSpan={6} className="muted">Nothing unmatched.</td></tr>}
+          </tbody></table>
+        </div>
+      )}
+
       {tab === "log" && (
         <table className="data-table"><thead><tr><th>When</th><th>Dir</th><th>Event</th><th>Status</th><th>HTTP</th></tr></thead><tbody>
           {events.map((e) => (
@@ -161,5 +212,23 @@ Headers:
         </div>
       )}
     </div>
+  );
+}
+
+function AssignComm({ id, onDone }: { id: string; onDone: () => void }) {
+  const [v, setV] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function assign() {
+    if (!v.trim()) return;
+    setBusy(true);
+    const r = await fetch("/api/communications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "assign", id, lead_id: v.trim() }) });
+    setBusy(false);
+    if (r.ok) onDone(); else { const d = await r.json().catch(() => ({})); alert(d.error || "Failed"); }
+  }
+  return (
+    <span className="row" style={{ gap: 4 }}>
+      <input placeholder="lead id" value={v} onChange={(e) => setV(e.target.value)} style={{ width: 120, fontSize: 12 }} />
+      <button className="btn ghost sm" onClick={assign} disabled={busy}>Assign</button>
+    </span>
   );
 }
