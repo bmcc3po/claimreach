@@ -44,6 +44,16 @@ export default function ClaimIntake({
 
   const isProps = (id: string) => id === "s_properties";
   const isSchedule = (id: string) => id === "schedule";
+  // Global question numbers — every answerable question across the whole intake gets
+  // a sequential number so agents can say "read question 5 verbatim".
+  const qNum = useMemo(() => {
+    const map: Record<string, number> = {};
+    let n = 0;
+    for (const seg of segments) for (const f of seg.fields) {
+      if (!["section", "script", "gate"].includes(f.kind)) { n += 1; map[f.id] = n; }
+    }
+    return map;
+  }, [segments]);
   const curStep = steps[step];
   const curSegment = segments.find((s) => s.id === curStep.id);
 
@@ -187,6 +197,7 @@ export default function ClaimIntake({
                     const ans = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                     return (
                       <div key={f.id} className={`qcard ${ans ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
+                        {qNum[f.id] && <span className="qnum">Q{qNum[f.id]}</span>}
                         <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} />
                       </div>
                     );
@@ -241,6 +252,7 @@ export default function ClaimIntake({
                       const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                       return (
                         <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
+                          {qNum[f.id] && <span className="qnum">Q{qNum[f.id]}</span>}
                           <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} />
                         </div>
                       );

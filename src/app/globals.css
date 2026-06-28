@@ -336,7 +336,7 @@ table.docket tr:hover td { background: var(--surface-2); }
 /* ============================================================
    STEPPED INTAKE — segment rail, question cards, scheduler
    ============================================================ */
-.intake-shell { display:grid; grid-template-columns:220px 1fr; gap:18px; align-items:start; }
+.intake-shell { display:grid; grid-template-columns:200px minmax(0,1fr); gap:22px; align-items:start; width:100%; }
 @media(max-width:860px){ .intake-shell{grid-template-columns:1fr} }
 
 .steprail { position:sticky; top:72px; display:flex; flex-direction:column; gap:3px; }
@@ -357,7 +357,7 @@ table.docket tr:hover td { background: var(--surface-2); }
 .seg-sub { color:var(--ink-soft); font-size:13px; margin:0 0 16px; }
 
 /* Question cards — clear separation, read-at-a-glance */
-.qcard { background:var(--surface); border:1px solid var(--line); border-radius:12px;
+.qcard { position:relative; background:var(--surface); border:1px solid var(--line); border-radius:12px;
   padding:18px 20px; margin-bottom:14px; transition:border-color .12s, box-shadow .12s; }
 .qcard:hover { box-shadow:0 2px 12px rgba(15,27,45,.06); border-color:var(--accent); }
 .qcard > .field > label { font-size:15px; font-weight:600; margin-bottom:10px; display:block; line-height:1.4; }
@@ -866,3 +866,7 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .mav-msg-body { font-size:14px; line-height:1.5; padding:12px 14px; border-radius:12px; background:var(--surface); border:1px solid var(--line); }
 .mav-msg.you .mav-msg-body { background:var(--brand); color:#fff; border-color:var(--brand); }
 .mav-msg.mav .mav-msg-body { background:linear-gradient(135deg, var(--surface) 0%, #1b3a5c0a 100%); }
+
+/* Question number badge */
+.qnum { position:absolute; top:10px; right:12px; font-size:11px; font-weight:800; color:var(--accent); background:var(--script-bg); border:1px solid rgba(217,152,42,.35); border-radius:6px; padding:2px 7px; letter-spacing:.02em; }
+.qcard > .field > label { padding-right:42px; }
