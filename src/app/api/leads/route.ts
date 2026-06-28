@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { FIRM_WRITABLE_STAGES } from "@/lib/questionnaire";
+import { recordAudit } from "@/lib/audit";
 
 export const runtime = "edge";
 
@@ -8,7 +9,7 @@ async function me(sb: Awaited<ReturnType<typeof supabaseServer>>) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return null;
   const { data } = await sb.from("app_users")
-    .select("id, role, firm_id").eq("id", auth.user.id).maybeSingle();
+    .select("id, role, firm_id, full_name").eq("id", auth.user.id).maybeSingle();
   return data ? { ...data, uid: auth.user.id } : null;
 }
 
@@ -56,6 +57,22 @@ export async function POST(req: NextRequest) {
 
     const { error: leadErr } = await sb.from("leads").update(lead).eq("id", lead_id);
     if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });
+
+    // Activity Log: summarize what changed in plain words.
+    if (lead && typeof lead === "object") {
+      const labels: Record<string, string> = {
+        phone: "phone", email: "email", first_name: "first name", last_name: "last name",
+        dob: "date of birth", mail_addr1: "mailing address", mail_city: "city", mail_state: "state",
+        mail_zip: "ZIP", ec_name: "emergency contact", ec_phone: "emergency contact phone",
+        pnc_status: "injured-party status", status: "status",
+      };
+      const changed = Object.keys(lead).filter((k) => k in labels).map((k) => labels[k]);
+      const unique = Array.from(new Set(changed));
+      if (unique.length) {
+        const desc = unique.length <= 3 ? `Updated ${unique.join(", ")}.` : `Updated ${unique.length} contact fields.`;
+        await recordAudit({ firm_id: u.firm_id, lead_id, actor: u.uid, actor_name: (u as any).full_name, category: "contact", description: desc, meta: { fields: unique } });
+      }
+    }
 
     // Fire outbound webhook on a status change so firms stay in sync.
     if (lead && lead.status) {

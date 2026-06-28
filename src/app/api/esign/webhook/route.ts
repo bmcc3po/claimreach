@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
         await admin.from("leads").update({ status: "signed", esign_date: new Date().toISOString().slice(0, 10) }).eq("id", leadId);
         const { data: lead } = await admin.from("leads").select("firm_id, lead_no, first_name, last_name, phone, email, case_type").eq("id", leadId).maybeSingle();
         if (lead?.firm_id) await fireEvent(lead.firm_id, "retainer.signed", { lead_id: leadId, retainer_id: retainerId, completed_pdf_url: patch.completed_pdf_url, ...lead });
+        try {
+          const { recordAudit } = await import("@/lib/audit");
+          await recordAudit({ firm_id: lead?.firm_id, lead_id: leadId, category: "retainer", actor_name: "SignWell", description: "Retainer signed and completed (certified). File moved to Signed." });
+        } catch {}
       }
     }
     return NextResponse.json({ ok: true });

@@ -29,6 +29,7 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
   const [approved, setApproved] = useState(false);
   const [signerName, setSignerName] = useState(""); const [signerEmail, setSignerEmail] = useState(""); const [signerPhone, setSignerPhone] = useState("");
   const [sendVia, setSendVia] = useState("both");
+  const [method, setMethod] = useState<"signwell" | "builtin">("signwell");
   const [pdfTemplates, setPdfTemplates] = useState<any[]>([]);
   const [editPdfId, setEditPdfId] = useState<string | null>(null);
   const [editPdf, setEditPdf] = useState<any | null>(null);
@@ -86,6 +87,29 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
     const d = await r.json();
     if (d.ok) { setMsg("Sent. The client will receive it by " + (sendVia === "both" ? "email and text" : sendVia) + "."); load(); if (preview?.id === id) setPreview({ ...preview, status: "sent" }); }
     else setMsg(d.error || "Send failed");
+  }
+
+  // Built-in (non-certified): create a signable doc from the retainer body and
+  // text the client our /sign/[id] link.
+  async function sendBuiltin(id: string) {
+    if (!approved && !(role === "owner" || role === "admin")) {
+      alert("Grievous must approve this intake before sending. Open Grievous and run a Full review."); return;
+    }
+    if (!signerPhone) { setMsg("A phone number is required to text the signing link."); return; }
+    setMsg("Creating signing link…");
+    const body = preview?.rendered_body || "";
+    const r = await fetch("/api/signable", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "create", lead_id: leadId, title: "Retainer Agreement", doc_type: "retainer", certified: false, body_html: body, signer_name: signerName, signer_phone: signerPhone, retainer_id: id }) });
+    const d = await r.json();
+    if (!d.ok) { setMsg(d.error || "Could not create signing link"); return; }
+    // text the link via JustCall
+    try {
+      await fetch("/api/justcall/action", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "sms", lead_id: leadId, to: signerPhone, body: `Please review and sign your retainer agreement here: ${d.link}` }) });
+    } catch {}
+    // mark the retainer sent
+    await setStatus(id, "sent");
+    setMsg("Signing link texted to the client.");
   }
 
   async function generate() {
@@ -148,19 +172,37 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
 
         {preview.status === "draft" && (
           <div className="card" style={{ padding: 16, marginTop: 12 }}>
-            <div className="section-title">Send for signature (SignWell, certified)</div>
+            <div className="section-title">Send for signature</div>
+            <div className="esign-method">
+              <button className={`esign-method-opt ${method === "signwell" ? "on" : ""}`} onClick={() => setMethod("signwell")}>
+                <strong>Certified (SignWell)</strong>
+                <span>Court-admissible, full audit trail. For retainers.</span>
+              </button>
+              <button className={`esign-method-opt ${method === "builtin" ? "on" : ""}`} onClick={() => setMethod("builtin")}>
+                <strong>Built-in signer (our page)</strong>
+                <span>Texts the client a link to sign on our page. Not certified.</span>
+              </button>
+            </div>
             <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
               <input placeholder="Signer name" value={signerName} onChange={(e) => setSignerName(e.target.value)} style={{ flex: 1, minWidth: 150 }} />
-              <input placeholder="Signer email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} style={{ flex: 1, minWidth: 170 }} />
+              {method === "signwell" && <input placeholder="Signer email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} style={{ flex: 1, minWidth: 170 }} />}
               <input placeholder="Signer phone" value={signerPhone} onChange={(e) => setSignerPhone(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
-              <select value={sendVia} onChange={(e) => setSendVia(e.target.value)} style={{ width: "auto" }}>
-                <option value="both">Email + text</option>
-                <option value="email">Email only</option>
-                <option value="sms">Text only</option>
-              </select>
+              {method === "signwell" && (
+                <select value={sendVia} onChange={(e) => setSendVia(e.target.value)} style={{ width: "auto" }}>
+                  <option value="both">Email + text</option>
+                  <option value="email">Email only</option>
+                  <option value="sms">Text only</option>
+                </select>
+              )}
             </div>
-            <button className="btn gold" onClick={() => sendForSign(preview.id)}>Send retainer for eSign</button>
-            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>SignWell emails a secure, court-admissible signing link. Email is required; a text with the link is sent too when a phone is on file. Signature status updates here automatically.</p>
+            <button className="btn gold" onClick={() => method === "signwell" ? sendForSign(preview.id) : sendBuiltin(preview.id)}>
+              {method === "signwell" ? "Send retainer for eSign" : "Text client our signing link"}
+            </button>
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              {method === "signwell"
+                ? "SignWell emails a secure, court-admissible signing link (and texts it too when a phone is on file). Status updates here automatically."
+                : "We text the client a link to sign this retainer on our own page. Faster, but not a certified eSignature. Use SignWell for binding retainers."}
+            </p>
           </div>
         )}
         {msg && <p className="save-msg" style={{ marginTop: 8 }}>{msg}</p>}

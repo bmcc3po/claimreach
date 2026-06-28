@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { getEsignAccount, createSignwellDocument, createSignwellFromPdf } from "@/lib/signwell";
+import { recordAudit } from "@/lib/audit";
 export const runtime = "edge";
 
 // POST { op:'send_retainer', retainer_id, signer_name, signer_email, signer_phone, send_via }
@@ -61,6 +62,8 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
+    await recordAudit({ firm_id: lead?.firm_id ?? me.firm_id, lead_id: lead?.id, actor: auth.user.id, actor_name: me.full_name, category: "retainer", description: `Sent retainer for signature via SignWell to ${signerName} (${b.send_via || "email"}).` });
+
     return NextResponse.json({ ok: true, signing_url: (res as any).signing_url });
   }
 
@@ -120,6 +123,7 @@ export async function POST(req: NextRequest) {
         });
       } catch {}
     }
+    await recordAudit({ firm_id: lead.firm_id ?? me.firm_id, lead_id: lead.id, actor: auth.user.id, actor_name: me.full_name, category: "retainer", description: `Sent PDF retainer "${tpl.name}" for signature via SignWell to ${signerName}.` });
     return NextResponse.json({ ok: true, signing_url: (res as any).signing_url });
   }
 

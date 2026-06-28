@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 
-// Field types we expose, mapped to SignWell field types at send time.
 const FIELD_TYPES = [
   { key: "signature", label: "Signature", color: "#2f6df6" },
   { key: "initials", label: "Initials", color: "#7c4dff" },
@@ -17,17 +16,17 @@ declare global { interface Window { pdfjsLib: any; } }
 export default function PdfFieldEditor({ templateId, initialName, initialFields, onClose }: { templateId: string; initialName?: string; initialFields?: PField[]; onClose: () => void }) {
   const [name, setName] = useState(initialName || "Retainer PDF");
   const [fields, setFields] = useState<PField[]>(initialFields || []);
-  const [pageCount, setPageCount] = useState(1);
+  const [pages, setPages] = useState<{ num: number; w: number; h: number; canvas: HTMLCanvasElement }[]>([]);
   const [tool, setTool] = useState<string>("signature");
   const [role, setRole] = useState<Role>("client");
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
-  const pagesWrap = useRef<HTMLDivElement>(null);
   const pageDims = useRef<Record<number, { w: number; h: number }>>({});
+  // live drag/resize state
+  const drag = useRef<{ id: string; mode: "move" | "resize"; startX: number; startY: number; pageEl: HTMLElement; orig: PField } | null>(null);
 
-  // load pdf.js from CDN, fetch the signed PDF url, render pages to canvas
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -46,49 +45,72 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
         if (!d.url) throw new Error("Could not load the PDF.");
         const pdf = await window.pdfjsLib.getDocument(d.url).promise;
         if (cancelled) return;
-        setPageCount(pdf.numPages);
-        const wrap = pagesWrap.current!; wrap.innerHTML = "";
+        const out: { num: number; w: number; h: number; canvas: HTMLCanvasElement }[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const viewport = page.getViewport({ scale: 1.4 });
-          const holder = document.createElement("div");
-          holder.className = "pdf-page-holder"; holder.dataset.page = String(i);
-          holder.style.width = `${viewport.width}px`; holder.style.height = `${viewport.height}px`;
           const canvas = document.createElement("canvas");
           canvas.width = viewport.width; canvas.height = viewport.height;
-          holder.appendChild(canvas); wrap.appendChild(holder);
-          pageDims.current[i] = { w: viewport.width, h: viewport.height };
           await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+          pageDims.current[i] = { w: viewport.width / 1.4, h: viewport.height / 1.4 }; // store PDF points
+          out.push({ num: i, w: viewport.width, h: viewport.height, canvas });
         }
-        setLoading(false);
+        if (!cancelled) { setPages(out); setLoading(false); }
       } catch (e: any) { if (!cancelled) { setErr(String(e?.message ?? e)); setLoading(false); } }
     })();
     return () => { cancelled = true; };
   }, [templateId]);
 
-  // click on a page to drop a field
-  const onPageClick = useCallback((e: React.MouseEvent, page: number) => {
-    if (selected) { setSelected(null); return; }
-    const holder = (e.currentTarget as HTMLElement);
-    const rect = holder.getBoundingClientRect();
+  // drop a new field where you click on the page
+  function onPageMouseDown(e: React.MouseEvent, pageNum: number) {
+    // only drop if you clicked empty page area (not an existing field)
+    if ((e.target as HTMLElement).closest(".pdf-field")) return;
+    const pageEl = e.currentTarget as HTMLElement;
+    const rect = pageEl.getBoundingClientRect();
     const xPct = ((e.clientX - rect.left) / rect.width) * 100;
     const yPct = ((e.clientY - rect.top) / rect.height) * 100;
-    const def = FIELD_TYPES.find((t) => t.key === tool)!;
     const w = tool === "checkbox" ? 4 : tool === "signature" ? 22 : 16;
-    const h = tool === "signature" || tool === "initials" ? 7 : tool === "checkbox" ? 3.5 : 4.5;
-    const nf: PField = { id: crypto.randomUUID(), type: tool, page, xPct: Math.max(0, xPct - w / 2), yPct: Math.max(0, yPct - h / 2), wPct: w, hPct: h, role, label: def.label, required: true };
+    const h = tool === "signature" || tool === "initials" ? 7 : tool === "checkbox" ? 3.5 : 5;
+    const def = FIELD_TYPES.find((t) => t.key === tool)!;
+    const nf: PField = { id: crypto.randomUUID(), type: tool, page: pageNum, xPct: clamp(xPct - w / 2, 0, 100 - w), yPct: clamp(yPct - h / 2, 0, 100 - h), wPct: w, hPct: h, role, label: def.label, required: true };
     setFields((arr) => [...arr, nf]);
-  }, [tool, role, selected]);
+    setSelected(nf.id);
+  }
+
+  function startDrag(e: React.MouseEvent, f: PField, mode: "move" | "resize") {
+    e.stopPropagation();
+    const pageEl = (e.currentTarget as HTMLElement).closest(".pdf-page") as HTMLElement;
+    drag.current = { id: f.id, mode, startX: e.clientX, startY: e.clientY, pageEl, orig: { ...f } };
+    setSelected(f.id);
+    window.addEventListener("mousemove", onDragMove);
+    window.addEventListener("mouseup", endDrag);
+  }
+  const onDragMove = useCallback((e: MouseEvent) => {
+    const dg = drag.current; if (!dg) return;
+    const rect = dg.pageEl.getBoundingClientRect();
+    const dxPct = ((e.clientX - dg.startX) / rect.width) * 100;
+    const dyPct = ((e.clientY - dg.startY) / rect.height) * 100;
+    setFields((arr) => arr.map((f) => {
+      if (f.id !== dg.id) return f;
+      if (dg.mode === "move") {
+        return { ...f, xPct: clamp(dg.orig.xPct + dxPct, 0, 100 - f.wPct), yPct: clamp(dg.orig.yPct + dyPct, 0, 100 - f.hPct) };
+      } else {
+        return { ...f, wPct: clamp(dg.orig.wPct + dxPct, 3, 100 - f.xPct), hPct: clamp(dg.orig.hPct + dyPct, 2.5, 100 - f.yPct) };
+      }
+    }));
+  }, []);
+  const endDrag = useCallback(() => {
+    drag.current = null;
+    window.removeEventListener("mousemove", onDragMove);
+    window.removeEventListener("mouseup", endDrag);
+  }, [onDragMove]);
 
   function removeField(id: string) { setFields((a) => a.filter((f) => f.id !== id)); setSelected(null); }
   function setFieldRole(id: string, r: Role) { setFields((a) => a.map((f) => f.id === id ? { ...f, role: r } : f)); }
 
   async function save() {
     setMsg("Saving…");
-    // capture page dimensions in PDF points (canvas was rendered at scale 1.4)
-    const dims: Record<number, { w: number; h: number }> = {};
-    for (const [p, d] of Object.entries(pageDims.current)) dims[Number(p)] = { w: d.w / 1.4, h: d.h / 1.4 };
-    const r = await fetch("/api/pdf-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_fields", id: templateId, name, fields, page_count: pageCount, page_dims: dims }) });
+    const r = await fetch("/api/pdf-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_fields", id: templateId, name, fields, page_count: pages.length, page_dims: pageDims.current }) });
     const d = await r.json();
     setMsg(d.ok ? "Saved." : (d.error || "Save failed"));
   }
@@ -100,40 +122,58 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
         <input className="pdf-name" value={name} onChange={(e) => setName(e.target.value)} />
         <span className="spacer" />
         <div className="pdf-role-toggle">
-          <button className={role === "client" ? "on client" : ""} onClick={() => setRole("client")}>👤 Client fills/signs</button>
-          <button className={role === "agent" ? "on agent" : ""} onClick={() => setRole("agent")}>🧑‍💼 Agent fills</button>
+          <button className={role === "client" ? "on client" : ""} onClick={() => setRole("client")}>👤 Client</button>
+          <button className={role === "agent" ? "on agent" : ""} onClick={() => setRole("agent")}>🧑‍💼 Agent</button>
         </div>
         <button className="btn" onClick={save}>Save layout</button>
       </div>
 
       <div className="pdf-editor-body">
         <div className="pdf-tools">
-          <div className="pdf-tools-label">Drop a field</div>
+          <div className="pdf-tools-label">Field to place</div>
           {FIELD_TYPES.map((t) => (
             <button key={t.key} className={`pdf-tool ${tool === t.key ? "on" : ""}`} style={{ ["--fc" as any]: t.color }} onClick={() => setTool(t.key)}>
               <span className="pdf-tool-dot" />{t.label}
             </button>
           ))}
-          <div className="pdf-tools-hint">Pick a field + a role, then click on the page to place it. Click a placed field to assign or remove it.</div>
+          <div className="pdf-tools-hint">Pick a field type and who fills it, then click on the page to drop it. Drag the box to move it, drag the corner handle to resize. Click a box to change its role or delete it.</div>
           <div className="pdf-legend">
-            <span><i className="lg client" /> Client</span>
-            <span><i className="lg agent" /> Agent</span>
+            <span><i className="lg client" /> Client fills/signs</span>
+            <span><i className="lg agent" /> Agent fills</span>
           </div>
+          <div className="pdf-count muted">{fields.length} field{fields.length === 1 ? "" : "s"} placed</div>
         </div>
 
         <div className="pdf-canvas-scroll">
           {loading && <p className="muted">Loading PDF…</p>}
           {err && <p className="save-msg warn">{err}</p>}
-          <div ref={pagesWrap} className="pdf-pages" onClick={(e) => {
-            const holder = (e.target as HTMLElement).closest(".pdf-page-holder") as HTMLElement | null;
-            if (holder && (e.target as HTMLElement).classList.contains("pdf-page-holder") === false && (e.target as HTMLElement).tagName === "CANVAS") {
-              onPageClick(e as any, parseInt(holder.dataset.page || "1", 10));
-            } else if (holder && (e.target as HTMLElement) === holder) {
-              onPageClick(e as any, parseInt(holder.dataset.page || "1", 10));
-            }
-          }} />
-          {/* field overlays, positioned per page */}
-          <FieldOverlays fields={fields} pagesWrap={pagesWrap} selected={selected} onSelect={setSelected} onRole={setFieldRole} onRemove={removeField} ready={!loading} />
+          <div className="pdf-pages">
+            {pages.map((p) => (
+              <div key={p.num} className="pdf-page" style={{ width: p.w, height: p.h }}
+                onMouseDown={(e) => onPageMouseDown(e, p.num)}
+                ref={(el) => { if (el && !el.querySelector("canvas")) el.insertBefore(p.canvas, el.firstChild); }}>
+                {fields.filter((f) => f.page === p.num).map((f) => {
+                  const sel = selected === f.id;
+                  return (
+                    <div key={f.id} className={`pdf-field ${f.role} ${sel ? "sel" : ""}`}
+                      style={{ left: `${f.xPct}%`, top: `${f.yPct}%`, width: `${f.wPct}%`, height: `${f.hPct}%` }}
+                      onMouseDown={(e) => startDrag(e, f, "move")}
+                      onClick={(e) => { e.stopPropagation(); setSelected(sel ? null : f.id); }}>
+                      <span className="pdf-field-label">{f.label}</span>
+                      <span className="pdf-resize" onMouseDown={(e) => startDrag(e, f, "resize")} />
+                      {sel && (
+                        <div className="pdf-field-menu" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                          <button className={f.role === "client" ? "on" : ""} onClick={() => setFieldRole(f.id, "client")}>Client</button>
+                          <button className={f.role === "agent" ? "on" : ""} onClick={() => setFieldRole(f.id, "agent")}>Agent</button>
+                          <button className="rm" onClick={() => removeField(f.id)}>Delete</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       {msg && <div className="pdf-save-msg">{msg}</div>}
@@ -141,36 +181,4 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   );
 }
 
-// Renders field boxes absolutely over the rendered pages.
-function FieldOverlays({ fields, pagesWrap, selected, onSelect, onRole, onRemove, ready }: any) {
-  const [, force] = useState(0);
-  useEffect(() => { if (ready) force((n) => n + 1); }, [ready, fields.length]);
-  if (!ready || !pagesWrap.current) return null;
-  const holders = Array.from(pagesWrap.current.querySelectorAll(".pdf-page-holder")) as HTMLElement[];
-  const wrapRect = pagesWrap.current.getBoundingClientRect();
-  return (
-    <>
-      {fields.map((f: PField) => {
-        const holder = holders[f.page - 1]; if (!holder) return null;
-        const hr = holder.getBoundingClientRect();
-        const top = hr.top - wrapRect.top + (f.yPct / 100) * hr.height;
-        const left = hr.left - wrapRect.left + (f.xPct / 100) * hr.width;
-        const w = (f.wPct / 100) * hr.width; const h = (f.hPct / 100) * hr.height;
-        const sel = selected === f.id;
-        return (
-          <div key={f.id} className={`pdf-field ${f.role} ${sel ? "sel" : ""}`} style={{ top, left, width: w, height: h }}
-            onClick={(e) => { e.stopPropagation(); onSelect(sel ? null : f.id); }}>
-            <span className="pdf-field-label">{f.label}</span>
-            {sel && (
-              <div className="pdf-field-menu" onClick={(e) => e.stopPropagation()}>
-                <button className={f.role === "client" ? "on" : ""} onClick={() => onRole(f.id, "client")}>Client</button>
-                <button className={f.role === "agent" ? "on" : ""} onClick={() => onRole(f.id, "agent")}>Agent</button>
-                <button className="rm" onClick={() => onRemove(f.id)}>✕</button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </>
-  );
-}
+function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }

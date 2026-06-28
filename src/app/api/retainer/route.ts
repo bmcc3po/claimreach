@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { retainerTokens, fillTemplate } from "@/lib/retainer-tokens";
+import { recordAudit } from "@/lib/audit";
 export const runtime = "edge";
 
 export async function GET(req: NextRequest) {
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
     const rendered = fillTemplate(tpl.body, retainerTokens(lead, claim?.answers ?? {}));
     const { data, error } = await sb.from("retainers").insert({ lead_id: b.lead_id, template_id: b.template_id, status: "draft", rendered_body: rendered, created_by: auth.user.id }).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await recordAudit({ firm_id: lead?.firm_id, lead_id: b.lead_id, actor: auth.user.id, category: "retainer", description: `Generated retainer "${tpl.name}".` });
     return NextResponse.json({ retainer: data });
   }
   if (b.op === "set_status") {

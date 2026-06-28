@@ -1072,19 +1072,21 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .pdf-legend i.client { background: #2f6df6; } .pdf-legend i.agent { background: #d9982a; }
 
 .pdf-canvas-scroll { flex: 1; overflow: auto; position: relative; background: var(--surface-3); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
-.pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 16px; position: relative; }
-.pdf-page-holder { position: relative; box-shadow: 0 4px 20px rgba(0,0,0,.18); background: #fff; cursor: crosshair; }
-.pdf-page-holder canvas { display: block; }
+.pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.pdf-page { position: relative; box-shadow: 0 4px 20px rgba(0,0,0,.18); background: #fff; cursor: crosshair; flex-shrink: 0; }
+.pdf-page canvas { display: block; position: absolute; inset: 0; pointer-events: none; }
 
-.pdf-field { position: absolute; border: 2px solid; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 10px; font-weight: 700; overflow: visible; z-index: 5; }
-.pdf-field.client { border-color: #2f6df6; background: rgba(47,109,246,.16); color: #1a47a8; }
-.pdf-field.agent { border-color: #d9982a; background: rgba(217,152,42,.18); color: #8a5e10; }
-.pdf-field.sel { box-shadow: 0 0 0 3px rgba(0,0,0,.12); z-index: 20; }
-.pdf-field-label { pointer-events: none; white-space: nowrap; }
-.pdf-field-menu { position: absolute; top: -34px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; background: var(--ink); border-radius: 7px; padding: 3px; z-index: 30; }
-.pdf-field-menu button { font-size: 11px; font-weight: 600; padding: 4px 9px; border: none; background: transparent; color: #fff; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.pdf-field { position: absolute; border: 2px solid; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: move; font-size: 10px; font-weight: 700; z-index: 5; user-select: none; box-sizing: border-box; }
+.pdf-field.client { border-color: #2f6df6; background: rgba(47,109,246,.18); color: #1a47a8; }
+.pdf-field.agent { border-color: #d9982a; background: rgba(217,152,42,.2); color: #8a5e10; }
+.pdf-field.sel { box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor; z-index: 20; }
+.pdf-field-label { pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.pdf-resize { position: absolute; right: -5px; bottom: -5px; width: 13px; height: 13px; background: #fff; border: 2px solid currentColor; border-radius: 3px; cursor: nwse-resize; z-index: 25; }
+.pdf-field-menu { position: absolute; top: -36px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; background: var(--ink); border-radius: 8px; padding: 3px; z-index: 30; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.pdf-field-menu button { font-size: 11px; font-weight: 600; padding: 5px 10px; border: none; background: transparent; color: #fff; border-radius: 5px; cursor: pointer; white-space: nowrap; }
 .pdf-field-menu button.on { background: rgba(255,255,255,.22); }
 .pdf-field-menu button.rm { color: #ff9d9d; }
+.pdf-count { font-size: 12px; margin-top: 12px; }
 .pdf-save-msg { padding: 8px 0 0; font-size: 13px; color: var(--ink-soft); }
 
 /* US phone input */
@@ -1190,3 +1192,12 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .leadhead-dot { color: var(--ink-faint); }
 .claimtab { font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; }
 .claimtab.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); color: var(--ink); }
+
+/* retainer send: certified vs built-in method choice */
+.esign-method { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.esign-method-opt { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; transition: all .12s; }
+.esign-method-opt strong { font-size: 13.5px; color: var(--ink); }
+.esign-method-opt span { font-size: 11.5px; color: var(--ink-soft); line-height: 1.4; }
+.esign-method-opt:hover { border-color: var(--accent); }
+.esign-method-opt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+@media (max-width: 640px) { .esign-method { grid-template-columns: 1fr; } }

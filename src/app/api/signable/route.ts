@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { getEsignAccount, createSignwellDocument } from "@/lib/signwell";
+import { recordAudit } from "@/lib/audit";
 export const runtime = "edge";
 
 // Manage signable documents. Two tiers:
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
       firm_id: lead?.firm_id ?? me.firm_id, lead_id: b.lead_id, title: b.title || "Document",
       doc_type: b.doc_type || "other", certified: !!b.certified, body_html: b.body_html || "",
       signer_name: signerName, signer_email: b.signer_email || lead?.email, signer_phone: b.signer_phone || lead?.phone,
-      status: "draft", created_by: auth.user.id,
+      status: "draft", created_by: auth.user.id, retainer_id: b.retainer_id ?? null,
     };
 
     if (b.certified) {
@@ -55,6 +56,13 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     // built-in signing link (public page)
     const link = !b.certified ? `${new URL(req.url).origin}/sign/${data.id}` : row.signing_url;
+    await recordAudit({
+      firm_id: row.firm_id, lead_id: b.lead_id, actor: auth.user.id, category: "retainer",
+      description: b.certified
+        ? `Sent "${row.title}" for certified signature to ${signerName}.`
+        : `Texted ${signerName} a link to sign "${row.title}" on our page (built-in, not certified).`,
+      meta: { signable_id: data.id, retainer_id: b.retainer_id ?? null },
+    });
     return NextResponse.json({ ok: true, id: data.id, link });
   }
 
