@@ -1,47 +1,48 @@
 "use client";
 import { useState } from "react";
 import { Logo } from "./Logo";
+import Icon from "./ui/Icon";
 
 type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
 
 const STAFF_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
-    { href: "/dashboard", icon: "🏠", label: "Home" },
-    { href: "/leads", icon: "📁", label: "Leads" },
-    { href: "/intake", icon: "➕", label: "Add lead" },
-    { href: "/queue", icon: "📞", label: "My Queue" },
-    { href: "/reports", icon: "📊", label: "Reports" },
+    { href: "/dashboard", icon: "home", label: "Home" },
+    { href: "/leads", icon: "files", label: "Leads" },
+    { href: "/intake", icon: "plus", label: "Add lead" },
+    { href: "/queue", icon: "phone", label: "My queue" },
+    { href: "/reports", icon: "chart", label: "Reports" },
   ]},
-  { id: "ai", label: "AI", items: [
-    { href: "/crissi", icon: "🆘", label: "Crissi" },
-    { href: "/maverick", icon: "⚡", label: "Maverick" },
-    { href: "/grievous", icon: "🛡️", label: "Grievous" },
+  { id: "ai", label: "AI tools", items: [
+    { href: "/crissi", icon: "life", label: "Crissi" },
+    { href: "/maverick", icon: "spark", label: "Maverick" },
+    { href: "/grievous", icon: "shield", label: "Grievous" },
   ]},
   { id: "admin", label: "Settings", items: [
-    { href: "/team", icon: "👥", label: "Team" },
-    { href: "/users", icon: "👤", label: "Users", adminOnly: true },
-    { href: "/templates", icon: "🧱", label: "Intake templates", adminOnly: true },
-    { href: "/forms", icon: "🧩", label: "Form builder", adminOnly: true },
-    { href: "/integrations", icon: "🔌", label: "Integrations", adminOnly: true },
-    { href: "/settings", icon: "⚙️", label: "Settings" },
-    { href: "/profile", icon: "🙋", label: "Profile" },
+    { href: "/team", icon: "people", label: "Team" },
+    { href: "/users", icon: "user", label: "Users", adminOnly: true },
+    { href: "/templates", icon: "layout", label: "Intake templates", adminOnly: true },
+    { href: "/forms", icon: "puzzle", label: "Form builder", adminOnly: true },
+    { href: "/integrations", icon: "plug", label: "Integrations", adminOnly: true },
+    { href: "/settings", icon: "gear", label: "Settings" },
+    { href: "/profile", icon: "user", label: "Profile" },
   ]},
 ];
 
 const FIRM_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
-    { href: "/portal", icon: "🏠", label: "Home" },
-    { href: "/portal/cases", icon: "📁", label: "Cases" },
-    { href: "/portal/reports", icon: "📊", label: "Reports" },
+    { href: "/portal", icon: "home", label: "Home" },
+    { href: "/portal/cases", icon: "files", label: "Cases" },
+    { href: "/portal/reports", icon: "chart", label: "Reports" },
   ]},
   { id: "resources", label: "Resources", items: [
-    { href: "/portal/resources", icon: "🧰", label: "Resources" },
-    { href: "/portal/sop", icon: "📘", label: "SOP" },
-    { href: "/portal/crissi", icon: "🆘", label: "Crissi" },
+    { href: "/portal/resources", icon: "toolbox", label: "Resources" },
+    { href: "/portal/sop", icon: "book", label: "SOP" },
+    { href: "/portal/crissi", icon: "life", label: "Crissi" },
   ]},
   { id: "account", label: "Account", items: [
-    { href: "/portal/profile", icon: "🙋", label: "Profile" },
+    { href: "/portal/profile", icon: "user", label: "Profile" },
   ]},
 ];
 
@@ -84,7 +85,7 @@ export default function SideNav({
                 )}
                 {!isCollapsed && items.map((n) => (
                   <a key={n.href} href={n.href} className={`nl ${active === n.href ? "active" : ""}`} title={n.label}>
-                    <span className="ico">{n.icon}</span>
+                    <span className="ico"><Icon name={n.icon} /></span>
                     <span className="nl-label">{n.label}</span>
                   </a>
                 ))}

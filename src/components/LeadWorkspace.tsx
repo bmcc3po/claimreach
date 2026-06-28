@@ -4,6 +4,8 @@ import { STAGE_LABELS } from "@/lib/questionnaire";
 import { LX } from "@/lib/lexicon";
 import FloatingDock from "./FloatingDock";
 import ClaimIntake from "./ClaimIntake";
+import CaseOverview from "./CaseOverview";
+import StatusBadge from "./ui/StatusBadge";
 import ActivityLog from "./ActivityLog";
 import ContactInfo from "./ContactInfo";
 import CaseDetails from "./CaseDetails";
@@ -22,7 +24,7 @@ interface Claim {
   answers?: Record<string, any>;
 }
 
-const TABS = ["Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Activity Log"];
+const TABS = ["Overview", "Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Activity Log"];
 
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
@@ -41,7 +43,7 @@ export default function LeadWorkspace({
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
   );
-  const [tab, setTab] = useState("Case Questions");
+  const [tab, setTab] = useState("Overview");
   const [editMode, setEditMode] = useState(false);
   const activeClaim = claims.find((c) => c.id === activeClaimId);
   const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
@@ -60,7 +62,7 @@ export default function LeadWorkspace({
         <div className="queue">
           <span className="qhdr">Working</span>
           <span className="qtab active">{lead.claimant_name ?? lead.lead_no}</span>
-          <a className="qtab" href="/leads" style={{ textDecoration: "none" }}>+ Next</a>
+          <a className="qtab" href="/leads" style={{ textDecoration: "none" }} title="Go back to your lead queue">← Queue</a>
         </div>
         <div className="myday">
           <div className="stat"><b>{stats.signed}</b><span>Signed today</span></div>
@@ -73,29 +75,30 @@ export default function LeadWorkspace({
         <div className="row" style={{ justifyContent: "space-between", width: "100%" }}>
           <div>
             <h2>{lead.claimant_name ?? "Unnamed claimant"}</h2>
-            <div className="claimsrow">
-              {activeClaim?.campaign && <span className="ftag gold">{activeClaim.campaign}</span>}
-              <span style={{ fontWeight: 600 }}>File {lead.lead_no}</span>
+            <div className="leadhead-sub">
+              <span className="leadhead-file">File {lead.lead_no}</span>
+              {activeClaim?.campaign && <><span className="leadhead-dot">·</span><span>{activeClaim.campaign}</span></>}
+              <span className="leadhead-dot">·</span>
+              <span className="muted">Created {new Date(lead.created_at).toLocaleDateString()}</span>
             </div>
 
-            {/* Claims row — multiple claims per person */}
-            <div className="claimsrow">
-              {claims.map((c) => (
-                <button key={c.id} className={claimClass(c)} onClick={() => setActiveClaimId(c.id)}>
-                  {(c.campaign || c.claim_type)} · {c.on_behalf_of ? "OBO" : "self"} · {c.status}
-                </button>
-              ))}
-              <CreateClaim leadId={lead.id} firmId={lead.firm_id} />
-            </div>
-
-            <div className="meta">
-              <span className="ftag">Created {new Date(lead.created_at).toLocaleDateString()}</span>
-              <span className="ftag">{STAGE_LABELS[activeClaim?.status === "signed" ? "signed_retained" : "referral_received"] ?? activeClaim?.status}</span>
-            </div>
+            {/* Claims selector — only when a person has more than one claim */}
+            {claims.length > 1 && (
+              <div className="claimsrow" style={{ marginTop: 10 }}>
+                <span className="claims-label">Claims:</span>
+                {claims.map((c) => (
+                  <button key={c.id} className={`claimtab ${activeClaimId === c.id ? "on" : ""}`} onClick={() => setActiveClaimId(c.id)}>
+                    {(c.campaign || c.claim_type)} · {c.on_behalf_of ? "OBO" : "self"}
+                  </button>
+                ))}
+                <CreateClaim leadId={lead.id} firmId={lead.firm_id} />
+              </div>
+            )}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-            <span className="timer">● Live call 00:00</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-end" }}>
+            <StatusBadge status={activeClaim?.status ?? lead.status ?? "new"} />
             <LockFileButton lead={lead} />
+            {claims.length <= 1 && <CreateClaim leadId={lead.id} firmId={lead.firm_id} />}
           </div>
         </div>
       </div>
@@ -120,6 +123,9 @@ export default function LeadWorkspace({
             )}
           </div>
           <div className="formbody">
+            {tab === "Overview" && (
+              <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} onGo={(t) => { setTab(t); setEditMode(false); }} />
+            )}
             {tab === "Case Questions" && activeClaim && (
               <div>
                 <div className="gate" style={{ marginBottom: 16 }}>
@@ -221,7 +227,7 @@ function CreateClaim({ leadId, firmId }: { leadId: string; firmId: string }) {
   }
 
   if (!open) {
-    return <button className="claimchip" onClick={() => setOpen(true)}>+ Create another claim</button>;
+    return <button className="claimchip subtle" onClick={() => setOpen(true)} title="Use this when the same person has a second, separate matter (e.g. a different mass tort)">+ Add another claim</button>;
   }
   return (
     <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>

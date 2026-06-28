@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { contactFieldsForType } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
+import PhoneInput, { formatUsPhone } from "./PhoneInput";
 
 // Contact Info tab — caller information + emergency contact. These fields are
 // the single source of truth (stored on the lead). Any inline-in-intake copy
@@ -20,6 +21,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
   // New structured contact fields (names split + preferences + emergency permission).
   const [x, setX] = useState<Record<string, any>>({
     first_name: lead.first_name ?? "", last_name: lead.last_name ?? "",
+    phone: lead.phone ?? "", email: lead.email ?? "",
     dob: lead.dob ?? "", mail_addr1: lead.mail_addr1 ?? "", mail_addr2: lead.mail_addr2 ?? "",
     mail_city: lead.mail_city ?? "", mail_state: lead.mail_state ?? "", mail_zip: lead.mail_zip ?? "",
     preferred_language: lead.preferred_language ?? "", preferred_time: lead.preferred_time ?? "",
@@ -110,7 +112,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       <div className="ro-wrap">
         <div className="ro-namecard">
           <div className="ro-name">{fullName || "Unnamed client"}</div>
-          <div className="ro-sub">{lead.phone || "no phone"}{lead.email ? ` · ${lead.email}` : ""}</div>
+          <div className="ro-sub">{lead.phone ? formatUsPhone(lead.phone) : "no phone"}{lead.email ? ` · ${lead.email}` : ""}</div>
         </div>
 
         <div className="ro-section">Mailing Address</div>
@@ -131,7 +133,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
         <div className="ro-grid">
           <V label="Name" value={x.ec_name} />
           <V label="Relationship" value={x.ec_relationship} />
-          <V label="Phone" value={x.ec_phone} />
+          <V label="Phone" value={x.ec_phone ? formatUsPhone(x.ec_phone) : ""} />
           <V label="Email" value={x.ec_email} />
         </div>
         <div className="ro-grid">
@@ -151,6 +153,16 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
         <div className="field"><label style={{ fontSize: 13 }}>Last name</label><input value={x.last_name} onChange={(e) => setx("last_name", e.target.value)} /></div>
       </div>
       <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Full name (auto): <strong>{[x.first_name, x.last_name].filter(Boolean).join(" ") || "—"}</strong></div>
+
+      <div className="section-title" style={{ marginTop: 16 }}>Phone & Email</div>
+      <div className="grid2">
+        <div className="field">
+          <label style={{ fontSize: 13 }}>Cell phone (US)</label>
+          <PhoneInput value={x.phone} onChange={(e164) => setx("phone", e164)} />
+        </div>
+        <div className="field"><label style={{ fontSize: 13 }}>Email</label><input type="email" value={x.email} onChange={(e) => setx("email", e.target.value)} placeholder="name@email.com" /></div>
+      </div>
+      <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>US numbers only. Type the 10 digits, the +1 and formatting are added automatically so every file matches.</div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Mailing Address</div>
       <div className="field"><label style={{ fontSize: 13 }}>Address</label><input value={x.mail_addr1} onChange={(e) => setx("mail_addr1", e.target.value)} /></div>
@@ -173,7 +185,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       <div className="grid2">
         <div className="field"><label style={{ fontSize: 13 }}>Name</label><input value={x.ec_name} onChange={(e) => setx("ec_name", e.target.value)} /></div>
         <div className="field"><label style={{ fontSize: 13 }}>Relationship to client</label><input value={x.ec_relationship} onChange={(e) => setx("ec_relationship", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Phone</label><input value={x.ec_phone} onChange={(e) => setx("ec_phone", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Phone</label><PhoneInput value={x.ec_phone} onChange={(e164) => setx("ec_phone", e164)} /></div>
         <div className="field"><label style={{ fontSize: 13 }}>Email</label><input value={x.ec_email} onChange={(e) => setx("ec_email", e.target.value)} /></div>
       </div>
       <div className="field"><label style={{ fontSize: 13 }}>Mailing address</label><input value={x.ec_mail} onChange={(e) => setx("ec_mail", e.target.value)} /></div>

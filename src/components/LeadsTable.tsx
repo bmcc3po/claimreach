@@ -1,8 +1,11 @@
 "use client";
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { STAGE_LABELS } from "@/lib/questionnaire";
 import PersonSearch from "./PersonSearch";
+import { STAGE_LABELS } from "@/lib/questionnaire";
+import StatusBadge from "./ui/StatusBadge";
+import { formatUsPhone } from "./PhoneInput";
+const fmtPhone = (p: string) => p ? formatUsPhone(p) : "";
 
 export default function LeadsTable({ leads }: { leads: any[] }) {
   const [q, setQ] = useState("");
@@ -61,11 +64,6 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
     );
   }
 
-  function statusBadge(s: string) {
-    const cls = s === "dq" ? "dq" : s === "signed" ? "signed" : s === "qualified" ? "count" : "stage";
-    return <span className={`badge ${cls}`}>{s.replace("_", " ")}</span>;
-  }
-
   return (
     <div>
       <div className="leads-bar">
@@ -108,7 +106,6 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
               {th("type", "Type")}
               {th("campaign", "Campaign")}
               {th("status", "Status")}
-              {th("stage", "Stage")}
               {th("loc", "Location")}
               {th("summary", "Case description")}
               {th("created", "Created")}
@@ -121,18 +118,17 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
                 <td>{r.needsAction && <span className="dot" title="Needs action" />}</td>
                 <td><Link href={`/leads/${r.id}`}>{r.lead_no}</Link></td>
                 <td style={{ fontWeight: 600 }}>{r.name}</td>
-                <td style={{ whiteSpace: "nowrap" }}>{r.phone}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{fmtPhone(r.phone)}</td>
                 <td>{r.type}</td>
                 <td>{r.campaign}</td>
-                <td>{statusBadge(r.status)}{r.flag && <span className="badge flag" style={{ marginLeft: 4 }}>flag</span>}</td>
-                <td><span className="badge stage">{STAGE_LABELS[r.stage] ?? r.stage}</span></td>
+                <td><StatusBadge status={r.flag ? "flag" : r.status} /></td>
                 <td className="muted" style={{ whiteSpace: "nowrap" }}>{r.loc}</td>
                 <td className="trunc" title={r.summary}>{r.summary}</td>
                 <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.created).toLocaleDateString()}</td>
-                <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.updated).toLocaleString()}</td>
+                <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.updated).toLocaleDateString()}</td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={12} className="muted">No leads match.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={11} className="muted">No leads match.</td></tr>}
           </tbody>
         </table>
       </div>
