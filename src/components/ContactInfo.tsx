@@ -6,7 +6,7 @@ import FieldRenderer from "./FieldRenderer";
 // Contact Info tab — caller information + emergency contact. These fields are
 // the single source of truth (stored on the lead). Any inline-in-intake copy
 // reads/writes the same data, so they stay in sync (most recent write wins).
-export default function ContactInfo({ lead, claimType }: { lead: any; claimType?: string }) {
+export default function ContactInfo({ lead, claimType, editMode = true, onRequestEdit }: { lead: any; claimType?: string; editMode?: boolean; onRequestEdit?: () => void }) {
   const fields = contactFieldsForType(claimType ?? "motel_trafficking");
   const [f, setF] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
@@ -95,6 +95,53 @@ export default function ContactInfo({ lead, claimType }: { lead: any; claimType?
     else { flush(`s${i}`); blocks.push(<FieldRenderer key={fld.id} field={fld} value={f[fld.id]} onChange={(v) => set(fld.id, v)} />); }
   });
   flush("end");
+
+  // ---- READ-ONLY VIEW MODE (default) ----
+  if (!editMode) {
+    const fullName = [x.first_name, x.last_name].filter(Boolean).join(" ");
+    const addr = [x.mail_addr1, [x.mail_city, x.mail_state].filter(Boolean).join(", "), x.mail_zip].filter(Boolean).join(" · ");
+    const V = ({ label, value }: { label: string; value: any }) => (
+      <div className="ro-field">
+        <span className="ro-label">{label}</span>
+        <span className={`ro-value ${!value && value !== 0 ? "empty" : ""}`}>{value || "Not collected"}</span>
+      </div>
+    );
+    return (
+      <div className="ro-wrap">
+        <div className="ro-namecard">
+          <div className="ro-name">{fullName || "Unnamed client"}</div>
+          <div className="ro-sub">{lead.phone || "no phone"}{lead.email ? ` · ${lead.email}` : ""}</div>
+        </div>
+
+        <div className="ro-section">Mailing Address</div>
+        <div className="ro-grid">
+          <V label="Address" value={addr} />
+          <V label="Date of birth" value={x.dob} />
+        </div>
+
+        <div className="ro-section">Contact Preferences</div>
+        <div className="ro-grid">
+          <V label="Preferred language" value={x.preferred_language} />
+          <V label="Preferred time" value={x.preferred_time} />
+          <V label="Preferred method" value={x.preferred_contact_method} />
+          <V label="Time zone" value={x.client_time_zone} />
+        </div>
+
+        <div className="ro-section">Emergency Contact</div>
+        <div className="ro-grid">
+          <V label="Name" value={x.ec_name} />
+          <V label="Relationship" value={x.ec_relationship} />
+          <V label="Phone" value={x.ec_phone} />
+          <V label="Email" value={x.ec_email} />
+        </div>
+        <div className="ro-grid">
+          <V label="Permission to discuss" value={x.ec_permission_to_discuss ? "Yes" : "No"} />
+        </div>
+
+        <button className="edit-cta" onClick={onRequestEdit}>✎ Edit contact info</button>
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 
 // Case-management layer: routing/people, content, dates, tags, events. Separate
 // from the intake questionnaire. Saves to the leads row + case_events.
-export default function CaseDetails({ lead, staff = [] }: { lead: any; staff?: { id: string; full_name: string }[] }) {
+export default function CaseDetails({ lead, staff = [], editMode = true, onRequestEdit }: { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void }) {
   const [f, setF] = useState<any>({
     marketing_source: lead.marketing_source ?? "",
     referring_attorney: lead.referring_attorney ?? "",
@@ -65,6 +65,60 @@ export default function CaseDetails({ lead, staff = [] }: { lead: any; staff?: {
   }
 
   const dd = (key: string) => opts[key] ?? [];
+
+  // ---- READ-ONLY VIEW MODE (default) ----
+  if (!editMode) {
+    const staffName = (id: string) => staff.find((s) => s.id === id)?.full_name || "";
+    const tags = (lead.case_tags ?? []) as string[];
+    const V = ({ label, value }: { label: string; value: any }) => (
+      <div className="ro-field">
+        <span className="ro-label">{label}</span>
+        <span className={`ro-value ${!value ? "empty" : ""}`}>{value || "Not collected"}</span>
+      </div>
+    );
+    return (
+      <div className="ro-wrap case-details">
+        <div className="ro-section">Routing & People</div>
+        <div className="ro-grid">
+          <V label="Marketing source" value={f.marketing_source} />
+          <V label="Referring attorney" value={f.referring_attorney} />
+          <V label="Handling attorney" value={f.handling_attorney} />
+          <V label="Office location" value={f.office_location} />
+          <V label="Intake agent" value={staffName(f.intake_agent_id)} />
+          <V label="QA agent" value={staffName(f.qa_agent_id)} />
+          <V label="Case manager" value={staffName(f.case_manager_id)} />
+        </div>
+
+        <div className="ro-section">Status & Dates</div>
+        <div className="ro-grid">
+          <V label="Case tier" value={f.case_rating} />
+          <V label="Call outcome" value={f.call_outcome} />
+          <V label="eSign date" value={f.esign_date} />
+          <V label="Last called" value={lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : ""} />
+        </div>
+        {tags.length > 0 && (
+          <div className="ro-tags">{tags.map((t) => <span key={t} className="ro-tag">{t}</span>)}</div>
+        )}
+
+        {(f.case_summary || f.case_description) && <>
+          <div className="ro-section">Case Summary</div>
+          <div className="ro-narrative">{f.case_summary || "Not collected"}</div>
+          {f.case_description && <div className="ro-narrative muted-narrative">{f.case_description}</div>}
+        </>}
+
+        {events.length > 0 && <>
+          <div className="ro-section">Upcoming Events</div>
+          {events.map((ev) => (
+            <div key={ev.id} className="cd-event">
+              <div><strong>{ev.title}</strong> <span className="muted">· {new Date(ev.event_at).toLocaleString()}</span>{ev.notes && <div className="muted" style={{ fontSize: 12 }}>{ev.notes}</div>}</div>
+            </div>
+          ))}
+        </>}
+
+        <button className="edit-cta" onClick={onRequestEdit}>✎ Edit case details</button>
+      </div>
+    );
+  }
 
   return (
     <div className="case-details">

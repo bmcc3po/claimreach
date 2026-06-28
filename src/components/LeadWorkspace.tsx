@@ -42,6 +42,7 @@ export default function LeadWorkspace({
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
   );
   const [tab, setTab] = useState("Case Questions");
+  const [editMode, setEditMode] = useState(false);
   const activeClaim = claims.find((c) => c.id === activeClaimId);
   const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
 
@@ -107,11 +108,16 @@ export default function LeadWorkspace({
         <div className="card" style={{ padding: 0 }}>
           <div className="tabs">
             {TABS.map((t) => (
-              <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>
+              <button key={t} className={tab === t ? "active" : ""} onClick={() => { setTab(t); setEditMode(false); }}>{t}</button>
             ))}
             <span className="badge stage" style={{ marginLeft: "auto", alignSelf: "center", marginRight: 8 }}>
               {activeClaim?.qualification ?? "pending"}
             </span>
+            {(tab === "Contact Info" || tab === "Case Details") && (
+              <button className={`edit-toggle ${editMode ? "on" : ""}`} onClick={() => setEditMode((v) => !v)} title={editMode ? "Done editing" : "Edit"} style={{ alignSelf: "center", marginRight: 8 }}>
+                {editMode ? "✓ Done" : "✎ Edit"}
+              </button>
+            )}
           </div>
           <div className="formbody">
             {tab === "Case Questions" && activeClaim && (
@@ -134,8 +140,8 @@ export default function LeadWorkspace({
                 />
               </div>
             )}
-            {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} />}
-            {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} />}
+            {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
+            {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
             {tab === "Retainer" && <RetainerTab leadId={lead.id} role={lead.current_user_role} />}
             {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" />}
             {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" />}

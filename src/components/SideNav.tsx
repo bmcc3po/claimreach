@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { Logo } from "./Logo";
-import Crissi from "./Crissi";
 
 type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
@@ -109,8 +108,6 @@ export default function SideNav({
         </div>
         <div className="shell-body">{children}</div>
       </div>
-
-      <Crissi trigger="fab" />
     </div>
   );
 }

@@ -961,3 +961,81 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .sign-field label { display:block; font-size:12px; font-weight:600; margin-bottom:6px; color:var(--muted,#64748b); }
 .sign-field input { width:100%; }
 .sign-canvas { width:100%; height:150px; border:2px dashed var(--line,#cbd5e1); border-radius:10px; background:#fff; touch-action:none; cursor:crosshair; display:block; margin-bottom:6px; }
+
+/* ============================================================
+   Read-only case record (view mode) — clean, firm-grade
+   ============================================================ */
+.ro-wrap { padding: 4px 2px 8px; }
+
+/* claimant name as the anchor */
+.ro-namecard {
+  padding: 4px 0 18px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ro-name {
+  font-size: 26px; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--ink); line-height: 1.1;
+}
+.ro-sub { margin-top: 5px; font-size: 13.5px; color: var(--ink-soft); }
+
+/* section eyebrow */
+.ro-section {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent); margin: 22px 0 10px;
+}
+.ro-section:first-child { margin-top: 8px; }
+
+/* definition grid */
+.ro-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 32px;
+}
+.ro-field {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 9px 0; border-bottom: 1px solid var(--line-soft);
+}
+.ro-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.ro-value { font-size: 14.5px; color: var(--ink); font-weight: 500; }
+.ro-value.empty { color: var(--ink-faint); font-weight: 400; font-style: italic; }
+
+/* tags */
+.ro-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ro-tag {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  background: var(--surface-3); color: var(--ink-soft); font-weight: 500;
+}
+
+/* narrative blocks */
+.ro-narrative {
+  font-size: 14px; line-height: 1.6; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--line-soft);
+  border-radius: 10px; padding: 14px 16px; margin-top: 4px;
+}
+.ro-narrative.muted-narrative { color: var(--ink-soft); margin-top: 8px; }
+
+/* edit CTA */
+.edit-cta {
+  margin-top: 24px; display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13.5px; font-weight: 600; color: var(--brand);
+  background: var(--surface); border: 1px solid var(--line);
+  padding: 9px 16px; border-radius: 9px; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.edit-cta:hover { border-color: var(--accent); background: var(--surface-2); }
+
+/* the small edit toggle in the tab bar */
+.edit-toggle {
+  font-size: 12.5px; font-weight: 600; color: var(--ink-soft);
+  background: var(--surface); border: 1px solid var(--line);
+  padding: 5px 12px; border-radius: 8px; cursor: pointer;
+  transition: all .15s;
+}
+.edit-toggle:hover { border-color: var(--accent); color: var(--ink); }
+.edit-toggle.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+@media (max-width: 720px) {
+  .ro-grid { grid-template-columns: 1fr; }
+}

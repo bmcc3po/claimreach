@@ -8,7 +8,7 @@ import { askAI } from "@/lib/ai";
 type PanelKey = "vitals" | "assist" | "grievous" | "maverick" | "integrity" | null;
 
 // One "Tools" pill bottom-right. Expands to a tray of tools; each opens its panel.
-// (Crissi keeps its own separate FAB above this.)
+// Crissi is now one of the tray tools (no separate floating pill).
 export default function FloatingDock({ lead, claimId, claimType }: { lead: any; claimId?: string; claimType: string }) {
   const [trayOpen, setTrayOpen] = useState(false);
   const [open, setOpen] = useState<PanelKey>(null);
