@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { INTAKE, intakeForType, segmentsForType, segmentsFrom, fieldVisible } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PropertyLookup, { type ResolvedProperty } from "./PropertyLookup";
@@ -28,6 +28,7 @@ export default function ClaimIntake({
 
   const [step, setStep] = useState(0);
   const [viewAll, setViewAll] = useState(false);
+  const [locked, setLocked] = useState(true);
   const [scheduled, setScheduled] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers || {});
@@ -47,6 +48,19 @@ export default function ClaimIntake({
   const curSegment = segments.find((s) => s.id === curStep.id);
 
   function setVal(id: string, v: any) { setAnswers((s) => ({ ...s, [id]: v })); }
+
+  // Autosave: when unlocked, persist a moment after the last change. No manual
+  // Save needed — the pencil unlocks, edits flow, autosave handles the rest.
+  const firstRun = useRef(true);
+  const saveTimer = useRef<any>(null);
+  useEffect(() => {
+    if (locked) return;                 // locked = read-only, never autosave
+    if (firstRun.current) { firstRun.current = false; return; }
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { save(false); }, 1000);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answers, props, locked]);
   function addProperty() { setProps((s) => [...s, { _key: `p${Date.now()}`, values: {} }]); }
   function removeProperty(k: string) { setProps((s) => s.filter((p) => p._key !== k)); }
   function setPropVal(k: string, id: string, v: any) {
@@ -120,7 +134,14 @@ export default function ClaimIntake({
   }
 
   return (
-    <div className="intake-shell">
+    <div className={`intake-shell ${locked ? "intake-locked" : ""}`}>
+      <div className="intake-lockbar">
+        {locked ? (
+          <><span className="lock-note">🔒 Read-only. Click edit to make changes.</span><button className="btn gold sm" onClick={() => setLocked(false)}>✏️ Edit answers</button></>
+        ) : (
+          <><span className="lock-note editing">✏️ Editing, changes save automatically{savedAt ? ` · saved ${savedAt}` : ""}{saving ? " · saving…" : ""}</span><button className="btn ghost sm" onClick={() => setLocked(true)}>🔒 Done</button></>
+        )}
+      </div>
       <nav className="steprail">
         {steps.map((s, i) => (
           <button key={s.id}

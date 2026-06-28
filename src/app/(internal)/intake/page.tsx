@@ -1,17 +1,18 @@
 "use client";
 export const runtime = "edge";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-const CASE_TYPES = [
-  { value: "motel_trafficking", label: "Motel Trafficking" },
-  { value: "medmal", label: "Medical Malpractice" },
-  // MVA and others added here as they go live
-];
-
 export default function AddLead() {
   const router = useRouter();
+  const [caseTypes, setCaseTypes] = useState<{ value: string; label: string }[]>([
+    { value: "motel_trafficking", label: "Hospitality Trafficking" },
+    { value: "medmal", label: "Medical Malpractice" },
+  ]);
+  useEffect(() => { (async () => {
+    try { const r = await fetch("/api/claim-types"); const d = await r.json(); if (d.types?.length) setCaseTypes(d.types); } catch {}
+  })(); }, []);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -61,7 +62,7 @@ export default function AddLead() {
         <div className="field">
           <label>Case type</label>
           <select value={caseType} onChange={(e) => setCaseType(e.target.value)}>
-            {CASE_TYPES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            {caseTypes.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </div>
 

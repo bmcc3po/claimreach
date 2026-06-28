@@ -106,7 +106,7 @@ a:hover { text-decoration: underline; }
 .app-header .nav a { color: var(--ink-soft); font-weight: 500; padding: 7px 11px; border-radius: 8px; }
 .app-header .nav a:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
 
-.container { max-width: 1320px; margin: 0 auto; padding: 20px 24px 96px; }
+.container { max-width: 1480px; margin: 0 auto; padding: 20px 28px 96px; }
 
 .card { background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px; }
@@ -276,15 +276,15 @@ table.docket tr:hover td { background: var(--surface-2); }
 .pnc.warn { background:var(--flag-bg); border-color:var(--flag); border-left-color:var(--flag); }
 .pnc.warn .pncbadge { background:var(--flag); }
 
-.lead-grid { display:grid; grid-template-columns:minmax(0,1fr) 372px; gap:16px; align-items:start; }
+.lead-grid { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start; }
 @media(max-width:1040px){ .lead-grid{grid-template-columns:1fr} }
 
 .tabs { display:flex; gap:2px; padding:0 8px; border-bottom:1px solid var(--line);
   background:var(--surface-2); border-radius:var(--radius) var(--radius) 0 0; flex-wrap:wrap; }
-.tabs button { background:transparent; border:0; padding:13px 16px; font-size:13.5px; font-weight:600;
+.tabs button { background:transparent; border:0; padding:15px 20px; font-size:14.5px; font-weight:600;
   color:var(--ink-soft); border-bottom:2.5px solid transparent; margin-bottom:-1px; cursor:pointer; }
 .tabs button.active { color:var(--ink); border-bottom-color:var(--accent); }
-.formbody { padding:18px; }
+.formbody { padding:26px 30px; }
 .q { padding:15px 0; border-bottom:1px dashed var(--line); }
 .q:last-child { border-bottom:0; }
 .q .qlabel { font-size:13.5px; font-weight:600; margin-bottom:9px; display:flex; gap:8px;
@@ -790,3 +790,58 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .cd-field { margin-bottom:10px; }
 .cd-field input, .cd-field select, .cd-field textarea { width:100%; }
 .cd-event { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 12px; border:1px solid var(--line); border-radius:var(--radius-sm); margin-bottom:6px; background:var(--surface); }
+
+/* Form builder save/publish feedback */
+.save-msg { align-self:center; font-size:13px; font-weight:600; padding:6px 12px; border-radius:8px; }
+.save-msg.warn { background:#fbeae8; color:var(--danger); border:1px solid var(--danger); }
+.save-msg.ok { background:#e6f4ea; color:var(--ok); border:1px solid var(--ok); }
+
+/* Intake lock (read-only until pencil) */
+.intake-lockbar { grid-column:1 / -1; display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:8px 12px; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-sm); }
+.lock-note { font-size:13px; font-weight:600; color:var(--ink-soft); }
+.lock-note.editing { color:var(--accent); }
+/* When locked, the answer inputs are non-interactive; nav/rail still work. */
+.intake-locked .seg-body input:not([type="button"]),
+.intake-locked .seg-body select,
+.intake-locked .seg-body textarea,
+.intake-locked .qcard input, .intake-locked .qcard select, .intake-locked .qcard textarea,
+.intake-locked .field input, .intake-locked .field select, .intake-locked .field textarea {
+  pointer-events:none; background:var(--surface-2); opacity:.85;
+}
+.intake-locked .seg-nav .btn:not(.ghost) { opacity:.5; pointer-events:none; }
+
+/* ============================================================
+   INTAKE LOCK / AUTOSAVE
+   ============================================================ */
+.intake-lockbar { display:flex; align-items:center; gap:12px; padding:9px 14px; margin-bottom:14px; border-radius:10px; background:var(--surface-2); border:1px solid var(--line); }
+.intake-lockbar .lock-note { font-size:13px; font-weight:600; color:var(--ink-soft); }
+.intake-lockbar .lock-note.editing { color:var(--accent); }
+.intake-lockbar .spacer, .intake-lockbar button { margin-left:auto; }
+/* When locked, the answer fields are read-only (rail stays clickable to browse). */
+.intake-locked .qcard input:not([type="button"]),
+.intake-locked .qcard textarea,
+.intake-locked .qcard select,
+.intake-locked .seg-body input,
+.intake-locked .seg-body textarea,
+.intake-locked .seg-body select,
+.intake-locked .field input,
+.intake-locked .field textarea,
+.intake-locked .field select { pointer-events:none; background:var(--surface-2); opacity:.85; cursor:default; }
+.intake-locked .seg-nav .btn:not(.ghost) { display:none; }   /* hide manual Save when locked */
+
+/* ============================================================
+   FLOATING DOCK — bottom-right stacked pills (Vitals/Assist/Maverick/Grievous)
+   ============================================================ */
+.dock { position:fixed; right:18px; bottom:74px; z-index:60; display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+.dock-pill { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:100px; padding:9px 15px; font-size:13px; font-weight:700; cursor:pointer; box-shadow:var(--sh-2); transition:all .12s; }
+.dock-pill:hover { transform:translateX(-2px); box-shadow:var(--sh-3); }
+.dock-pill.active { border-color:var(--brand); }
+.dock-pill.grievous { background:var(--brand); color:#fff; border-color:var(--brand); }
+.dock-pill.maverick { background:#1b3a5c; color:#fff; border-color:#1b3a5c; }
+.dock-pop { position:fixed; right:18px; bottom:130px; z-index:61; width:340px; max-width:calc(100vw - 36px); max-height:60vh; overflow-y:auto;
+  background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--sh-3); }
+.dock-pop-head { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--surface); border-radius:14px 14px 0 0; }
+.dock-x { background:transparent; border:0; font-size:16px; cursor:pointer; color:var(--ink-faint); }
+.dock-pop-body { padding:14px 16px; }
+.grievous-result .bible-list { font-size:13px; }
+@media(max-width:680px){ .dock-pop{ width:calc(100vw - 36px) } }

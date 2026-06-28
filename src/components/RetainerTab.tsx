@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 const STATUS_FLOW = ["draft", "sent", "viewed", "signed", "declined"];
 const STATUS_LABEL: Record<string, string> = { draft: "Draft", sent: "Sent for eSign", viewed: "Viewed", signed: "Signed", declined: "Declined" };
 
-export default function RetainerTab({ leadId }: { leadId: string }) {
+export default function RetainerTab({ leadId, role }: { leadId: string; role?: string }) {
   const [templates, setTemplates] = useState<any[]>([]);
   const [retainers, setRetainers] = useState<any[]>([]);
   const [tplId, setTplId] = useState("");
@@ -12,13 +12,29 @@ export default function RetainerTab({ leadId }: { leadId: string }) {
   const [editingTpl, setEditingTpl] = useState(false);
   const [tplName, setTplName] = useState(""); const [tplBody, setTplBody] = useState("");
   const [msg, setMsg] = useState("");
+  const [approved, setApproved] = useState(false);
 
   async function load() {
     const r = await fetch(`/api/retainer?lead_id=${leadId}`); const d = await r.json();
     setTemplates(d.templates ?? []); setRetainers(d.retainers ?? []);
     if (!tplId && d.templates?.[0]) setTplId(d.templates[0].id);
+    try { const g = await fetch(`/api/grievous?lead_id=${leadId}`); const gd = await g.json(); setApproved(!!gd.approved); } catch {}
   }
   useEffect(() => { load(); }, [leadId]);
+
+  // eSign gate: Grievous must approve first. Soft gate — owner/admin can override.
+  async function sendForSign(id: string) {
+    if (!approved) {
+      const canOverride = role === "owner" || role === "admin";
+      if (canOverride) {
+        if (!confirm("Grievous has NOT approved this intake yet. As owner/admin you can override. Send anyway?")) return;
+      } else {
+        alert("Grievous must review and approve this intake before you can send the eSign. Open Grievous (bottom-right) and run a Full review.");
+        return;
+      }
+    }
+    setStatus(id, "sent");
+  }
 
   async function generate() {
     if (!tplId) { setMsg("Create or pick a template first."); return; }
@@ -56,8 +72,9 @@ export default function RetainerTab({ leadId }: { leadId: string }) {
         <button className="btn ghost sm" onClick={() => setPreview(null)}>← Back to retainers</button>
         <div className="row" style={{ margin: "10px 0", gap: 8 }}>
           <span className="badge stage">{STATUS_LABEL[preview.status] ?? preview.status}</span>
+          {approved ? <span className="badge signed">✓ Grievous approved</span> : <span className="badge dq">Grievous review required</span>}
           <span className="spacer" />
-          {preview.status === "draft" && <button className="btn gold" onClick={() => setStatus(preview.id, "sent")}>Send for eSign</button>}
+          {preview.status === "draft" && <button className="btn gold" onClick={() => sendForSign(preview.id)}>Send for eSign</button>}
           {preview.status !== "signed" && preview.status !== "declined" && <button className="btn ghost" onClick={() => setStatus(preview.id, "signed")}>Mark signed</button>}
         </div>
         <div className="card" style={{ padding: 22, whiteSpace: "pre-wrap", fontFamily: "Georgia, serif", lineHeight: 1.55 }}>{preview.rendered_body}</div>

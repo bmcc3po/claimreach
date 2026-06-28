@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // Case-management layer: routing/people, content, dates, tags, events. Separate
 // from the intake questionnaire. Saves to the leads row + case_events.
@@ -32,14 +32,26 @@ export default function CaseDetails({ lead, staff = [] }: { lead: any; staff?: {
 
   function set(k: string, v: any) { setF((s: any) => ({ ...s, [k]: v })); }
 
+  // Autosave a second after the last edit — no manual Save needed.
+  const firstRun = useRef(true);
+  const t = useRef<any>(null);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    if (t.current) clearTimeout(t.current);
+    t.current = setTimeout(() => { save(); }, 1000);
+    return () => { if (t.current) clearTimeout(t.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f]);
+
   async function save() {
     setSaving(true); setMsg("");
     const payload = { ...f, case_tags: f.case_tags.split(",").map((t: string) => t.trim()).filter(Boolean),
       intake_agent_id: f.intake_agent_id || null, qa_agent_id: f.qa_agent_id || null, case_manager_id: f.case_manager_id || null,
       esign_date: f.esign_date || null };
     const r = await fetch("/api/case/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead.id, ...payload }) });
+    const d = await r.json().catch(() => ({}));
     setSaving(false);
-    setMsg(r.ok ? "Saved." : "Save failed.");
+    setMsg(r.ok ? "Saved." : `Save failed: ${d.error || r.status}`);
   }
 
   async function addEvent() {
@@ -86,8 +98,7 @@ export default function CaseDetails({ lead, staff = [] }: { lead: any; staff?: {
       </div>
 
       <div className="row" style={{ gap: 8, marginTop: 12 }}>
-        <button className="btn" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save case details"}</button>
-        {msg && <span className="muted" style={{ alignSelf: "center" }}>{msg}</span>}
+        <span className="muted" style={{ fontSize: 12 }}>{saving ? "Saving…" : msg || "Changes save automatically."}</span>
       </div>
 
       <div className="cd-block" style={{ marginTop: 18 }}>

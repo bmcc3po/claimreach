@@ -15,16 +15,20 @@ export default function NotesTab({ leadId, claimId, initial }: { leadId: string;
   const [list, setList] = useState<any[]>(initial ?? []);
   const [filter, setFilter] = useState<string>("all");
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
 
   async function add() {
     if (!body.trim()) return;
-    setBusy(true);
-    const r = await fetch("/api/notes", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lead_id: leadId, claim_id: claimId, scope, body }),
-    });
-    const d = await r.json();
-    if (r.ok) { setList((l) => [d.note, ...l]); setBody(""); }
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch("/api/notes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_id: leadId, claim_id: claimId, scope, body }),
+      });
+      const d = await r.json();
+      if (r.ok) { setList((l) => [d.note, ...l]); setBody(""); }
+      else setErr(d.error || `Save failed (${r.status})`);
+    } catch (e: any) { setErr(String(e?.message ?? e)); }
     setBusy(false);
   }
 
@@ -40,6 +44,7 @@ export default function NotesTab({ leadId, claimId, initial }: { leadId: string;
         </div>
         <textarea rows={3} placeholder={`Write a ${SCOPES.find((s) => s.id === scope)?.label.toLowerCase()}…`} value={body} onChange={(e) => setBody(e.target.value)} />
         <button className="btn" style={{ marginTop: 8 }} onClick={add} disabled={busy}>{busy ? "Saving…" : "Add note"}</button>
+        {err && <span className="save-msg warn" style={{ marginLeft: 10 }}>{err}</span>}
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>

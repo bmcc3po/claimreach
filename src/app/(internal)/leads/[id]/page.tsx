@@ -56,6 +56,21 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
 
   const { data: staff } = await sb.from("app_users").select("id, full_name").order("full_name");
 
+  const { data: { user: cur } } = await sb.auth.getUser();
+  const { data: meRow } = await sb.from("app_users").select("role, full_name").eq("id", cur!.id).maybeSingle();
+  (lead as any).current_user_role = meRow?.role ?? null;
+  (lead as any).current_user_name = meRow?.full_name ?? "Staff";
+
+  // Resolve published builder forms for each claim type present on this file,
+  // so the workspace renders the RIGHT questionnaire (not the trafficking default).
+  const { resolveIntakeFields } = await import("@/lib/forms");
+  const { intakeForType } = await import("@/lib/questionnaire");
+  const formsByType: Record<string, any[]> = {};
+  for (const ct of Array.from(new Set((claims ?? []).map((c: any) => c.claim_type)))) {
+    const resolved = await resolveIntakeFields(sb, ct);
+    if (resolved !== intakeForType(ct)) formsByType[ct] = resolved;
+  }
+
   return (
     <LeadWorkspace
       lead={lead}
@@ -67,6 +82,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       notes={notes ?? []}
       callLogs={callLogs ?? []}
       staff={staff ?? []}
+      formsByType={formsByType}
     />
   );
 }

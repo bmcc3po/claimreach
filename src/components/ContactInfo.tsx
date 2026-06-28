@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { contactFieldsForType } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 
@@ -28,6 +28,17 @@ export default function ContactInfo({ lead, claimType }: { lead: any; claimType?
     ec_email: lead.ec_email ?? "", ec_mail: lead.ec_mail ?? "", ec_permission_to_discuss: lead.ec_permission_to_discuss ?? false,
   });
   function setx(k: string, v: any) { setX((s) => ({ ...s, [k]: v })); }
+
+  // Autosave a second after the last edit — no manual Save needed.
+  const firstRun = useRef(true);
+  const tmr = useRef<any>(null);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    if (tmr.current) clearTimeout(tmr.current);
+    tmr.current = setTimeout(() => { save(); }, 1000);
+    return () => { if (tmr.current) clearTimeout(tmr.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f, x]);
 
   function set(k: string, v: any) { setF((s) => ({ ...s, [k]: v })); }
 
@@ -126,7 +137,7 @@ export default function ContactInfo({ lead, claimType }: { lead: any; claimType?
       <div className="seg-nav">
         <div className="spacer" />
         {savedAt && <span className="muted">Saved {savedAt}</span>}
-        <button className="btn" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save contact info"}</button>
+        <span className="muted" style={{ fontSize: 12 }}>{saving ? "Saving…" : "Changes save automatically."}</span>
       </div>
     </div>
   );

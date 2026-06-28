@@ -1,11 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { STAGE_LABELS } from "@/lib/questionnaire";
 import { LX } from "@/lib/lexicon";
-import { VitalsCard, GrievousPanel, ConversationPanel } from "./LeadSidebar";
+import FloatingDock from "./FloatingDock";
 import ClaimIntake from "./ClaimIntake";
 import ActivityLog from "./ActivityLog";
-import KnowledgePanel from "./KnowledgePanel";
 import ContactInfo from "./ContactInfo";
 import CaseDetails from "./CaseDetails";
 import RetainerTab from "./RetainerTab";
@@ -28,7 +27,7 @@ interface Claim {
 const TABS = ["Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Activity Log"];
 
 export default function LeadWorkspace({
-  lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [],
+  lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
 }: {
   lead: any;
   claims: Claim[];
@@ -39,6 +38,7 @@ export default function LeadWorkspace({
   notes: any[];
   callLogs: any[];
   staff?: { id: string; full_name: string }[];
+  formsByType?: Record<string, any[]>;
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -96,7 +96,7 @@ export default function LeadWorkspace({
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
             <span className="timer">● Live call 00:00</span>
-            <button className="btn ghost">🔒 Lock file</button>
+            <LockFileButton lead={lead} />
           </div>
         </div>
       </div>
@@ -105,7 +105,7 @@ export default function LeadWorkspace({
       <PncBanner lead={lead} />
 
       {/* Main grid */}
-      <div className="lead-grid">
+      <div className="lead-grid solo">
         <div className="card" style={{ padding: 0 }}>
           <div className="tabs">
             {TABS.map((t) => (
@@ -132,12 +132,13 @@ export default function LeadWorkspace({
                   claimantEmail={lead.email ?? undefined}
                   claimType={activeClaim.claim_type}
                   leadId={lead.id}
+                  customFields={formsByType?.[activeClaim.claim_type]}
                 />
               </div>
             )}
             {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} />}
             {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} />}
-            {tab === "Retainer" && <RetainerTab leadId={lead.id} />}
+            {tab === "Retainer" && <RetainerTab leadId={lead.id} role={lead.current_user_role} />}
             {tab === "Messages" && <CaseMessages leadId={lead.id} claimId={activeClaim?.id} me={lead.current_user_name ?? "Staff"} />}
             {tab === "Calls" && <CallLog leadId={lead.id} claimId={activeClaim?.id} initial={callLogs} />}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}
@@ -145,20 +146,9 @@ export default function LeadWorkspace({
           </div>
         </div>
 
-        {/* Right sidebar */}
-        <div>
-          <VitalsCard lead={lead} />
-          <KnowledgePanel claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
-          <Crissi trigger="inline" />
-          <GrievousPanel />
-          <ConversationPanel
-            leadId={lead.id}
-            phone={lead.phone}
-            monitored={!!lead.comms_monitored}
-            safeChannels={safe}
-            activity={activity}
-          />
-        </div>
+        {/* Floating dock — Vitals, Agent assist, Maverick, Grievous as bottom-right pills (Crissi has its own FAB) */}
+        <FloatingDock lead={lead} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
+        <Crissi trigger="fab" />
       </div>
     </div>
   );
@@ -209,22 +199,22 @@ function PncBanner({ lead }: { lead: any }) {
 function CreateClaim({ leadId, firmId }: { leadId: string; firmId: string }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [types, setTypes] = useState<{ value: string; label: string; campaign?: string }[]>([]);
 
-  const TYPES = [
-    { type: "motel_trafficking", label: "Hospitality Trafficking", campaign: "" },
-    { type: "pfas", label: "PFAS", campaign: "NGUYEN PFAS INNO" },
-    { type: "bard_powerport", label: "Bard PowerPort", campaign: "TMP BARD PP" },
-    { type: "medmal", label: "Medical Malpractice", campaign: "TMP MED MAL" },
-  ];
+  useEffect(() => { (async () => {
+    try { const r = await fetch("/api/claim-types"); const d = await r.json(); setTypes(d.types ?? []); } catch {}
+  })(); }, []);
 
-  async function create(type: string, campaign: string) {
+  async function create(type: string, campaign?: string) {
     setBusy(true);
     const r = await fetch("/api/claims", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ op: "create", lead_id: leadId, firm_id: firmId, claim_type: type, campaign: campaign || null }),
     });
+    if (r.ok) { location.reload(); return; }
+    const d = await r.json().catch(() => ({}));
     setBusy(false);
-    if (r.ok) location.reload();
+    alert(`Could not create claim: ${d.error || r.status}`);
   }
 
   if (!open) {
@@ -232,10 +222,23 @@ function CreateClaim({ leadId, firmId }: { leadId: string; firmId: string }) {
   }
   return (
     <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-      {TYPES.map((t) => (
-        <button key={t.type} className="chip" disabled={busy} onClick={() => create(t.type, t.campaign)}>{t.label}</button>
+      {types.map((t) => (
+        <button key={t.value} className="chip" disabled={busy} onClick={() => create(t.value, t.campaign)}>{t.label}</button>
       ))}
       <button className="chip" onClick={() => setOpen(false)}>Cancel</button>
     </span>
   );
+}
+
+function LockFileButton({ lead }: { lead: any }) {
+  const [locked, setLocked] = useState(!!lead.is_locked);
+  const [busy, setBusy] = useState(false);
+  async function toggle() {
+    setBusy(true);
+    const r = await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "save", lead_id: lead.id, lead: { is_locked: !locked } }) });
+    setBusy(false);
+    if (r.ok) setLocked(!locked); else { const d = await r.json().catch(() => ({})); alert(`Lock failed: ${d.error || r.status}`); }
+  }
+  return <button className={`btn ${locked ? "" : "ghost"}`} onClick={toggle} disabled={busy} title={locked ? "File is locked, click to unlock" : "Lock this file read-only"}>{locked ? "🔓 Unlock file" : "🔒 Lock file"}</button>;
 }

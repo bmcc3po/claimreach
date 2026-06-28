@@ -118,15 +118,31 @@ export default function FormBuilder({ formId }: { formId?: string }) {
   }
 
   async function save(publish = false) {
-    if (!name.trim() || !claimType.trim()) { setMsg("Name and claim type are required."); return; }
-    setSaving(true); setMsg("");
-    const r = await fetch("/api/forms", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "save", id, claim_type: claimType.trim().toLowerCase(), name, description, fields }) });
-    const d = await r.json();
-    if (!r.ok) { setMsg(d.error || "Save failed"); setSaving(false); return; }
-    setId(d.id);
-    if (publish) { await fetch("/api/forms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "publish", id: d.id }) }); setStatus("published"); setMsg("Published. Live for new intakes of this claim type."); }
-    else setMsg("Saved as draft.");
+    // Don't silently bail — tell the user exactly what's missing, loudly.
+    if (!name.trim()) { setMsg("⚠ Add a Form name (top-left box) before saving."); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (!claimType.trim()) { setMsg("⚠ Add a Claim type key (top box, e.g. 'bard' or 'pressure_cooker') before saving."); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (fields.length === 0) { setMsg("⚠ Add at least one field before saving."); return; }
+    setSaving(true); setMsg("Saving…");
+    try {
+      const r = await fetch("/api/forms", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "save", id, claim_type: claimType.trim().toLowerCase(), name, description, fields }) });
+      const d = await r.json();
+      if (!r.ok) { setMsg(`⚠ Save failed: ${d.error || r.status}. Your form is still here — nothing lost.`); setSaving(false); return; }
+      setId(d.id);
+      if (publish) {
+        const pr = await fetch("/api/forms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "publish", id: d.id }) });
+        if (!pr.ok) { const pd = await pr.json(); setMsg(`Saved as draft, but publish failed: ${pd.error || pr.status}. Try Publish again.`); setStatus("draft"); setSaving(false); return; }
+        setStatus("published");
+        setMsg("✓ Published and saved. Redirecting to the saved form…");
+        setSaving(false);
+        // Land on the saved form's edit page so it's provably persisted.
+        setTimeout(() => { window.location.href = `/forms/${d.id}`; }, 600);
+        return;
+      }
+      setMsg("✓ Saved as draft.");
+    } catch (e: any) {
+      setMsg(`⚠ Save error: ${String(e?.message ?? e)}. Your form is still here.`);
+    }
     setSaving(false);
   }
 
@@ -150,8 +166,16 @@ export default function FormBuilder({ formId }: { formId?: string }) {
   return (
     <div>
       <div className="row" style={{ flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
-        <input placeholder="Form name (e.g. PFAS Intake)" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-        <input placeholder="Claim type key (e.g. pfas)" value={claimType} onChange={(e) => setClaimType(e.target.value)} style={{ width: 180 }} />
+        <input placeholder="Form name (e.g. Bard PowerPort Intake)" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <input placeholder="Claim type key" list="claimtypes" value={claimType} onChange={(e) => setClaimType(e.target.value)} style={{ width: 180 }} />
+        <datalist id="claimtypes">
+          <option value="motel_trafficking">Hospitality Trafficking</option>
+          <option value="pfas">PFAS</option>
+          <option value="bard_powerport">Bard PowerPort</option>
+          <option value="medmal">Medical Malpractice</option>
+          <option value="pressure_cooker">Pressure Cooker</option>
+          <option value="social_media">Social Media Addiction</option>
+        </datalist>
         {status === "published" ? <span className="badge signed">Published</span> : <span className="badge count">Draft</span>}
       </div>
       <input placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} style={{ marginBottom: 12 }} />
@@ -235,7 +259,7 @@ export default function FormBuilder({ formId }: { formId?: string }) {
         <button className="btn" onClick={() => save(false)} disabled={saving}>{saving ? "Saving…" : "Save draft"}</button>
         <button className="btn gold" onClick={() => save(true)} disabled={saving}>Save & publish</button>
         <button className="btn ghost" onClick={() => setShowPreview(true)} disabled={fields.length === 0}>Preview</button>
-        {msg && <span className="muted" style={{ alignSelf: "center" }}>{msg}</span>}
+        {msg && <span className={`save-msg ${msg.startsWith("⚠") ? "warn" : msg.startsWith("✓") ? "ok" : ""}`}>{msg}</span>}
       </div>
     </div>
   );
