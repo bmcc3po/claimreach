@@ -200,16 +200,14 @@ export default function ClaimIntake({
                     if (f.kind === "gate") {
                       return (
                         <div key={f.id} className="qcard gate-wrap">
-                          {qNum[f.id] && <span className="qnum">Q{qNum[f.id]}</span>}
-                          <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />
+                            <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} />
                         </div>
                       );
                     }
                     const ans = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                     return (
                       <div key={f.id} className={`qcard ${ans ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                        {qNum[f.id] && <span className="qnum">Q{qNum[f.id]}</span>}
-                        <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} />
+                        <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} />
                       </div>
                     );
                   })
@@ -263,8 +261,7 @@ export default function ClaimIntake({
                       const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                       return (
                         <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                          {qNum[f.id] && <span className="qnum">Q{qNum[f.id]}</span>}
-                          <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} />
+                            <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} />
                         </div>
                       );
                     })}
@@ -283,7 +280,7 @@ export default function ClaimIntake({
                   const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                   out.push(
                     <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                      <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} />
+                      <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} />
                     </div>
                   );
                 }

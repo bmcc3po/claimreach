@@ -13,6 +13,7 @@ export default function IntegrationsManager() {
   const [tab, setTab] = useState<"keys" | "webhooks" | "justcall" | "unmatched" | "log" | "docs">("keys");
   const [jcKey, setJcKey] = useState(""); const [jcSecret, setJcSecret] = useState(""); const [jcFirm, setJcFirm] = useState("");
   const [unmatched, setUnmatched] = useState<any[]>([]);
+  const [canon, setCanon] = useState<any | null>(null);
 
   // create-key form
   const [kLabel, setKLabel] = useState(""); const [kScope, setKScope] = useState<"firm" | "master">("firm"); const [kFirm, setKFirm] = useState("");
@@ -24,7 +25,7 @@ export default function IntegrationsManager() {
     setKeys(d.keys ?? []); setEndpoints(d.endpoints ?? []); setEvents(d.events ?? []); setFirms(d.firms ?? []);
     if (d.firms?.[0]) { setKFirm((f) => f || d.firms[0].id); setEFirm((f) => f || d.firms[0].id); }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); fetch("/api/canonical").then((r) => r.json()).then(setCanon).catch(() => {}); }, []);
 
   async function createKey() {
     const r = await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "create_key", label: kLabel, scope: kScope, firm_id: kFirm }) });
@@ -209,6 +210,29 @@ Body:
           <pre style={{ background: "var(--surface-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: 12 }}>{`GET ${base}/api/v1/leads?status=signed&limit=50
 Headers:
   X-CR-Key: {KEY_ID}`}</pre>
+
+          {canon && (
+            <>
+              <div className="section-title" style={{ marginTop: 18 }}>Canonical fields (the universal spine)</div>
+              <p className="muted" style={{ marginTop: 0 }}>Map your fields to these stable IDs once. They never change, and they work across every campaign. Sensitive fields are restricted.</p>
+              <div className="canon-grid">
+                {canon.spine.map((f: any) => (
+                  <div key={f.id} className="canon-chip" title={f.group}>
+                    <code>{f.id}</code><span>{f.label}{f.sensitive ? " 🔒" : ""}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="section-title" style={{ marginTop: 16 }}>Case-type presets (spine + these extras)</div>
+              {canon.presets.map((p: any) => (
+                <details key={p.key} style={{ marginBottom: 6 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 13 }}><b>{p.label}</b> <span className="muted">({p.family.replace("_", "-")}, {p.extras.length} extras)</span></summary>
+                  <div className="canon-grid" style={{ marginTop: 6 }}>
+                    {p.extras.map((f: any) => <div key={f.id} className="canon-chip"><code>{f.id}</code><span>{f.label}</span></div>)}
+                  </div>
+                </details>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

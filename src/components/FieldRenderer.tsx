@@ -7,12 +7,15 @@ export default function FieldRenderer({
   value,
   onChange,
   onSetField,
+  qNum,
 }: {
   field: Field;
   value: any;
   onChange: (v: any) => void;
   onSetField?: (id: string, v: any) => void;
+  qNum?: number;
 }) {
+  const numTag = qNum ? <span className="qn-inline">Q{qNum}</span> : null;
   if (field.kind === "section") {
     return <div className="section-title">{field.label}</div>;
   }
@@ -51,7 +54,7 @@ export default function FieldRenderer({
            field.gateType === "supervisor" ? "Supervisor gate" :
            field.gateType === "dq" ? "DQ gate" : "Safety gate"}
         </span>
-        <div style={{ fontWeight: 600, marginBottom: 6 }}>{field.label}</div>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>{numTag}{field.label}</div>
         {field.agentNote && <div className="muted" style={{ marginBottom: 8 }}>{field.agentNote}</div>}
         <div className="row">
           <label className="choice">
@@ -69,7 +72,7 @@ export default function FieldRenderer({
 
   const label = (
     <label>
-      {field.label}
+      {numTag}{field.label}
       {field.vital && <span className="vital">vital</span>}
     </label>
   );

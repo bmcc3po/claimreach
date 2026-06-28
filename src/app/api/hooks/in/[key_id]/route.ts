@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { lookupKey, verifySignature, mapInbound } from "@/lib/webhooks";
+import { lookupKey, verifySignature, mapInbound, canonicalToLeadColumns } from "@/lib/webhooks";
 import { fireEvent } from "@/lib/webhook-deliver";
 export const runtime = "edge";
 
@@ -21,25 +21,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ key
   let body: any;
   try { body = JSON.parse(raw); } catch { return NextResponse.json({ error: "invalid json" }, { status: 400 }); }
 
-  // field mapping for this firm (inbound)
+  // field mapping for this firm (inbound) -> canonical ids
   const { data: fm } = await admin.from("field_mappings").select("map, transforms").eq("firm_id", key.firm_id).eq("direction", "inbound").maybeSingle();
   const mapped = mapInbound(body, fm ?? undefined);
-  if (mapped.full_name) delete mapped.full_name; // generated column
+  const cols = canonicalToLeadColumns(mapped);
 
   const firmId = key.firm_id;
   const insert: any = {
     firm_id: firmId,
-    first_name: mapped.first_name ?? null,
-    last_name: mapped.last_name ?? null,
-    claimant_name: mapped.claimant_name ?? null,
-    phone: mapped.phone ?? null,
-    email: mapped.email ?? null,
-    case_type: mapped.case_type ?? "motel_trafficking",
-    campaign: mapped.campaign ?? null,
+    first_name: cols.first_name,
+    last_name: cols.last_name,
+    claimant_name: cols.claimant_name,
+    phone: cols.phone,
+    email: cols.email,
+    dob: cols.dob,
+    mail_address1: cols.mail_address1,
+    mail_city: cols.mail_city,
+    mail_state: cols.mail_state,
+    mail_zip: cols.mail_zip,
+    handling_attorney: cols.handling_attorney,
+    marketing_source: cols.marketing_source,
+    case_type: cols.case_type ?? "motel_trafficking",
+    campaign: cols.campaign,
     source_key: key_id,
-    external_id: mapped.external_id ?? null,
+    external_id: cols.external_id,
     status: "new",
   };
+  // never write the generated full_name column
+  delete (insert as any).full_name;
 
   // de-dupe: skip if we already have this external_id for this firm
   if (insert.external_id) {

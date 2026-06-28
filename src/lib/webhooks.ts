@@ -42,11 +42,23 @@ export async function lookupKey(key_id: string) {
 }
 
 // ---- Field mapping: translate an external object into our lead shape. ----
+// Default inbound map: external field name -> canonical id. Covers LawRuler's
+// standard webhook plus common variants. Per-firm overrides layer on top.
 const DEFAULT_INBOUND: Record<string, string> = {
-  first_name: "first_name", last_name: "last_name", firstName: "first_name", lastName: "last_name",
-  name: "claimant_name", full_name: "claimant_name", phone: "phone", phone_number: "phone",
-  email: "email", email_address: "email", claim_type: "case_type", case_type: "case_type",
-  campaign: "campaign", external_id: "external_id", id: "external_id",
+  // LawRuler standard webhook
+  leadid: "vendor_lead_id", leadcreated: "date_referred",
+  first_name: "claimant_first_name", firstname: "claimant_first_name",
+  lastname: "claimant_last_name", last_name: "claimant_last_name",
+  dob: "claimant_dob", email: "claimant_email", phone: "claimant_phone",
+  address1: "mail_address1", city: "mail_city", state: "mail_state", zip: "mail_zip",
+  assignee: "handling_attorney", source: "marketing_source", case_type: "case_type",
+  status: "lead_status", description: "injury_description",
+  signeddate: "esign_signed_date", signedconfirm: "signed_contract_received", leadlink: "source_lead_link",
+  // common generic variants
+  firstName: "claimant_first_name", lastName: "claimant_last_name",
+  name: "claimant_full_name", full_name: "claimant_full_name",
+  phone_number: "claimant_phone", email_address: "claimant_email",
+  claim_type: "case_type", campaign: "campaign_name", external_id: "external_id", id: "external_id",
 };
 function applyTransform(field: string, value: any, transforms: Record<string, any>): any {
   const t = transforms?.[field];
@@ -65,11 +77,32 @@ export function mapInbound(body: Record<string, any>, mapping?: { map?: Record<s
     if (!our) continue;
     out[our] = applyTransform(our, val, transforms);
   }
-  // split a combined name into first/last if we only got claimant_name
-  if (out.claimant_name && (!out.first_name || !out.last_name)) {
-    const parts = String(out.claimant_name).trim().split(/\s+/);
-    out.first_name = out.first_name || parts[0] || "";
-    out.last_name = out.last_name || parts.slice(1).join(" ") || "";
+  // split a combined name into first/last if we only got the full name
+  if (out.claimant_full_name && (!out.claimant_first_name || !out.claimant_last_name)) {
+    const parts = String(out.claimant_full_name).trim().split(/\s+/);
+    out.claimant_first_name = out.claimant_first_name || parts[0] || "";
+    out.claimant_last_name = out.claimant_last_name || parts.slice(1).join(" ") || "";
   }
   return out;
+}
+
+// Translate canonical-id keys into the actual `leads` table columns the hook writes.
+export function canonicalToLeadColumns(c: Record<string, any>) {
+  return {
+    first_name: c.claimant_first_name ?? null,
+    last_name: c.claimant_last_name ?? null,
+    claimant_name: c.claimant_full_name ?? null,
+    phone: c.claimant_phone ?? null,
+    email: c.claimant_email ?? null,
+    case_type: c.case_type ?? null,
+    campaign: c.campaign_name ?? null,
+    external_id: c.external_id ?? c.vendor_lead_id ?? null,
+    mail_address1: c.mail_address1 ?? null,
+    mail_city: c.mail_city ?? null,
+    mail_state: c.mail_state ?? null,
+    mail_zip: c.mail_zip ?? null,
+    dob: c.claimant_dob ?? null,
+    handling_attorney: c.handling_attorney ?? null,
+    marketing_source: c.marketing_source ?? null,
+  };
 }
