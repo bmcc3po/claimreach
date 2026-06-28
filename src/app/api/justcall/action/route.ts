@@ -25,8 +25,19 @@ export async function POST(req: NextRequest) {
   if (b.op !== "sms") return NextResponse.json({ error: "Only SMS is supported via API. Use the JustCall dialer to place calls." }, { status: 400 });
 
   const admin = supabaseAdmin();
-  const { data: acct } = await admin.from("justcall_accounts").select("api_key, api_secret, justcall_number")
-    .or(`firm_id.eq.${me.firm_id},firm_id.is.null`).eq("active", true).order("firm_id", { ascending: true, nullsFirst: false }).limit(1).maybeSingle();
+  // Pull all candidate rows for this firm scope, then pick the best one in code
+  // (prefer firm-specific over global, and a row that actually has a sending number).
+  const { data: rows } = await admin.from("justcall_accounts")
+    .select("api_key, api_secret, justcall_number, firm_id, active")
+    .or(`firm_id.eq.${me.firm_id},firm_id.is.null`);
+  const candidates = (rows || []).filter((r: any) => r.active !== false);
+  const acct = candidates.sort((a: any, b: any) => {
+    // firm-specific first
+    if (!!a.firm_id !== !!b.firm_id) return a.firm_id ? -1 : 1;
+    // then rows that have a sending number first
+    if (!!a.justcall_number !== !!b.justcall_number) return a.justcall_number ? -1 : 1;
+    return 0;
+  })[0];
   if (!acct) return NextResponse.json({ error: "No JustCall account configured. Add one in Integrations." }, { status: 200 });
   if (!acct.justcall_number) return NextResponse.json({ error: "Set your JustCall sending number in Integrations -> JustCall (the FROM line)." }, { status: 200 });
 

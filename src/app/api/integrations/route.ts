@@ -62,13 +62,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
   if (b.op === "save_justcall") {
-    const { error } = await admin.from("justcall_accounts").insert({ firm_id: b.firm_id || null, label: b.label || "JustCall", api_key: b.api_key, api_secret: b.api_secret, justcall_number: b.justcall_number || null });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // One row per firm scope: update the existing row if present, else insert.
+    const scope = b.firm_id || null;
+    const q = admin.from("justcall_accounts").select("id");
+    const { data: existing } = scope
+      ? await q.eq("firm_id", scope).limit(1).maybeSingle()
+      : await q.is("firm_id", null).limit(1).maybeSingle();
+    const fields = { label: b.label || "JustCall", api_key: b.api_key, api_secret: b.api_secret, justcall_number: b.justcall_number || null, active: true };
+    if (existing) {
+      const { error } = await admin.from("justcall_accounts").update(fields).eq("id", existing.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    } else {
+      const { error } = await admin.from("justcall_accounts").insert({ firm_id: scope, ...fields });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
   }
   if (b.op === "save_esign") {
-    const { error } = await admin.from("esign_accounts").insert({ firm_id: b.firm_id || null, provider: "signwell", api_key: b.api_key, test_mode: b.test_mode !== false });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const scope = b.firm_id || null;
+    const q = admin.from("esign_accounts").select("id");
+    const { data: existing } = scope
+      ? await q.eq("firm_id", scope).limit(1).maybeSingle()
+      : await q.is("firm_id", null).limit(1).maybeSingle();
+    const fields: any = { provider: "signwell", api_key: b.api_key, test_mode: b.test_mode !== false, active: true };
+    if (b.webhook_secret !== undefined) fields.webhook_secret = b.webhook_secret || null;
+    if (existing) {
+      const { error } = await admin.from("esign_accounts").update(fields).eq("id", existing.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    } else {
+      const { error } = await admin.from("esign_accounts").insert({ firm_id: scope, ...fields });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
   }
   return NextResponse.json({ error: "unknown op" }, { status: 400 });

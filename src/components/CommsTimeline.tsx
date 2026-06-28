@@ -43,10 +43,14 @@ export default function CommsTimeline({ leadId, phone, channel }: { leadId: stri
       </div>
 
       {channel === "sms" && (
-        <div className="row" style={{ gap: 8, marginBottom: 14 }}>
-          <input placeholder={`Text ${phone || ""}…`} value={smsBody} onChange={(e) => setSmsBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSms()} style={{ flex: 1 }} />
-          <button className="btn sm" onClick={sendSms} disabled={busy || !phone}>Send</button>
-        </div>
+        <>
+          <div className="row" style={{ gap: 8, marginBottom: 6 }}>
+            <input placeholder={phone ? `Text ${phone}…` : "No phone on file"} value={smsBody} onChange={(e) => setSmsBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSms()} style={{ flex: 1 }} disabled={!phone} />
+            <button className="btn sm" onClick={sendSms} disabled={busy || !phone || !smsBody.trim()}>{busy ? "Sending…" : "Send"}</button>
+          </div>
+          {msg && <p className="save-msg warn" style={{ fontSize: 12.5, marginBottom: 14 }}>{msg}</p>}
+          {!phone && <p className="muted" style={{ fontSize: 12, marginBottom: 14 }}>Add a phone in Contact Info to text this client.</p>}
+        </>
       )}
 
       {loading && <p className="muted" style={{ fontSize: 13 }}>Loading…</p>}
