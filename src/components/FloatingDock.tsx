@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { VitalsCard } from "./LeadSidebar";
 import KnowledgePanel from "./KnowledgePanel";
+import Crissi from "./Crissi";
 import { askAI } from "@/lib/ai";
 
 type PanelKey = "vitals" | "assist" | "grievous" | "maverick" | "integrity" | null;
@@ -11,6 +12,7 @@ type PanelKey = "vitals" | "assist" | "grievous" | "maverick" | "integrity" | nu
 export default function FloatingDock({ lead, claimId, claimType }: { lead: any; claimId?: string; claimType: string }) {
   const [trayOpen, setTrayOpen] = useState(false);
   const [open, setOpen] = useState<PanelKey>(null);
+  const [crissiOpen, setCrissiOpen] = useState(false);
   const pick = (k: PanelKey) => { setOpen(k); setTrayOpen(false); };
 
   return (
@@ -33,6 +35,7 @@ export default function FloatingDock({ lead, claimId, claimType }: { lead: any; 
 
       {trayOpen && (
         <div className="dock-tray">
+          <button className="dock-tray-item crissi" onClick={() => { setCrissiOpen(true); setTrayOpen(false); }}>🆘 <span>Crissi (crisis)</span></button>
           <button className="dock-tray-item" onClick={() => pick("vitals")}>📋 <span>Vitals</span></button>
           <button className="dock-tray-item" onClick={() => pick("assist")}>🧭 <span>Agent assist</span></button>
           <button className="dock-tray-item integrity" onClick={() => pick("integrity")}>🔎 <span>Integrity check</span></button>
@@ -41,9 +44,12 @@ export default function FloatingDock({ lead, claimId, claimType }: { lead: any; 
         </div>
       )}
 
-      <button className={`dock-tools-pill ${trayOpen ? "active" : ""}`} onClick={() => { setTrayOpen(!trayOpen); setOpen(null); }}>
-        🧰 Tools {trayOpen ? "▾" : "▴"}
+      <button className={`dock-tools-pill ${trayOpen ? "active" : ""}`} onClick={() => { setTrayOpen(!trayOpen); setOpen(null); }} aria-label="Tools" title="Tools">
+        🔨
       </button>
+
+      {/* Crissi lives in the tray now; mounted controlled, no separate FAB */}
+      <Crissi trigger="fab" hideTrigger openExternal={crissiOpen} onCloseExternal={() => setCrissiOpen(false)} />
     </>
   );
 }

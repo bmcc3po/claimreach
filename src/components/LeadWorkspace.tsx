@@ -10,7 +10,6 @@ import CaseDetails from "./CaseDetails";
 import RetainerTab from "./RetainerTab";
 import NotesTab from "./NotesTab";
 import CommsTimeline from "./CommsTimeline";
-import Crissi from "./Crissi";
 
 interface Claim {
   id: string;
@@ -145,9 +144,8 @@ export default function LeadWorkspace({
           </div>
         </div>
 
-        {/* Floating dock — Vitals, Agent assist, Maverick, Grievous as bottom-right pills (Crissi has its own FAB) */}
+        {/* Floating Tools dock (hammer pill) — Crissi, Vitals, Agent assist, Integrity, Maverick, Grievous */}
         <FloatingDock lead={lead} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
-        <Crissi trigger="fab" />
       </div>
     </div>
   );

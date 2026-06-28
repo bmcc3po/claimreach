@@ -21,8 +21,10 @@ function bibleGrounding() {
   ).join("\n");
 }
 
-export default function Crissi({ trigger = "fab" }: { trigger?: "fab" | "inline" }) {
+export default function Crissi({ trigger = "fab", openExternal, onCloseExternal, hideTrigger }: { trigger?: "fab" | "inline"; openExternal?: boolean; onCloseExternal?: () => void; hideTrigger?: boolean }) {
   const [open, setOpen] = useState(false);
+  const isOpen = openExternal !== undefined ? openExternal : open;
+  const close = () => { setOpen(false); onCloseExternal?.(); };
   const [full, setFull] = useState(false);
   const [mode, setMode] = useState<Mode>("moment");
   const [q, setQ] = useState("");
@@ -62,7 +64,8 @@ export default function Crissi({ trigger = "fab" }: { trigger?: "fab" | "inline"
     return s;
   }
 
-  if (!open) {
+  if (!isOpen) {
+    if (hideTrigger) return null;
     return (
       <button className={trigger === "inline" ? "btn ghost" : "crisis-fab"} onClick={() => setOpen(true)}>
         🆘 {trigger === "inline" ? "Crissi" : "Crissi"}
@@ -71,7 +74,7 @@ export default function Crissi({ trigger = "fab" }: { trigger?: "fab" | "inline"
   }
 
   return (
-    <div className="modal-back" onClick={() => setOpen(false)}>
+    <div className="modal-back" onClick={close}>
       <div className={`modal crissi-modal ${full ? "full" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-h crissi-head">
           <CrissiLogo height={24} />
@@ -83,7 +86,7 @@ export default function Crissi({ trigger = "fab" }: { trigger?: "fab" | "inline"
           </div>
           <span className="spacer" />
           <button className="btn ghost sm" onClick={() => setFull((f) => !f)}>{full ? "⤡ Shrink" : "⤢ Full window"}</button>
-          <button className="btn ghost sm" onClick={() => setOpen(false)}>Close</button>
+          <button className="btn ghost sm" onClick={close}>Close</button>
         </div>
 
         <div className="crisis-resources">

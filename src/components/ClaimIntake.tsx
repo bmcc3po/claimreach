@@ -270,9 +270,12 @@ export default function ClaimIntake({
                 bucket = [];
               };
               fields.forEach((f, i) => {
-                if (f.kind === "script" || f.kind === "gate") {
+                if (f.kind === "script") {
                   flush(`b${i}`);
                   out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />);
+                } else if (f.kind === "gate") {
+                  flush(`b${i}`);
+                  out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} />);
                 } else if (SHORT.has(f.kind)) {
                   bucket.push(f);
                 } else {

@@ -41,7 +41,7 @@ ${answers}`
       <h1 style={{ margin: "0 0 2px" }}>⚡ Grievous</h1>
       <p className="muted" style={{ marginTop: 0 }}>QA coaching that reviews intakes against doctrine.</p>
 
-      <div className="lead-grid">
+      <div className="lead-grid grievous-grid">
         <div>
           <div className="section-title">Recent intakes to review</div>
           {claims.length === 0 && <p className="muted">No intakes to review yet.</p>}

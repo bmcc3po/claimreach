@@ -25,10 +25,26 @@ export async function POST(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { data: me } = await sb.from("app_users").select("role, firm_id").eq("id", auth.user.id).maybeSingle();
-  if (!me || !["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!me || !["owner", "admin", "manager"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const b = await req.json();
 
   if (b.op === "save") {
+    // Server-side spine guard: non-owners cannot drop locked spine fields or
+    // mandatory gates. Compare against the stored version's fields.
+    if (b.id && me.role !== "owner") {
+      const { data: prev } = await sb.from("intake_forms").select("fields, is_template").eq("id", b.id).maybeSingle();
+      if (prev?.is_template) {
+        const prevFields: any[] = Array.isArray(prev.fields) ? prev.fields : [];
+        const nextIds = new Set((b.fields ?? []).map((f: any) => f.id));
+        const droppedLocked = prevFields.filter((f) => (f.locked || f.origin === "spine" || f.mandatoryGate) && !nextIds.has(f.id));
+        if (droppedLocked.length) {
+          return NextResponse.json({ error: `Only the owner can remove locked spine fields (${droppedLocked.map((f) => f.label).slice(0, 3).join(", ")}).` }, { status: 403 });
+        }
+        // also block removal of any mandatory gate regardless
+        const droppedMandatory = prevFields.filter((f) => f.mandatoryGate && !nextIds.has(f.id));
+        if (droppedMandatory.length) return NextResponse.json({ error: "Mandatory gates cannot be removed." }, { status: 403 });
+      }
+    }
     const row: Record<string, any> = {
       firm_id: me.firm_id, claim_type: b.claim_type, name: b.name,
       description: b.description ?? null, fields: b.fields ?? [], status: "draft",

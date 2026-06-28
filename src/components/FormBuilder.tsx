@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import type { Field, FieldKind, ShowIf, Condition } from "@/lib/questionnaire";
 import { fieldVisible } from "@/lib/questionnaire";
 import { TEMPLATES } from "@/lib/form-templates";
+import { canDeleteField, canHideField, canReorder, type TemplateField } from "@/lib/template-engine";
 import FieldRenderer from "./FieldRenderer";
 
 const KINDS: { kind: FieldKind; label: string }[] = [
@@ -27,6 +28,8 @@ function blankField(kind: FieldKind): Field {
 
 export default function FormBuilder({ formId }: { formId?: string }) {
   const [name, setName] = useState("");
+  const [role, setRole] = useState<string>("agent");
+  const [uid, setUid] = useState<string>("");
   const [claimType, setClaimType] = useState("");
   const [description, setDescription] = useState("");
   const [fields, setFields] = useState<Field[]>([]);
@@ -49,18 +52,37 @@ export default function FormBuilder({ formId }: { formId?: string }) {
 
   useEffect(() => { (async () => {
     try { const r = await fetch("/api/saved-questions"); const d = await r.json(); setSaved(d.questions ?? []); } catch {}
+    try { const r = await fetch("/api/me"); const d = await r.json(); if (d.role) setRole(d.role); if (d.id) setUid(d.id); } catch {}
   })(); }, []);
 
   function addField(kind: FieldKind) {
-    const f = blankField(kind);
+    const f = { ...blankField(kind), origin: "custom", added_by: uid } as TemplateField;
     setFields((arr) => { const next = [...arr, f]; setSel(next.length - 1); return next; });
   }
   function update(i: number, patch: Partial<Field>) { setFields((arr) => arr.map((f, idx) => idx === i ? { ...f, ...patch } : f)); }
   function move(i: number, dir: -1 | 1) {
-    setFields((arr) => { const next = [...arr]; const j = i + dir; if (j < 0 || j >= next.length) return arr; [next[i], next[j]] = [next[j], next[i]]; return next; });
-    setSel((s) => s === i ? i + dir : s);
+    if (!canReorder(role)) return;
+    setFields((arr) => {
+      const j = i + dir;
+      if (j < 0 || j >= arr.length) return arr;
+      const next = [...arr]; [next[i], next[j]] = [next[j], next[i]]; return next;
+    });
   }
-  function remove(i: number) { setFields((arr) => arr.filter((_, idx) => idx !== i)); setSel(null); }
+  function remove(i: number) {
+    const f = fields[i] as TemplateField;
+    if (!canDeleteField(role, f, uid)) {
+      if (f.mandatoryGate) { alert("This is a mandatory gate and cannot be removed."); return; }
+      if (f.locked || f.origin === "spine") {
+        if (canHideField(role, f)) { hideField(i); return; }
+        alert("Spine fields can only be deleted by the owner. You can hide optional ones."); return;
+      }
+      alert("You can only delete fields you added."); return;
+    }
+    setFields((arr) => arr.filter((_, idx) => idx !== i)); setSel(null);
+  }
+  function hideField(i: number) {
+    setFields((arr) => arr.map((f, idx) => idx === i ? { ...f, hidden: !(f as TemplateField).hidden } : f));
+  }
 
   function loadTemplate(tid: string) {
     const t = TEMPLATES.find((x) => x.id === tid); if (!t) return;
@@ -211,17 +233,30 @@ export default function FormBuilder({ formId }: { formId?: string }) {
         <div className="builder-list">
           <div className="section-title">Fields</div>
           {fields.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Add fields from the right, start from a template, or let AI build it.</p>}
-          {fields.map((f, i) => (
-            <div key={f.id} className={`builder-row ${sel === i ? "active" : ""} ${f.kind === "section" ? "is-section" : ""}`} onClick={() => setSel(i)}>
+          {fields.map((f, i) => {
+            const tf = f as TemplateField;
+            const locked = tf.locked || tf.origin === "spine";
+            return (
+            <div key={f.id} className={`builder-row ${sel === i ? "active" : ""} ${f.kind === "section" ? "is-section" : ""} ${tf.hidden ? "is-hidden" : ""}`} onClick={() => setSel(i)}>
               <span className="builder-kind">{f.kind === "section" ? "§" : f.kind === "gate" ? "⛔" : f.kind === "script" ? "📢" : "•"}</span>
-              <span className="builder-label">{f.label || "(untitled)"}{f.showIf && f.showIf.rules.length > 0 && <span className="badge stage" style={{ marginLeft: 6, fontSize: 9 }}>conditional</span>}</span>
+              <span className="builder-label">
+                {tf.mandatoryGate && <span className="lock-tag mand" title="Mandatory gate — cannot be removed">★</span>}
+                {locked && !tf.mandatoryGate && <span className="lock-tag" title="Canonical spine — owner-only delete">🔒</span>}
+                {f.label || "(untitled)"}
+                {tf.hidden && <span className="badge dq" style={{ marginLeft: 6, fontSize: 9 }}>hidden</span>}
+                {f.showIf && f.showIf.rules.length > 0 && <span className="badge stage" style={{ marginLeft: 6, fontSize: 9 }}>conditional</span>}
+              </span>
               <span className="builder-tools" onClick={(e) => e.stopPropagation()}>
-                <button className="btn ghost sm" onClick={() => move(i, -1)}>↑</button>
-                <button className="btn ghost sm" onClick={() => move(i, 1)}>↓</button>
-                <button className="btn ghost sm" onClick={() => remove(i)}>✕</button>
+                <button className="btn ghost sm" onClick={() => move(i, -1)} disabled={!canReorder(role)}>↑</button>
+                <button className="btn ghost sm" onClick={() => move(i, 1)} disabled={!canReorder(role)}>↓</button>
+                {tf.mandatoryGate ? <span className="lock-x" title="Locked">🔒</span>
+                  : canDeleteField(role, tf, uid) ? <button className="btn ghost sm" onClick={() => remove(i)}>✕</button>
+                  : canHideField(role, tf) ? <button className="btn ghost sm" onClick={() => hideField(i)} title="Hide (owner-only delete)">{tf.hidden ? "👁" : "🚫"}</button>
+                  : <span className="lock-x" title="Owner-only">🔒</span>}
               </span>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="builder-inspect">

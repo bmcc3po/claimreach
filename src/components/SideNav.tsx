@@ -22,6 +22,7 @@ const STAFF_GROUPS: NavGroup[] = [
   { id: "admin", label: "Settings", items: [
     { href: "/team", icon: "👥", label: "Team" },
     { href: "/users", icon: "👤", label: "Users", adminOnly: true },
+    { href: "/templates", icon: "🧱", label: "Intake templates", adminOnly: true },
     { href: "/forms", icon: "🧩", label: "Form builder", adminOnly: true },
     { href: "/integrations", icon: "🔌", label: "Integrations", adminOnly: true },
     { href: "/settings", icon: "⚙️", label: "Settings" },
