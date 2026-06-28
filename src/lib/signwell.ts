@@ -71,3 +71,61 @@ export async function verifySignwellHook(secret: string, body: string, header: s
   const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
   return hex === header.toLowerCase();
 }
+
+// Map our placed field types to SignWell field types.
+const SW_TYPE: Record<string, string> = {
+  signature: "signature", initials: "initials", date: "date", text: "text", checkbox: "checkbox",
+};
+
+// Create + send a document from an uploaded PDF + placed fields.
+// `placed` = our percentage-based fields; pageDims maps page -> {w,h} in points.
+export async function createSignwellFromPdf(opts: {
+  apiKey: string; testMode: boolean; name: string; subject?: string; message?: string;
+  pdfBase64: string; fileName: string;
+  placed: { id: string; type: string; page: number; xPct: number; yPct: number; wPct: number; hPct: number; role: "client" | "agent"; label?: string; required?: boolean }[];
+  pageDims: Record<number, { w: number; h: number }>;
+  client: { name: string; email: string };
+  agent: { name: string; email: string };
+  metadata?: Record<string, any>;
+}) {
+  // recipient 1 = client, recipient 2 = agent
+  const recipients = [
+    { id: "1", name: opts.client.name, email: opts.client.email },
+    { id: "2", name: opts.agent.name, email: opts.agent.email },
+  ];
+  // SignWell wants a 2D array: one inner array per file. We have one file.
+  const fileFields = opts.placed.map((f) => {
+    const dim = opts.pageDims[f.page] || { w: 612, h: 792 }; // default US Letter pts
+    return {
+      api_id: f.id.replace(/-/g, "").slice(0, 20),
+      type: SW_TYPE[f.type] || "text",
+      page: f.page,
+      x: Math.round((f.xPct / 100) * dim.w),
+      y: Math.round((f.yPct / 100) * dim.h),
+      width: Math.round((f.wPct / 100) * dim.w),
+      height: Math.round((f.hPct / 100) * dim.h),
+      required: f.required !== false,
+      recipient_id: f.role === "client" ? "1" : "2",
+      ...(f.type === "text" || f.type === "date" ? { label: f.label || "" } : {}),
+      ...(f.type === "date" ? { lock_sign_date: false } : {}),
+    };
+  });
+
+  const body: any = {
+    test_mode: opts.testMode,
+    files: [{ name: opts.fileName, file_base64: opts.pdfBase64 }],
+    name: opts.name, subject: opts.subject, message: opts.message,
+    recipients, draft: false, reminders: true,
+    fields: [fileFields],
+    metadata: opts.metadata ?? {},
+  };
+  const r = await fetch(`${BASE}/documents`, {
+    method: "POST",
+    headers: { "X-Api-Key": opts.apiKey, "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const d: any = await r.json().catch(() => ({}));
+  if (!r.ok) return { error: d.errors ? JSON.stringify(d.errors) : (d.message || `SignWell ${r.status}`) };
+  const rec = (d.recipients || []).find((x: any) => x.id === "1") || (d.recipients || [])[0] || {};
+  return { id: d.id, signing_url: rec.embedded_signing_url || rec.signing_url || null, status: d.status, raw: d };
+}

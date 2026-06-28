@@ -17,9 +17,19 @@ export async function POST(req: NextRequest) {
   const evt = (p.event?.type || p.type || "").toLowerCase();
   const doc = p.data?.object || p.data || p.document || {};
   const meta = doc.metadata || {};
-  const retainerId = meta.claimreach_retainer_id;
+  let retainerId = meta.claimreach_retainer_id;
   const leadId = meta.claimreach_lead_id;
   const docId = doc.id;
+
+  // PDF-template sends only carry lead_id; find the matching sent retainer by SignWell doc id or lead.
+  if (!retainerId && docId) {
+    const { data: byRef } = await admin.from("retainers").select("id").eq("provider_ref", docId).maybeSingle();
+    if (byRef) retainerId = byRef.id;
+  }
+  if (!retainerId && leadId) {
+    const { data: byLead } = await admin.from("retainers").select("id").eq("lead_id", leadId).eq("status", "sent").order("sent_at", { ascending: false }).limit(1).maybeSingle();
+    if (byLead) retainerId = byLead.id;
+  }
 
   try {
     if (retainerId) {

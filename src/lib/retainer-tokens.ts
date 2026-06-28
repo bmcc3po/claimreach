@@ -23,3 +23,28 @@ export function retainerTokens(lead: any, answers: Record<string, any> = {}): Re
 export function fillTemplate(body: string, tokens: Record<string, string>): string {
   return body.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => tokens[key] ?? `[${key}]`);
 }
+
+// Catalog of available tokens, grouped, for the template-editor picker.
+export const TOKEN_CATALOG: { group: string; tokens: { key: string; label: string }[] }[] = [
+  { group: "Client", tokens: [
+    { key: "contact.full_name", label: "Full name" },
+    { key: "contact.first_name", label: "First name" },
+    { key: "contact.last_name", label: "Last name" },
+    { key: "contact.phone", label: "Phone" },
+    { key: "contact.email", label: "Email" },
+    { key: "contact.dob", label: "Date of birth" },
+    { key: "contact.address", label: "Mailing address" },
+  ]},
+  { group: "Case", tokens: [
+    { key: "case.lead_no", label: "File / lead number" },
+    { key: "case.type", label: "Case type" },
+    { key: "case.handling_attorney", label: "Handling attorney" },
+    { key: "case.referring_attorney", label: "Referring attorney" },
+    { key: "case.summary", label: "Case summary" },
+    { key: "case.description", label: "Case description" },
+  ]},
+  { group: "Other", tokens: [
+    { key: "today", label: "Today's date" },
+    { key: "intake.FIELD_ID", label: "Any intake field (replace FIELD_ID)" },
+  ]},
+];
