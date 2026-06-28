@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { FIRM_WRITABLE_STAGES } from "@/lib/questionnaire";
 import { recordAudit } from "@/lib/audit";
+import { setClaimStatusForLeads } from "@/lib/claim-status";
 
 export const runtime = "edge";
 
@@ -112,6 +113,18 @@ export async function POST(req: NextRequest) {
       firm_id: u.firm_id, lead_id, kind: "stage_change",
       actor: u.uid, body: stage, meta: { stage },
     });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (op === "status") {
+    if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const { lead_id, status, dq_reason_key, dq_note } = payload;
+    if (!lead_id || !status) return NextResponse.json({ error: "lead_id and status required" }, { status: 400 });
+    const res = await setClaimStatusForLeads({
+      leadIds: [lead_id], status, dqReasonKey: dq_reason_key ?? null, dqNote: dq_note ?? null,
+      actorId: u.uid, actorName: u.full_name ?? "User",
+    });
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
     return NextResponse.json({ ok: true });
   }
 

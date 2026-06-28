@@ -46,5 +46,22 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, id: data.id });
   }
+  if (b.op === "delete") {
+    // Delete a single retainer instance on a file.
+    const { data: me } = await sb.from("app_users").select("role").eq("id", auth.user.id).maybeSingle();
+    if (!me || !["owner", "admin", "manager"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const { error } = await sb.from("retainers").delete().eq("id", b.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (b.lead_id) await recordAudit({ lead_id: b.lead_id, actor: auth.user.id, category: "retainer", description: "Deleted a retainer from the file." });
+    return NextResponse.json({ ok: true });
+  }
+  if (b.op === "delete_template") {
+    // Delete a reusable retainer template (global).
+    const { data: me } = await sb.from("app_users").select("role").eq("id", auth.user.id).maybeSingle();
+    if (!me || !["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const { error } = await sb.from("retainer_templates").delete().eq("id", b.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
   return NextResponse.json({ error: "unknown op" }, { status: 400 });
 }

@@ -4,6 +4,7 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { resolveStatus, type StatusDef } from "@/lib/statuses";
 import { recordAudit } from "@/lib/audit";
+import { matchAndStart } from "@/lib/automation-engine";
 
 export interface SetStatusResult { ok: boolean; error?: string; }
 
@@ -43,6 +44,15 @@ export async function setClaimStatusForLeads(opts: {
   const { error } = await admin.from("claims").update(patch).in("lead_id", opts.leadIds);
   if (error) return { ok: false, error: error.message };
 
+  // Keep the QA-queue flag in sync with the status phase so the QA queue and the
+  // agent fix-inbox stay accurate without a separate write at every call site.
+  if (def.phase === "in_qa") {
+    const isWip = def.key === "wip" || def.key === "signed_wip";
+    await admin.from("leads").update({ qa_pending: !isWip, wip_pending: isWip }).in("id", opts.leadIds);
+  } else if (def.phase === "post_qa" || def.phase === "terminal") {
+    await admin.from("leads").update({ qa_pending: false, wip_pending: false }).in("id", opts.leadIds);
+  }
+
   // Activity Log per lead.
   let reasonLabel = "";
   if (def.qualify === "disqualify" && opts.dqReasonKey) {
@@ -58,6 +68,12 @@ export async function setClaimStatusForLeads(opts: {
       description: `Status set to ${def.label}${reasonLabel}.`,
       meta: { status: opts.status, dq_reason_key: opts.dqReasonKey ?? null },
     });
+    // Fire any status_changed automations for this lead (never blocks the write).
+    try {
+      await matchAndStart({ type: "status_changed", lead_id: leadId, toStatus: opts.status });
+    } catch (e) {
+      console.error("automation trigger failed", e);
+    }
   }
   return { ok: true };
 }

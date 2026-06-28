@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   if (!secret) return NextResponse.json({ error: "AI not configured" }, { status: 200 });
 
   // gather the intake answers + claim type
-  const { data: claim } = await sb.from("claims").select("claim_type, answers, campaign").eq("id", b.claim_id).maybeSingle();
+  const { data: claim } = await sb.from("claims").select("claim_type, answers, campaign, created_by").eq("id", b.claim_id).maybeSingle();
   const { data: lead } = await sb.from("leads").select("first_name, last_name, phone, email").eq("id", b.lead_id).maybeSingle();
   const answers = claim?.answers ?? {};
   const quick = b.kind === "quick";
@@ -78,6 +78,33 @@ Return STRICT JSON only: {"verdict":"approved"|"rejected"|"advisory","score":0-1
   // a FULL approved review flips the gate
   if (!quick && verdict === "approved") {
     await sb.from("leads").update({ grievous_approved: true, grievous_approved_at: new Date().toISOString() }).eq("id", b.lead_id);
+  }
+
+  // FULL review also fills a report card, tags Grievous's recommended verdict,
+  // and advances the file into the QA queue (his call rides along to QA).
+  if (!quick) {
+    const score = typeof parsed.score === "number" ? parsed.score : null;
+    const grade = (ok: boolean) => (verdict === "approved" || ok ? "green" : verdict === "rejected" ? "red" : "yellow");
+    const issuesText = JSON.stringify(parsed.issues ?? []).toLowerCase();
+    const leadingFlag = /lead|leading|off script|script/.test(issuesText);
+    const incompleteFlag = /missing|incomplete|blank|not provided/.test(issuesText);
+    const recVerdict = verdict === "approved" ? "ready" : verdict === "rejected" ? "flag" : "wip";
+
+    const { data: agent } = claim?.created_by
+      ? await sb.from("app_users").select("id, full_name").eq("id", (claim as any).created_by).maybeSingle()
+      : { data: null } as any;
+
+    await sb.from("report_cards").insert({
+      lead_id: b.lead_id, claim_id: b.claim_id, agent_id: agent?.id ?? null, agent_name: agent?.full_name ?? null,
+      grader: "grievous",
+      qa_pass: score != null ? (score >= 80 ? "green" : score >= 60 ? "yellow" : "red") : grade(false),
+      esign: grade(false),
+      criteria: verdict === "rejected" ? "red" : verdict === "approved" ? "green" : "yellow",
+      leading: leadingFlag ? "red" : "green",
+      complete: incompleteFlag ? "yellow" : "green",
+    });
+    await sb.from("claims").update({ grievous_verdict: recVerdict }).eq("id", b.claim_id);
+    await sb.from("leads").update({ qa_pending: true, wip_pending: false }).eq("id", b.lead_id);
   }
   return NextResponse.json({ review: rev, approved: !quick && verdict === "approved" });
 }

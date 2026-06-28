@@ -100,7 +100,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
 
   // ---- READ-ONLY VIEW MODE (default) ----
   if (!editMode) {
-    const fullName = [x.first_name, x.last_name].filter(Boolean).join(" ");
+    const fullName = [x.first_name, x.last_name].filter(Boolean).join(" ") || lead.claimant_name || "";
     const addr = [x.mail_addr1, [x.mail_city, x.mail_state].filter(Boolean).join(", "), x.mail_zip].filter(Boolean).join(" · ");
     const V = ({ label, value }: { label: string; value: any }) => (
       <div className="ro-field">

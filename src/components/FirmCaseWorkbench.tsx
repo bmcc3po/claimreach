@@ -7,13 +7,33 @@ import Crissi from "./Crissi";
 import CaseDocuments from "./CaseDocuments";
 import CaseMessages from "./CaseMessages";
 
-export default function FirmCaseWorkbench({ lead, claims, activity, callLogs }: { lead: any; claims: any[]; activity: any[]; callLogs: any[] }) {
+export default function FirmCaseWorkbench({ lead, claims, activity, callLogs, locked = false, stageLabel }: { lead: any; claims: any[]; activity: any[]; callLogs: any[]; locked?: boolean; stageLabel?: string }) {
   const claim = claims[0] ?? {};
   const [stage, setStage] = useState(lead.stage);
   const [tab, setTab] = useState("overview");
   const [note, setNote] = useState("");
   const [reqInfo, setReqInfo] = useState("");
   const [msg, setMsg] = useState("");
+
+  // Visibility wall: before QA approval the firm sees only identity + a stage.
+  if (locked) {
+    return (
+      <div>
+        <div className="row" style={{ marginBottom: 14 }}>
+          <h1 style={{ margin: 0 }}>{lead.claimant_name || lead.lead_no}</h1>
+          <span className="badge stage">{stageLabel || "In progress"}</span>
+        </div>
+        <div className="card" style={{ padding: 24, maxWidth: 560 }}>
+          <h3 style={{ marginTop: 0 }}>This file is still in progress</h3>
+          <p className="muted">The intake team is working this file. Full details unlock once it clears QA review.</p>
+          <div className="vrow"><span className="vk">Claimant</span><span className="vv">{lead.claimant_name || "—"}</span></div>
+          <div className="vrow"><span className="vk">Phone</span><span className="vv">{lead.phone || "—"}</span></div>
+          <div className="vrow"><span className="vk">Case type</span><span className="vv">{lead.case_type || "—"}</span></div>
+          <div className="vrow"><span className="vk">Status</span><span className="vv">{stageLabel}</span></div>
+        </div>
+      </div>
+    );
+  }
 
   async function setStageVal(s: string) {
     setStage(s);

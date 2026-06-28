@@ -210,6 +210,32 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
     );
   }
 
+  async function deleteRetainer(id: string) {
+    if (!confirm("Delete this retainer from the file? This cannot be undone.")) return;
+    const r = await fetch("/api/retainer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "delete", id, lead_id: leadId }) });
+    const d = await r.json();
+    if (!r.ok) { setMsg(d.error || "Delete failed"); return; }
+    load();
+  }
+  async function deleteTemplate() {
+    if (!tplId) { setMsg("Pick a template to delete first."); return; }
+    const name = templates.find((t) => t.id === tplId)?.name || "this template";
+    if (!confirm(`Delete the retainer template "${name}"? It will no longer be available on any file.`)) return;
+    const r = await fetch("/api/retainer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "delete_template", id: tplId }) });
+    const d = await r.json();
+    if (!r.ok) { setMsg(d.error || "Delete failed"); return; }
+    setTplId("");
+    load();
+  }
+  async function deletePdf(id: string, name: string) {
+    if (!confirm(`Delete PDF template "${name}"? This removes the uploaded file too.`)) return;
+    const r = await fetch("/api/pdf-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "delete", id }) });
+    const d = await r.json();
+    if (!r.ok) { setMsg(d.error || "Delete failed"); return; }
+    if (sendPdfId === id) setSendPdfId("");
+    loadPdfTemplates();
+  }
+
   return (
     <div>
       <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
@@ -219,6 +245,7 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
         </select>
         <button className="btn gold" onClick={generate} disabled={!tplId}>Generate retainer</button>
         <button className="btn ghost" onClick={() => setEditingTpl(true)}>+ New template</button>
+        {tplId && <button className="btn ghost sm danger" onClick={deleteTemplate}>Delete template</button>}
         {msg && <span className="muted" style={{ alignSelf: "center" }}>{msg}</span>}
       </div>
 
@@ -227,7 +254,10 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
       {retainers.map((r) => (
         <div key={r.id} className="cd-event">
           <div><strong>{STATUS_LABEL[r.status] ?? r.status}</strong> <span className="muted">· {new Date(r.created_at).toLocaleDateString()}</span></div>
-          <button className="btn ghost sm" onClick={() => setPreview(r)}>Open</button>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn ghost sm" onClick={() => setPreview(r)}>Open</button>
+            <button className="btn ghost sm danger" onClick={() => deleteRetainer(r.id)}>Delete</button>
+          </div>
         </div>
       ))}
 
@@ -243,6 +273,7 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
           <div className="row" style={{ gap: 6 }}>
             <button className="btn ghost sm" onClick={() => { setEditPdfId(t.id); setEditPdf(t); }}>Edit fields</button>
             <button className={`btn sm ${sendPdfId === t.id ? "gold" : "ghost"}`} onClick={() => setSendPdfId(t.id)}>{sendPdfId === t.id ? "Selected" : "Select to send"}</button>
+            <button className="btn ghost sm danger" onClick={() => deletePdf(t.id, t.name)}>Delete</button>
           </div>
         </div>
       ))}

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Logo } from "./Logo";
 import Icon from "./ui/Icon";
 
-type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean };
+type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
 
 const STAFF_GROUPS: NavGroup[] = [
@@ -12,6 +12,7 @@ const STAFF_GROUPS: NavGroup[] = [
     { href: "/leads", icon: "files", label: "Leads" },
     { href: "/intake", icon: "plus", label: "Add lead" },
     { href: "/queue", icon: "phone", label: "My queue" },
+    { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true },
     { href: "/reports", icon: "chart", label: "Reports" },
   ]},
   { id: "ai", label: "AI tools", items: [
@@ -72,7 +73,11 @@ export default function SideNav({
         </div>
         <nav className="navlinks">
           {GROUPS.map((g) => {
-            const items = g.items.filter((n) => !n.adminOnly || ["owner", "admin"].includes(role));
+            const items = g.items.filter((n) => {
+              if (n.adminOnly && !["owner", "admin"].includes(role)) return false;
+              if (n.qaOnly && !["owner", "admin", "qa"].includes(role)) return false;
+              return true;
+            });
             if (items.length === 0) return null;
             const isCollapsed = collapsed[g.id];
             return (

@@ -6,12 +6,14 @@ import FloatingDock from "./FloatingDock";
 import ClaimIntake from "./ClaimIntake";
 import CaseOverview from "./CaseOverview";
 import StatusBadge from "./ui/StatusBadge";
+import FileStatusControl from "./FileStatusControl";
 import ActivityLog from "./ActivityLog";
 import ContactInfo from "./ContactInfo";
 import CaseDetails from "./CaseDetails";
 import RetainerTab from "./RetainerTab";
 import NotesTab from "./NotesTab";
 import CommsTimeline from "./CommsTimeline";
+import QaPanel from "./QaPanel";
 
 interface Claim {
   id: string;
@@ -24,7 +26,7 @@ interface Claim {
   answers?: Record<string, any>;
 }
 
-const TABS = ["Overview", "Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Activity Log"];
+const BASE_TABS = ["Overview", "Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Activity Log"];
 
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
@@ -46,6 +48,11 @@ export default function LeadWorkspace({
   const [tab, setTab] = useState("Overview");
   const [editMode, setEditMode] = useState(false);
   const activeClaim = claims.find((c) => c.id === activeClaimId);
+  const canQa = ["owner", "admin", "qa"].includes(lead.current_user_role || "");
+  // QA tab sits right after Case Details for the people who run QA.
+  const TABS = canQa
+    ? ["Overview", "Case Questions", "Contact Info", "Case Details", "QA", "Retainer", "Messages", "Calls", "Notes", "Activity Log"]
+    : BASE_TABS;
   const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
 
   function claimClass(c: Claim) {
@@ -96,7 +103,7 @@ export default function LeadWorkspace({
             )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-end" }}>
-            <StatusBadge status={activeClaim?.status ?? lead.status ?? "new"} />
+            <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
             <LockFileButton lead={lead} />
             {claims.length <= 1 && <CreateClaim leadId={lead.id} firmId={lead.firm_id} />}
           </div>
@@ -148,6 +155,7 @@ export default function LeadWorkspace({
             )}
             {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
             {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
+            {tab === "QA" && canQa && <QaPanel leadId={lead.id} claimId={activeClaim?.id} />}
             {tab === "Retainer" && <RetainerTab leadId={lead.id} role={lead.current_user_role} />}
             {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" />}
             {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" />}
