@@ -55,6 +55,18 @@ export async function POST(req: NextRequest) {
     const { error: leadErr } = await sb.from("leads").update(lead).eq("id", lead_id);
     if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });
 
+    // Fire outbound webhook on a status change so firms stay in sync.
+    if (lead && lead.status) {
+      try {
+        const { fireEvent } = await import("@/lib/webhook-deliver");
+        const { data: row } = await sb.from("leads").select("firm_id, lead_no, external_id, status, first_name, last_name, phone, email, case_type").eq("id", lead_id).maybeSingle();
+        if (row?.firm_id) {
+          const evt = lead.status === "signed" ? "lead.signed" : lead.status === "dq" ? "lead.dq" : lead.status === "qualified" ? "lead.qualified" : "lead.updated";
+          await fireEvent(row.firm_id, evt, { lead_id, ...row });
+        }
+      } catch {}
+    }
+
     if (Array.isArray(properties)) {
       // Replace property rows for this lead (simple, idempotent save).
       await sb.from("lead_properties").delete().eq("lead_id", lead_id);

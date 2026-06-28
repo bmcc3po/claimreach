@@ -901,3 +901,6 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .integ-fix { font-size:13px; background:var(--surface-2); border-radius:6px; padding:5px 8px; margin-top:3px; }
 .sev { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; padding:1px 6px; border-radius:5px; margin-right:5px; }
 .sev.high { background:var(--danger); color:#fff; } .sev.med { background:#e8a33d; color:#fff; } .sev.low { background:var(--line); color:var(--ink); }
+
+/* integrations chip-on state */
+.chip.on { background:var(--brand); color:#fff; border-color:var(--brand); }
