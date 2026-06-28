@@ -35,6 +35,11 @@ export default async function SettingsPage() {
           </tbody>
         </table>
       </div>
+      <div className="side-card" style={{ maxWidth: 620 }}>
+        <h3>Statuses & DQ reasons</h3>
+        <p className="muted" style={{ marginTop: 0 }}>Edit the status set that drives intake, QA, billing, and firm visibility, plus the disqualification reasons agents pick from.</p>
+        <a className="btn" href="/settings/statuses">Manage statuses</a>
+      </div>
       <DripManager />
       <div className="side-card" style={{ maxWidth: 620 }}>
         <h3>Calendly</h3>

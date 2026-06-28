@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { setClaimStatusForLeads } from "@/lib/claim-status";
 export const runtime = "edge";
 
 // Bulk operations on selected leads. Body: { op, ids:[], ...args }
@@ -34,9 +35,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, count: ids.length });
     }
     if (b.op === "set_status") {
-      // status lives on the claim; update claims for these leads
-      const { error } = await sb.from("claims").update({ status: b.status }).in("lead_id", ids);
-      if (error) throw error;
+      // status lives on the claim; the helper enforces the DQ-reason gate and audits.
+      const { data: meName } = await sb.from("app_users").select("full_name").eq("id", auth.user.id).maybeSingle();
+      const res = await setClaimStatusForLeads({
+        leadIds: ids,
+        status: b.status,
+        dqReasonKey: b.dq_reason_key ?? null,
+        dqNote: b.dq_note ?? null,
+        actorId: auth.user.id,
+        actorName: meName?.full_name ?? "User",
+      });
+      if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
       return NextResponse.json({ ok: true, count: ids.length });
     }
     if (b.op === "delete") {

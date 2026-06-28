@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { recordAudit } from "@/lib/audit";
 
 export const runtime = "edge";
+
+// Local phone formatter so we don't import from a client component into this edge route.
+function fmtPhone(raw: string): string {
+  const d = (raw || "").replace(/\D/g, "").replace(/^1/, "").slice(0, 10);
+  if (d.length !== 10) return raw || "";
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+}
 
 // JustCall API v2.1. Keys stay server-side.
 // POST { action: 'text' | 'call', lead_id, to, body? }
@@ -14,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { data: me } = await sb.from("app_users")
-    .select("role, firm_id").eq("id", auth.user.id).maybeSingle();
+    .select("role, firm_id, full_name").eq("id", auth.user.id).maybeSingle();
   if (!me || me.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const apiKey = process.env.JUSTCALL_API_KEY;
@@ -76,6 +84,30 @@ export async function POST(req: NextRequest) {
     body: action === "text" ? body : null,
     meta: { to, justcall: jcData },
   });
+
+  // Activity Log entry so SMS sends and calls placed show up alongside everything else.
+  if (action === "text") {
+    const preview = (body || "").trim();
+    await recordAudit({
+      firm_id: lead?.firm_id ?? null,
+      lead_id,
+      actor: auth.user.id,
+      actor_name: me.full_name ?? "User",
+      category: "sms",
+      description: `Texted ${fmtPhone(to)}${preview ? `: "${preview.slice(0, 80)}${preview.length > 80 ? "…" : ""}"` : ""}.`,
+      meta: { to, channel: "sms" },
+    });
+  } else {
+    await recordAudit({
+      firm_id: lead?.firm_id ?? null,
+      lead_id,
+      actor: auth.user.id,
+      actor_name: me.full_name ?? "User",
+      category: "call",
+      description: `Placed a call to ${fmtPhone(to)}.`,
+      meta: { to, channel: "call" },
+    });
+  }
 
   return NextResponse.json({ ok: true, justcall: jcData });
 }

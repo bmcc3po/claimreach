@@ -27,5 +27,9 @@ export default async function LeadsPage() {
   const { data: agents } = await sb.from("app_users").select("id, full_name").in("role", ["agent", "admin", "owner"]).order("full_name");
   const { data: firms } = await sb.from("firms").select("id, name").order("name");
 
-  return <LeadsView leads={withClaims} basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} />;
+  // Live, owner-editable status set drives badges, filters, and bulk actions.
+  const { data: statuses } = await sb.from("statuses").select("*").eq("active", true).order("sort");
+  const { data: dqReasons } = await sb.from("dq_reasons").select("*").eq("active", true).order("sort");
+
+  return <LeadsView leads={withClaims} basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} statuses={statuses ?? []} dqReasons={dqReasons ?? []} />;
 }

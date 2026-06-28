@@ -3,6 +3,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { STAGE_LABELS } from "@/lib/questionnaire";
 import TierBadge from "./TierBadge";
+import StatusBadge from "./ui/StatusBadge";
 
 export default function FirmCasesTable({ rows }: { rows: any[] }) {
   const [q, setQ] = useState("");
@@ -54,7 +55,7 @@ export default function FirmCasesTable({ rows }: { rows: any[] }) {
                   <td>{r.claimant_name ?? <span className="muted">—</span>}</td>
                   <td>{r.case_type ?? "—"}</td>
                   <td><TierBadge letter={c.tier_letter} number={c.tier_number} claimType={r.case_type} /></td>
-                  <td><span className={`badge ${c.status === "dq" ? "dq" : c.status === "signed" ? "signed" : "stage"}`}>{(c.status ?? "new").replace("_", " ")}</span></td>
+                  <td><StatusBadge status={c.status ?? "new"} /></td>
                   <td><span className="badge stage">{STAGE_LABELS[r.stage] ?? r.stage}</span></td>
                   <td className="muted">{new Date(r.updated_at).toLocaleString()}</td>
                 </tr>

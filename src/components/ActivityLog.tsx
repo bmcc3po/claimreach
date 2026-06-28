@@ -36,9 +36,12 @@ export default function ActivityLog({ entries }: { entries: any[] }) {
 
 function catClass(c: string) {
   if (c === "status") return "stage";
-  if (c === "comms") return "count";
+  if (c === "comms" || c === "call") return "count";
+  if (c === "sms") return "signed";
   if (c === "access") return "flag";
   if (c === "entered") return "signed";
   if (c === "deleted") return "dq";
+  if (c === "retainer") return "stage";
+  if (c === "contact") return "stage";
   return "stage";
 }

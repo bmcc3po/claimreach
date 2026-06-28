@@ -3,17 +3,22 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
 import TierBadge from "./TierBadge";
+import StatusBadge from "./ui/StatusBadge";
+import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, type StatusDef, type DqReason } from "@/lib/statuses";
 
 type Row = any;
 
 // Shared leads surface used by BOTH staff and firm. Three views:
 // Table (dense, default), Board (Monday lanes, group-by toggle), Gantt (stages over time).
-export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", agents = [], firms = [], canBulk = false }: { leads: Row[]; basePath?: string; addPath?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean }) {
+export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", agents = [], firms = [], canBulk = false, statuses = [], dqReasons = [] }: { leads: Row[]; basePath?: string; addPath?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[] }) {
+  const statusList = statuses.length ? statuses : DEFAULT_STATUSES;
+  const dqList = dqReasons.length ? dqReasons : DEFAULT_DQ_REASONS;
   const [q, setQ] = useState("");
   const [view, setView] = useState<"table" | "board" | "gantt">("table");
   const [groupBy, setGroupBy] = useState<"status" | "stage" | "tier">("status");
   const [fType, setFType] = useState("all");
   const [fState, setFState] = useState("all");
+  const [fStatus, setFStatus] = useState("all");
   const [sort, setSort] = useState<{ k: string; dir: 1 | -1 }>({ k: "updated", dir: -1 });
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
@@ -38,6 +43,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     });
     if (fType !== "all") r = r.filter((x) => x.type === fType);
     if (fState !== "all") r = r.filter((x) => x.state === fState);
+    if (fStatus !== "all") r = r.filter((x) => x.status === fStatus);
     if (q.trim()) {
       const t = q.toLowerCase();
       r = r.filter((x) => x.name.toLowerCase().includes(t) || x.phone.includes(t) ||
@@ -45,7 +51,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     }
     r.sort((a: any, b: any) => { const av = a[sort.k] ?? "", bv = b[sort.k] ?? ""; return (av > bv ? 1 : av < bv ? -1 : 0) * sort.dir; });
     return r;
-  }, [leads, q, fType, fState, sort]);
+  }, [leads, q, fType, fState, fStatus, sort]);
 
   const types = Array.from(new Set(leads.map((l) => l.case_type ?? l.claims?.[0]?.claim_type).filter(Boolean)));
   const states = Array.from(new Set(rows.map((r) => r.state).filter(Boolean))).sort();
@@ -83,10 +89,27 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     setTimeout(() => window.location.reload(), 700);
   }
 
-  function statusBadge(s: string) {
-    const cls = s === "dq" ? "dq" : s === "signed" ? "signed" : s === "qualified" ? "count" : "stage";
-    return <span className={`badge ${cls}`}>{s.replace("_", " ")}</span>;
+  async function runBulkStatus(statusKey: string) {
+    const def = statusList.find((s) => s.key === statusKey);
+    let dq_reason_key: string | undefined;
+    if (def?.qualify === "disqualify") {
+      // Mandatory, non-dismissable: keep prompting until a valid reason is chosen.
+      const choices = dqList.map((r, i) => `${i + 1}. ${r.label}`).join("\n");
+      let pick: string | null = null;
+      while (!dq_reason_key) {
+        pick = window.prompt(`Disqualification reason (required) for "${def.label}":\n${choices}\n\nEnter the number:`);
+        if (pick === null) return; // they hit cancel; abort the whole status change
+        const idx = parseInt(pick.trim(), 10) - 1;
+        if (idx >= 0 && idx < dqList.length) dq_reason_key = dqList[idx].key;
+      }
+    }
+    runBulk({ op: "set_status", status: statusKey, dq_reason_key });
   }
+
+  function statusBadge(s: string) {
+    return <StatusBadge status={s} live={statusList} />;
+  }
+
   function th(k: string, label: string) {
     return <th onClick={() => setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : 1 }))} style={{ cursor: "pointer", whiteSpace: "nowrap" }}>{label}{sort.k === k ? (sort.dir === 1 ? " ▲" : " ▼") : ""}</th>;
   }
@@ -94,17 +117,20 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   // ---- BOARD lanes ----
   const laneDefs = useMemo(() => {
     if (groupBy === "status") return [
-      { key: "new", label: "Needs intake", tone: "#d9982a" }, { key: "in_progress", label: "In progress", tone: "#0891b2" },
-      { key: "qualified", label: "Qualified", tone: "#2f8a52" }, { key: "signed", label: "Signed", tone: "#16324f" },
-      { key: "dq", label: "Disqualified", tone: "#c0392f" },
+      { key: "pre_qa", label: "Intake", tone: "#d9982a" },
+      { key: "in_qa", label: "In QA", tone: "#0891b2" },
+      { key: "post_qa", label: "Approved / Firm", tone: "#2f8a52" },
+      { key: "terminal", label: "Closed", tone: "#c0392f" },
     ];
     if (groupBy === "stage") return STAGES.map((s) => ({ key: s, label: STAGE_LABELS[s] ?? s, tone: "#16324f" }));
     // tier
     return ["A", "B", "C", "D", "E", "F", "untiered"].map((t) => ({ key: t, label: t === "untiered" ? "Untiered" : `Tier ${t}`, tone: "#d9982a" }));
   }, [groupBy]);
 
+  const phaseOf = (statusKey: string) => (statusList.find((s) => s.key === statusKey)?.phase) ?? "pre_qa";
+
   function laneOf(r: any) {
-    if (groupBy === "status") return r.status;
+    if (groupBy === "status") return phaseOf(r.status);
     if (groupBy === "stage") return r.stage;
     return r.tier_letter ?? "untiered";
   }
@@ -122,10 +148,9 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
           )}
           {allMatching && <span className="muted" style={{ fontSize: 12 }}>All {rows.length} matching selected</span>}
           <span className="bulk-sep" />
-          <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_status", status: e.target.value }); e.target.value = ""; } }}>
+          <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulkStatus(e.target.value); e.target.value = ""; } }}>
             <option value="">Change status…</option>
-            <option value="new">New</option><option value="in_progress">In progress</option>
-            <option value="qualified">Qualified</option><option value="signed">Signed</option><option value="dq">Disqualified</option>
+            {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
           <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_stage", stage: e.target.value }); e.target.value = ""; } }}>
             <option value="">Change stage…</option>
@@ -164,6 +189,10 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
           <option value="all">All states</option>
           {states.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
+        <select style={{ width: "auto" }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+          <option value="all">All statuses</option>
+          {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
         {view === "board" && (
           <select style={{ width: "auto" }} value={groupBy} onChange={(e) => setGroupBy(e.target.value as any)}>
             <option value="status">Group: Status</option>
@@ -183,7 +212,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       {view === "table" && (
         <div className="table-scroll">
           <table className="docket leads">
-            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("type", "Type")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("updated", "Updated")}</tr></thead>
+            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("type", "Type")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}</tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={`${r.needsAction ? "needs-action" : ""} ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
@@ -199,10 +228,11 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   <td><span className="badge stage">{STAGE_LABELS[r.stage] ?? r.stage}</span></td>
                   <td className="muted">{r.state || "—"}</td>
                   <td className="trunc" title={r.summary}>{r.summary}</td>
+                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{r.created ? new Date(r.created).toLocaleDateString() : "—"}</td>
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.updated).toLocaleDateString()}</td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={canBulk ? 13 : 12} className="muted">No leads match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={canBulk ? 14 : 13} className="muted">No leads match.</td></tr>}
             </tbody>
           </table>
         </div>

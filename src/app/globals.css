@@ -439,6 +439,11 @@ table.docket tr:hover td { background: var(--surface-2); }
 /* Contact info form bits */
 .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 @media(max-width:640px){ .grid2{grid-template-columns:1fr} }
+.grid2 label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; color:var(--ink-soft); }
+.grid2 label input, .grid2 label select { font-weight:400; color:var(--ink); }
+.chk { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer; }
+.chk input { width:auto; margin:0; }
+.banner { background:var(--agent-bg); border:1px solid var(--agent-bd); color:var(--ink); border-radius:8px; padding:8px 12px; font-size:13px; }
 .section-title { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--ink-soft); font-weight:800; margin:6px 0 10px; }
 .perm-row { display:flex; flex-wrap:wrap; gap:16px; padding:6px 0; }
 .perm { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; cursor:pointer; }
@@ -469,6 +474,18 @@ table.docket.leads tbody tr.needs-action:hover { background:linear-gradient(90de
 .docket.leads .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--accent);
   box-shadow:0 0 0 3px var(--agent-bg); }
 .docket.leads .trunc { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Leads table readability: lead-id links + body text need real contrast.
+   In dark mode the gold-on-navy id was too dim and muted cells washed out. */
+table.docket.leads tbody td { color: var(--ink); }
+table.docket.leads tbody a { color: var(--accent); font-weight: 700; }
+table.docket.leads tbody a:hover { text-decoration: underline; }
+[data-theme="dark"] table.docket.leads { background: var(--surface); }
+[data-theme="dark"] table.docket.leads tbody a { color: var(--accent-2); }
+[data-theme="dark"] table.docket.leads tbody td { color: var(--ink); }
+[data-theme="dark"] table.docket.leads tbody td.muted { color: #b8c6dc; }
+[data-theme="dark"] table.docket.leads thead th { color: #aebccd; }
+[data-theme="dark"] table.docket.leads tbody tr:hover { background: #182840; }
 
 /* ============================================================
    PREMIUM COMPONENT LAYER v2 — Close/Attio-grade polish
