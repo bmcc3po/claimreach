@@ -79,6 +79,8 @@ export default function SignPage({ id }: { id: string }) {
     setErr(""); setAdopted(sig);
   }
 
+  const [certUrl, setCertUrl] = useState<string | null>(null);
+
   async function finish() {
     if (!adopted) { setErr("Adopt your signature first."); return; }
     if (!agree) { setErr("Please check the agreement box to finish."); return; }
@@ -88,7 +90,7 @@ export default function SignPage({ id }: { id: string }) {
       body: JSON.stringify({ id, op: "sign", signed_name: name, signature_data: adopted, signature_type: mode }),
     });
     const d = await r.json();
-    if (d.ok) setStep("done"); else setErr(d.error || "Could not submit your signature.");
+    if (d.ok) { setCertUrl(d.cert_pdf_url || null); setStep("done"); } else setErr(d.error || "Could not submit your signature.");
   }
 
   // ---- screens ----
@@ -102,6 +104,7 @@ export default function SignPage({ id }: { id: string }) {
         <h2>Completed</h2>
         <p className="muted">Thank you, {name}. Your document has been signed and recorded. A copy and the completion certificate are on file.</p>
         {doc?.envelope_id && <p className="sign-env">Envelope ID: {doc.envelope_id}</p>}
+        {certUrl && <a className="btn ghost sm" href={certUrl} target="_blank" rel="noopener noreferrer" style={{ marginTop: 10 }}>Download completion certificate</a>}
       </div>
     </div>
   );

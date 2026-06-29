@@ -20,3 +20,8 @@ update signable_documents
   where envelope_id is null;
 
 create unique index if not exists idx_signable_envelope on signable_documents(envelope_id);
+
+-- Storage bucket for completion certificates and signed PDFs (Stage 2).
+insert into storage.buckets (id, name, public)
+  values ('signed-docs', 'signed-docs', true)
+  on conflict (id) do nothing;

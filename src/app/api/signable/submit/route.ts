@@ -65,6 +65,30 @@ export async function POST(req: NextRequest) {
     }).eq("id", b.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    // Stage 2: generate the Certificate of Completion PDF and store it.
+    let certUrl: string | null = null;
+    try {
+      const { data: full } = await admin.from("signable_documents")
+        .select("envelope_id, title, signer_name, signer_email, signed_ip, sender_ip, sent_at, viewed_at, consent_at, signed_at, doc_hash, signature_type, firm_id")
+        .eq("id", b.id).maybeSingle();
+      if (full) {
+        const { buildCertificatePdf } = await import("@/lib/certificate");
+        const bytes = await buildCertificatePdf({
+          envelopeId: full.envelope_id, title: full.title, signerName: full.signer_name,
+          signerEmail: full.signer_email, signerIp: full.signed_ip, senderIp: full.sender_ip,
+          sentAt: full.sent_at, viewedAt: full.viewed_at, consentAt: full.consent_at,
+          signedAt: full.signed_at, docHash: full.doc_hash, signatureType: full.signature_type,
+        });
+        const path = `${full.firm_id || "master"}/cert-${full.envelope_id}.pdf`;
+        const up = await admin.storage.from("signed-docs").upload(path, bytes, { contentType: "application/pdf", upsert: true });
+        if (!up.error) {
+          const { data: pub } = admin.storage.from("signed-docs").getPublicUrl(path);
+          certUrl = pub?.publicUrl || null;
+          if (certUrl) await admin.from("signable_documents").update({ cert_pdf_url: certUrl }).eq("id", b.id);
+        }
+      }
+    } catch { /* cert is best-effort; signing already recorded */ }
+
     // If this was a retainer, advance the retainer + lead. New status model:
     // a client signature enters the QA pipeline at signed_grievous.
     if (doc.retainer_id) {
@@ -82,7 +106,7 @@ export async function POST(req: NextRequest) {
       const { recordAudit } = await import("@/lib/audit");
       await recordAudit({ firm_id: doc.firm_id, lead_id: doc.lead_id, category: "retainer", actor_name: doc.signer_name || "Client", description: `Client completed in-house e-sign of "${doc.title}" (envelope ${doc.envelope_id}). IP ${ip}.` });
     } catch {}
-    return NextResponse.json({ ok: true, envelope_id: doc.envelope_id });
+    return NextResponse.json({ ok: true, envelope_id: doc.envelope_id, cert_pdf_url: certUrl });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });
