@@ -18,11 +18,25 @@ export default async function QaQueuePage() {
     .select("lead_id, status, grievous_verdict, claim_type, updated_at, leads(id, lead_no, claimant_name, phone, case_type, updated_at)")
     .in("status", QA_STATUSES).order("updated_at", { ascending: false }).limit(300);
 
-  const queue = (claimRows ?? []).filter((c: any) => c.leads).map((c: any) => ({
-    id: c.leads.id, lead_no: c.leads.lead_no, claimant_name: c.leads.claimant_name,
-    phone: c.leads.phone, case_type: c.leads.case_type, updated_at: c.updated_at,
-    claims: [{ status: c.status, grievous_verdict: c.grievous_verdict }],
-  }));
+  const map = new Map<string, any>();
+  for (const c of claimRows ?? []) {
+    if (!(c as any).leads) continue;
+    const l = (c as any).leads;
+    map.set(l.id, { id: l.id, lead_no: l.lead_no, claimant_name: l.claimant_name, phone: l.phone, case_type: l.case_type, updated_at: c.updated_at, claims: [{ status: c.status, grievous_verdict: c.grievous_verdict }] });
+  }
+
+  // Safety net: leads flagged qa_pending whose claim status may not have caught
+  // up (status landed on the lead but not the claim row). Surfaces them anyway.
+  const { data: flagged } = await sb.from("leads")
+    .select("id, lead_no, claimant_name, phone, case_type, updated_at, qa_pending, claims(status, grievous_verdict)")
+    .eq("qa_pending", true).limit(300);
+  for (const l of flagged ?? []) {
+    if (map.has(l.id)) continue;
+    const st = (l as any).claims?.[0]?.status ?? "qa";
+    map.set(l.id, { id: l.id, lead_no: l.lead_no, claimant_name: l.claimant_name, phone: l.phone, case_type: l.case_type, updated_at: l.updated_at, claims: [{ status: st, grievous_verdict: (l as any).claims?.[0]?.grievous_verdict }] });
+  }
+
+  const queue = Array.from(map.values()).sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
 
   const verdictLabel: Record<string, string> = { wip: "Grievous: WIP", flag: "Grievous: Flag BMC", ready: "Grievous: Ready to send" };
 

@@ -2,15 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 export const runtime = "edge";
 
-const RELAY_URL = process.env.RELAY_URL || "https://bretts-macbook-air.hair-tarpon.ts.net/mav/qa";
-
-async function tryDirect(secret: string, system: string, user: string, signal: AbortSignal) {
-  const r = await fetch(RELAY_URL, { method: "POST", headers: { "Content-Type": "application/json", "X-Maverick-Secret": secret }, body: JSON.stringify({ system, user, temperature: 0.1 }), signal });
-  if (!r.ok) return null;
-  const d: any = await r.json();
-  return d.answer ?? d.text ?? "";
-}
-
 function parse(text: string): any[] | null {
   let t = (text || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const s = t.indexOf("["), e = t.lastIndexOf("]");
@@ -24,9 +15,6 @@ export async function POST(req: NextRequest) {
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { data: me } = await sb.from("app_users").select("role").eq("id", auth.user.id).maybeSingle();
   if (!me || !["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-
-  const secret = process.env.MAVERICK_RELAY_SECRET;
-  if (!secret) return NextResponse.json({ error: "AI not configured" }, { status: 200 });
 
   const { pages } = await req.json();
   // Trim the payload: keep lines likely to anchor fields (signatures, dates, names, blanks).
@@ -44,9 +32,15 @@ Rules: put a "signature" field on signature lines (usually near "Signature", "Cl
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
-    const answer = await tryDirect(secret, system, user, ctrl.signal);
+    const rr = await fetch(new URL("/api/ai", req.url).toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
+      body: JSON.stringify({ system, user }), signal: ctrl.signal,
+    });
+    const dd = await rr.json();
+    const answer = dd.answer || "";
     clearTimeout(timer);
-    const fields = parse(answer || "");
+    const fields = parse(answer);
     if (!fields) return NextResponse.json({ error: "AI did not return placeable fields. Place manually." }, { status: 200 });
     // sanitize
     const clean = fields.filter((f) => f && typeof f === "object").slice(0, 12).map((f) => ({
