@@ -95,17 +95,29 @@ export default function FormBuilder({ formId }: { formId?: string }) {
     if (!aiDesc.trim()) return;
     setAiBusy(true); setMsg("Building… this can take up to a minute.");
     const existingLabels = fields.filter((f) => f.kind === "section").map((f) => f.label).join(", ");
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 95000); // 75s ceiling, then give up cleanly
+
+    // One call attempt with its own abort window.
+    async function attempt(): Promise<any> {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 110000); // align above the server's wall
+      try {
+        const r = await fetch("/api/forms/ai", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode, description: aiDesc, existingLabels }), signal: ctrl.signal });
+        clearTimeout(timer);
+        return await r.json();
+      } finally { clearTimeout(timer); }
+    }
+
     try {
-      const r = await fetch("/api/forms/ai", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, description: aiDesc, existingLabels }), signal: ctrl.signal });
-      clearTimeout(timer);
-      const d = await r.json();
-      if (d.fields && d.fields.length) {
+      let d: any = null;
+      try { d = await attempt(); } catch { d = null; }
+      // Slow first gens often succeed on a second try; retry once automatically.
+      if (!d || !d.fields || !d.fields.length) {
+        if (d?.error) setMsg("First attempt was slow. Retrying once…");
+        try { d = await attempt(); } catch { d = null; }
+      }
+      if (d && d.fields && d.fields.length) {
         if (mode === "form") {
-          // Full build = Common Starter spine (opening/contact/close) + AI campaign questions,
-          // inserted before the close. Keeps output small AND gives a complete form.
           const starter = TEMPLATES.find((t) => t.id === "common")?.fields ?? [];
           const closeIdx = starter.findIndex((f) => f.id === "s_close");
           const head = closeIdx >= 0 ? starter.slice(0, closeIdx) : starter;
@@ -117,12 +129,13 @@ export default function FormBuilder({ formId }: { formId?: string }) {
         setAiOpen(false); setAiDesc("");
         setMsg(`AI added ${d.fields.length} campaign fields${mode === "form" ? " (plus the common opening, contact, and close)" : ""}. Review and edit.`);
       } else {
-        setMsg(d.error ? `AI: ${d.error}${d.raw ? " — " + d.raw.slice(0, 120) : ""}` : "AI returned nothing. Try rephrasing or shorten the description.");
+        setMsg(d?.error
+          ? `${d.error} You can also use 'Just add these questions' to build it in smaller chunks.`
+          : "AI returned nothing. Try rephrasing or shortening the description.");
       }
     } catch (e: any) {
-      clearTimeout(timer);
       setMsg(e?.name === "AbortError"
-        ? "Timed out after 75s. Try a shorter description, or use 'Just add these questions' for smaller chunks."
+        ? "The AI service ran long twice. Try a shorter description, or 'Just add these questions' for smaller chunks."
         : "Request failed. Check the AI connection (the relay) and try again.");
     } finally {
       setAiBusy(false);

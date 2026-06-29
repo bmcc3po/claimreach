@@ -81,10 +81,10 @@ export async function POST(req: NextRequest) {
   const system = `You build legal-intake questionnaires as STRICT JSON. ${FIELD_SPEC}`;
   const user = mode === "questions"
     ? `Generate ONLY fields for this need (no opening/contact/close). Existing sections: ${existingLabels || "none"}. Need: ${description}`
-    : `Generate the CAMPAIGN-SPECIFIC qualifying questions, DQ/safety gates, and conditional logic for this intake (no generic opening/contact/close). Be efficient: aim for the ~15 most important fields, short labels, no filler. Campaign: ${description}`;
+    : `Generate the CAMPAIGN-SPECIFIC qualifying questions, DQ/safety gates, and conditional logic for this intake (no generic opening/contact/close). Be concise: aim for the 10-12 most important fields, short labels, no filler. Campaign: ${description}`;
 
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 90000);
+  const timer = setTimeout(() => ctrl.abort(), 95000); // return a clean error before the platform wall
   try {
     let answer: string | null = null;
     // Direct FIRST: Netlify functions hard-cap at ~10s, far too short for a ~40s
