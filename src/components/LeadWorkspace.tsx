@@ -167,7 +167,7 @@ export default function LeadWorkspace({
             {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
             {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
             {tab === "QA" && canQa && <QaPanel leadId={lead.id} claimId={activeClaim?.id} />}
-            {tab === "Retainer" && <RetainerTab leadId={lead.id} role={lead.current_user_role} />}
+            {tab === "Retainer" && <RetainerTab leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} />}
             {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" />}
             {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" />}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}

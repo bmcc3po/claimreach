@@ -71,8 +71,9 @@ export async function POST(req: NextRequest) {
     // b: { lead_id, pdf_template_id, signer_name, signer_email, signer_phone, send_via, page_dims, certified }
     const { data: lead } = await admin.from("leads").select("id, firm_id, grievous_approved, first_name, last_name, claimant_name, phone, email").eq("id", b.lead_id).maybeSingle();
     if (!lead) return NextResponse.json({ error: "lead not found" }, { status: 404 });
-    if (!lead.grievous_approved && !["owner", "admin"].includes(me.role)) {
-      return NextResponse.json({ error: "Grievous has not approved this file yet." }, { status: 200 });
+    const ownerAdmin = ["owner", "admin"].includes(me.role);
+    if (!lead.grievous_approved && !ownerAdmin && !(b.override && ownerAdmin)) {
+      return NextResponse.json({ error: "Grievous has not approved this file yet. Run a Grievous review or use owner override." }, { status: 200 });
     }
 
     const { data: tplFor } = await admin.from("pdf_templates").select("*").eq("id", b.pdf_template_id).maybeSingle();

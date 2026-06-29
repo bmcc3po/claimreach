@@ -6,7 +6,7 @@ import PdfFieldEditor from "./PdfFieldEditor";
 const STATUS_FLOW = ["draft", "sent", "viewed", "signed", "declined"];
 const STATUS_LABEL: Record<string, string> = { draft: "Draft", sent: "Sent for eSign", viewed: "Viewed", signed: "Signed", declined: "Declined" };
 
-export default function RetainerTab({ leadId, role }: { leadId: string; role?: string }) {
+export default function RetainerTab({ leadId, claimId, role }: { leadId: string; claimId?: string; role?: string }) {
   const [templates, setTemplates] = useState<any[]>([]);
   const [retainers, setRetainers] = useState<any[]>([]);
   const [tplId, setTplId] = useState("");
@@ -57,15 +57,32 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
 
   const [signables, setSignables] = useState<any[]>([]);
   const [pdfMethod, setPdfMethod] = useState<"builtin" | "signwell">("builtin");
+  const [override, setOverride] = useState(false);
+  const [runningGrievous, setRunningGrievous] = useState(false);
+  const canOverrideRole = role === "owner" || role === "admin";
   async function loadSignables() {
     try { const d = await (await fetch(`/api/signable?lead_id=${leadId}`)).json(); setSignables(d.docs ?? []); } catch {}
   }
   useEffect(() => { loadSignables(); }, [leadId]);
+  async function runGrievous() {
+    setRunningGrievous(true); setMsg("Running Grievous review on this file…");
+    try {
+      const r = await fetch("/api/grievous", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, kind: "full" }) });
+      const d = await r.json();
+      if (d.verdict) {
+        const ok = d.verdict === "approved";
+        setApproved(ok);
+        setMsg(ok ? "Grievous approved this file. You can send now." : `Grievous: ${d.verdict}. ${d.summary || "Check the QA tab for the report."}`);
+      } else setMsg(d.error || "Grievous review could not run.");
+    } catch { setMsg("Grievous review failed to run."); }
+    finally { setRunningGrievous(false); }
+  }
   async function sendPdfRetainer() {
     if (!sendPdfId) { setMsg("Pick a PDF template to send."); return; }
+    if (!approved && !override) { setMsg("Grievous hasn't approved this file. Run a Grievous review, or check Override (owner/admin)."); return; }
     setMsg(pdfMethod === "builtin" ? "Sending PDF retainer via in-house e-sign…" : "Sending PDF retainer via SignWell…");
     const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "send_pdf_retainer", lead_id: leadId, pdf_template_id: sendPdfId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", method: pdfMethod }) });
+      body: JSON.stringify({ op: "send_pdf_retainer", lead_id: leadId, pdf_template_id: sendPdfId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", method: pdfMethod, override }) });
     const d = await r.json();
     if (d.ok) { setMsg(pdfMethod === "builtin" ? `Sent. In-house signing link created (envelope ${d.envelope_id || ""}).` : "PDF retainer sent via SignWell."); load(); loadSignables(); } else setMsg(d.error || "Send failed");
   }
@@ -363,7 +380,19 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
             </button>
           </div>
           <button className="btn gold" onClick={sendPdfRetainer}>Send for signature</button>
-          {!approved && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Note: Grievous approval is required to send (owner/admin can override).</p>}
+          {!approved && (
+            <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--st-warn-bg)", border: "1px solid var(--st-warn-bd)", borderRadius: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--st-warn)", marginBottom: 8 }}>Grievous hasn't approved this file yet.</div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <button className="btn ghost sm" disabled={runningGrievous} onClick={runGrievous}>{runningGrievous ? "Running…" : "Run Grievous review"}</button>
+                {canOverrideRole && (
+                  <label className="chk" style={{ fontSize: 13 }}>
+                    <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} /> Override and send anyway (owner/admin)
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
