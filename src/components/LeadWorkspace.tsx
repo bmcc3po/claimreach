@@ -49,6 +49,7 @@ export default function LeadWorkspace({
   const [tab, setTab] = useState("Overview");
   const [editMode, setEditMode] = useState(false);
   const activeClaim = claims.find((c) => c.id === activeClaimId);
+  const [showAddClaim, setShowAddClaim] = useState(false);
   const canQa = ["owner", "admin", "qa"].includes(lead.current_user_role || "");
   // QA tab sits right after Case Details for the people who run QA.
   const TABS = canQa
@@ -80,42 +81,48 @@ export default function LeadWorkspace({
 
       {/* Lead header */}
       <div className="leadhead">
-        <div className="row" style={{ justifyContent: "space-between", width: "100%" }}>
+        <div className="row" style={{ justifyContent: "space-between", width: "100%", alignItems: "flex-start" }}>
           <div>
-            <h2>{lead.claimant_name ?? "Unnamed claimant"}</h2>
+            <h2 style={{ marginBottom: 2 }}>{lead.claimant_name ?? "Unnamed claimant"}</h2>
             <div className="leadhead-sub">
-              <span className="leadhead-file">File {lead.lead_no}</span>
-              {activeClaim?.campaign && <><span className="leadhead-dot">·</span><span>{activeClaim.campaign}</span></>}
+              <span className="leadhead-file">{lead.lead_no}</span>
+              <span className="leadhead-dot">·</span>
+              <span className="muted">{activeClaim?.claim_type || lead.case_type || "case"}</span>
               <span className="leadhead-dot">·</span>
               <span className="muted">Created {new Date(lead.created_at).toLocaleDateString()}</span>
             </div>
 
-            {/* Claims selector — only when a person has more than one claim */}
+            {/* Claims selector — quiet, only when more than one claim exists */}
             {claims.length > 1 && (
               <div className="claimsrow" style={{ marginTop: 10 }}>
-                <span className="claims-label">Claims:</span>
                 {claims.map((c) => (
                   <button key={c.id} className={`claimtab ${activeClaimId === c.id ? "on" : ""}`} onClick={() => setActiveClaimId(c.id)}>
-                    {(c.campaign || c.claim_type)} · {c.on_behalf_of ? "OBO" : "self"}
+                    {(c.campaign || c.claim_type)}
                   </button>
                 ))}
                 <CreateClaim leadId={lead.id} firmId={lead.firm_id} />
               </div>
             )}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-end" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
             <div className="status-field">
               <span className="status-field-label">Status</span>
               <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
             </div>
             <LockFileButton lead={lead} />
-            {claims.length <= 1 && <CreateClaim leadId={lead.id} firmId={lead.firm_id} />}
           </div>
         </div>
+        {claims.length <= 1 && (
+          <button className="addclaim-quiet" onClick={() => setShowAddClaim(true)}>+ Add another claim</button>
+        )}
+        {showAddClaim && claims.length <= 1 && <CreateClaim leadId={lead.id} firmId={lead.firm_id} />}
       </div>
 
       {/* PNC banner — interactive injured-party state */}
       <PncBanner lead={lead} />
+
+      {/* Pipeline strip: shows where this file sits from intake through firm handoff. */}
+      <PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} />
 
       {/* WIP fix banner: QA sent this back. Resubmit returns it to the QA queue. */}
       {lead.wip_pending && <WipBanner lead={lead} signed={/^signed_/.test(activeClaim?.status || "")} />}
@@ -127,11 +134,8 @@ export default function LeadWorkspace({
             {TABS.map((t) => (
               <button key={t} className={tab === t ? "active" : ""} onClick={() => { setTab(t); setEditMode(false); }}>{t}</button>
             ))}
-            <span className="badge stage" style={{ marginLeft: "auto", alignSelf: "center", marginRight: 8 }}>
-              {activeClaim?.qualification ?? "pending"}
-            </span>
             {(tab === "Contact Info" || tab === "Case Details") && (
-              <button className={`edit-toggle ${editMode ? "on" : ""}`} onClick={() => setEditMode((v) => !v)} title={editMode ? "Done editing" : "Edit"} style={{ alignSelf: "center", marginRight: 8 }}>
+              <button className={`edit-toggle ${editMode ? "on" : ""}`} onClick={() => setEditMode((v) => !v)} title={editMode ? "Done editing" : "Edit"} style={{ alignSelf: "center", marginRight: 8, marginLeft: "auto" }}>
                 {editMode ? "✓ Done" : "✎ Edit"}
               </button>
             )}
@@ -175,6 +179,29 @@ export default function LeadWorkspace({
         {/* Floating Tools dock (hammer pill) — Crissi, Vitals, Agent assist, Integrity, Maverick, Grievous */}
         <FloatingDock lead={lead} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
       </div>
+    </div>
+  );
+}
+
+function PipelineStrip({ status }: { status: string }) {
+  // Map any status to one of five pipeline stages.
+  const stages = ["Intake", "Grievous", "QA", "Approved", "Firm"];
+  let active = 0;
+  if (/grievous/.test(status)) active = 1;
+  else if (/^(qa|signed_qa)$/.test(status)) active = 2;
+  else if (/wip|flag/.test(status)) active = 2; // back in the QA loop
+  else if (/approved/.test(status)) active = 3;
+  else if (/delivered|retained|dropped|dq/.test(status)) active = 4;
+  else active = 0;
+  return (
+    <div className="pipeline-strip">
+      {stages.map((s, i) => (
+        <div key={s} className={`pipe-step ${i < active ? "done" : ""} ${i === active ? "on" : ""}`}>
+          <span className="pipe-dot" />
+          <span className="pipe-label">{s}</span>
+          {i < stages.length - 1 && <span className="pipe-bar" />}
+        </div>
+      ))}
     </div>
   );
 }

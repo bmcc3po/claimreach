@@ -10,9 +10,19 @@ export default async function QaQueuePage() {
   const { data: me } = await sb.from("app_users").select("role").eq("id", user!.id).maybeSingle();
   if (!me || !["owner", "admin", "qa"].includes(me.role)) redirect("/dashboard");
 
-  const { data: queue } = await sb.from("leads")
-    .select("id, lead_no, claimant_name, phone, case_type, updated_at, claims(status, grievous_verdict)")
-    .eq("qa_pending", true).order("updated_at", { ascending: false }).limit(300);
+  // Read by STATUS (the source of truth), not just the qa_pending flag, so a
+  // file in a QA-phase status can never be missing from the queue if the flag
+  // drifted. In-QA statuses: grievous/qa on both the no-sig and signed tracks.
+  const QA_STATUSES = ["grievous", "qa", "signed_grievous", "signed_qa"];
+  const { data: claimRows } = await sb.from("claims")
+    .select("lead_id, status, grievous_verdict, claim_type, updated_at, leads(id, lead_no, claimant_name, phone, case_type, updated_at)")
+    .in("status", QA_STATUSES).order("updated_at", { ascending: false }).limit(300);
+
+  const queue = (claimRows ?? []).filter((c: any) => c.leads).map((c: any) => ({
+    id: c.leads.id, lead_no: c.leads.lead_no, claimant_name: c.leads.claimant_name,
+    phone: c.leads.phone, case_type: c.leads.case_type, updated_at: c.updated_at,
+    claims: [{ status: c.status, grievous_verdict: c.grievous_verdict }],
+  }));
 
   const verdictLabel: Record<string, string> = { wip: "Grievous: WIP", flag: "Grievous: Flag BMC", ready: "Grievous: Ready to send" };
 

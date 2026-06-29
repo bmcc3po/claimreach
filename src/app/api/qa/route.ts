@@ -36,11 +36,17 @@ export async function GET(req: NextRequest) {
     const { data: thread } = await sb.from("qa_thread").select("*").eq("lead_id", lead_id).order("created_at");
     return NextResponse.json({ reviews: reviews ?? [], cards: cards ?? [], thread: thread ?? [] });
   }
-  // QA queue: files awaiting QA.
-  const { data: queue } = await sb.from("leads")
-    .select("id, lead_no, claimant_name, phone, case_type, qa_pending, wip_pending, claims(status, grievous_verdict, claim_type)")
-    .eq("qa_pending", true).order("updated_at", { ascending: false }).limit(200);
-  return NextResponse.json({ queue: queue ?? [] });
+  // QA queue: files in a QA-phase status (source of truth, not the flag).
+  const QA_STATUSES = ["grievous", "qa", "signed_grievous", "signed_qa"];
+  const { data: claimRows } = await sb.from("claims")
+    .select("lead_id, status, grievous_verdict, claim_type, updated_at, leads(id, lead_no, claimant_name, phone, case_type)")
+    .in("status", QA_STATUSES).order("updated_at", { ascending: false }).limit(200);
+  const queue = (claimRows ?? []).filter((c: any) => c.leads).map((c: any) => ({
+    id: c.leads.id, lead_no: c.leads.lead_no, claimant_name: c.leads.claimant_name,
+    phone: c.leads.phone, case_type: c.leads.case_type,
+    claims: [{ status: c.status, grievous_verdict: c.grievous_verdict, claim_type: c.claim_type }],
+  }));
+  return NextResponse.json({ queue });
 }
 
 export async function POST(req: NextRequest) {

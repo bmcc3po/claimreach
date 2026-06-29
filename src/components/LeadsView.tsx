@@ -4,6 +4,7 @@ import Link from "next/link";
 import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
 import TierBadge from "./TierBadge";
 import StatusBadge from "./ui/StatusBadge";
+import RowActions from "./ui/RowActions";
 import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, type StatusDef, type DqReason } from "@/lib/statuses";
 
 type Row = any;
@@ -212,7 +213,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       {view === "table" && (
         <div className="table-scroll">
           <table className="docket leads">
-            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("type", "Type")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}</tr></thead>
+            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("type", "Type")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}<th style={{ width: 40 }}></th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={`${r.needsAction ? "needs-action" : ""} ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
@@ -230,9 +231,19 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   <td className="trunc" title={r.summary}>{r.summary}</td>
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>{r.created ? new Date(r.created).toLocaleDateString() : "—"}</td>
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.updated).toLocaleDateString()}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <RowActions actions={[
+                      { label: "Open file", icon: "↗", onClick: () => { window.location.href = `${basePath}/${r.id}`; } },
+                      ...(r.phone ? [{ label: "Call", icon: "☎", onClick: () => { window.location.href = `tel:${r.phone}`; } }] : []),
+                      ...(r.phone ? [{ label: "Text", icon: "✉", onClick: () => { window.location.href = `${basePath}/${r.id}?tab=Messages`; } }] : []),
+                      { label: "—", onClick: () => {} },
+                      { label: "Change status", icon: "●", onClick: () => { window.location.href = `${basePath}/${r.id}`; } },
+                      { label: "Add note", icon: "✎", onClick: () => { window.location.href = `${basePath}/${r.id}?tab=Notes`; } },
+                    ]} />
+                  </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={canBulk ? 14 : 13} className="muted">No leads match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={canBulk ? 15 : 14} className="muted">No leads match.</td></tr>}
             </tbody>
           </table>
         </div>

@@ -82,6 +82,7 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
       <div className="leads-bar">
         <h1 style={{ margin: 0 }}>Reports</h1>
         <div className="spacer" />
+        {scope === "staff" && <a className="btn ghost" href="/reports/status" style={{ marginRight: 8 }}>Status Report →</a>}
         <select style={{ width: "auto" }} value={range} onChange={(e) => setRange(Number(e.target.value))}>
           <option value={7}>Last 7 days</option>
           <option value={30}>Last 30 days</option>
