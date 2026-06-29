@@ -50,6 +50,13 @@ export async function POST(req: NextRequest) {
       row.status = "sent"; row.sent_at = new Date().toISOString();
     } else {
       row.provider = "builtin";
+      // Generate a short human-readable envelope id and capture the SENDER IP
+      // (the agent dispatching the document) for the audit trail.
+      const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+      row.envelope_id = `CR-${rand}`;
+      row.sender_ip = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+      row.status = "sent"; row.sent_at = new Date().toISOString();
+      if (b.pdf_template_id) row.pdf_template_id = b.pdf_template_id;
     }
 
     const { data, error } = await admin.from("signable_documents").insert(row).select("id").single();

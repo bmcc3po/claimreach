@@ -1339,3 +1339,42 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .pipe-step.done .pipe-label, .pipe-step.on .pipe-label { color:var(--ink); }
 .pipe-bar { flex:1; height:2px; background:var(--line); margin:0 8px; min-width:20px; }
 .pipe-step.done .pipe-bar { background:var(--st-good); }
+
+/* ============ In-house e-sign ceremony ============ */
+.sign-shell { min-height:100vh; background:#eef1f5; padding:24px 16px 60px; display:flex; flex-direction:column; align-items:center; }
+.sign-topbar { width:100%; max-width:680px; display:flex; justify-content:space-between; align-items:center; padding:0 4px 14px; }
+.sign-brand { font-weight:800; letter-spacing:.04em; color:#10243f; font-size:13px; text-transform:uppercase; }
+.sign-env { font-size:12px; color:#64748b; font-variant-numeric:tabular-nums; }
+.sign-steps { width:100%; max-width:680px; display:flex; gap:8px; margin-bottom:14px; }
+.sign-stepchip { flex:1; display:flex; align-items:center; gap:8px; font-size:12.5px; color:#94a3b8; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; }
+.sign-stepchip span { width:20px; height:20px; border-radius:50%; background:#e2e8f0; color:#fff; display:grid; place-items:center; font-size:12px; font-weight:700; }
+.sign-stepchip.on { color:#10243f; border-color:#f5b301; }
+.sign-stepchip.on span { background:#f5b301; }
+.sign-card { width:100%; max-width:680px; background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:26px 28px; box-shadow:0 1px 3px rgba(16,36,63,.06); }
+.sign-card h2 { margin:0 0 6px; color:#10243f; }
+.sign-consent { border:1px solid #e2e8f0; border-radius:10px; padding:16px 18px; max-height:280px; overflow-y:auto; background:#f8fafc; margin:14px 0; }
+.sign-consent h4 { margin:0 0 8px; color:#10243f; font-size:14px; }
+.sign-consent p { font-size:13px; line-height:1.6; color:#475569; margin:0 0 10px; }
+.sign-agree { display:flex; gap:10px; align-items:flex-start; font-size:13px; color:#334155; margin:8px 0 4px; cursor:pointer; }
+.sign-agree input { margin-top:2px; }
+.sign-cta { width:100%; margin-top:16px; }
+.sign-doc { border:1px solid #e2e8f0; border-radius:10px; padding:24px; max-height:420px; overflow-y:auto; background:#fff; margin:14px 0; }
+.sign-body { font-family:Georgia,serif; line-height:1.7; color:#1e293b; font-size:14px; }
+.sign-fieldhint { display:flex; align-items:center; gap:10px; font-size:13px; color:#475569; background:#fffbeb; border:1px dashed #f5b301; border-radius:8px; padding:10px 12px; }
+.sign-tab { background:#f5b301; color:#10243f; font-weight:800; font-size:11px; padding:3px 8px; border-radius:4px; letter-spacing:.04em; }
+.sign-field { margin:14px 0; }
+.sign-field label { display:block; font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+.sign-field input { width:100%; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px; }
+.sign-canvas { border:2px dashed #cbd5e1; border-radius:10px; background:#fff; width:100%; max-width:500px; touch-action:none; display:block; cursor:crosshair; }
+.sign-modeswitch { display:inline-flex; border:1px solid #cbd5e1; border-radius:8px; overflow:hidden; margin-bottom:6px; }
+.sign-modeswitch button { padding:7px 18px; background:#fff; border:none; cursor:pointer; font-size:13px; color:#64748b; }
+.sign-modeswitch button.on { background:#10243f; color:#fff; }
+.sign-typed { font-size:44px; color:#10243f; padding:14px 18px; border:2px dashed #cbd5e1; border-radius:10px; min-height:80px; display:flex; align-items:center; }
+.sign-fontrow { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.sign-fontopt { font-size:22px; padding:8px 14px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; cursor:pointer; color:#10243f; }
+.sign-fontopt.on { border-color:#f5b301; background:#fffbeb; }
+.sign-adopted { display:flex; align-items:center; gap:14px; margin:14px 0; padding:12px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc; }
+.sign-adopted img { height:54px; }
+.sign-foot { max-width:680px; font-size:11.5px; color:#94a3b8; margin-top:16px; text-align:center; }
+.sign-done { text-align:center; }
+.sign-check { width:56px; height:56px; border-radius:50%; background:#10b981; color:#fff; font-size:30px; display:grid; place-items:center; margin:0 auto 14px; }
