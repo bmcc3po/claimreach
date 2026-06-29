@@ -25,7 +25,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   const [msg, setMsg] = useState("");
   const pageDims = useRef<Record<number, { w: number; h: number }>>({});
   // live drag/resize state
-  const drag = useRef<{ id: string; mode: "move" | "resize"; startX: number; startY: number; pageEl: HTMLElement; orig: PField } | null>(null);
+  const drag = useRef<{ id: string; mode: "move" | "resize"; startX: number; startY: number; pageEl: HTMLElement; orig: PField; moved: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +80,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   function startDrag(e: React.MouseEvent, f: PField, mode: "move" | "resize") {
     e.stopPropagation();
     const pageEl = (e.currentTarget as HTMLElement).closest(".pdf-page") as HTMLElement;
-    drag.current = { id: f.id, mode, startX: e.clientX, startY: e.clientY, pageEl, orig: { ...f } };
+    drag.current = { id: f.id, mode, startX: e.clientX, startY: e.clientY, pageEl, orig: { ...f }, moved: false };
     setSelected(f.id);
     window.addEventListener("mousemove", onDragMove);
     window.addEventListener("mouseup", endDrag);
@@ -90,6 +90,9 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
     const rect = dg.pageEl.getBoundingClientRect();
     const dxPct = ((e.clientX - dg.startX) / rect.width) * 100;
     const dyPct = ((e.clientY - dg.startY) / rect.height) * 100;
+    // Only count as a real move past a small threshold so a click that nudges a
+    // pixel still selects (and keeps the menu open) instead of being a drag.
+    if (Math.abs(e.clientX - dg.startX) > 3 || Math.abs(e.clientY - dg.startY) > 3) dg.moved = true;
     setFields((arr) => arr.map((f) => {
       if (f.id !== dg.id) return f;
       if (dg.mode === "move") {
@@ -100,6 +103,8 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
     }));
   }, []);
   const endDrag = useCallback(() => {
+    // Selection already set on mousedown; keep it whether or not it moved so the
+    // Client/Agent/Delete menu stays open after dragging.
     drag.current = null;
     window.removeEventListener("mousemove", onDragMove);
     window.removeEventListener("mouseup", endDrag);
@@ -158,7 +163,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                     <div key={f.id} className={`pdf-field ${f.role} ${sel ? "sel" : ""}`}
                       style={{ left: `${f.xPct}%`, top: `${f.yPct}%`, width: `${f.wPct}%`, height: `${f.hPct}%` }}
                       onMouseDown={(e) => startDrag(e, f, "move")}
-                      onClick={(e) => { e.stopPropagation(); setSelected(sel ? null : f.id); }}>
+                      onClick={(e) => e.stopPropagation()}>
                       <span className="pdf-field-label">{f.label}</span>
                       <span className="pdf-resize" onMouseDown={(e) => startDrag(e, f, "resize")} />
                       {sel && (
