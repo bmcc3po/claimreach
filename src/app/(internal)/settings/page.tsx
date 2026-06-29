@@ -36,6 +36,16 @@ export default async function SettingsPage() {
         </table>
       </div>
       <div className="side-card" style={{ maxWidth: 620 }}>
+        <h3>Campaigns</h3>
+        <p className="muted" style={{ marginTop: 0 }}>Define each firm + case type program (e.g. "TMP MVA"). Add lead picks a campaign and inherits firm, type, intake form, retainer, and billing.</p>
+        <a className="btn" href="/settings/campaigns">Manage campaigns</a>
+      </div>
+      <div className="side-card" style={{ maxWidth: 620 }}>
+        <h3>Retainer templates</h3>
+        <p className="muted" style={{ marginTop: 0 }}>Create, edit, and assign retainer templates to case types, and mark a default per type.</p>
+        <a className="btn" href="/templates?tab=retainers">Manage retainers</a>
+      </div>
+      <div className="side-card" style={{ maxWidth: 620 }}>
         <h3>Statuses & DQ reasons</h3>
         <p className="muted" style={{ marginTop: 0 }}>Edit the status set that drives intake, QA, billing, and firm visibility, plus the disqualification reasons agents pick from.</p>
         <a className="btn" href="/settings/statuses">Manage statuses</a>

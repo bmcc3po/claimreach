@@ -213,7 +213,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       {view === "table" && (
         <div className="table-scroll">
           <table className="docket leads">
-            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("type", "Type")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}<th style={{ width: 40 }}></th></tr></thead>
+            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}<th style={{ width: 40 }}></th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={`${r.needsAction ? "needs-action" : ""} ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
@@ -222,7 +222,6 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   <td><Link href={`${basePath}/${r.id}`}>{r.lead_no}</Link></td>
                   <td style={{ fontWeight: 600 }}>{r.name}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{r.phone}</td>
-                  <td>{r.type}</td>
                   <td>{r.campaign}</td>
                   <td><TierBadge letter={r.tier_letter} number={r.tier_number} claimType={r.type} /></td>
                   <td>{statusBadge(r.status)}{r.flag && <span className="badge flag" style={{ marginLeft: 4 }}>flag</span>}</td>
@@ -243,7 +242,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={canBulk ? 15 : 14} className="muted">No leads match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={canBulk ? 14 : 13} className="muted">No leads match.</td></tr>}
             </tbody>
           </table>
         </div>
