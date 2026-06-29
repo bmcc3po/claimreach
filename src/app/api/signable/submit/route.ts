@@ -75,11 +75,21 @@ export async function POST(req: NextRequest) {
           const { data: file } = await admin.storage.from("retainer-pdfs").download(tpl.file_path);
           if (file) {
             const srcBytes = new Uint8Array(await file.arrayBuffer());
+            // Build the autofill token map from the lead + intake answers.
+            let tokens: Record<string, string> = {};
+            if (doc.lead_id) {
+              try {
+                const { data: lead } = await admin.from("leads").select("*").eq("id", doc.lead_id).maybeSingle();
+                const { data: claim } = await admin.from("claims").select("answers").eq("lead_id", doc.lead_id).limit(1).maybeSingle();
+                const { retainerTokens } = await import("@/lib/retainer-tokens");
+                tokens = retainerTokens(lead, claim?.answers ?? {});
+              } catch {}
+            }
             const { stampPdf } = await import("@/lib/pdf-stamp");
             const stamped = await stampPdf({
               sourceBytes: srcBytes, fields: tpl.fields || [],
               signaturePng: b.signature_data || null, signerName: b.signed_name || doc.signer_name || "Client",
-              signedDate: new Date(now),
+              signedDate: new Date(now), tokens,
             });
             const cpath = `${doc.firm_id || "master"}/signed-${doc.envelope_id}.pdf`;
             const up = await admin.storage.from("signed-docs").upload(cpath, stamped, { contentType: "application/pdf", upsert: true });

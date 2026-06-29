@@ -14,7 +14,7 @@ export async function GET() {
   const sb = await supabaseServer();
   const u = await me(sb);
   if (!u) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { data } = await sb.from("pdf_templates").select("id, name, doc_type, file_name, page_count, fields, certified, updated_at").order("updated_at", { ascending: false });
+  const { data } = await sb.from("pdf_templates").select("id, name, doc_type, file_name, page_count, fields, certified, campaign_id, case_type, is_default, updated_at").order("updated_at", { ascending: false });
   return NextResponse.json({ templates: data ?? [] });
 }
 
@@ -50,6 +50,9 @@ export async function POST(req: NextRequest) {
   const b = await req.json();
   if (b.op === "save_fields") {
     const patch: any = { fields: b.fields, name: b.name, page_count: b.page_count };
+    if (b.campaign_id !== undefined) patch.campaign_id = b.campaign_id || null;
+    if (b.case_type !== undefined) patch.case_type = b.case_type === "any" ? null : b.case_type;
+    if (b.is_default !== undefined) patch.is_default = !!b.is_default;
     if (b.page_dims) patch.page_dims = b.page_dims;
     const { error } = await admin.from("pdf_templates").update(patch).eq("id", b.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

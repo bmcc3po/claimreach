@@ -17,7 +17,11 @@ export function retainerTokens(lead: any, answers: Record<string, any> = {}): Re
     "case.type": lead.case_type ?? "",
     "today": new Date().toLocaleDateString(),
   };
-  for (const [k, v] of Object.entries(answers)) t[`intake.${k}`] = Array.isArray(v) ? v.join(", ") : String(v ?? "");
+  for (const [k, v] of Object.entries(answers)) {
+    const val = Array.isArray(v) ? v.join(", ") : String(v ?? "");
+    t[`intake.${k}`] = val;       // {{intake.field_id}}
+    t[k] = val;                    // bare {{field_id}} convenience
+  }
   return t;
 }
 export function fillTemplate(body: string, tokens: Record<string, string>): string {

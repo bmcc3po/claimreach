@@ -4,8 +4,9 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 export interface PdfField {
-  id: string; page: number; kind: string; role: string;
+  id: string; page: number; kind?: string; type?: string; role: string;
   xPct: number; yPct: number; wPct: number; hPct: number; label?: string;
+  mapTo?: string;   // merge token this text field autofills from, e.g. "contact.full_name"
 }
 
 export async function stampPdf(opts: {
@@ -14,8 +15,10 @@ export async function stampPdf(opts: {
   signaturePng?: string | null;  // dataURL
   signerName: string;
   signedDate?: Date;
+  tokens?: Record<string, string>;  // autofill values for mapped text fields
 }): Promise<Uint8Array> {
   const { sourceBytes, fields, signaturePng, signerName } = opts;
+  const tokens = opts.tokens || {};
   const signedDate = opts.signedDate || new Date();
   const pdf = await PDFDocument.load(sourceBytes);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -29,21 +32,22 @@ export async function stampPdf(opts: {
   const dateStr = signedDate.toLocaleDateString("en-US");
 
   for (const f of fields) {
-    // Only stamp client-assigned fields.
-    if (f.role && f.role !== "client") continue;
+    // Only stamp client-assigned fields for the signature; text/date autofill on
+    // agent fields too. Field kind is stored as `type` by the editor.
+    const kind = f.kind || f.type || "text";
+    if ((kind === "signature" || kind === "initials") && f.role && f.role !== "client") continue;
     const pageIdx = (f.page || 1) - 1;
     const page = pages[pageIdx];
     if (!page) continue;
     const { width: pw, height: ph } = page.getSize();
 
-    // Convert percentages (top-left origin) to points (bottom-left origin).
     const x = (f.xPct / 100) * pw;
-    const wTop = (f.yPct / 100) * ph;          // distance from top
+    const wTop = (f.yPct / 100) * ph;
     const w = (f.wPct / 100) * pw;
     const h = (f.hPct / 100) * ph;
-    const yBottom = ph - wTop - h;             // bottom-left y
+    const yBottom = ph - wTop - h;
 
-    if (f.kind === "signature" || f.kind === "initials") {
+    if (kind === "signature" || kind === "initials") {
       if (sigImg) {
         // Fit the signature image inside the box, preserving aspect.
         const ar = sigImg.width / sigImg.height;
@@ -53,11 +57,12 @@ export async function stampPdf(opts: {
       } else {
         page.drawText(signerName, { x: x + 4, y: yBottom + h / 2 - 5, size: Math.min(14, h * 0.6), font, color: rgb(0.06, 0.14, 0.25) });
       }
-    } else if (f.kind === "date") {
+    } else if (kind === "date") {
       page.drawText(dateStr, { x: x + 4, y: yBottom + h / 2 - 5, size: Math.min(12, h * 0.6), font, color: rgb(0.06, 0.14, 0.25) });
-    } else if (f.kind === "text") {
-      page.drawText(signerName, { x: x + 4, y: yBottom + h / 2 - 5, size: Math.min(12, h * 0.6), font, color: rgb(0.06, 0.14, 0.25) });
-    } else if (f.kind === "checkbox") {
+    } else if (kind === "text") {
+      const val = f.mapTo && tokens[f.mapTo] != null ? tokens[f.mapTo] : (f.mapTo ? "" : signerName);
+      if (val) page.drawText(String(val).slice(0, 120), { x: x + 4, y: yBottom + h / 2 - 5, size: Math.min(12, h * 0.6), font, color: rgb(0.06, 0.14, 0.25) });
+    } else if (kind === "checkbox") {
       page.drawText("X", { x: x + w / 2 - 4, y: yBottom + h / 2 - 5, size: Math.min(14, h * 0.7), font, color: rgb(0.06, 0.14, 0.25) });
     }
   }

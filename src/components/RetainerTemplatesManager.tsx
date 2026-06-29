@@ -39,7 +39,7 @@ export default function RetainerTemplatesManager() {
 
   // PDF field editor opens inline (full width), not a popup.
   if (editPdf) {
-    return <PdfFieldEditor templateId={editPdf.id} initialName={editPdf.name} initialFields={editPdf.fields} onClose={() => { setEditPdf(null); load(); }} />;
+    return <PdfFieldEditor templateId={editPdf.id} initialName={editPdf.name} initialFields={editPdf.fields} initialCampaignId={editPdf.campaign_id} initialCaseType={editPdf.case_type} onClose={() => { setEditPdf(null); load(); }} />;
   }
 
   return (
@@ -87,7 +87,7 @@ export default function RetainerTemplatesManager() {
               <td>{(p.fields?.length ?? 0)} fields</td>
               <td>{p.page_count ?? "—"} pages</td>
               <td style={{ whiteSpace: "nowrap" }}>
-                <button className="btn ghost sm" onClick={() => setEditPdf({ id: p.id, name: p.name, fields: p.fields || [] })}>Edit fields</button>
+                <button className="btn ghost sm" onClick={() => setEditPdf({ id: p.id, name: p.name, fields: p.fields || [], campaign_id: p.campaign_id, case_type: p.case_type })}>Edit fields</button>
                 <button className="btn ghost sm danger" onClick={() => delPdf(p.id)}>Delete</button>
               </td>
             </tr>

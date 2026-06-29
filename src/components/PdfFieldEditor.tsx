@@ -9,11 +9,11 @@ const FIELD_TYPES = [
   { key: "checkbox", label: "Checkbox", color: "#e0533d" },
 ];
 type Role = "client" | "agent";
-interface PField { id: string; type: string; page: number; xPct: number; yPct: number; wPct: number; hPct: number; role: Role; label?: string; required?: boolean; }
+interface PField { id: string; type: string; page: number; xPct: number; yPct: number; wPct: number; hPct: number; role: Role; label?: string; required?: boolean; mapTo?: string; }
 
 declare global { interface Window { pdfjsLib: any; } }
 
-export default function PdfFieldEditor({ templateId, initialName, initialFields, onClose }: { templateId: string; initialName?: string; initialFields?: PField[]; onClose: () => void }) {
+export default function PdfFieldEditor({ templateId, initialName, initialFields, initialCampaignId, initialCaseType, onClose }: { templateId: string; initialName?: string; initialFields?: PField[]; initialCampaignId?: string; initialCaseType?: string; onClose: () => void }) {
   const [name, setName] = useState(initialName || "Retainer PDF");
   const [fields, setFields] = useState<PField[]>(initialFields || []);
   const [pages, setPages] = useState<{ num: number; w: number; h: number; canvas: HTMLCanvasElement }[]>([]);
@@ -23,7 +23,12 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [campaignId, setCampaignId] = useState(initialCampaignId || "");
+  const [bindCaseType, setBindCaseType] = useState(initialCaseType || "any");
+  useEffect(() => { (async () => { try { const d = await (await fetch("/api/campaigns")).json(); setCampaigns((d.campaigns ?? []).filter((c: any) => c.active)); } catch {} })(); }, []);
   const pageDims = useRef<Record<number, { w: number; h: number }>>({});
+  const pageText = useRef<Record<number, { s: string; xPct: number; yPct: number }[]>>({});
   // live drag/resize state
   const drag = useRef<{ id: string; mode: "move" | "resize"; startX: number; startY: number; pageEl: HTMLElement; orig: PField; moved: boolean } | null>(null);
 
@@ -53,6 +58,17 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
           canvas.width = viewport.width; canvas.height = viewport.height;
           await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
           pageDims.current[i] = { w: viewport.width / 1.4, h: viewport.height / 1.4 }; // store PDF points
+          // Capture text items with page-relative percentage positions for AI placement.
+          try {
+            const tc = await page.getTextContent();
+            const vw = viewport.width, vh = viewport.height;
+            pageText.current[i] = tc.items.map((it: any) => {
+              const tx = it.transform; // [a,b,c,d,e,f] -> e,f are x,y from bottom-left at scale 1.4
+              const xPct = (tx[4] / vw) * 100;
+              const yPct = ((vh - tx[5]) / vh) * 100; // convert to top-left origin %
+              return { s: (it.str || "").trim(), xPct: Math.round(xPct * 10) / 10, yPct: Math.round(yPct * 10) / 10 };
+            }).filter((t: any) => t.s);
+          } catch {}
           out.push({ num: i, w: viewport.width, h: viewport.height, canvas });
         }
         if (!cancelled) { setPages(out); setLoading(false); }
@@ -112,10 +128,35 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
 
   function removeField(id: string) { setFields((a) => a.filter((f) => f.id !== id)); setSelected(null); }
   function setFieldRole(id: string, r: Role) { setFields((a) => a.map((f) => f.id === id ? { ...f, role: r } : f)); }
+  function setFieldMap(id: string, mapTo: string) { setFields((a) => a.map((f) => f.id === id ? { ...f, mapTo: mapTo || undefined } : f)); }
+
+  const [aiBusy, setAiBusy] = useState(false);
+  async function aiPlace() {
+    setAiBusy(true); setMsg("AI is reading the document and placing fields…");
+    try {
+      // Send each page's text (with positions) so the AI can locate signature
+      // lines, date blanks, and name blanks.
+      const pagesText = Object.entries(pageText.current).map(([num, items]) => ({ page: Number(num), items }));
+      const r = await fetch("/api/pdf-templates/ai-place", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pages: pagesText }) });
+      const d = await r.json();
+      if (d.fields && d.fields.length) {
+        const placed: PField[] = d.fields.map((f: any) => ({
+          id: crypto.randomUUID(), type: f.type || "text", page: f.page || 1,
+          xPct: clamp(f.xPct ?? 10, 0, 95), yPct: clamp(f.yPct ?? 10, 0, 97),
+          wPct: f.type === "signature" ? 22 : f.type === "checkbox" ? 4 : 16,
+          hPct: f.type === "signature" || f.type === "initials" ? 7 : f.type === "checkbox" ? 3.5 : 5,
+          role: f.role === "agent" ? "agent" : "client", label: f.label || f.type, mapTo: f.mapTo || undefined, required: true,
+        }));
+        setFields((a) => [...a, ...placed]);
+        setMsg(`AI placed ${placed.length} fields. Review, drag to adjust, and fix any that are off.`);
+      } else setMsg(d.error || "AI could not find clear field locations. Place them manually.");
+    } catch { setMsg("AI placement failed. Place fields manually."); }
+    finally { setAiBusy(false); }
+  }
 
   async function save() {
     setMsg("Saving…");
-    const r = await fetch("/api/pdf-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_fields", id: templateId, name, fields, page_count: pages.length, page_dims: pageDims.current }) });
+    const r = await fetch("/api/pdf-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_fields", id: templateId, name, fields, page_count: pages.length, page_dims: pageDims.current, campaign_id: campaignId || null, case_type: bindCaseType }) });
     const d = await r.json();
     setMsg(d.ok ? "Saved." : (d.error || "Save failed"));
   }
@@ -125,11 +166,19 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
       <div className="pdf-editor-bar">
         <button className="btn ghost sm" onClick={onClose}>← Back</button>
         <input className="pdf-name" value={name} onChange={(e) => setName(e.target.value)} />
+        <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={{ width: "auto" }} title="Show on files for this campaign">
+          <option value="">Any campaign</option>
+          {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={bindCaseType} onChange={(e) => setBindCaseType(e.target.value)} style={{ width: "auto" }} title="Bind to case type">
+          {["any", "motel_trafficking", "bard_powerport", "pfas", "medmal", "mva"].map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
         <span className="spacer" />
         <div className="pdf-role-toggle">
           <button className={role === "client" ? "on client" : ""} onClick={() => setRole("client")}>👤 Client</button>
           <button className={role === "agent" ? "on agent" : ""} onClick={() => setRole("agent")}>🧑‍💼 Agent</button>
         </div>
+        <button className="btn ghost" onClick={aiPlace} disabled={aiBusy}>{aiBusy ? "AI placing…" : "✨ AI place fields"}</button>
         <button className="btn" onClick={save}>Save layout</button>
       </div>
 
@@ -170,6 +219,22 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                         <div className="pdf-field-menu" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
                           <button className={f.role === "client" ? "on" : ""} onClick={() => setFieldRole(f.id, "client")}>Client</button>
                           <button className={f.role === "agent" ? "on" : ""} onClick={() => setFieldRole(f.id, "agent")}>Agent</button>
+                          {f.type === "text" && (
+                            <select className="pdf-mapto" value={f.mapTo || ""} onChange={(e) => setFieldMap(f.id, e.target.value)} onMouseDown={(e) => e.stopPropagation()}>
+                              <option value="">Autofill: none</option>
+                              <option value="contact.full_name">Client name</option>
+                              <option value="contact.first_name">First name</option>
+                              <option value="contact.last_name">Last name</option>
+                              <option value="contact.phone">Phone</option>
+                              <option value="contact.email">Email</option>
+                              <option value="contact.address">Address</option>
+                              <option value="contact.dob">Date of birth</option>
+                              <option value="case.lead_no">File number</option>
+                              <option value="case.type">Case type</option>
+                              <option value="case.handling_attorney">Handling attorney</option>
+                              <option value="today">Today's date</option>
+                            </select>
+                          )}
                           <button className="rm" onClick={() => removeField(f.id)}>Delete</button>
                         </div>
                       )}

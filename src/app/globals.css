@@ -1388,3 +1388,4 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 @media(max-width:900px){ .retainer-split{grid-template-columns:1fr} }
 .retainer-preview { border:1px solid var(--line); border-radius:10px; padding:22px; background:#fff; min-height:300px;
   font-family:Georgia,serif; line-height:1.55; white-space:pre-wrap; color:#1e293b; font-size:14px; max-height:560px; overflow-y:auto; }
+.pdf-mapto { font-size:11px; padding:2px 4px; border:1px solid var(--line); border-radius:4px; max-width:120px; margin:2px; }
