@@ -55,13 +55,19 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
     else alert(d.error || "Upload failed");
   }
 
+  const [signables, setSignables] = useState<any[]>([]);
+  const [pdfMethod, setPdfMethod] = useState<"builtin" | "signwell">("builtin");
+  async function loadSignables() {
+    try { const d = await (await fetch(`/api/signable?lead_id=${leadId}`)).json(); setSignables(d.docs ?? []); } catch {}
+  }
+  useEffect(() => { loadSignables(); }, [leadId]);
   async function sendPdfRetainer() {
     if (!sendPdfId) { setMsg("Pick a PDF template to send."); return; }
-    setMsg("Sending PDF retainer…");
+    setMsg(pdfMethod === "builtin" ? "Sending PDF retainer via in-house e-sign…" : "Sending PDF retainer via SignWell…");
     const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "send_pdf_retainer", lead_id: leadId, pdf_template_id: sendPdfId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia }) });
+      body: JSON.stringify({ op: "send_pdf_retainer", lead_id: leadId, pdf_template_id: sendPdfId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", method: pdfMethod }) });
     const d = await r.json();
-    if (d.ok) { setMsg("PDF retainer sent for signature."); load(); } else setMsg(d.error || "Send failed");
+    if (d.ok) { setMsg(pdfMethod === "builtin" ? `Sent. In-house signing link created (envelope ${d.envelope_id || ""}).` : "PDF retainer sent via SignWell."); load(); loadSignables(); } else setMsg(d.error || "Send failed");
   }
 
   async function load() {
@@ -268,6 +274,31 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
 
   return (
     <div>
+      {signables.filter((s) => s.provider === "builtin").length > 0 && (
+        <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+          <div className="section-title">In-house signing status</div>
+          <table className="docket" style={{ marginTop: 8 }}>
+            <thead><tr><th>Document</th><th>Envelope</th><th>Status</th><th>Signer IP</th><th>Sender IP</th><th>Signed</th><th></th></tr></thead>
+            <tbody>
+              {signables.filter((s) => s.provider === "builtin").map((s) => (
+                <tr key={s.id}>
+                  <td style={{ fontWeight: 600 }}>{s.title}</td>
+                  <td className="muted">{s.envelope_id || "—"}</td>
+                  <td><span className={`badge ${s.status === "signed" ? "count" : s.status === "viewed" ? "stage" : "flag"}`}>{s.status}</span></td>
+                  <td className="muted">{s.signed_ip || "—"}</td>
+                  <td className="muted">{s.sender_ip || "—"}</td>
+                  <td className="muted">{s.signed_at ? new Date(s.signed_at).toLocaleString() : "—"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {s.status !== "signed" && <a className="btn ghost sm" href={`/sign/${s.id}`} target="_blank" rel="noopener noreferrer">Open link</a>}
+                    {s.completed_pdf_url && <a className="btn ghost sm" href={s.completed_pdf_url} target="_blank" rel="noopener noreferrer">Signed PDF</a>}
+                    {s.cert_pdf_url && <a className="btn ghost sm" href={s.cert_pdf_url} target="_blank" rel="noopener noreferrer">Certificate</a>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
         <select value={tplId} onChange={(e) => setTplId(e.target.value)} style={{ width: "auto" }}>
           {templates.length === 0 && <option value="">No templates yet</option>}
@@ -292,7 +323,7 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
       ))}
 
       <div className="section-title" style={{ marginTop: 24 }}>PDF retainers (upload + place fields)</div>
-      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Upload your firm's real retainer PDF, then drag signature, date, and text boxes onto it and assign each to the client or the agent. This is the certified path through SignWell.</p>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Upload your firm's real retainer PDF, then drag signature, date, and text boxes onto it and assign each to the client or the agent. Send in-house (default) or certified through SignWell.</p>
       <input ref={fileInput} type="file" accept="application/pdf" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPdf(f); e.target.value = ""; }} />
       <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
         <button className="btn" onClick={() => fileInput.current?.click()} disabled={uploading}>{uploading ? "Uploading…" : "⬆ Upload PDF"}</button>
@@ -320,6 +351,16 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
               <option value="email">Email only</option>
               <option value="sms">Text only</option>
             </select>
+          </div>
+          <div className="esign-method" style={{ marginBottom: 10 }}>
+            <button className={`esign-method-opt ${pdfMethod === "builtin" ? "on" : ""}`} onClick={() => setPdfMethod("builtin")}>
+              <strong>In-house e-sign (default)</strong>
+              <span>Client signs on our page; signature stamped onto the PDF, IPs and certificate recorded.</span>
+            </button>
+            <button className={`esign-method-opt ${pdfMethod === "signwell" ? "on" : ""}`} onClick={() => setPdfMethod("signwell")}>
+              <strong>Certified (SignWell)</strong>
+              <span>Court-admissible certified signature. Requires signer email.</span>
+            </button>
           </div>
           <button className="btn gold" onClick={sendPdfRetainer}>Send for signature</button>
           {!approved && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Note: Grievous approval is required to send (owner/admin can override).</p>}

@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   const b = await req.json();
   const admin = supabaseAdmin();
   const { data: doc } = await admin.from("signable_documents")
-    .select("id, status, certified, lead_id, firm_id, retainer_id, title, signer_name, body_html, envelope_id, viewed_at, audit")
+    .select("id, status, certified, lead_id, firm_id, retainer_id, title, signer_name, body_html, envelope_id, viewed_at, audit, pdf_template_id")
     .eq("id", b.id).maybeSingle();
   if (!doc) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (doc.certified) return NextResponse.json({ error: "this document uses certified signing" }, { status: 400 });
@@ -65,7 +65,33 @@ export async function POST(req: NextRequest) {
     }).eq("id", b.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Stage 2: generate the Certificate of Completion PDF and store it.
+    // Stage 3: if this signable renders an uploaded PDF, stamp the signature
+    // onto the PDF at the client field boxes, flatten, and store the result.
+    let completedUrl: string | null = null;
+    if (doc.pdf_template_id) {
+      try {
+        const { data: tpl } = await admin.from("pdf_templates").select("file_path, fields").eq("id", doc.pdf_template_id).maybeSingle();
+        if (tpl?.file_path) {
+          const { data: file } = await admin.storage.from("retainer-pdfs").download(tpl.file_path);
+          if (file) {
+            const srcBytes = new Uint8Array(await file.arrayBuffer());
+            const { stampPdf } = await import("@/lib/pdf-stamp");
+            const stamped = await stampPdf({
+              sourceBytes: srcBytes, fields: tpl.fields || [],
+              signaturePng: b.signature_data || null, signerName: b.signed_name || doc.signer_name || "Client",
+              signedDate: new Date(now),
+            });
+            const cpath = `${doc.firm_id || "master"}/signed-${doc.envelope_id}.pdf`;
+            const up = await admin.storage.from("signed-docs").upload(cpath, stamped, { contentType: "application/pdf", upsert: true });
+            if (!up.error) {
+              const { data: pub } = admin.storage.from("signed-docs").getPublicUrl(cpath);
+              completedUrl = pub?.publicUrl || null;
+              if (completedUrl) await admin.from("signable_documents").update({ completed_pdf_url: completedUrl }).eq("id", b.id);
+            }
+          }
+        }
+      } catch { /* stamping best-effort; signature already recorded */ }
+    }
     let certUrl: string | null = null;
     try {
       const { data: full } = await admin.from("signable_documents")
@@ -117,8 +143,19 @@ export async function GET(req: NextRequest) {
   const id = new URL(req.url).searchParams.get("id");
   const admin = supabaseAdmin();
   const { data } = await admin.from("signable_documents")
-    .select("id, title, body_html, status, signer_name, certified, envelope_id")
+    .select("id, title, body_html, status, signer_name, certified, envelope_id, pdf_template_id, cert_pdf_url")
     .eq("id", id).maybeSingle();
   if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ doc: data });
+
+  // If this signable renders an uploaded PDF, attach a temporary signed URL and
+  // the placed field layout so the public page can show the document + tabs.
+  let pdf: any = null;
+  if (data.pdf_template_id) {
+    const { data: tpl } = await admin.from("pdf_templates").select("file_path, fields, page_count, page_dims, file_name").eq("id", data.pdf_template_id).maybeSingle();
+    if (tpl?.file_path) {
+      const { data: signed } = await admin.storage.from("retainer-pdfs").createSignedUrl(tpl.file_path, 3600);
+      pdf = { url: signed?.signedUrl || null, fields: tpl.fields || [], page_count: tpl.page_count || 1, page_dims: tpl.page_dims || {}, file_name: tpl.file_name };
+    }
+  }
+  return NextResponse.json({ doc: data, pdf });
 }

@@ -1378,3 +1378,4 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .sign-foot { max-width:680px; font-size:11.5px; color:#94a3b8; margin-top:16px; text-align:center; }
 .sign-done { text-align:center; }
 .sign-check { width:56px; height:56px; border-radius:50%; background:#10b981; color:#fff; font-size:30px; display:grid; place-items:center; margin:0 auto 14px; }
+.sign-pdf { width:100%; height:520px; border:none; border-radius:8px; }

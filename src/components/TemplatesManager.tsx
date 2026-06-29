@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import RetainerTemplatesManager from "./RetainerTemplatesManager";
 
 export default function TemplatesManager() {
   const [types, setTypes] = useState<any[]>([]);
@@ -28,8 +29,18 @@ export default function TemplatesManager() {
   const third = types.filter((t) => t.family === "third_party");
   const first = types.filter((t) => t.family === "first_party");
 
+  const [tab, setTab] = useState<"intake" | "retainers">(
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "retainers" ? "retainers" : "intake"
+  );
+
   return (
     <div>
+      <div className="tabs" style={{ marginBottom: 18 }}>
+        <button className={tab === "intake" ? "active" : ""} onClick={() => setTab("intake")}>Intake & Forms</button>
+        <button className={tab === "retainers" ? "active" : ""} onClick={() => setTab("retainers")}>Retainers</button>
+      </div>
+      {tab === "retainers" ? <RetainerTemplatesManager /> : (
+      <div>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1 style={{ marginBottom: 4 }}>Intake Templates</h1>
@@ -40,6 +51,8 @@ export default function TemplatesManager() {
 
       <Section title="Third-party PI / mass tort" items={third} forms={forms} busy={busy} onSeed={seed} />
       <Section title="First-party (you vs. your insurer)" items={first} forms={forms} busy={busy} onSeed={seed} />
+      </div>
+      )}
     </div>
   );
 }

@@ -68,12 +68,50 @@ export async function POST(req: NextRequest) {
   }
 
   if (b.op === "send_pdf_retainer") {
-    // b: { lead_id, pdf_template_id, signer_name, signer_email, signer_phone, send_via, page_dims }
+    // b: { lead_id, pdf_template_id, signer_name, signer_email, signer_phone, send_via, page_dims, certified }
     const { data: lead } = await admin.from("leads").select("id, firm_id, grievous_approved, first_name, last_name, claimant_name, phone, email").eq("id", b.lead_id).maybeSingle();
     if (!lead) return NextResponse.json({ error: "lead not found" }, { status: 404 });
     if (!lead.grievous_approved && !["owner", "admin"].includes(me.role)) {
       return NextResponse.json({ error: "Grievous has not approved this file yet." }, { status: 200 });
     }
+
+    const { data: tplFor } = await admin.from("pdf_templates").select("*").eq("id", b.pdf_template_id).maybeSingle();
+    if (!tplFor) return NextResponse.json({ error: "PDF template not found." }, { status: 404 });
+
+    const signerNameP = b.signer_name || lead.claimant_name || `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Client";
+    const signerPhoneP = b.signer_phone || lead.phone;
+
+    // ---- IN-HOUSE (non-certified) PDF path: create a signable doc that the
+    // public sign page renders as a PDF, signs, stamps, and certifies in-house.
+    if (b.certified === false || b.method === "builtin") {
+      const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+      const senderIp = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+      const { data: sig, error: sigErr } = await admin.from("signable_documents").insert({
+        firm_id: lead.firm_id ?? me.firm_id, lead_id: lead.id, title: tplFor.name || "Retainer",
+        doc_type: "retainer", certified: false, provider: "builtin",
+        pdf_template_id: tplFor.id, signer_name: signerNameP, signer_email: b.signer_email || lead.email, signer_phone: signerPhoneP,
+        status: "sent", sent_at: new Date().toISOString(), envelope_id: `CR-${rand}`, sender_ip: senderIp,
+        created_by: auth.user.id,
+      }).select("id, envelope_id").single();
+      if (sigErr) return NextResponse.json({ error: sigErr.message }, { status: 500 });
+
+      const link = `${new URL(req.url).origin}/sign/${sig.id}`;
+      if ((b.send_via === "sms" || b.send_via === "both") && signerPhoneP) {
+        try {
+          await fetch(new URL("/api/justcall/action", req.url).toString(), {
+            method: "POST", headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
+            body: JSON.stringify({ action: "send_sms", to: signerPhoneP, body: `Please review and sign your retainer: ${link}` }),
+          });
+        } catch {}
+      }
+      try {
+        const { recordAudit } = await import("@/lib/audit");
+        await recordAudit({ firm_id: lead.firm_id, lead_id: lead.id, actor: auth.user.id, category: "retainer", description: `Sent PDF retainer "${tplFor.name}" via in-house e-sign (envelope ${sig.envelope_id}).` });
+      } catch {}
+      return NextResponse.json({ ok: true, id: sig.id, link, envelope_id: sig.envelope_id });
+    }
+
+    // ---- CERTIFIED (SignWell) path ----
     const acct = await getEsignAccount(lead.firm_id ?? me.firm_id);
     if (!acct) return NextResponse.json({ error: "No SignWell account configured." }, { status: 200 });
 

@@ -16,6 +16,7 @@ const SIG_FONTS = [
 export default function SignPage({ id }: { id: string }) {
   const [step, setStep] = useState<Step>("loading");
   const [doc, setDoc] = useState<any | null>(null);
+  const [pdf, setPdf] = useState<any | null>(null);
   const [err, setErr] = useState("");
 
   // signer identity + consent
@@ -37,6 +38,7 @@ export default function SignPage({ id }: { id: string }) {
       .then((d) => {
         if (!d.doc) { setErr("This document could not be found or has expired."); setStep("error"); return; }
         setDoc(d.doc);
+        setPdf(d.pdf || null);
         setName(d.doc.signer_name || "");
         if (d.doc.status === "signed") { setStep("done"); return; }
         setStep("consent");
@@ -151,11 +153,13 @@ export default function SignPage({ id }: { id: string }) {
           <h2>{doc.title}</h2>
           <p className="muted">Review the full document below. When you are ready, continue to sign.</p>
           <div className="sign-doc">
-            {doc.body_html
-              ? <div className="sign-body" dangerouslySetInnerHTML={{ __html: (doc.body_html || "").replace(/\n/g, "<br>") }} />
-              : <p className="muted">This document will be presented for your signature. Continue to add your signature where required.</p>}
+            {pdf?.url
+              ? <iframe src={pdf.url} title="Document" className="sign-pdf" />
+              : doc.body_html
+                ? <div className="sign-body" dangerouslySetInnerHTML={{ __html: (doc.body_html || "").replace(/\n/g, "<br>") }} />
+                : <p className="muted">This document will be presented for your signature. Continue to add your signature where required.</p>}
           </div>
-          <div className="sign-fieldhint"><span className="sign-tab">SIGN HERE</span> Your signature is required to complete this document.</div>
+          <div className="sign-fieldhint"><span className="sign-tab">SIGN HERE</span> Your signature will be applied to the marked areas of this document.</div>
           <button className="btn gold sign-cta" onClick={() => setStep("adopt")}>Continue to sign</button>
         </div>
       )}
