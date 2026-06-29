@@ -58,9 +58,19 @@ export default function SideNav({
   variant?: "staff" | "firm";
 }) {
   const [min, setMin] = useState(false);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const GROUPS = variant === "firm" ? FIRM_GROUPS : STAFF_GROUPS;
   const homeHref = variant === "firm" ? "/portal" : "/dashboard";
+  // Collapse labeled groups by default; auto-expand the group containing the
+  // active page so you always see where you are.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const g of GROUPS) {
+      if (!g.label) continue; // unlabeled main group stays open
+      const hasActive = g.items.some((n) => n.href === active);
+      init[g.id] = !hasActive; // collapsed unless it holds the active page
+    }
+    return init;
+  });
   const toggleGroup = (id: string) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
 
   return (

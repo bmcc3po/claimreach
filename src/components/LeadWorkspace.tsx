@@ -14,6 +14,7 @@ import RetainerTab from "./RetainerTab";
 import NotesTab from "./NotesTab";
 import CommsTimeline from "./CommsTimeline";
 import QaPanel from "./QaPanel";
+import CaseTimeline from "./CaseTimeline";
 
 interface Claim {
   id: string;
@@ -26,7 +27,7 @@ interface Claim {
   answers?: Record<string, any>;
 }
 
-const BASE_TABS = ["Overview", "Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Activity Log"];
+const TABS_HELP = "tabs are computed per-role inside the component";
 
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
@@ -51,8 +52,8 @@ export default function LeadWorkspace({
   const canQa = ["owner", "admin", "qa"].includes(lead.current_user_role || "");
   // QA tab sits right after Case Details for the people who run QA.
   const TABS = canQa
-    ? ["Overview", "Case Questions", "Contact Info", "Case Details", "QA", "Retainer", "Messages", "Calls", "Notes", "Activity Log"]
-    : BASE_TABS;
+    ? ["Overview", "Case Questions", "Contact Info", "Case Details", "QA", "Retainer", "Messages", "Calls", "Notes", "Timeline", "Activity Log"]
+    : ["Overview", "Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Timeline", "Activity Log"];
   const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
 
   function claimClass(c: Claim) {
@@ -103,7 +104,10 @@ export default function LeadWorkspace({
             )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-end" }}>
-            <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+            <div className="status-field">
+              <span className="status-field-label">Status</span>
+              <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+            </div>
             <LockFileButton lead={lead} />
             {claims.length <= 1 && <CreateClaim leadId={lead.id} firmId={lead.firm_id} />}
           </div>
@@ -112,6 +116,9 @@ export default function LeadWorkspace({
 
       {/* PNC banner — interactive injured-party state */}
       <PncBanner lead={lead} />
+
+      {/* WIP fix banner: QA sent this back. Resubmit returns it to the QA queue. */}
+      {lead.wip_pending && <WipBanner lead={lead} signed={/^signed_/.test(activeClaim?.status || "")} />}
 
       {/* Main grid */}
       <div className="lead-grid solo">
@@ -160,6 +167,7 @@ export default function LeadWorkspace({
             {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" />}
             {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" />}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}
+            {tab === "Timeline" && <CaseTimeline entries={audit} />}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}
           </div>
         </div>
@@ -167,6 +175,27 @@ export default function LeadWorkspace({
         {/* Floating Tools dock (hammer pill) — Crissi, Vitals, Agent assist, Integrity, Maverick, Grievous */}
         <FloatingDock lead={lead} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
       </div>
+    </div>
+  );
+}
+
+function WipBanner({ lead, signed }: { lead: any; signed: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  async function resubmit() {
+    setBusy(true);
+    const status = signed ? "signed_qa" : "qa";
+    const r = await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "status", lead_id: lead.id, status }) });
+    setBusy(false);
+    if (r.ok) { setDone(true); setTimeout(() => window.location.reload(), 700); }
+  }
+  return (
+    <div className="wip-banner">
+      <div>
+        <strong>QA sent this back for a fix.</strong>
+        <span className="muted" style={{ marginLeft: 8 }}>Correct what was flagged (check the QA tab and internal thread), then resubmit so QA can re-review.</span>
+      </div>
+      <button className="btn" disabled={busy || done} onClick={resubmit}>{done ? "Resubmitted" : busy ? "Resubmitting…" : "Resubmit to QA"}</button>
     </div>
   );
 }

@@ -48,9 +48,13 @@ export async function setClaimStatusForLeads(opts: {
   // agent fix-inbox stay accurate without a separate write at every call site.
   if (def.phase === "in_qa") {
     const isWip = def.key === "wip" || def.key === "signed_wip";
-    await admin.from("leads").update({ qa_pending: !isWip, wip_pending: isWip }).in("id", opts.leadIds);
+    const patch2: any = { qa_pending: !isWip, wip_pending: isWip };
+    if (!isWip) patch2.qa_entered_at = new Date().toISOString();
+    // Mark signed_at when entering the signed track for the first time.
+    if (def.key === "signed_grievous") patch2.signed_at = new Date().toISOString();
+    await admin.from("leads").update(patch2).in("id", opts.leadIds);
   } else if (def.phase === "post_qa" || def.phase === "terminal") {
-    await admin.from("leads").update({ qa_pending: false, wip_pending: false }).in("id", opts.leadIds);
+    await admin.from("leads").update({ qa_pending: false, wip_pending: false, qa_entered_at: null }).in("id", opts.leadIds);
   }
 
   // Activity Log per lead.

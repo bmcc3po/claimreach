@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 export default function NotifyBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
   const [composing, setComposing] = useState(false);
   const [body, setBody] = useState("");
 
@@ -13,10 +14,15 @@ export default function NotifyBell() {
       const d = await r.json();
       setItems(d.notifications ?? []);
     } catch { /* ignore */ }
+    try {
+      const a = await fetch("/api/alerts");
+      const ad = await a.json();
+      setAlerts(ad.alerts ?? []);
+    } catch { /* ignore */ }
   }
   useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, []);
 
-  const unread = items.filter((i) => !i.read_at).length;
+  const unread = items.filter((i) => !i.read_at).length + alerts.length;
 
   async function markRead(id: string) {
     await fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "read", id }) });
@@ -47,6 +53,17 @@ export default function NotifyBell() {
             </div>
           )}
           <div style={{ maxHeight: 360, overflowY: "auto", padding: "4px 12px 10px" }}>
+            {alerts.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".06em", padding: "8px 0 4px" }}>Dragging files</div>
+                {alerts.map((a, i) => (
+                  <a key={i} href={`/leads/${a.lead_id}`} style={{ display: "block", padding: "6px 0", textDecoration: "none", color: "inherit", borderBottom: "1px solid var(--line-soft)" }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.title}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{a.sub}</div>
+                  </a>
+                ))}
+              </div>
+            )}
             {items.length === 0 && <p className="muted" style={{ padding: "10px 0" }}>No notifications.</p>}
             {items.map((n) => (
               <div key={n.id} className="post" onClick={() => !n.read_at && markRead(n.id)}

@@ -3,8 +3,23 @@ import { useMemo, useState } from "react";
 
 // Reporting surface — breakdowns by status, type, stage, campaign, tier, plus
 // a time series. Exportable to CSV. scope distinguishes firm vs staff copy.
-export default function ReportsView({ leads, claims, scope = "staff" }: { leads: any[]; claims: any[]; scope?: "firm" | "staff" }) {
+export default function ReportsView({ leads, claims, scope = "staff", statuses = [] }: { leads: any[]; claims: any[]; scope?: "firm" | "staff"; statuses?: any[] }) {
   const [range, setRange] = useState(30);
+  const [pStatus, setPStatus] = useState("all");
+  const [pType, setPType] = useState("all");
+
+  // Join claims to their lead for the drill-down list.
+  const leadById = useMemo(() => Object.fromEntries(leads.map((l) => [l.id, l])), [leads]);
+  const statusLabel = useMemo(() => Object.fromEntries(statuses.map((s) => [s.key, s.label])), [statuses]);
+  const caseTypes = useMemo(() => Array.from(new Set(claims.map((c) => c.claim_type).filter(Boolean))).sort(), [claims]);
+
+  const pivotRows = useMemo(() => {
+    return claims
+      .filter((c) => (pStatus === "all" || c.status === pStatus) && (pType === "all" || c.claim_type === pType))
+      .map((c) => ({ ...c, lead: leadById[c.lead_id] }))
+      .filter((c) => c.lead)
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  }, [claims, pStatus, pType, leadById]);
 
   const data = useMemo(() => {
     const now = Date.now();
@@ -81,6 +96,40 @@ export default function ReportsView({ leads, claims, scope = "staff" }: { leads:
         <div className="kpi"><div className="kv">{data.qualified}</div><div className="kl">Qualified</div><div className="ksub">ready for firm</div></div>
         <div className="kpi"><div className="kv">{data.signed}</div><div className="kl">Signed</div><div className="ksub">retained</div></div>
         <div className="kpi"><div className="kv">{data.convRate}%</div><div className="kl">Conversion</div><div className="ksub">qualified+signed / total</div></div>
+      </div>
+
+      <div className="card" style={{ padding: 18, marginTop: 4 }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+          <h3 style={{ margin: 0 }}>Pull files by status and case type</h3>
+          <div className="row" style={{ gap: 8 }}>
+            <select style={{ width: "auto" }} value={pStatus} onChange={(e) => setPStatus(e.target.value)}>
+              <option value="all">Any status</option>
+              {statuses.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+            <select style={{ width: "auto" }} value={pType} onChange={(e) => setPType(e.target.value)}>
+              <option value="all">Any case type</option>
+              {caseTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+        <p className="muted" style={{ marginTop: 0 }}>{pivotRows.length} file{pivotRows.length === 1 ? "" : "s"}{pStatus !== "all" ? ` in ${statusLabel[pStatus] ?? pStatus}` : ""}{pType !== "all" ? ` · ${pType}` : ""}.</p>
+        <div className="table-scroll">
+          <table className="docket">
+            <thead><tr><th>File</th><th>Claimant</th><th>Case type</th><th>Status</th><th>Campaign</th></tr></thead>
+            <tbody>
+              {pivotRows.slice(0, 500).map((c, i) => (
+                <tr key={c.lead_id + i}>
+                  <td><a href={`/leads/${c.lead_id}`}>{c.lead.lead_no}</a></td>
+                  <td style={{ fontWeight: 600 }}>{c.lead.claimant_name || "—"}</td>
+                  <td>{c.claim_type || "—"}</td>
+                  <td>{statusLabel[c.status] ?? c.status}</td>
+                  <td className="muted">{c.campaign || "—"}</td>
+                </tr>
+              ))}
+              {pivotRows.length === 0 && <tr><td colSpan={5} className="muted">No files match.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="dash-cols" style={{ marginTop: 4 }}>

@@ -1269,3 +1269,40 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .qa-thread { margin-top:8px; }
 .qa-thread-msg { border-left:2px solid var(--line); padding:6px 0 6px 12px; margin-bottom:8px; }
 .qa-thread-meta { font-size:12px; margin-bottom:2px; }
+
+/* ---- Case timeline ---- */
+.timeline { position:relative; padding-left:8px; }
+.tl-row { display:flex; gap:12px; position:relative; padding:0 0 16px; }
+.tl-row:not(:last-child)::before { content:""; position:absolute; left:13px; top:24px; bottom:0; width:2px; background:var(--line); }
+.tl-dot { width:28px; height:28px; border-radius:50%; flex-shrink:0; display:grid; place-items:center;
+  font-size:13px; background:var(--surface-2); border:1px solid var(--line); color:var(--ink-soft); z-index:1; }
+.tl-dot.good { background:var(--st-good-bg); color:var(--st-good); border-color:var(--st-good-bd); }
+.tl-dot.bad { background:var(--st-bad-bg); color:var(--st-bad); border-color:var(--st-bad-bd); }
+.tl-dot.info { background:var(--st-info-bg); color:var(--st-info); border-color:var(--st-info-bd); }
+.tl-dot.warn { background:var(--st-warn-bg); color:var(--st-warn); border-color:var(--st-warn-bd); }
+.tl-body { padding-top:3px; }
+.tl-desc { font-size:14px; color:var(--ink); }
+.tl-meta { font-size:12px; color:var(--ink-soft); margin-top:2px; }
+
+/* ---- Dashboard alerts ---- */
+.alert-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px; margin-bottom:18px; }
+.alert-card { display:block; border:1px solid var(--line); border-left-width:3px; border-radius:10px; padding:10px 12px;
+  background:var(--surface); text-decoration:none; color:var(--ink); }
+.alert-card.warn { border-left-color:var(--st-warn); }
+.alert-card.bad { border-left-color:var(--st-bad); }
+.alert-card:hover { background:var(--surface-2); }
+.alert-title { font-weight:600; font-size:13.5px; }
+.alert-sub { font-size:12px; color:var(--ink-soft); margin-top:2px; }
+.alert-empty { color:var(--ink-soft); font-size:13px; }
+
+/* ---- WIP resubmit banner ---- */
+.wip-banner { display:flex; align-items:center; justify-content:space-between; gap:16px;
+  background:var(--st-warn-bg); border:1px solid var(--st-warn-bd); border-radius:12px;
+  padding:12px 16px; margin-bottom:14px; }
+.wip-banner strong { color:var(--st-warn); }
+
+/* ---- File status field (labeled, larger) ---- */
+.status-field { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.status-field-label { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-soft); }
+.status-field .sb { font-size:14px; padding:6px 14px; }
+.status-field button > span[style] { font-size:12px; }

@@ -13,6 +13,9 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
   const [preview, setPreview] = useState<any | null>(null);
   const [editingTpl, setEditingTpl] = useState(false);
   const [tplName, setTplName] = useState(""); const [tplBody, setTplBody] = useState("");
+  const [tplCaseType, setTplCaseType] = useState("any"); const [tplDefault, setTplDefault] = useState(false);
+  const [tplEditId, setTplEditId] = useState<string | null>(null);
+  const [leadCaseType, setLeadCaseType] = useState("");
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   function insertToken(key: string) {
@@ -29,7 +32,7 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
   const [approved, setApproved] = useState(false);
   const [signerName, setSignerName] = useState(""); const [signerEmail, setSignerEmail] = useState(""); const [signerPhone, setSignerPhone] = useState("");
   const [sendVia, setSendVia] = useState("both");
-  const [method, setMethod] = useState<"signwell" | "builtin">("signwell");
+  const [method, setMethod] = useState<"signwell" | "builtin">("builtin");
   const [pdfTemplates, setPdfTemplates] = useState<any[]>([]);
   const [editPdfId, setEditPdfId] = useState<string | null>(null);
   const [editPdf, setEditPdf] = useState<any | null>(null);
@@ -63,8 +66,17 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
 
   async function load() {
     const r = await fetch(`/api/retainer?lead_id=${leadId}`); const d = await r.json();
-    setTemplates(d.templates ?? []); setRetainers(d.retainers ?? []);
-    if (!tplId && d.templates?.[0]) setTplId(d.templates[0].id);
+    const tpls = d.templates ?? [];
+    setTemplates(tpls); setRetainers(d.retainers ?? []);
+    const ct = d.lead?.case_type || "";
+    setLeadCaseType(ct);
+    if (!tplId && tpls.length) {
+      // Prefer the default template for this case type, then any default, then first.
+      const typeDefault = tpls.find((t: any) => t.case_type === ct && t.is_default);
+      const anyDefault = tpls.find((t: any) => t.is_default && !t.case_type);
+      const typeMatch = tpls.find((t: any) => t.case_type === ct);
+      setTplId((typeDefault || anyDefault || typeMatch || tpls[0]).id);
+    }
     if (d.lead) { setSignerName((p) => p || d.lead.claimant_name || `${d.lead.first_name ?? ""} ${d.lead.last_name ?? ""}`.trim()); setSignerEmail((p) => p || d.lead.email || ""); setSignerPhone((p) => p || d.lead.phone || ""); }
     try { const g = await fetch(`/api/grievous?lead_id=${leadId}`); const gd = await g.json(); setApproved(!!gd.approved); } catch {}
   }
@@ -125,7 +137,7 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
   }
   async function saveTemplate() {
     if (!tplName || !tplBody) { setMsg("Template name and body required."); return; }
-    const r = await fetch("/api/retainer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_template", name: tplName, body: tplBody }) });
+    const r = await fetch("/api/retainer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_template", id: tplEditId, name: tplName, body: tplBody, case_type: tplCaseType, is_default: tplDefault }) });
     if (r.ok) { setEditingTpl(false); setTplName(""); setTplBody(""); load(); setMsg("Template saved."); }
   }
 
@@ -140,6 +152,24 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
         <h3>New retainer template</h3>
         <p className="muted" style={{ fontSize: 13 }}>Write the agreement, then click a token to drop it where your cursor is. Tokens auto-fill from the file when you generate the retainer.</p>
         <input placeholder="Template name" value={tplName} onChange={(e) => setTplName(e.target.value)} style={{ marginBottom: 8 }} />
+
+        <div className="row" style={{ gap: 12, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
+            Case type
+            <select value={tplCaseType} onChange={(e) => setTplCaseType(e.target.value)} style={{ width: "auto", fontWeight: 400, color: "var(--ink)" }}>
+              <option value="any">Any case type</option>
+              <option value="motel_trafficking">motel_trafficking</option>
+              <option value="bard_powerport">bard_powerport</option>
+              <option value="pfas">pfas</option>
+              <option value="medmal">medmal</option>
+              <option value="mva">mva</option>
+              {leadCaseType && !["motel_trafficking","bard_powerport","pfas","medmal","mva"].includes(leadCaseType) && <option value={leadCaseType}>{leadCaseType}</option>}
+            </select>
+          </label>
+          <label className="chk" style={{ alignSelf: "flex-end", marginBottom: 6 }}>
+            <input type="checkbox" checked={tplDefault} onChange={(e) => setTplDefault(e.target.checked)} /> Default for this case type
+          </label>
+        </div>
 
         <div className="token-bar">
           {TOKEN_CATALOG.map((g) => (
@@ -174,13 +204,13 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
           <div className="card" style={{ padding: 16, marginTop: 12 }}>
             <div className="section-title">Send for signature</div>
             <div className="esign-method">
+              <button className={`esign-method-opt ${method === "builtin" ? "on" : ""}`} onClick={() => setMethod("builtin")}>
+                <strong>Built-in signer (default)</strong>
+                <span>Texts the client a link to sign on our own page. Use for most retainers.</span>
+              </button>
               <button className={`esign-method-opt ${method === "signwell" ? "on" : ""}`} onClick={() => setMethod("signwell")}>
                 <strong>Certified (SignWell)</strong>
-                <span>Court-admissible, full audit trail. For retainers.</span>
-              </button>
-              <button className={`esign-method-opt ${method === "builtin" ? "on" : ""}`} onClick={() => setMethod("builtin")}>
-                <strong>Built-in signer (our page)</strong>
-                <span>Texts the client a link to sign on our page. Not certified.</span>
+                <span>Court-admissible, full audit trail. Choose when you need certified.</span>
               </button>
             </div>
             <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -241,10 +271,10 @@ export default function RetainerTab({ leadId, role }: { leadId: string; role?: s
       <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
         <select value={tplId} onChange={(e) => setTplId(e.target.value)} style={{ width: "auto" }}>
           {templates.length === 0 && <option value="">No templates yet</option>}
-          {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.case_type ? ` · ${t.case_type}` : ""}{t.is_default ? " (default)" : ""}</option>)}
         </select>
         <button className="btn gold" onClick={generate} disabled={!tplId}>Generate retainer</button>
-        <button className="btn ghost" onClick={() => setEditingTpl(true)}>+ New template</button>
+        <button className="btn ghost" onClick={() => { setTplEditId(null); setTplName(""); setTplBody(""); setTplCaseType(leadCaseType || "any"); setTplDefault(false); setEditingTpl(true); }}>+ New template</button>
         {tplId && <button className="btn ghost sm danger" onClick={deleteTemplate}>Delete template</button>}
         {msg && <span className="muted" style={{ alignSelf: "center" }}>{msg}</span>}
       </div>

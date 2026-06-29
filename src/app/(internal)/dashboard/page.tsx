@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import BoardCard from "@/components/BoardCard";
 import QuoteBanner from "@/components/QuoteBanner";
 import { randomLiner } from "@/lib/silver-liners";
+import { computeAlerts } from "@/lib/alerts";
 
 export default async function Dashboard() {
   const sb = await supabaseServer();
@@ -10,10 +11,13 @@ export default async function Dashboard() {
   const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user!.id).maybeSingle();
   const role = me?.role ?? "agent";
 
-  // Counters
+  // SLA alerts (dragging files) — only for internal roles.
+  const alerts = role === "firm" ? [] : await computeAlerts();
+
+  // Counters (new status model: pre-QA intake statuses).
   const { count: newLeads } = await sb.from("leads").select("id", { count: "exact", head: true });
   const { count: openClaims } = await sb.from("claims").select("id", { count: "exact", head: true })
-    .in("status", ["new", "contact_attempted", "in_progress"]);
+    .in("status", ["new", "contacting"]);
 
   // Boards + posts
   const { data: boards } = await sb.from("boards").select("*").order("sort_order");
@@ -28,7 +32,7 @@ export default async function Dashboard() {
   const dayAgo = new Date(Date.now() - 86400000).toISOString();
   const { data: idle } = await sb.from("claims")
     .select("id, lead_id, campaign, status, updated_at, leads(claimant_name)")
-    .in("status", ["new", "contact_attempted"]).lt("updated_at", dayAgo).limit(10);
+    .in("status", ["new", "contacting"]).lt("updated_at", dayAgo).limit(10);
 
   const attention: { icon: string; title: string; sub: string; lead_id: string }[] = [];
   for (const c of flagged ?? []) attention.push({
@@ -45,13 +49,13 @@ export default async function Dashboard() {
   const twoDayAgo = new Date(Date.now() - 2 * 86400000).toISOString();
   const { data: agingIntake } = await sb.from("claims")
     .select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
-    .in("status", ["new", "contact_attempted", "in_progress"]).lt("updated_at", twoDayAgo).limit(12);
+    .in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).limit(12);
   const { data: highTier } = await sb.from("claims")
     .select("lead_id, tier, tier_letter, tier_number, status, leads(claimant_name, lead_no)")
-    .in("tier_letter", ["A", "B"]).in("status", ["new", "contact_attempted", "in_progress", "qualified"]).limit(12);
+    .in("tier_letter", ["A", "B"]).in("status", ["new", "contacting", "qa", "signed_qa", "approved"]).limit(12);
   const { data: awaitingFirm } = await sb.from("claims")
     .select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
-    .eq("status", "qualified").lt("updated_at", new Date(Date.now() - 86400000).toISOString()).limit(12);
+    .in("status", ["approved", "signed_approved"]).lt("updated_at", new Date(Date.now() - 86400000).toISOString()).limit(12);
 
   const holes = [
     { n: (agingIntake ?? []).length, label: "Aging intake (2+ days)", tone: "flag", items: agingIntake ?? [] },
@@ -73,6 +77,23 @@ export default async function Dashboard() {
       <h1 style={{ margin: "0 0 4px" }}>Welcome back{me?.full_name ? `, ${me.full_name.split(" ")[0]}` : ""}</h1>
       <p className="muted" style={{ marginTop: 0 }}>{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
       {(() => { const l = randomLiner(); return <div className="liner-suggest" style={{ marginBottom: 16, maxWidth: 560 }}><span style={{ fontStyle: "italic", fontWeight: 600 }}>"{l.line}"</span> <span className="muted" style={{ fontSize: 12 }}>— a Silver Liner for {l.when.toLowerCase()}</span></div>; })()}
+
+      {alerts.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div className="row" style={{ marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>Needs attention now</h3>
+            <span className="badge dq" style={{ marginLeft: 8 }}>{alerts.length}</span>
+          </div>
+          <div className="alert-grid">
+            {alerts.slice(0, 12).map((a, i) => (
+              <a key={i} href={`/leads/${a.lead_id}`} className={`alert-card ${a.severity}`}>
+                <div className="alert-title">{a.title}</div>
+                <div className="alert-sub">{a.sub}</div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="dash-grid six">
         {kpis.map((k) => (

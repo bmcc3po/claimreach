@@ -9,9 +9,9 @@ export async function GET(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const lead_id = new URL(req.url).searchParams.get("lead_id");
-  const { data: templates } = await sb.from("retainer_templates").select("id, name").order("name");
+  const { data: templates } = await sb.from("retainer_templates").select("id, name, case_type, is_default").order("name");
   const { data: retainers } = await sb.from("retainers").select("*").eq("lead_id", lead_id).order("created_at", { ascending: false });
-  const { data: lead } = await sb.from("leads").select("id, first_name, last_name, claimant_name, email, phone").eq("id", lead_id).maybeSingle();
+  const { data: lead } = await sb.from("leads").select("id, first_name, last_name, claimant_name, email, phone, case_type").eq("id", lead_id).maybeSingle();
   return NextResponse.json({ templates: templates ?? [], retainers: retainers ?? [], lead: lead ?? null });
 }
 
@@ -41,8 +41,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
   if (b.op === "save_template") {
-    if (b.id) { await sb.from("retainer_templates").update({ name: b.name, body: b.body }).eq("id", b.id); return NextResponse.json({ ok: true, id: b.id }); }
-    const { data, error } = await sb.from("retainer_templates").insert({ name: b.name, body: b.body }).select("id").single();
+    const caseType = b.case_type && b.case_type !== "any" ? b.case_type : null;
+    // If marking default, clear other defaults for the same case_type scope first.
+    if (b.is_default) {
+      const q = sb.from("retainer_templates").update({ is_default: false });
+      if (caseType) await q.eq("case_type", caseType);
+      else await q.is("case_type", null);
+    }
+    if (b.id) {
+      await sb.from("retainer_templates").update({ name: b.name, body: b.body, case_type: caseType, is_default: !!b.is_default }).eq("id", b.id);
+      return NextResponse.json({ ok: true, id: b.id });
+    }
+    const { data, error } = await sb.from("retainer_templates").insert({ name: b.name, body: b.body, case_type: caseType, is_default: !!b.is_default }).select("id").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, id: data.id });
   }
