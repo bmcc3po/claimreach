@@ -54,7 +54,12 @@ const MOTEL_CLOSING = `"You did the hard part today. The firm will be in touch t
 const MOTEL_EXTRAS: TemplateField[] = [
   { id: "motel_stop_was_hotel", scope: "lead", kind: "gate", gateType: "end_intake", label: "Did this occur at a hotel or motel?", agentNote: "If NO: end intake.", origin: "preset", vital: true },
   { id: "motel_specific_property", scope: "lead", kind: "gate", gateType: "supervisor", label: "Can you identify at least one specific hotel or motel where this occurred?", agentNote: "If NO: DQ, call supervisor before proceeding.", origin: "preset", vital: true },
-  { id: "motel_property_names", scope: "lead", kind: "longtext", label: "Name(s) of the hotel/motel and city/state", origin: "preset", vital: true },
+  // Property identification uses the searchable lookup tool (Google Places +
+  // Motel 6 brand resolver, dedupe, landmarks), NOT a free-text box. The
+  // s_properties section triggers ClaimIntake to render the PropertyLookup tool
+  // with "add another property" support.
+  { id: "s_properties", scope: "lead", kind: "section", label: "Properties (add one per hotel/motel)", origin: "preset", vital: true } as TemplateField,
+  { id: "property_lookup", scope: "property", kind: "property_lookup", label: "Identify the property", origin: "preset", vital: true } as TemplateField,
   { id: "motel_approx_dates", scope: "lead", kind: "text", label: "Approximate dates / time period", origin: "preset" },
   { id: "motel_le_involved", scope: "lead", kind: "bool", label: "Was law enforcement ever involved?", origin: "preset" },
   { id: "motel_documents", scope: "lead", kind: "multiselect", label: "Do you have any documentation?", options: ["Photos", "Messages", "Records", "Police report", "None"], origin: "preset" },

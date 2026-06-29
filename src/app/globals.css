@@ -1306,3 +1306,6 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .status-field-label { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-soft); }
 .status-field .sb { font-size:14px; padding:6px 14px; }
 .status-field button > span[style] { font-size:12px; }
+
+.qa-gate-warn { margin-top:10px; font-size:13px; font-weight:600; color:var(--st-bad);
+  background:var(--st-bad-bg); border:1px solid var(--st-bad-bd); border-radius:8px; padding:8px 12px; }

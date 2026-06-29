@@ -379,7 +379,9 @@ export function segmentsFrom(fields: Field[]): Segment[] {
     else if (cur) cur.fields.push(f);
     else { cur = { id: "s_start", title: "Start", fields: [f] }; segs.push(cur); }
   }
-  return segs.filter((s) => s.fields.length > 0);
+  // s_properties renders the property-lookup tool (PropertyCard), not inline
+  // fields, so it must survive even with zero lead-scope fields of its own.
+  return segs.filter((s) => s.fields.length > 0 || s.id === "s_properties");
 }
 
 export function contactFieldsFrom(fields: Field[]): Field[] {

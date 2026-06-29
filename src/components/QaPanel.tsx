@@ -42,8 +42,15 @@ export default function QaPanel({ leadId, claimId }: { leadId: string; claimId?:
 
   const grievousCard = cards.find((c) => c.grader === "grievous");
 
+  const anyRed = [gQa, gEsign, gCrit].includes("red");
+  const gatesSet = gQa && gEsign && gCrit;
+
   async function submit(decision: string, dqReasonKey?: string) {
-    if (!gQa || !gEsign || !gCrit) { setMsg("Set all three hard-gate checks first."); return; }
+    if (!gatesSet) { setMsg("Set all three hard-gate checks first."); return; }
+    if (decision === "approve" && anyRed) {
+      setMsg("Cannot approve with a red hard gate. Route to WIP or Flag, or decline.");
+      return;
+    }
     setBusy(true); setMsg("");
     const r = await fetch("/api/qa", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -102,11 +109,12 @@ export default function QaPanel({ leadId, claimId }: { leadId: string; claimId?:
       {msg && <div className="qa-msg">{msg}</div>}
 
       <div className="qa-actions">
-        <button className="btn" disabled={busy} onClick={() => submit("approve")}>Approve (unlock firm)</button>
+        <button className="btn" disabled={busy || anyRed || !gatesSet} title={anyRed ? "A red hard gate blocks approval" : !gatesSet ? "Set all three hard gates first" : ""} onClick={() => submit("approve")}>Approve (unlock firm)</button>
         <button className="btn ghost" disabled={busy} onClick={() => submit("wip")}>Back to agent (WIP)</button>
         <button className="btn ghost" disabled={busy} onClick={() => submit("flag")}>Flag BMC</button>
         <button className="btn ghost danger" disabled={busy} onClick={onDecline}>Decline (drop letter)</button>
       </div>
+      {anyRed && <p className="qa-gate-warn">A red hard gate is set. Approval is blocked. Route to WIP, Flag BMC, or Decline.</p>}
 
       {declineReason !== null && (
         <div className="modal-back">
