@@ -46,7 +46,11 @@ export default function TemplatesManager() {
           <h1 style={{ marginBottom: 4 }}>Intake Templates</h1>
           <p className="muted" style={{ marginTop: 0 }}>Every case type ships with the canonical spine + the three mandatory gates baked in (represented / injured party / authority). Seed one, then add only the campaign-specific extras.</p>
         </div>
-        <button className="btn" onClick={seedAll} disabled={busy === "all"}>{busy === "all" ? "Seeding…" : "Seed all missing"}</button>
+        <div className="row" style={{ gap: 8 }}>
+          <a className="btn ghost" href="/forms">Manage forms</a>
+          <a className="btn" href="/forms/new">+ New form</a>
+          <button className="btn ghost" onClick={seedAll} disabled={busy === "all"}>{busy === "all" ? "Seeding…" : "Seed all missing"}</button>
+        </div>
       </div>
 
       <Section title="Third-party PI / mass tort" items={third} forms={forms} busy={busy} onSeed={seed} />

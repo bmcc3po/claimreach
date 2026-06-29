@@ -13,7 +13,10 @@ export default async function FormsPage() {
   return (
     <div>
       <div className="row" style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0 }}>Intake Forms</h1>
+        <div>
+          <a href="/templates" className="muted" style={{ fontSize: 13, textDecoration: "none" }}>← Templates</a>
+          <h1 style={{ margin: "4px 0 0" }}>Intake Forms</h1>
+        </div>
         <span className="spacer" />
         <Link className="btn" href="/forms/new">+ New form</Link>
       </div>
