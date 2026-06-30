@@ -23,13 +23,42 @@ export async function POST(req: NextRequest) {
   const p = await req.json();
 
   if (p.op === "create") {
-    const { data, error } = await sb.from("claims").insert({
-      firm_id: p.firm_id,
-      lead_id: p.lead_id,
-      claim_type: p.claim_type ?? "motel_trafficking",
-      campaign: p.campaign ?? null,
-      created_by: u.uid,
-    }).select("id").single();
+    // Resolve the campaign (authoritative for case_type, intake, retainer, track).
+    let campaignId: string | null = p.campaign_id ?? null;
+    let caseType: string | null = p.claim_type ?? null;
+    let campaignName: string | null = p.campaign ?? null;
+    if (campaignId) {
+      const { data: camp } = await sb.from("campaigns").select("id, name, case_type").eq("id", campaignId).maybeSingle();
+      if (camp) { caseType = camp.case_type ?? caseType; campaignName = camp.name ?? campaignName; }
+    }
+    // Never silently default to motel. If we cannot determine a case type, refuse.
+    if (!caseType) {
+      return NextResponse.json({ error: "No case type could be determined for this claim. Pick a campaign/type." }, { status: 400 });
+    }
+
+    // DEDUP: warn (do not hard-block) if this lead already has a claim of the SAME
+    // case type. The agent must justify the override; QA gets a persistent alarm.
+    const { data: existing } = await sb.from("claims").select("id, claim_type").eq("lead_id", p.lead_id);
+    const sameType = (existing ?? []).find((c: any) => (c.claim_type || "").toLowerCase() === caseType!.toLowerCase());
+    if (sameType && !p.dup_override_reason) {
+      return NextResponse.json({
+        needs_override: true,
+        case_type: caseType,
+        message: `This person already has a ${caseType} claim. Adding another of the same case type is rare. To proceed, explain what is unique about this claim.`,
+      }, { status: 200 });
+    }
+
+    const insert: Record<string, any> = {
+      firm_id: p.firm_id, lead_id: p.lead_id, campaign_id: campaignId,
+      claim_type: caseType, campaign: campaignName, created_by: u.uid,
+    };
+    if (sameType && p.dup_override_reason) {
+      insert.dup_override = true;
+      insert.dup_override_reason = String(p.dup_override_reason).slice(0, 1000);
+      insert.dup_override_by = u.uid;
+      insert.dup_override_at = new Date().toISOString();
+    }
+    const { data, error } = await sb.from("claims").insert(insert).select("id").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ id: data.id });
   }

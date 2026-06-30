@@ -298,6 +298,31 @@ export const INTAKE: Field[] = [
   },
 ];
 
+// The canonical SPINE for any case type that lacks a bespoke built-in form:
+// the universal contact surface (caller, address, emergency contact) plus the
+// three mandatory gates (represented / injured party / authority). It carries NO
+// trafficking-specific questions, so a non-trafficking file never sees motel
+// questions. Bespoke per-type forms (medmal, etc.) override this entirely.
+export const SPINE: Field[] = [
+  { id: "s_open", scope: "lead", kind: "section", label: "Opening" },
+  { id: "script_intro_generic", scope: "lead", kind: "script", label: "Intro (read verbatim)",
+    script: "Thank you. My name is ___. I'm calling from the law firm handling your claim. Before we begin, are you in a safe place to speak right now?",
+    agentNote: "If NOT in a safe place: schedule a callback and stop here." },
+  { id: "safe_to_speak", scope: "lead", kind: "gate", label: "Is the claimant in a safe place to speak?", gateType: "safety",
+    agentNote: "If no, schedule callback. Do not proceed with intake." },
+  // Universal contact surface (reused from INTAKE's contact-surface fields).
+  ...INTAKE.filter((f) => f.surface === "contact"),
+  // The three mandatory gates, generic phrasing.
+  { id: "s_gates", scope: "lead", kind: "section", label: "Mandatory gates" },
+  { id: "g_represented", scope: "lead", kind: "gate", gateType: "dq", vital: true,
+    label: "Is the claimant already represented by another attorney for this matter?",
+    agentNote: "If YES, this is a DQ. Do not proceed." },
+  { id: "g_injured_party", scope: "lead", kind: "bool", vital: true,
+    label: "Are we speaking with the injured party (or their authorized legal representative)?" },
+  { id: "g_authority", scope: "lead", kind: "bool", vital: true,
+    label: "Does the caller have authority to sign on the injured party's behalf (if not the injured party)?" },
+];
+
 export const STAGES = [
   "referral_received","intake_attempted","intake_in_progress","intake_complete",
   "qa_verified","sent_to_firm","lor_sent","welcome_sent","signed_retained",
@@ -392,7 +417,11 @@ export function contactFieldsFrom(fields: Field[]): Field[] {
 export function intakeForType(claimType: string): Field[] {
   const t = (claimType || "").toLowerCase();
   if (t.includes("medmal") || t.includes("malpractice")) return MEDMAL_INTAKE;
-  return INTAKE; // default: trafficking (Phase 1)
+  if (t.includes("motel") || t.includes("trafficking")) return INTAKE;
+  // Known case types that don't yet have a bespoke built-in fall back to the
+  // canonical spine (the 3 mandatory gates + contact), NOT the motel questionnaire.
+  // This guarantees we never show trafficking questions on a non-trafficking file.
+  return SPINE;
 }
 
 export function segmentsForType(claimType: string): Segment[] {

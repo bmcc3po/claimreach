@@ -30,6 +30,8 @@ export async function POST(req: NextRequest) {
     name: b.name.trim(), firm_id: b.firm_id || null, case_type: b.case_type.trim().toLowerCase(),
     intake_template: b.intake_template || b.case_type.trim().toLowerCase(),
     retainer_template_id: b.retainer_template_id || null,
+    esign_required: b.esign_required !== false,
+    retainer_packet: Array.isArray(b.retainer_packet) ? b.retainer_packet : [],
     tier: b.tier || null, bill_rate: Number.isFinite(b.bill_rate) ? b.bill_rate : null,
     active: b.active !== false, updated_at: new Date().toISOString(),
   };

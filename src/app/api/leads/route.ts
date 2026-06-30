@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       lead_no: leadNo,
       firm_ref_no: payload.firm_ref_no ?? null,
       lawruler_ref_no: payload.lawruler_ref_no ?? null,
-      case_type: payload.case_type ?? "motel_trafficking",
+      case_type: payload.case_type ?? null,
       campaign_id: payload.campaign_id ?? null,
       campaign: payload.campaign ?? null,
       first_name: payload.first_name ?? null,

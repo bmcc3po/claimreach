@@ -24,6 +24,19 @@ function isSignedTrack(status?: string): boolean {
   return /^signed_/.test(status || "") || status === "esign_sent";
 }
 
+// The campaign's esign_required flag is authoritative for which track a file uses.
+// Fall back to inferring from the current status only if the campaign is unknown.
+async function resolveEsignTrack(admin: any, leadId: string, currentStatus?: string): Promise<boolean> {
+  try {
+    const { data: claim } = await admin.from("claims").select("campaign_id").eq("lead_id", leadId).limit(1).maybeSingle();
+    if (claim?.campaign_id) {
+      const { data: camp } = await admin.from("campaigns").select("esign_required").eq("id", claim.campaign_id).maybeSingle();
+      if (camp && typeof camp.esign_required === "boolean") return camp.esign_required;
+    }
+  } catch {}
+  return isSignedTrack(currentStatus);
+}
+
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
   const u = await me(sb);
@@ -34,7 +47,9 @@ export async function GET(req: NextRequest) {
     const { data: reviews } = await sb.from("qa_reviews").select("*").eq("lead_id", lead_id).order("created_at", { ascending: false });
     const { data: cards } = await sb.from("report_cards").select("*").eq("lead_id", lead_id).order("created_at", { ascending: false });
     const { data: thread } = await sb.from("qa_thread").select("*").eq("lead_id", lead_id).order("created_at");
-    return NextResponse.json({ reviews: reviews ?? [], cards: cards ?? [], thread: thread ?? [] });
+    const { data: dupClaims } = await sb.from("claims").select("claim_type, dup_override, dup_override_reason, dup_ack_at").eq("lead_id", lead_id).eq("dup_override", true);
+    const dupOverride = (dupClaims ?? []).length ? { claims: dupClaims, acknowledged: (dupClaims ?? []).every((c: any) => c.dup_ack_at) } : null;
+    return NextResponse.json({ reviews: reviews ?? [], cards: cards ?? [], thread: thread ?? [], dupOverride });
   }
   // QA queue: files in a QA-phase status (source of truth, not the flag).
   const QA_STATUSES = ["grievous", "qa", "signed_grievous", "signed_qa"];
@@ -77,13 +92,29 @@ export async function POST(req: NextRequest) {
     if (b.decision === "approve" && anyRed) {
       return NextResponse.json({ error: "Cannot approve: a hard-gate check is red. Route to WIP or Flag instead." }, { status: 400 });
     }
+    if (b.decision === "decline" && !["owner", "admin"].includes(u.role)) {
+      return NextResponse.json({ error: "Only BMC can disqualify a file. QA can approve, send to WIP, or flag BMC." }, { status: 403 });
+    }
     if (b.decision === "decline" && !b.dq_reason_key) {
       return NextResponse.json({ error: "A disqualification reason is required to decline." }, { status: 400 });
     }
 
-    // Determine current status / track.
-    const { data: claim } = await sb.from("claims").select("status, claim_type, created_by").eq("lead_id", lead_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
-    const signed = isSignedTrack(claim?.status);
+    // Dedup-override alarm: if any claim on this file was an agent override of the
+    // same-case-type rule, QA must acknowledge it before approving.
+    if (b.decision === "approve") {
+      const { data: overrides } = await admin.from("claims").select("id, dup_ack_at").eq("lead_id", lead_id).eq("dup_override", true);
+      const unacked = (overrides ?? []).some((c: any) => !c.dup_ack_at);
+      if (unacked && !b.dup_ack) {
+        return NextResponse.json({ error: "This file has a same-case-type override that must be acknowledged before approving.", needs_dup_ack: true }, { status: 200 });
+      }
+      if (unacked && b.dup_ack) {
+        await admin.from("claims").update({ dup_ack_by: u.id, dup_ack_at: new Date().toISOString() }).eq("lead_id", lead_id).eq("dup_override", true);
+      }
+    }
+
+    // Determine current status / track. Campaign's esign_required is authoritative.
+    const { data: claim } = await sb.from("claims").select("status, claim_type, created_by, campaign_id").eq("lead_id", lead_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const signed = await resolveEsignTrack(admin, lead_id, claim?.status);
 
     // Record the QA review.
     await admin.from("qa_reviews").insert({

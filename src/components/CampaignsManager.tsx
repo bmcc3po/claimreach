@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 
-interface Campaign { id: string; name: string; firm_id: string | null; case_type: string; intake_template: string | null; retainer_template_id: string | null; tier: string | null; bill_rate: number | null; active: boolean; firms?: { name: string } | null; }
+interface Campaign { id: string; name: string; firm_id: string | null; case_type: string; intake_template: string | null; retainer_template_id: string | null; retainer_packet?: any[]; esign_required?: boolean; tier: string | null; bill_rate: number | null; active: boolean; firms?: { name: string } | null; }
 
 export default function CampaignsManager({ initial, firms, retainerTemplates }: { initial: Campaign[]; firms: { id: string; name: string }[]; retainerTemplates: { id: string; name: string }[] }) {
   const [rows, setRows] = useState<Campaign[]>(initial);
@@ -64,8 +64,25 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
               <label>Campaign name<input value={edit.name ?? ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="TMP MVA" /></label>
               <label>Firm<select value={edit.firm_id ?? ""} onChange={(e) => setEdit({ ...edit, firm_id: e.target.value })}><option value="">Select firm…</option>{firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
               <label>Case type<input value={edit.case_type ?? ""} onChange={(e) => setEdit({ ...edit, case_type: e.target.value })} placeholder="mva" /></label>
-              <label>Intake template (claim type key)<input value={edit.intake_template ?? ""} onChange={(e) => setEdit({ ...edit, intake_template: e.target.value })} placeholder="defaults to case type" /></label>
+              <label>Intake template<select value={edit.intake_template ?? ""} onChange={(e) => setEdit({ ...edit, intake_template: e.target.value })}>
+                <option value="">Same as case type ({edit.case_type || "—"})</option>
+                <option value="motel_trafficking">motel_trafficking</option>
+                <option value="bard_powerport">bard_powerport</option>
+                <option value="pfas">pfas</option>
+                <option value="medmal">medmal</option>
+                <option value="mva">mva</option>
+                <option value="big_trucking">big_trucking</option>
+                <option value="tbi">tbi</option>
+                <option value="premises">premises</option>
+              </select></label>
               <label>Default retainer<select value={edit.retainer_template_id ?? ""} onChange={(e) => setEdit({ ...edit, retainer_template_id: e.target.value })}><option value="">None</option>{retainerTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+            </div>
+            <div className="row" style={{ gap: 12, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
+              <label className="chk" style={{ fontSize: 13 }}>
+                <input type="checkbox" checked={edit.esign_required !== false} onChange={(e) => setEdit({ ...edit, esign_required: e.target.checked })} />
+                E-sign required (uncheck for no-signature campaigns)
+              </label>
+              <span className="muted" style={{ fontSize: 12 }}>{edit.esign_required !== false ? "Uses the Signed: status track." : "Uses the plain (no-sign) status track."}</span>
               <label>Tier<input value={edit.tier ?? ""} onChange={(e) => setEdit({ ...edit, tier: e.target.value })} placeholder="A" /></label>
               <label>Bill rate (per sign)<input type="number" step="0.01" value={edit.bill_rate ?? ""} onChange={(e) => setEdit({ ...edit, bill_rate: parseFloat(e.target.value) })} placeholder="0.00" /></label>
             </div>

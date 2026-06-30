@@ -21,7 +21,8 @@ function GradeRow({ label, value, onChange }: { label: string; value: string; on
   );
 }
 
-export default function QaPanel({ leadId, claimId }: { leadId: string; claimId?: string }) {
+export default function QaPanel({ leadId, claimId, role }: { leadId: string; claimId?: string; role?: string }) {
+  const isBmc = role === "owner" || role === "admin";
   const [gQa, setGQa] = useState(""); const [gEsign, setGEsign] = useState(""); const [gCrit, setGCrit] = useState("");
   const [cLead, setCLead] = useState(""); const [cComplete, setCComplete] = useState("");
   const [qaNote, setQaNote] = useState(""); const [agentNote, setAgentNote] = useState("");
@@ -32,10 +33,11 @@ export default function QaPanel({ leadId, claimId }: { leadId: string; claimId?:
   const [declineReason, setDeclineReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [dupOverride, setDupOverride] = useState<any | null>(null);
 
   async function load() {
     const r = await (await fetch(`/api/qa?lead_id=${leadId}`)).json();
-    setCards(r.cards ?? []); setThread(r.thread ?? []);
+    setCards(r.cards ?? []); setThread(r.thread ?? []); setDupOverride(r.dupOverride ?? null);
     try { const d = await (await fetch("/api/dq-reasons")).json(); if (d.reasons?.length) setReasons(d.reasons.filter((x: DqReason) => x.active !== false)); } catch {}
   }
   useEffect(() => { load(); }, [leadId]);
@@ -45,7 +47,7 @@ export default function QaPanel({ leadId, claimId }: { leadId: string; claimId?:
   const anyRed = [gQa, gEsign, gCrit].includes("red");
   const gatesSet = gQa && gEsign && gCrit;
 
-  async function submit(decision: string, dqReasonKey?: string) {
+  async function submit(decision: string, dqReasonKey?: string, dupAck?: boolean) {
     if (!gatesSet) { setMsg("Set all three hard-gate checks first."); return; }
     if (decision === "approve" && anyRed) {
       setMsg("Cannot approve with a red hard gate. Route to WIP or Flag, or decline.");
@@ -57,11 +59,18 @@ export default function QaPanel({ leadId, claimId }: { leadId: string; claimId?:
       body: JSON.stringify({
         op: "submit", lead_id: leadId, claim_id: claimId,
         g_qa_pass: gQa, g_esign: gEsign, g_criteria: gCrit, c_leading: cLead, c_complete: cComplete,
-        qa_note: qaNote, agent_note: agentNote, decision, dq_reason_key: dqReasonKey ?? null,
+        qa_note: qaNote, agent_note: agentNote, decision, dq_reason_key: dqReasonKey ?? null, dup_ack: dupAck ?? false,
       }),
     });
     const d = await r.json();
     setBusy(false);
+    // Same-case-type override must be acknowledged before approve.
+    if (d.needs_dup_ack) {
+      const ok = window.confirm(`${d.error}\n\nReason given by agent:\n"${dupOverride?.claims?.[0]?.dup_override_reason || "(none)"}"\n\nClick OK to acknowledge and approve.`);
+      if (ok) return submit(decision, dqReasonKey, true);
+      setMsg("Approval held: override not acknowledged.");
+      return;
+    }
     if (!r.ok) { setMsg(d.error || "Could not submit"); return; }
     setMsg(`Routed: ${decision}. Status now ${d.status}.`);
     setDeclineReason(null);
@@ -81,6 +90,18 @@ export default function QaPanel({ leadId, claimId }: { leadId: string; claimId?:
 
   return (
     <div className="qa-panel">
+      {dupOverride && (
+        <div className={`qa-dup-alarm ${dupOverride.acknowledged ? "acked" : ""}`}>
+          <div className="qa-dup-alarm-h">{dupOverride.acknowledged ? "✓ Same-case-type override (acknowledged)" : "⚠ SAME-CASE-TYPE OVERRIDE ON THIS FILE"}</div>
+          <div className="qa-dup-alarm-b">
+            An agent added a second claim of the same case type. This is rare and must be scrutinized.
+            {dupOverride.claims?.map((c: any, i: number) => (
+              <div key={i} className="qa-dup-reason"><b>{c.claim_type}:</b> {c.dup_override_reason || "(no reason given)"}</div>
+            ))}
+            {!dupOverride.acknowledged && <div className="qa-dup-note">You must acknowledge this when approving.</div>}
+          </div>
+        </div>
+      )}
       {grievousCard && (
         <div className="qa-card grievous">
           <div className="qa-card-h">Grievous report card{grievousCard.created_at ? ` · ${new Date(grievousCard.created_at).toLocaleString()}` : ""}</div>
@@ -112,9 +133,9 @@ export default function QaPanel({ leadId, claimId }: { leadId: string; claimId?:
         <button className="btn" disabled={busy || anyRed || !gatesSet} title={anyRed ? "A red hard gate blocks approval" : !gatesSet ? "Set all three hard gates first" : ""} onClick={() => submit("approve")}>Approve (unlock firm)</button>
         <button className="btn ghost" disabled={busy} onClick={() => submit("wip")}>Back to agent (WIP)</button>
         <button className="btn ghost" disabled={busy} onClick={() => submit("flag")}>Flag BMC</button>
-        <button className="btn ghost danger" disabled={busy} onClick={onDecline}>Decline (drop letter)</button>
+        {isBmc && <button className="btn ghost danger" disabled={busy} onClick={onDecline}>Decline (drop letter)</button>}
       </div>
-      {anyRed && <p className="qa-gate-warn">A red hard gate is set. Approval is blocked. Route to WIP, Flag BMC, or Decline.</p>}
+      {anyRed && <p className="qa-gate-warn">A red hard gate is set. Approval is blocked. Route to WIP{isBmc ? ", Flag BMC, or Decline" : " or Flag BMC"}.</p>}
 
       {declineReason !== null && (
         <div className="modal-back">

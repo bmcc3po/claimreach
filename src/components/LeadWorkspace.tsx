@@ -166,7 +166,7 @@ export default function LeadWorkspace({
             )}
             {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
             {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
-            {tab === "QA" && canQa && <QaPanel leadId={lead.id} claimId={activeClaim?.id} />}
+            {tab === "QA" && canQa && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} />}
             {tab === "Retainer" && <RetainerTab leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} />}
             {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" />}
             {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" />}
@@ -278,14 +278,21 @@ function CreateClaim({ leadId, firmId }: { leadId: string; firmId: string }) {
     try { const r = await fetch("/api/claim-types"); const d = await r.json(); setTypes(d.types ?? []); } catch {}
   })(); }, []);
 
-  async function create(type: string, campaign?: string) {
+  async function create(type: string, campaign?: string, dupReason?: string) {
     setBusy(true);
     const r = await fetch("/api/claims", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "create", lead_id: leadId, firm_id: firmId, claim_type: type, campaign: campaign || null }),
+      body: JSON.stringify({ op: "create", lead_id: leadId, firm_id: firmId, claim_type: type, campaign: campaign || null, dup_override_reason: dupReason || null }),
     });
-    if (r.ok) { location.reload(); return; }
     const d = await r.json().catch(() => ({}));
+    // Same-case-type dedup: agent must justify before we allow it.
+    if (r.ok && d.needs_override) {
+      setBusy(false);
+      const reason = window.prompt(`${d.message}\n\nWhy is this PNC getting another intake for the same case type? What is unique about this claim vs the existing one? (required)`);
+      if (!reason || !reason.trim()) return; // cancelled, no override
+      return create(type, campaign, reason.trim());
+    }
+    if (r.ok && d.id) { location.reload(); return; }
     setBusy(false);
     alert(`Could not create claim: ${d.error || r.status}`);
   }

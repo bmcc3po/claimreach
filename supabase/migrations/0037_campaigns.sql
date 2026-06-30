@@ -24,6 +24,8 @@ create index if not exists idx_campaigns_active on campaigns(active);
 
 -- Tie a lead to its campaign (campaign carries firm + type downstream).
 alter table leads add column if not exists campaign_id uuid references campaigns(id);
+-- Display name of the campaign at time of intake (denormalized for the list view).
+alter table leads add column if not exists campaign text;
 
 alter table campaigns enable row level security;
 do $$ begin
