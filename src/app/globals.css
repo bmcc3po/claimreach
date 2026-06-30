@@ -1409,3 +1409,16 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .qa-dup-alarm-b { font-size:13px; color:var(--ink); line-height:1.5; }
 .qa-dup-reason { margin-top:6px; padding:6px 10px; background:rgba(0,0,0,.04); border-radius:6px; }
 .qa-dup-note { margin-top:8px; font-weight:700; color:var(--bad); }
+
+/* ---- Packet signing ceremony ---- */
+.packet-list { list-style:none; padding:0; margin:14px 0; }
+.packet-list li { padding:10px 14px; background:var(--script-bg); border-radius:8px; margin-bottom:6px; font-weight:600; }
+.packet-list li::before { content:"📄 "; }
+.packet-doc { margin-bottom:18px; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+.packet-doc-h { background:var(--surface-2,#f4f6f9); padding:10px 14px; font-weight:700; border-bottom:1px solid var(--line); }
+.packet-doc .sign-body { padding:16px; max-height:300px; overflow-y:auto; }
+.packet-doc .sign-pdf { width:100%; height:420px; border:none; }
+.btn.lg { width:100%; padding:14px; font-size:16px; margin-top:14px; }
+.sig-pad { border:2px dashed var(--line); border-radius:10px; background:#fff; touch-action:none; }
+.sig-pad canvas { width:100%; height:200px; display:block; }
+.sign-err { color:var(--danger,#c0392b); font-size:14px; margin:8px 0 0; }

@@ -140,15 +140,39 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
       const r = await fetch("/api/pdf-templates/ai-place", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pages: pagesText }) });
       const d = await r.json();
       if (d.fields && d.fields.length) {
-        const placed: PField[] = d.fields.map((f: any) => ({
-          id: crypto.randomUUID(), type: f.type || "text", page: f.page || 1,
-          xPct: clamp(f.xPct ?? 10, 0, 95), yPct: clamp(f.yPct ?? 10, 0, 97),
-          wPct: f.type === "signature" ? 22 : f.type === "checkbox" ? 4 : 16,
-          hPct: f.type === "signature" || f.type === "initials" ? 7 : f.type === "checkbox" ? 3.5 : 5,
-          role: f.role === "agent" ? "agent" : "client", label: f.label || f.type, mapTo: f.mapTo || undefined, required: true,
-        }));
+        const placed: PField[] = d.fields.map((f: any) => {
+          // Snap the AI's rough guess to the nearest real text line on that page,
+          // so fields land ON the signature/date/name lines, not floating at the
+          // bottom. The AI returns a label hint; match it to the closest line by
+          // text similarity first, then by its y guess.
+          const lines = pageText.current[f.page || 1] || [];
+          let snapX = f.xPct ?? 10, snapY = f.yPct ?? 10;
+          if (lines.length) {
+            const hint = String(f.label || f.mapTo || f.type || "").toLowerCase();
+            const key = hint.includes("sign") ? "sign" : hint.includes("date") ? "date"
+              : hint.includes("name") ? "name" : hint.includes("address") ? "address" : "";
+            // Candidate lines that mention the key, else all lines.
+            const cands = key ? lines.filter((l) => l.s.toLowerCase().includes(key)) : [];
+            const pool = cands.length ? cands : lines;
+            // Of the pool, pick the line closest to the AI's y guess.
+            let best = pool[0], bestD = Infinity;
+            for (const l of pool) { const dd = Math.abs(l.yPct - (f.yPct ?? 50)); if (dd < bestD) { bestD = dd; best = l; } }
+            if (best) {
+              // Place just to the RIGHT of the label text, vertically aligned.
+              snapX = clamp(best.xPct + 12, 2, 80);
+              snapY = clamp(best.yPct - 1, 0, 96);
+            }
+          }
+          return {
+            id: crypto.randomUUID(), type: f.type || "text", page: f.page || 1,
+            xPct: clamp(snapX, 0, 95), yPct: clamp(snapY, 0, 97),
+            wPct: f.type === "signature" ? 22 : f.type === "checkbox" ? 4 : 16,
+            hPct: f.type === "signature" || f.type === "initials" ? 7 : f.type === "checkbox" ? 3.5 : 5,
+            role: f.role === "agent" ? "agent" : "client", label: f.label || f.type, mapTo: f.mapTo || undefined, required: true,
+          };
+        });
         setFields((a) => [...a, ...placed]);
-        setMsg(`AI placed ${placed.length} fields. Review, drag to adjust, and fix any that are off.`);
+        setMsg(`AI placed ${placed.length} fields, snapped to the document lines. Review and nudge any that are off.`);
       } else setMsg(d.error || "AI could not find clear field locations. Place them manually.");
     } catch { setMsg("AI placement failed. Place fields manually."); }
     finally { setAiBusy(false); }

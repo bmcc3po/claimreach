@@ -60,6 +60,15 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
   const [override, setOverride] = useState(false);
   const [runningGrievous, setRunningGrievous] = useState(false);
   const canOverrideRole = role === "owner" || role === "admin";
+  async function sendPacket() {
+    if (!approved && !override) { setMsg("Grievous hasn't approved this file. Run a Grievous review, or check Override."); return; }
+    setMsg("Sending the retainer packet…");
+    const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "send_packet", lead_id: leadId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", override }) });
+    const d = await r.json();
+    if (d.ok) { setMsg(`Packet sent (${d.doc_count} document${d.doc_count === 1 ? "" : "s"}). Client signs once for all.`); load(); loadSignables(); }
+    else setMsg(d.error || "Packet send failed");
+  }
   async function loadSignables() {
     try { const d = await (await fetch(`/api/signable?lead_id=${leadId}`)).json(); setSignables(d.docs ?? []); } catch {}
   }
@@ -316,6 +325,22 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
           </table>
         </div>
       )}
+      <div className="card" style={{ padding: 16, marginBottom: 14, borderColor: "var(--accent)" }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div className="section-title" style={{ margin: 0 }}>Send retainer packet</div>
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>Sends this campaign's full packet (retainer + any HIPAA / HITECH) as one signing link. The client signs once and it applies to every document.</p>
+          </div>
+          <button className="btn gold" onClick={sendPacket}>Send packet for signature</button>
+        </div>
+        {!approved && (
+          <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button className="btn ghost sm" disabled={runningGrievous} onClick={runGrievous}>{runningGrievous ? "Running…" : "Run Grievous review"}</button>
+            {canOverrideRole && <label className="chk" style={{ fontSize: 13 }}><input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} /> Override (owner/admin)</label>}
+          </div>
+        )}
+      </div>
+
       <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
         <select value={tplId} onChange={(e) => setTplId(e.target.value)} style={{ width: "auto" }}>
           {templates.length === 0 && <option value="">No templates yet</option>}

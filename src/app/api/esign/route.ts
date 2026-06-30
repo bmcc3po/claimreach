@@ -15,6 +15,72 @@ export async function POST(req: NextRequest) {
   const b = await req.json();
   const admin = supabaseAdmin();
 
+  // ---- B3: Send the campaign's retainer PACKET (retainer + HIPAA + HITECH) as
+  // ONE signing ceremony. Creates one signable_document per packet doc sharing a
+  // packet_group; the client signs once and it stamps across every doc.
+  if (b.op === "send_packet") {
+    const { data: lead } = await admin.from("leads").select("id, firm_id, campaign_id, grievous_approved, first_name, last_name, claimant_name, phone, email").eq("id", b.lead_id).maybeSingle();
+    if (!lead) return NextResponse.json({ error: "lead not found" }, { status: 404 });
+    const ownerAdmin = ["owner", "admin"].includes(me.role);
+    if (!lead.grievous_approved && !(ownerAdmin && b.override)) {
+      return NextResponse.json({ error: "Grievous has not approved this file yet. Run a Grievous review or use owner override." }, { status: 200 });
+    }
+    const { data: campaign } = lead.campaign_id
+      ? await admin.from("campaigns").select("retainer_packet, retainer_template_id, esign_required").eq("id", lead.campaign_id).maybeSingle()
+      : { data: null as any };
+    if (!campaign) return NextResponse.json({ error: "This lead has no campaign, so there is no retainer packet to send." }, { status: 200 });
+
+    // Build the packet list. Prefer the explicit packet; fall back to the single
+    // default retainer template so existing campaigns still work.
+    let packet: any[] = Array.isArray(campaign.retainer_packet) ? campaign.retainer_packet : [];
+    if (packet.length === 0 && campaign.retainer_template_id) packet = [{ kind: "text", id: campaign.retainer_template_id, label: "Retainer" }];
+    if (packet.length === 0) return NextResponse.json({ error: "No retainer packet configured on this campaign. Add documents to the campaign's packet." }, { status: 200 });
+
+    const signerName = b.signer_name || lead.claimant_name || `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Client";
+    const signerPhone = b.signer_phone || lead.phone;
+    const senderIp = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+    const group = `PKT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+    // Render each doc into a signable_document row in the shared packet group.
+    const { retainerTokens, fillTemplate } = await import("@/lib/retainer-tokens");
+    const { data: claimRow } = await admin.from("claims").select("answers").eq("lead_id", lead.id).limit(1).maybeSingle();
+    const tokens = retainerTokens(lead, claimRow?.answers ?? {});
+
+    let seq = 0;
+    for (const doc of packet) {
+      seq += 1;
+      const row: any = {
+        firm_id: lead.firm_id, lead_id: lead.id, title: doc.label || "Document",
+        doc_type: "retainer", certified: b.certified === true, provider: b.certified === true ? "signwell" : "builtin",
+        signer_name: signerName, signer_email: b.signer_email || lead.email, signer_phone: signerPhone,
+        status: "sent", sent_at: new Date().toISOString(), envelope_id: `${group}-${seq}`, sender_ip: senderIp,
+        packet_group: group, packet_seq: seq, created_by: auth.user.id,
+      };
+      if (doc.kind === "pdf") {
+        row.pdf_template_id = doc.id;
+      } else {
+        const { data: tpl } = await admin.from("retainer_templates").select("body").eq("id", doc.id).maybeSingle();
+        row.body_html = tpl?.body ? fillTemplate(tpl.body, tokens) : "";
+      }
+      await admin.from("signable_documents").insert(row);
+    }
+
+    const link = `${new URL(req.url).origin}/sign/packet/${group}`;
+    if ((b.send_via === "sms" || b.send_via === "both") && signerPhone) {
+      try {
+        await fetch(new URL("/api/justcall/action", req.url).toString(), {
+          method: "POST", headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
+          body: JSON.stringify({ action: "send_sms", to: signerPhone, body: `Please review and sign your documents: ${link}` }),
+        });
+      } catch {}
+    }
+    try {
+      const { recordAudit } = await import("@/lib/audit");
+      await recordAudit({ firm_id: lead.firm_id, lead_id: lead.id, actor: auth.user.id, category: "retainer", description: `Sent retainer packet (${packet.length} docs, group ${group}).` });
+    } catch {}
+    return NextResponse.json({ ok: true, packet_group: group, link, doc_count: packet.length });
+  }
+
   if (b.op === "send_retainer") {
     const { data: ret } = await admin.from("retainers").select("*, leads(id, firm_id, grievous_approved, first_name, last_name, claimant_name, phone, email)").eq("id", b.retainer_id).maybeSingle();
     if (!ret) return NextResponse.json({ error: "retainer not found" }, { status: 404 });

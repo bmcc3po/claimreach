@@ -58,12 +58,28 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
 
       {edit && (
         <div className="modal-back" onClick={() => setEdit(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560, padding: "18px 20px" }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, padding: "20px 22px" }}>
             <h3 style={{ marginTop: 0 }}>{edit.id ? "Edit campaign" : "New campaign"}</h3>
             <div className="grid2">
               <label>Campaign name<input value={edit.name ?? ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="TMP MVA" /></label>
               <label>Firm<select value={edit.firm_id ?? ""} onChange={(e) => setEdit({ ...edit, firm_id: e.target.value })}><option value="">Select firm…</option>{firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
-              <label>Case type<input value={edit.case_type ?? ""} onChange={(e) => setEdit({ ...edit, case_type: e.target.value })} placeholder="mva" /></label>
+              <label>Case type<select value={edit.case_type ?? ""} onChange={(e) => setEdit({ ...edit, case_type: e.target.value })}>
+                <option value="">Select case type…</option>
+                <option value="motel_trafficking">motel_trafficking</option>
+                <option value="bard_powerport">bard_powerport</option>
+                <option value="pfas">pfas</option>
+                <option value="medmal">medmal</option>
+                <option value="mva">mva</option>
+                <option value="big_trucking">big_trucking</option>
+                <option value="tbi">tbi</option>
+                <option value="premises">premises</option>
+                <option value="sex_abuse">sex_abuse</option>
+                <option value="consumer_product">consumer_product</option>
+                <option value="environmental">environmental</option>
+                <option value="birth_injury">birth_injury</option>
+                <option value="negligent_security">negligent_security</option>
+                <option value="workplace">workplace</option>
+              </select></label>
               <label>Intake template<select value={edit.intake_template ?? ""} onChange={(e) => setEdit({ ...edit, intake_template: e.target.value })}>
                 <option value="">Same as case type ({edit.case_type || "—"})</option>
                 <option value="motel_trafficking">motel_trafficking</option>
@@ -76,17 +92,35 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
                 <option value="premises">premises</option>
               </select></label>
               <label>Default retainer<select value={edit.retainer_template_id ?? ""} onChange={(e) => setEdit({ ...edit, retainer_template_id: e.target.value })}><option value="">None</option>{retainerTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-            </div>
-            <div className="row" style={{ gap: 12, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
-              <label className="chk" style={{ fontSize: 13 }}>
-                <input type="checkbox" checked={edit.esign_required !== false} onChange={(e) => setEdit({ ...edit, esign_required: e.target.checked })} />
-                E-sign required (uncheck for no-signature campaigns)
-              </label>
-              <span className="muted" style={{ fontSize: 12 }}>{edit.esign_required !== false ? "Uses the Signed: status track." : "Uses the plain (no-sign) status track."}</span>
               <label>Tier<input value={edit.tier ?? ""} onChange={(e) => setEdit({ ...edit, tier: e.target.value })} placeholder="A" /></label>
               <label>Bill rate (per sign)<input type="number" step="0.01" value={edit.bill_rate ?? ""} onChange={(e) => setEdit({ ...edit, bill_rate: parseFloat(e.target.value) })} placeholder="0.00" /></label>
             </div>
-            <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+            <div style={{ marginTop: 14, padding: "12px 14px", background: "var(--script-bg)", borderRadius: 8 }}>
+              <label className="chk" style={{ fontSize: 13.5, fontWeight: 600 }}>
+                <input type="checkbox" checked={edit.esign_required !== false} onChange={(e) => setEdit({ ...edit, esign_required: e.target.checked })} />
+                E-sign required
+              </label>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{edit.esign_required !== false ? "Client signs a retainer. Uses the Signed: status track." : "No signature step. Uses the plain status track."}</div>
+            </div>
+
+            {edit.esign_required !== false && (
+              <div style={{ marginTop: 14 }}>
+                <div className="section-title" style={{ marginBottom: 6 }}>Retainer packet (signed together)</div>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The documents the client signs in one ceremony (retainer + HIPAA + HITECH). Leave empty to use the default retainer above.</p>
+                {(edit.retainer_packet ?? []).map((doc: any, i: number) => (
+                  <div key={i} className="row" style={{ gap: 8, marginBottom: 6, alignItems: "center" }}>
+                    <input value={doc.label ?? ""} onChange={(e) => { const p = [...(edit.retainer_packet ?? [])]; p[i] = { ...p[i], label: e.target.value }; setEdit({ ...edit, retainer_packet: p }); }} placeholder="Label (e.g. HIPAA)" style={{ width: 140 }} />
+                    <select value={doc.id ?? ""} onChange={(e) => { const p = [...(edit.retainer_packet ?? [])]; p[i] = { ...p[i], id: e.target.value, kind: "text" }; setEdit({ ...edit, retainer_packet: p }); }}>
+                      <option value="">Select document…</option>
+                      {retainerTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                    <button className="btn ghost sm danger" onClick={() => { const p = (edit.retainer_packet ?? []).filter((_: any, j: number) => j !== i); setEdit({ ...edit, retainer_packet: p }); }}>Remove</button>
+                  </div>
+                ))}
+                <button className="btn ghost sm" onClick={() => setEdit({ ...edit, retainer_packet: [...(edit.retainer_packet ?? []), { kind: "text", id: "", label: "" }] })}>+ Add document</button>
+              </div>
+            )}
+            <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
               <button className="btn ghost" onClick={() => setEdit(null)}>Cancel</button>
               <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save campaign"}</button>
             </div>
