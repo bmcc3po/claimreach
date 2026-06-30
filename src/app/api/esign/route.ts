@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       try {
         await fetch(new URL("/api/justcall/action", req.url).toString(), {
           method: "POST", headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
-          body: JSON.stringify({ action: "send_sms", to: signerPhone, body: `Please review and sign your documents: ${link}` }),
+          body: JSON.stringify({ op: "sms", lead_id: lead.id, to: signerPhone, body: `Please review and sign your documents: ${link}` }),
         });
       } catch {}
     }
@@ -163,19 +163,21 @@ export async function POST(req: NextRequest) {
       if (sigErr) return NextResponse.json({ error: sigErr.message }, { status: 500 });
 
       const link = `${new URL(req.url).origin}/sign/${sig.id}`;
+      let delivered = "not sent (no channel)";
       if ((b.send_via === "sms" || b.send_via === "both") && signerPhoneP) {
         try {
-          await fetch(new URL("/api/justcall/action", req.url).toString(), {
+          const sr = await fetch(new URL("/api/justcall/action", req.url).toString(), {
             method: "POST", headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
-            body: JSON.stringify({ action: "send_sms", to: signerPhoneP, body: `Please review and sign your retainer: ${link}` }),
+            body: JSON.stringify({ op: "sms", lead_id: lead.id, to: signerPhoneP, body: `Please review and sign your retainer: ${link}` }),
           });
-        } catch {}
+          delivered = sr.ok ? "texted" : `text failed: ${((await sr.json().catch(() => ({}))).error) || sr.status}`;
+        } catch (e: any) { delivered = `text failed: ${e?.message || "error"}`; }
       }
       try {
         const { recordAudit } = await import("@/lib/audit");
         await recordAudit({ firm_id: lead.firm_id, lead_id: lead.id, actor: auth.user.id, category: "retainer", description: `Sent PDF retainer "${tplFor.name}" via in-house e-sign (envelope ${sig.envelope_id}).` });
       } catch {}
-      return NextResponse.json({ ok: true, id: sig.id, link, envelope_id: sig.envelope_id });
+      return NextResponse.json({ ok: true, id: sig.id, link, envelope_id: sig.envelope_id, delivered });
     }
 
     // ---- CERTIFIED (SignWell) path ----

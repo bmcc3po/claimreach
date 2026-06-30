@@ -29,6 +29,7 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
     requestAnimationFrame(() => { ta.focus(); const pos = start + tok.length; ta.setSelectionRange(pos, pos); });
   }
   const [msg, setMsg] = useState("");
+  const [lastLink, setLastLink] = useState("");
   const [approved, setApproved] = useState(false);
   const [signerName, setSignerName] = useState(""); const [signerEmail, setSignerEmail] = useState(""); const [signerPhone, setSignerPhone] = useState("");
   const [sendVia, setSendVia] = useState("both");
@@ -66,7 +67,7 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
     const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ op: "send_packet", lead_id: leadId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", override }) });
     const d = await r.json();
-    if (d.ok) { setMsg(`Packet sent (${d.doc_count} document${d.doc_count === 1 ? "" : "s"}). Client signs once for all.`); load(); loadSignables(); }
+    if (d.ok) { setMsg(`Packet sent (${d.doc_count} document${d.doc_count === 1 ? "" : "s"}). Client signs once for all.`); if (d.link) setLastLink(d.link); load(); loadSignables(); }
     else setMsg(d.error || "Packet send failed");
   }
   async function loadSignables() {
@@ -93,7 +94,7 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
     const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ op: "send_pdf_retainer", lead_id: leadId, pdf_template_id: sendPdfId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", method: pdfMethod, override }) });
     const d = await r.json();
-    if (d.ok) { setMsg(pdfMethod === "builtin" ? `Sent. In-house signing link created (envelope ${d.envelope_id || ""}).` : "PDF retainer sent via SignWell."); load(); loadSignables(); } else setMsg(d.error || "Send failed");
+    if (d.ok) { setMsg(pdfMethod === "builtin" ? `Sent. Link ${d.delivered || "created"} (envelope ${d.envelope_id || ""}). Use the link below if needed.` : "PDF retainer sent via SignWell."); if (d.link) setLastLink(d.link); load(); loadSignables(); } else setMsg(d.error || "Send failed");
   }
 
   async function load() {
@@ -340,6 +341,18 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
           </div>
         )}
       </div>
+
+      {lastLink && (
+        <div className="card" style={{ padding: 14, marginBottom: 14, background: "var(--script-bg)", border: "1px solid var(--accent)" }}>
+          <div className="section-title" style={{ margin: "0 0 6px" }}>Signing link</div>
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12 }}>This is the client's signing link. Copy it to send manually, or open it to preview the signing page yourself.</p>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input readOnly value={lastLink} onFocus={(e) => e.target.select()} style={{ flex: 1, minWidth: 240, fontFamily: "monospace", fontSize: 12 }} />
+            <button className="btn sm" onClick={() => { navigator.clipboard?.writeText(lastLink); setMsg("Link copied."); }}>Copy</button>
+            <a className="btn ghost sm" href={lastLink} target="_blank" rel="noopener noreferrer">Open</a>
+          </div>
+        </div>
+      )}
 
       <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
         <select value={tplId} onChange={(e) => setTplId(e.target.value)} style={{ width: "auto" }}>
