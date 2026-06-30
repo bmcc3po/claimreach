@@ -15,6 +15,7 @@ const P: Record<string, React.ReactNode> = {
   layout: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M9 9v11" /></>,
   puzzle: <><path d="M10 4h4v3a2 2 0 0 0 4 0V7h2v4h-1a2 2 0 0 0 0 4h1v4h-4v-1a2 2 0 0 0-4 0v1H6v-4h1a2 2 0 0 0 0-4H6V7h4Z" /></>,
   plug: <><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0Z" /><path d="M12 16v6" /></>,
+  building: <><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3" /></>,
   gear: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M5 5l2 2M17 17l2 2M2 12h3M19 12h3M5 19l2-2M17 7l2-2" /></>,
   book: <><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2Z" /><path d="M5 18a2 2 0 0 1 2-2h11" /></>,
   toolbox: <><rect x="3" y="8" width="18" height="11" rx="2" /><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18" /></>,
