@@ -1,12 +1,13 @@
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
 import DripManager from "@/components/DripManager";
+import DripRulesManager from "@/components/DripRulesManager";
 
 export default async function SettingsPage() {
   const sb = await supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   const { data: me } = await sb.from("app_users").select("full_name, role").eq("id", user!.id).maybeSingle();
-  const { data: drips } = await sb.from("drip_rules").select("*").order("every_days");
+  const isAdmin = me && ["owner", "admin"].includes(me.role);
 
   return (
     <div>
@@ -17,23 +18,13 @@ export default async function SettingsPage() {
         <div className="vrow"><span className="vk">Role</span><span className="vv">{me?.role ?? "—"}</span></div>
         <div className="vrow"><span className="vk">Email</span><span className="vv">{user?.email}</span></div>
       </div>
-      <div className="side-card" style={{ maxWidth: 620 }}>
-        <h3>Automated messaging (drip)</h3>
-        <p className="muted" style={{ marginTop: 0 }}>Recurring touches assigned to the agent and/or case manager.</p>
-        <table className="docket">
-          <thead><tr><th>Sequence</th><th>Channel</th><th>Every</th><th>Assigned</th></tr></thead>
-          <tbody>
-            {(drips ?? []).map((d:any) => (
-              <tr key={d.id}>
-                <td>{d.name}</td>
-                <td><span className="badge stage">{d.channel}</span></td>
-                <td>{d.every_days} days</td>
-                <td>{d.assign_to}</td>
-              </tr>
-            ))}
-            {(!drips || drips.length===0) && <tr><td colSpan={4} className="muted">No drip rules yet.</td></tr>}
-          </tbody>
-        </table>
+      <div style={{ maxWidth: 760, marginBottom: 16 }}>
+        {isAdmin ? <DripRulesManager /> : (
+          <div className="side-card">
+            <h3>Automated messaging (drip)</h3>
+            <p className="muted" style={{ marginTop: 0 }}>Recurring touches assigned to the agent and/or case manager.</p>
+          </div>
+        )}
       </div>
       <div className="side-card" style={{ maxWidth: 620 }}>
         <h3>Campaigns</h3>

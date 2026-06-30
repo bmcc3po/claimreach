@@ -8,7 +8,8 @@ export async function GET() {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { data } = await sb.from("drips_due").select("*").limit(200);
-  return NextResponse.json({ due: data ?? [] });
+  const { data: rules } = await sb.from("drip_rules").select("id, name, channel, every_days, template, assign_to, active").order("every_days");
+  return NextResponse.json({ due: data ?? [], rules: rules ?? [] });
 }
 
 // POST { op:'enroll', lead_id } — enroll a lead in active drip rules.
@@ -20,6 +21,36 @@ export async function POST(req: NextRequest) {
   const { data: me } = await sb.from("app_users").select("role, firm_id").eq("id", auth.user.id).maybeSingle();
   if (!me || me.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const p = await req.json();
+
+  // ---- Manage drip RULES (owner/admin). create / update / toggle / delete ----
+  if (["save_rule", "toggle_rule", "delete_rule"].includes(p.op)) {
+    if (!["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const admin = supabaseAdmin();
+    if (p.op === "delete_rule") {
+      await admin.from("drip_rules").delete().eq("id", p.id);
+      return NextResponse.json({ ok: true });
+    }
+    if (p.op === "toggle_rule") {
+      await admin.from("drip_rules").update({ active: !!p.active }).eq("id", p.id);
+      return NextResponse.json({ ok: true });
+    }
+    // save_rule (create or update)
+    const name = (p.name || "").trim();
+    const every = parseInt(p.every_days, 10);
+    if (!name) return NextResponse.json({ error: "Name is required." }, { status: 200 });
+    if (!every || every < 1) return NextResponse.json({ error: "Cadence (every N days) must be a positive number." }, { status: 200 });
+    const channel = ["sms", "email", "call_reminder"].includes(p.channel) ? p.channel : "sms";
+    const assign = ["agent", "case_manager", "both"].includes(p.assign_to) ? p.assign_to : "agent";
+    const row: any = { name, channel, every_days: every, template: p.template ?? null, assign_to: assign, active: p.active !== false, firm_id: me.firm_id };
+    if (p.id) {
+      const { error } = await admin.from("drip_rules").update(row).eq("id", p.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, id: p.id });
+    }
+    const { data, error } = await admin.from("drip_rules").insert(row).select("id").single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, id: data.id });
+  }
 
   if (p.op === "enroll") {
     await sb.rpc("enroll_drips_for_lead", { p_lead: p.lead_id, p_firm: me.firm_id });
