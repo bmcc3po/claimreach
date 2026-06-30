@@ -11,13 +11,21 @@ export default async function CampaignsSettingsPage() {
 
   const { data: campaigns } = await sb.from("campaigns").select("*, firms(name)").order("name");
   const { data: firms } = await sb.from("firms").select("id, name").order("name");
-  const { data: retainerTemplates } = await sb.from("retainer_templates").select("id, name").order("name");
+  const { data: textTpls } = await sb.from("retainer_templates").select("id, name").order("name");
+  const { data: pdfTpls } = await sb.from("pdf_templates").select("id, name").order("name");
+
+  // Unified retainer options: text templates AND uploaded PDF templates, each
+  // tagged by kind so a campaign can use either as its retainer / packet doc.
+  const retainerTemplates = [
+    ...(textTpls ?? []).map((t) => ({ id: t.id, name: t.name, kind: "text" as const })),
+    ...(pdfTpls ?? []).map((t) => ({ id: t.id, name: `${t.name} (PDF)`, kind: "pdf" as const })),
+  ];
 
   return (
     <div>
       <h2 style={{ marginTop: 0 }}>Campaigns</h2>
       <p className="muted" style={{ marginTop: 0, maxWidth: 720 }}>Each campaign is one firm running one case type. Add lead picks a campaign and inherits the firm, type, intake form, retainer, and billing.</p>
-      <CampaignsManager initial={campaigns ?? []} firms={firms ?? []} retainerTemplates={retainerTemplates ?? []} />
+      <CampaignsManager initial={campaigns ?? []} firms={firms ?? []} retainerTemplates={retainerTemplates} />
     </div>
   );
 }

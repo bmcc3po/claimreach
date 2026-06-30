@@ -3,7 +3,7 @@ import { useState } from "react";
 
 interface Campaign { id: string; name: string; firm_id: string | null; case_type: string; intake_template: string | null; retainer_template_id: string | null; retainer_packet?: any[]; esign_required?: boolean; tier: string | null; bill_rate: number | null; active: boolean; firms?: { name: string } | null; }
 
-export default function CampaignsManager({ initial, firms, retainerTemplates }: { initial: Campaign[]; firms: { id: string; name: string }[]; retainerTemplates: { id: string; name: string }[] }) {
+export default function CampaignsManager({ initial, firms, retainerTemplates }: { initial: Campaign[]; firms: { id: string; name: string }[]; retainerTemplates: { id: string; name: string; kind?: "text" | "pdf" }[] }) {
   const [rows, setRows] = useState<Campaign[]>(initial);
   const [edit, setEdit] = useState<Partial<Campaign> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,7 +91,7 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
                 <option value="tbi">tbi</option>
                 <option value="premises">premises</option>
               </select></label>
-              <label>Default retainer<select value={edit.retainer_template_id ?? ""} onChange={(e) => setEdit({ ...edit, retainer_template_id: e.target.value })}><option value="">None</option>{retainerTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+              <label>Default retainer<select value={edit.retainer_template_id ?? ""} onChange={(e) => setEdit({ ...edit, retainer_template_id: e.target.value })}><option value="">None</option>{retainerTemplates.filter((t) => (t.kind ?? "text") === "text").map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
               <label>Tier<input value={edit.tier ?? ""} onChange={(e) => setEdit({ ...edit, tier: e.target.value })} placeholder="A" /></label>
               <label>Bill rate (per sign)<input type="number" step="0.01" value={edit.bill_rate ?? ""} onChange={(e) => setEdit({ ...edit, bill_rate: parseFloat(e.target.value) })} placeholder="0.00" /></label>
             </div>
@@ -106,11 +106,11 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
             {edit.esign_required !== false && (
               <div style={{ marginTop: 14 }}>
                 <div className="section-title" style={{ marginBottom: 6 }}>Retainer packet (signed together)</div>
-                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The documents the client signs in one ceremony (retainer + HIPAA + HITECH). Leave empty to use the default retainer above.</p>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The documents the client signs in one ceremony (retainer + HIPAA + HITECH). Pick text templates or uploaded PDF retainers. Leave empty to use the default retainer above.</p>
                 {(edit.retainer_packet ?? []).map((doc: any, i: number) => (
                   <div key={i} className="row" style={{ gap: 8, marginBottom: 6, alignItems: "center" }}>
                     <input value={doc.label ?? ""} onChange={(e) => { const p = [...(edit.retainer_packet ?? [])]; p[i] = { ...p[i], label: e.target.value }; setEdit({ ...edit, retainer_packet: p }); }} placeholder="Label (e.g. HIPAA)" style={{ width: 140 }} />
-                    <select value={doc.id ?? ""} onChange={(e) => { const p = [...(edit.retainer_packet ?? [])]; p[i] = { ...p[i], id: e.target.value, kind: "text" }; setEdit({ ...edit, retainer_packet: p }); }}>
+                    <select value={doc.id ?? ""} onChange={(e) => { const sel = retainerTemplates.find((t) => t.id === e.target.value); const p = [...(edit.retainer_packet ?? [])]; p[i] = { ...p[i], id: e.target.value, kind: sel?.kind || "text" }; setEdit({ ...edit, retainer_packet: p }); }}>
                       <option value="">Select document…</option>
                       {retainerTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>

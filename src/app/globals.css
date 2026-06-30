@@ -1198,6 +1198,11 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .rowmenu-trigger { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer; font-size: 15px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; transition: all .12s; }
 .rowmenu-trigger:hover { border-color: var(--accent); color: var(--ink); }
 .rowmenu-pop { position: absolute; right: 0; top: calc(100% + 4px); min-width: 180px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--sh-3); padding: 5px; z-index: 50; }
+.rowmenu-pop-fixed { position: fixed; min-width: 190px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--sh-3); padding: 5px; z-index: 9000; }
+.rowmenu-pop-fixed .rowmenu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: none; background: transparent; border-radius: 7px; font-size: 13.5px; color: var(--ink); cursor: pointer; text-align: left; }
+.rowmenu-pop-fixed .rowmenu-item:hover { background: var(--surface-2); }
+.rowmenu-pop-fixed .rowmenu-item.danger { color: var(--st-bad); }
+.rowmenu-pop-fixed .rowmenu-sep { height: 1px; background: var(--line); margin: 4px 0; }
 .rowmenu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: none; background: transparent; border-radius: 7px; font-size: 13.5px; color: var(--ink); cursor: pointer; text-align: left; }
 .rowmenu-item:hover { background: var(--surface-2); }
 .rowmenu-item.danger { color: var(--st-bad); }
