@@ -82,12 +82,14 @@ const SW_TYPE: Record<string, string> = {
 export async function createSignwellFromPdf(opts: {
   apiKey: string; testMode: boolean; name: string; subject?: string; message?: string;
   pdfBase64: string; fileName: string;
-  placed: { id: string; type: string; page: number; xPct: number; yPct: number; wPct: number; hPct: number; role: "client" | "agent"; label?: string; required?: boolean }[];
+  placed: { id: string; type: string; page: number; xPct: number; yPct: number; wPct: number; hPct: number; role: "client" | "agent"; label?: string; required?: boolean; mapTo?: string }[];
   pageDims: Record<number, { w: number; h: number }>;
   client: { name: string; email: string };
   agent: { name: string; email: string };
+  tokens?: Record<string, string>;   // autofill values for mapped text fields
   metadata?: Record<string, any>;
 }) {
+  const tokens = opts.tokens || {};
   // recipient 1 = client, recipient 2 = agent
   const recipients = [
     { id: "1", name: opts.client.name, email: opts.client.email },
@@ -96,6 +98,9 @@ export async function createSignwellFromPdf(opts: {
   // SignWell wants a 2D array: one inner array per file. We have one file.
   const fileFields = opts.placed.map((f) => {
     const dim = opts.pageDims[f.page] || { w: 612, h: 792 }; // default US Letter pts
+    // Autofill: if this text field maps to a token we have a value for, prefill it
+    // and lock it so the client cannot change the data we filled.
+    const prefill = (f.type === "text" && f.mapTo && tokens[f.mapTo] != null && tokens[f.mapTo] !== "") ? String(tokens[f.mapTo]) : null;
     return {
       api_id: f.id.replace(/-/g, "").slice(0, 20),
       type: SW_TYPE[f.type] || "text",
@@ -107,6 +112,7 @@ export async function createSignwellFromPdf(opts: {
       required: f.required !== false,
       recipient_id: f.role === "client" ? "1" : "2",
       ...(f.type === "text" || f.type === "date" ? { label: f.label || "" } : {}),
+      ...(prefill != null ? { value: prefill, locked: true } : {}),
       ...(f.type === "date" ? { lock_sign_date: false } : {}),
     };
   });

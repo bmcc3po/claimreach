@@ -197,6 +197,15 @@ export async function POST(req: NextRequest) {
     const signerPhone = b.signer_phone || lead.phone;
     if (!signerEmail) return NextResponse.json({ error: "A signer email is required." }, { status: 200 });
 
+    // Build the autofill token map (contact + intake answers) so mapped text
+    // fields are prefilled and locked in SignWell, same as the in-house path.
+    let swTokens: Record<string, string> = {};
+    try {
+      const { data: claimRow } = await admin.from("claims").select("answers").eq("lead_id", lead.id).limit(1).maybeSingle();
+      const { retainerTokens } = await import("@/lib/retainer-tokens");
+      swTokens = retainerTokens(lead, claimRow?.answers ?? {});
+    } catch {}
+
     const res = await createSignwellFromPdf({
       apiKey: acct.api_key, testMode: acct.test_mode,
       name: tpl.name || "Retainer", subject: "Your retainer agreement is ready to sign",
@@ -206,6 +215,7 @@ export async function POST(req: NextRequest) {
       pageDims: tpl.page_dims || {},
       client: { name: signerName, email: signerEmail },
       agent: { name: me.full_name || "Agent", email: `agent+${me.firm_id}@claimreach.com` },
+      tokens: swTokens,
       metadata: { claimreach_lead_id: lead.id, claimreach_pdf_template: tpl.id },
     });
     if ((res as any).error) return NextResponse.json({ error: (res as any).error }, { status: 200 });
