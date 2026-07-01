@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { INTAKE, type Field } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PropertyLookup, { type ResolvedProperty } from "./PropertyLookup";
@@ -25,6 +25,14 @@ export default function IntakeForm({
   initialProperties: any[];
 }) {
   const [lead, setLead] = useState<Record<string, any>>(initialLead || {});
+  const [autofillFeeds, setAutofillFeeds] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const cid = lead.campaign_id || initialLead?.campaign_id;
+    if (!cid) return;
+    (async () => {
+      try { const d = await (await fetch(`/api/retainer-autofill-map?campaign_id=${cid}`)).json(); setAutofillFeeds(d.feeds ?? {}); } catch {}
+    })();
+  }, [lead.campaign_id]);
   const [props, setProps] = useState<PropertyState[]>(
     (initialProperties || []).map((p, i) => ({
       _key: `p${i}`,
@@ -143,7 +151,7 @@ export default function IntakeForm({
         }
         return (
           <FieldRenderer key={f.id} field={f}
-            value={lead[f.id]} onChange={(v) => setLeadVal(f.id, v)} />
+            value={lead[f.id]} onChange={(v) => setLeadVal(f.id, v)} feeds={autofillFeeds[f.id]} />
         );
       })}
 

@@ -39,7 +39,7 @@ export default function RetainerEditor({ id }: { id: string }) {
   useEffect(() => {
     if (!caseType || caseType === "any") { setIntakeChips([]); return; }
     (async () => {
-      try { const d = await (await fetch(`/api/intake-fields?case_type=${caseType}`)).json(); setIntakeChips(d.fields ?? []); } catch { setIntakeChips([]); }
+      try { const d = await (await fetch(`/api/autofill-catalog?case_type=${caseType}`)).json(); setIntakeChips((d.catalog ?? []).filter((c: any) => c.group === "Intake questions").map((c: any) => ({ id: c.token, label: c.label, token: c.token }))); } catch { setIntakeChips([]); }
     })();
   }, [caseType]);
   const [isDefault, setIsDefault] = useState(false);

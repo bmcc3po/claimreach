@@ -73,19 +73,30 @@ export async function POST(req: NextRequest) {
     }
 
     const link = `${new URL(req.url).origin}/sign/packet/${group}`;
+    const pResults: string[] = [];
     if ((b.send_via === "sms" || b.send_via === "both") && signerPhone) {
       try {
-        await fetch(new URL("/api/justcall/action", req.url).toString(), {
+        const sr = await fetch(new URL("/api/justcall/action", req.url).toString(), {
           method: "POST", headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
           body: JSON.stringify({ op: "sms", lead_id: lead.id, to: signerPhone, body: `${msgPrefix}Please review and sign your documents: ${link}` }),
         });
-      } catch {}
+        pResults.push(sr.ok ? "texted" : `text failed: ${((await sr.json().catch(() => ({}))).error) || sr.status}`);
+      } catch (e: any) { pResults.push(`text failed: ${e?.message || "error"}`); }
     }
+    if ((b.send_via === "email" || b.send_via === "both") && (b.signer_email || lead.email)) {
+      try {
+        const { sendEmail, signingEmailHtml } = await import("@/lib/email");
+        const er = await sendEmail({ to: b.signer_email || lead.email, subject: "Your documents are ready to sign",
+          html: signingEmailHtml({ clientName: signerName, link, message: clientMsg }) });
+        pResults.push(er.ok ? "emailed" : `email failed: ${er.error}`);
+      } catch (e: any) { pResults.push(`email failed: ${e?.message || "error"}`); }
+    }
+    const pDelivered = pResults.length ? pResults.join(", ") : "not sent (no channel)";
     try {
       const { recordAudit } = await import("@/lib/audit");
       await recordAudit({ firm_id: lead.firm_id, lead_id: lead.id, actor: auth.user.id, category: "retainer", description: `Sent retainer packet (${packet.length} docs, group ${group}).` });
     } catch {}
-    return NextResponse.json({ ok: true, packet_group: group, link, doc_count: packet.length });
+    return NextResponse.json({ ok: true, packet_group: group, link, doc_count: packet.length, delivered: pDelivered });
   }
 
   if (b.op === "send_retainer") {
@@ -154,6 +165,7 @@ export async function POST(req: NextRequest) {
 
     const signerNameP = b.signer_name || lead.claimant_name || `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Client";
     const signerPhoneP = b.signer_phone || lead.phone;
+    const signerEmailP = b.signer_email || lead.email;
 
     // ---- IN-HOUSE (non-certified) PDF path: create a signable doc that the
     // public sign page renders as a PDF, signs, stamps, and certifies in-house.
@@ -170,16 +182,25 @@ export async function POST(req: NextRequest) {
       if (sigErr) return NextResponse.json({ error: sigErr.message }, { status: 500 });
 
       const link = `${new URL(req.url).origin}/sign/${sig.id}`;
-      let delivered = "not sent (no channel)";
+      const results: string[] = [];
       if ((b.send_via === "sms" || b.send_via === "both") && signerPhoneP) {
         try {
           const sr = await fetch(new URL("/api/justcall/action", req.url).toString(), {
             method: "POST", headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
             body: JSON.stringify({ op: "sms", lead_id: lead.id, to: signerPhoneP, body: `${msgPrefix}Please review and sign your retainer: ${link}` }),
           });
-          delivered = sr.ok ? "texted" : `text failed: ${((await sr.json().catch(() => ({}))).error) || sr.status}`;
-        } catch (e: any) { delivered = `text failed: ${e?.message || "error"}`; }
+          results.push(sr.ok ? "texted" : `text failed: ${((await sr.json().catch(() => ({}))).error) || sr.status}`);
+        } catch (e: any) { results.push(`text failed: ${e?.message || "error"}`); }
       }
+      if ((b.send_via === "email" || b.send_via === "both") && signerEmailP) {
+        try {
+          const { sendEmail, signingEmailHtml } = await import("@/lib/email");
+          const er = await sendEmail({ to: signerEmailP, subject: "Your retainer is ready to sign",
+            html: signingEmailHtml({ clientName: signerNameP, link, message: clientMsg }) });
+          results.push(er.ok ? "emailed" : `email failed: ${er.error}`);
+        } catch (e: any) { results.push(`email failed: ${e?.message || "error"}`); }
+      }
+      const delivered = results.length ? results.join(", ") : "not sent (no channel)";
       try {
         const { recordAudit } = await import("@/lib/audit");
         await recordAudit({ firm_id: lead.firm_id, lead_id: lead.id, actor: auth.user.id, category: "retainer", description: `Sent PDF retainer "${tplFor.name}" via in-house e-sign (envelope ${sig.envelope_id}).` });

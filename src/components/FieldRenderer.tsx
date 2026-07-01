@@ -8,12 +8,14 @@ export default function FieldRenderer({
   onChange,
   onSetField,
   qNum,
+  feeds,
 }: {
   field: Field;
   value: any;
   onChange: (v: any) => void;
   onSetField?: (id: string, v: any) => void;
   qNum?: number;
+  feeds?: string;
 }) {
   const numTag = qNum ? <span className="qn-inline">Q{qNum}</span> : null;
   if (field.kind === "section") {
@@ -74,9 +76,11 @@ export default function FieldRenderer({
     <label>
       {numTag}{field.label}
       {field.vital && <span className="vital">vital</span>}
+      {feeds && <span className="feeds-tag" title={`Autofills into the retainer: ${feeds}`}>feeds retainer: {feeds}</span>}
     </label>
   );
 
+  const body = (() => {
   switch (field.kind) {
     case "text":
     case "monthyear":
@@ -161,4 +165,7 @@ export default function FieldRenderer({
     default:
       return null;
   }
+  })();
+  if (feeds && body) return <div className="feeds-wrap">{body}</div>;
+  return body;
 }

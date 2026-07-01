@@ -26,12 +26,11 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignId, setCampaignId] = useState(initialCampaignId || "");
   const [bindCaseType, setBindCaseType] = useState(initialCaseType || "any");
-  const [intakeFields, setIntakeFields] = useState<{ id: string; label: string; token: string }[]>([]);
+  const [catalog, setCatalog] = useState<{ group: string; token: string; label: string }[]>([]);
   useEffect(() => {
     const qs = campaignId ? `campaign_id=${campaignId}` : (bindCaseType && bindCaseType !== "any" ? `case_type=${bindCaseType}` : "");
-    if (!qs) { setIntakeFields([]); return; }
     (async () => {
-      try { const d = await (await fetch(`/api/intake-fields?${qs}`)).json(); setIntakeFields(d.fields ?? []); } catch { setIntakeFields([]); }
+      try { const d = await (await fetch(`/api/autofill-catalog${qs ? "?" + qs : ""}`)).json(); setCatalog(d.catalog ?? []); } catch { setCatalog([]); }
     })();
   }, [campaignId, bindCaseType]);
   useEffect(() => { (async () => { try { const d = await (await fetch("/api/campaigns")).json(); setCampaigns((d.campaigns ?? []).filter((c: any) => c.active)); } catch {} })(); }, []);
@@ -254,22 +253,11 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                           {f.type === "text" && (
                             <select className="pdf-mapto" value={f.mapTo || ""} onChange={(e) => setFieldMap(f.id, e.target.value)} onMouseDown={(e) => e.stopPropagation()}>
                               <option value="">Autofill: none</option>
-                              <option value="contact.full_name">Client name</option>
-                              <option value="contact.first_name">First name</option>
-                              <option value="contact.last_name">Last name</option>
-                              <option value="contact.phone">Phone</option>
-                              <option value="contact.email">Email</option>
-                              <option value="contact.address">Address</option>
-                              <option value="contact.dob">Date of birth</option>
-                              <option value="case.lead_no">File number</option>
-                              <option value="case.type">Case type</option>
-                              <option value="case.handling_attorney">Handling attorney</option>
-                              <option value="today">Today's date</option>
-                              {intakeFields.length > 0 && (
-                                <optgroup label={`Intake questions (${bindCaseType !== "any" ? bindCaseType : "campaign"})`}>
-                                  {intakeFields.map((f) => <option key={f.id} value={f.token}>{f.label}</option>)}
-                                </optgroup>
-                              )}
+                              {["Client", "Case", "Intake questions", "Other"].map((grp) => {
+                                const opts = catalog.filter((c) => c.group === grp);
+                                if (opts.length === 0) return null;
+                                return <optgroup key={grp} label={grp}>{opts.map((c) => <option key={c.token} value={c.token}>{c.label}</option>)}</optgroup>;
+                              })}
                             </select>
                           )}
                           <button className="rm" onClick={() => removeField(f.id)}>Delete</button>
