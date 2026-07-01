@@ -86,10 +86,11 @@ export async function POST(req: NextRequest) {
               } catch {}
             }
             const { stampPdf } = await import("@/lib/pdf-stamp");
+            const signedDate = (b.lock_date === false && b.manual_date) ? new Date(b.manual_date + "T12:00:00") : new Date(now);
             const stamped = await stampPdf({
               sourceBytes: srcBytes, fields: tpl.fields || [],
               signaturePng: b.signature_data || null, signerName: b.signed_name || doc.signer_name || "Client",
-              signedDate: new Date(now), tokens,
+              signedDate, tokens,
             });
             const cpath = `${doc.firm_id || "master"}/signed-${doc.envelope_id}.pdf`;
             const up = await admin.storage.from("signed-docs").upload(cpath, stamped, { contentType: "application/pdf", upsert: true });
