@@ -27,6 +27,8 @@ export default function ClaimIntake({
   );
 
   const [step, setStep] = useState(0);
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const [advanceBanner, setAdvanceBanner] = useState(false);
   const [autofillFeeds, setAutofillFeeds] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!leadId) return;
@@ -67,6 +69,22 @@ export default function ClaimIntake({
   const curStep = steps[step];
   const curSegment = segments.find((s) => s.id === curStep.id);
 
+  // Auto-advance: when the current section becomes fully answered (and it's not the
+  // last step), show a cancelable banner, then move to the next section. The banner
+  // gives the agent a grace window so the screen never jumps mid-thought.
+  const advanceTimer = useRef<any>(null);
+  useEffect(() => {
+    if (advanceTimer.current) { clearTimeout(advanceTimer.current); advanceTimer.current = null; }
+    if (!autoAdvance || locked || step >= steps.length - 1) { setAdvanceBanner(false); return; }
+    if (segAnswered(curStep.id)) {
+      setAdvanceBanner(true);
+      advanceTimer.current = setTimeout(() => { setAdvanceBanner(false); setStep((s) => Math.min(s + 1, steps.length - 1)); }, 2500);
+    } else {
+      setAdvanceBanner(false);
+    }
+    return () => { if (advanceTimer.current) clearTimeout(advanceTimer.current); };
+  }, [answers, props, scheduled, step, autoAdvance, locked]);
+
   function setVal(id: string, v: any) { setAnswers((s) => ({ ...s, [id]: v })); }
 
   // Autosave: when unlocked, persist a moment after the last change. No manual
@@ -104,11 +122,12 @@ export default function ClaimIntake({
     if (isSchedule(segId)) return scheduled;
     const seg = segments.find((s) => s.id === segId);
     if (!seg) return false;
-    // Only count real input fields (skip scripts/gates/sections).
-    const inputs = seg.fields.filter((f) => !["script", "section", "gate"].includes(f.kind));
+    // Only count real input fields that are currently VISIBLE (skip scripts/gates/
+    // sections and any conditional fields hidden by current answers).
+    const inputs = seg.fields.filter((f) => !["script", "section", "gate"].includes(f.kind) && fieldVisible(f, answers));
     // A section with no inputs (e.g. Closing = statement only) is complete by default.
     if (inputs.length === 0) return true;
-    // Complete only when every input field is filled.
+    // Complete only when every visible input field is filled.
     return inputs.every((f) => isFilled(answers[f.id]));
   }
 
@@ -159,7 +178,9 @@ export default function ClaimIntake({
         {locked ? (
           <><span className="lock-note">🔒 Read-only. Click edit to make changes.</span><button className="btn gold sm" onClick={() => setLocked(false)}>✏️ Edit answers</button></>
         ) : (
-          <><span className="lock-note editing">✏️ Editing, changes save automatically{savedAt ? ` · saved ${savedAt}` : ""}{saving ? " · saving…" : ""}</span><button className="btn ghost sm" onClick={() => setLocked(true)}>🔒 Done</button></>
+          <><span className="lock-note editing">✏️ Editing, changes save automatically{savedAt ? ` · saved ${savedAt}` : ""}{saving ? " · saving…" : ""}</span>
+          <label className="auto-adv-toggle" title="Automatically move to the next section when this one is complete"><input type="checkbox" checked={autoAdvance} onChange={(e) => setAutoAdvance(e.target.checked)} /> Auto-advance</label>
+          <button className="btn ghost sm" onClick={() => setLocked(true)}>🔒 Done</button></>
         )}
       </div>
       <nav className="steprail">
@@ -172,6 +193,13 @@ export default function ClaimIntake({
           </button>
         ))}
       </nav>
+
+      {advanceBanner && (
+        <div className="advance-banner">
+          <span>✓ Section complete. Moving to the next section…</span>
+          <button className="btn ghost sm" onClick={() => { if (advanceTimer.current) clearTimeout(advanceTimer.current); setAdvanceBanner(false); }}>Stay here</button>
+        </div>
+      )}
 
       <div>
         <div className="seg-head">
