@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { STAGE_LABELS } from "@/lib/questionnaire";
 import { LX } from "@/lib/lexicon";
 import FloatingDock from "./FloatingDock";
+import CollapsiblePanel from "./CollapsiblePanel";
 import ClaimIntake from "./ClaimIntake";
 import CaseOverview from "./CaseOverview";
 import StatusBadge from "./ui/StatusBadge";
@@ -112,17 +113,21 @@ export default function LeadWorkspace({
             <LockFileButton lead={lead} />
           </div>
         </div>
-        {claims.length <= 1 && (
+        {/* Shelved: "Add another claim" — two claims can't share one lead id yet.
+            Code kept for when the data model supports it. */}
+        {false && claims.length <= 1 && (
           <button className="addclaim-quiet" onClick={() => setShowAddClaim(true)}>+ Add another claim</button>
         )}
-        {showAddClaim && claims.length <= 1 && <CreateClaim leadId={lead.id} firmId={lead.firm_id} />}
+        {false && showAddClaim && claims.length <= 1 && <CreateClaim leadId={lead.id} firmId={lead.firm_id} />}
       </div>
 
       {/* PNC banner — interactive injured-party state */}
       <PncBanner lead={lead} />
 
-      {/* Pipeline strip: shows where this file sits from intake through firm handoff. */}
-      <PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} />
+      {/* Pipeline strip: collapsible per-user (Brett collapses, Tony keeps open). */}
+      <CollapsiblePanel id="lead_pipeline" title="Progress" sub={STAGE_LABELS?.[activeClaim?.status ?? lead.status ?? "new"] || undefined} defaultOpen={true}>
+        <PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} />
+      </CollapsiblePanel>
 
       {/* WIP fix banner: QA sent this back. Resubmit returns it to the QA queue. */}
       {lead.wip_pending && <WipBanner lead={lead} signed={/^signed_/.test(activeClaim?.status || "")} />}

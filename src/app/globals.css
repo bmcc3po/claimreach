@@ -106,13 +106,34 @@ a:hover { text-decoration: underline; }
 .app-header .nav a { color: var(--ink-soft); font-weight: 500; padding: 7px 11px; border-radius: 8px; }
 .app-header .nav a:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
 
-.container { max-width: 1680px; margin: 0 auto; padding: 20px 32px 96px; }
+.container { max-width: 1180px; margin: 0 auto; padding: 28px 28px 96px; }
+.container.wide { max-width: 1480px; }
 
 .card { background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px; }
-.section-title { font-size: 12px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--accent);
-  margin: 26px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  border-radius: 14px; padding: 20px 22px; margin-bottom: 16px; }
+.section-title { font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--ink-faint);
+  margin: 22px 0 10px; padding-bottom: 0; border-bottom: none; }
+
+/* Collapsible panel primitive (Wave-clean, per-user state remembered) */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 14px; overflow: hidden; }
+.panel-head { display: flex; align-items: center; gap: 10px; padding: 14px 20px; cursor: pointer; user-select: none; }
+.panel-head:hover { background: var(--surface-2); }
+.panel-head .panel-title { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: .01em; flex: 1; }
+.panel-head .panel-sub { font-size: 12px; color: var(--ink-faint); font-weight: 500; }
+.panel-head .panel-chevron { color: var(--ink-faint); transition: transform .18s ease; font-size: 12px; }
+.panel.collapsed .panel-chevron { transform: rotate(-90deg); }
+.panel-body { padding: 4px 20px 20px; }
+.panel.collapsed .panel-body { display: none; }
+.panel-head .panel-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--surface-3); font-size: 14px; }
+
+/* Full-width Wave-style list rows */
+.wrow { display: flex; align-items: center; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--line-soft); }
+.wrow:last-child { border-bottom: none; }
+.wrow:hover { background: var(--surface-2); }
+.wrow-main { flex: 1; min-width: 0; }
+.wrow-title { font-weight: 600; color: var(--ink); font-size: 14px; }
+.wrow-sub { font-size: 12.5px; color: var(--ink-faint); margin-top: 2px; }
 
 .field { margin-bottom: 14px; }
 .field > label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
