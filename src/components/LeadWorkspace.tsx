@@ -67,65 +67,45 @@ export default function LeadWorkspace({
 
   return (
     <div>
-      {/* Command bar: queue + my-day stats */}
-      <div className="cmdbar">
-        <div className="queue">
-          <span className="qhdr">Working</span>
-          <span className="qtab active">{lead.claimant_name ?? lead.lead_no}</span>
-          <a className="qtab" href="/leads" style={{ textDecoration: "none" }} title="Go back to your lead queue">← Queue</a>
+      {/* Compact lead header: everything on one tight strip, no dead space. */}
+      <div className="leadhead-compact">
+        <a className="qtab-back" href="/leads" title="Back to your queue">← Queue</a>
+        <div className="leadhead-id">
+          <h2>{lead.claimant_name ?? "Unnamed claimant"}</h2>
+          <div className="leadhead-sub">
+            <span className="leadhead-file">{lead.lead_no}</span>
+            <span className="leadhead-dot">·</span>
+            <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={lead.current_user_role} />
+            <span className="leadhead-dot">·</span>
+            <span className="muted">Created {new Date(lead.created_at).toLocaleDateString()}</span>
+          </div>
+          {claims.length > 1 && (
+            <div className="claimsrow" style={{ marginTop: 8 }}>
+              {claims.map((c) => (
+                <button key={c.id} className={`claimtab ${activeClaimId === c.id ? "on" : ""}`} onClick={() => setActiveClaimId(c.id)}>
+                  {(c.campaign || c.claim_type)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="myday">
-          <div className="stat"><b>{stats.signed}</b><span>Signed today</span></div>
-          <div className="stat"><b>{stats.wip}</b><span>WIP</span></div>
+        <div className="leadhead-actions">
+          <div className="myday-inline">
+            <span><b>{stats.signed}</b> signed</span>
+            <span><b>{stats.wip}</b> WIP</span>
+          </div>
+          <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+          <LockFileButton lead={lead} />
         </div>
       </div>
 
-      {/* Lead header */}
-      <div className="leadhead">
-        <div className="row" style={{ justifyContent: "space-between", width: "100%", alignItems: "flex-start" }}>
-          <div>
-            <h2 style={{ marginBottom: 2 }}>{lead.claimant_name ?? "Unnamed claimant"}</h2>
-            <div className="leadhead-sub">
-              <span className="leadhead-file">{lead.lead_no}</span>
-              <span className="leadhead-dot">·</span>
-              <span className="muted">{activeClaim?.claim_type || lead.case_type || "case"}</span>
-              <span className="leadhead-dot">·</span>
-              <span className="muted">Created {new Date(lead.created_at).toLocaleDateString()}</span>
-            </div>
+      {/* Injured-party state: collapsible (it's a big block once you've set it). */}
+      <CollapsiblePanel id="lead_pnc" title="Injured party" sub={lead.claimant_name ?? undefined} defaultOpen={true}>
+        <PncBanner lead={lead} />
+      </CollapsiblePanel>
 
-            {/* Claims selector — quiet, only when more than one claim exists */}
-            {claims.length > 1 && (
-              <div className="claimsrow" style={{ marginTop: 10 }}>
-                {claims.map((c) => (
-                  <button key={c.id} className={`claimtab ${activeClaimId === c.id ? "on" : ""}`} onClick={() => setActiveClaimId(c.id)}>
-                    {(c.campaign || c.claim_type)}
-                  </button>
-                ))}
-                <CreateClaim leadId={lead.id} firmId={lead.firm_id} />
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-            <div className="status-field">
-              <span className="status-field-label">Status</span>
-              <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
-            </div>
-            <LockFileButton lead={lead} />
-          </div>
-        </div>
-        {/* Shelved: "Add another claim" — two claims can't share one lead id yet.
-            Code kept for when the data model supports it. */}
-        {false && claims.length <= 1 && (
-          <button className="addclaim-quiet" onClick={() => setShowAddClaim(true)}>+ Add another claim</button>
-        )}
-        {false && showAddClaim && claims.length <= 1 && <CreateClaim leadId={lead.id} firmId={lead.firm_id} />}
-      </div>
-
-      {/* PNC banner — interactive injured-party state */}
-      <PncBanner lead={lead} />
-
-      {/* Pipeline strip: collapsible per-user (Brett collapses, Tony keeps open). */}
-      <CollapsiblePanel id="lead_pipeline" title="Progress" sub={STAGE_LABELS?.[activeClaim?.status ?? lead.status ?? "new"] || undefined} defaultOpen={true}>
+      {/* Progress: collapsible per-user. */}
+      <CollapsiblePanel id="lead_pipeline" title="Progress" sub={STAGE_LABELS?.[activeClaim?.status ?? lead.status ?? "new"] || undefined} defaultOpen={false}>
         <PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} />
       </CollapsiblePanel>
 
@@ -185,6 +165,40 @@ export default function LeadWorkspace({
         <FloatingDock lead={lead} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
       </div>
     </div>
+  );
+}
+
+function CampaignPicker({ leadId, current, role }: { leadId: string; current?: string | null; role?: string }) {
+  const [open, setOpen] = useState(false);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const canChange = role === "owner" || role === "admin";
+  async function load() {
+    try { const d = await (await fetch("/api/campaigns")).json(); setCampaigns((d.campaigns ?? []).filter((c: any) => c.active)); } catch {}
+  }
+  async function choose(id: string) {
+    setBusy(true);
+    const r = await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "set_campaign", lead_id: leadId, campaign_id: id }) });
+    const d = await r.json();
+    setBusy(false);
+    if (d.ok) window.location.reload();
+  }
+  if (!canChange) return <span className="leadhead-campaign" title="Campaign — the spine of this file">{current || "No campaign set"}</span>;
+  return (
+    <span className="campaign-picker">
+      <button className="leadhead-campaign as-btn" title="Campaign is the spine of this file. Click to change." onClick={() => { if (!open) load(); setOpen(!open); }}>
+        {current || "Set campaign"} ▾
+      </button>
+      {open && (
+        <div className="campaign-menu" onMouseLeave={() => setOpen(false)}>
+          <div className="campaign-menu-hint">Campaign drives intake, retainer, and e-sign. Changing it re-spines this file.</div>
+          {campaigns.map((c) => (
+            <button key={c.id} className="campaign-menu-item" disabled={busy} onClick={() => choose(c.id)}>{c.name}</button>
+          ))}
+          {campaigns.length === 0 && <div className="campaign-menu-hint">No active campaigns.</div>}
+        </div>
+      )}
+    </span>
   );
 }
 

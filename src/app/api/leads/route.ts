@@ -55,6 +55,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ lead: data });
   }
 
+  if (op === "set_campaign") {
+    if (!["owner", "admin"].includes(u.role)) return NextResponse.json({ error: "Only an owner or admin can change a file's campaign." }, { status: 403 });
+    const { lead_id, campaign_id } = payload;
+    const { data: camp } = await sb.from("campaigns").select("id, name, firm_id, case_type").eq("id", campaign_id).maybeSingle();
+    if (!camp) return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
+    // Campaign is the spine: update the lead and its claim so intake/retainer/e-sign
+    // all follow the new campaign.
+    await sb.from("leads").update({ campaign_id: camp.id, campaign: camp.name, firm_id: camp.firm_id }).eq("id", lead_id);
+    await sb.from("claims").update({ campaign: camp.name, claim_type: camp.case_type }).eq("lead_id", lead_id);
+    try {
+      const { recordAudit } = await import("@/lib/audit");
+      await recordAudit({ firm_id: camp.firm_id, lead_id, actor: u.id, actor_name: u.full_name, category: "lead", description: `Changed campaign to "${camp.name}".` });
+    } catch {}
+    return NextResponse.json({ ok: true, campaign: camp.name });
+  }
+
   if (op === "save") {
     if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const { lead_id, lead, properties } = payload;

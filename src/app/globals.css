@@ -1567,3 +1567,35 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 @keyframes advIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 .auto-adv-toggle { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft,#475569); cursor:pointer; margin-left:auto; margin-right:10px; }
 .auto-adv-toggle input { width:15px; height:15px; }
+
+/* Compact lead header — one tight strip, no dead space (Wave-clean) */
+.leadhead-compact { display:flex; align-items:flex-start; gap:16px; padding:16px 20px; background:var(--surface); border:1px solid var(--line); border-radius:14px; margin-bottom:14px; }
+.qtab-back { flex-shrink:0; font-size:13px; font-weight:600; color:var(--ink-soft); background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:7px 12px; text-decoration:none; white-space:nowrap; }
+.qtab-back:hover { background:var(--surface-3); text-decoration:none; }
+.leadhead-id { flex:1; min-width:0; }
+.leadhead-id h2 { margin:0 0 3px; font-size:20px; }
+.leadhead-actions { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.myday-inline { display:flex; gap:14px; font-size:12px; color:var(--ink-faint); white-space:nowrap; }
+.myday-inline b { color:var(--ink); font-size:14px; }
+@media(max-width:760px){ .leadhead-compact{flex-wrap:wrap} .myday-inline{display:none} }
+
+/* Compact lead header (Wave-clean, no dead space) */
+.leadhead-compact { display:flex; align-items:flex-start; gap:16px; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px 20px; margin-bottom:14px; }
+.qtab-back { flex-shrink:0; font-size:13px; font-weight:600; color:var(--ink-soft); text-decoration:none; padding:6px 10px; border:1px solid var(--line); border-radius:8px; margin-top:2px; }
+.qtab-back:hover { background:var(--surface-2); color:var(--ink); text-decoration:none; }
+.leadhead-id { flex:1; min-width:0; }
+.leadhead-id h2 { margin:0 0 3px; font-size:20px; }
+.leadhead-campaign { font-weight:700; color:var(--accent); font-size:13px; }
+.leadhead-actions { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.myday-inline { display:flex; gap:14px; font-size:12px; color:var(--ink-faint); }
+.myday-inline b { color:var(--ink); font-size:14px; }
+@media(max-width:760px){ .leadhead-compact{flex-wrap:wrap} .leadhead-actions{width:100%;justify-content:flex-start} }
+
+/* Campaign picker on the lead header (spine of the file) */
+.campaign-picker { position:relative; display:inline-block; }
+.leadhead-campaign.as-btn { background:none; border:none; cursor:pointer; font-weight:700; color:var(--accent); font-size:13px; padding:0; }
+.leadhead-campaign.as-btn:hover { text-decoration:underline; }
+.campaign-menu { position:absolute; top:100%; left:0; margin-top:6px; min-width:240px; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--sh-3,0 8px 30px rgba(0,0,0,.14)); padding:8px; z-index:200; }
+.campaign-menu-hint { font-size:11.5px; color:var(--ink-faint); padding:6px 8px 8px; line-height:1.4; }
+.campaign-menu-item { display:block; width:100%; text-align:left; padding:9px 10px; border:none; background:transparent; border-radius:8px; font-size:13.5px; color:var(--ink); cursor:pointer; }
+.campaign-menu-item:hover { background:var(--surface-2); }
