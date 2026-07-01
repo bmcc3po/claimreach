@@ -10,21 +10,20 @@ export const runtime = "edge";
 function collectFromPdfFields(fields: any[], feeds: Record<string, string[]>) {
   for (const f of fields || []) {
     const m = f.mapTo || "";
-    if (m.startsWith("intake.")) {
-      const id = m.slice("intake.".length);
-      (feeds[id] ||= []).push(f.label || f.type || "retainer field");
-    }
+    if (!m) continue;
+    // Key intake fields by their bare id; contact/case fields by their full token.
+    const key = m.startsWith("intake.") ? m.slice("intake.".length) : m;
+    (feeds[key] ||= []).push(f.label || f.type || "retainer field");
   }
 }
 function collectFromBody(body: string, feeds: Record<string, string[]>) {
-  const re = /\{\{\s*(?:intake\.)?([a-zA-Z0-9_]+)\s*\}\}/g;
+  const re = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
   let mm: RegExpExecArray | null;
   while ((mm = re.exec(body || ""))) {
-    const id = mm[1];
-    // Only count tokens that resolve to an intake field id (skip contact.*/case.*).
-    if (mm[0].includes("intake.") || !["contact", "case", "today"].some((p) => id.startsWith(p))) {
-      (feeds[id] ||= []).push("retainer text");
-    }
+    let key = mm[1];
+    if (key === "today") continue;
+    if (key.startsWith("intake.")) key = key.slice("intake.".length);
+    (feeds[key] ||= []).push("retainer text");
   }
 }
 

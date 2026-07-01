@@ -235,7 +235,16 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                       ? "Click a field below to autofill the selected Text box with it."
                       : "These are available to autofill. Drop a Text box and click it, then pick one of these."}
                   </div>
-                  {catalog.length === 0 && <div className="muted" style={{ fontSize: 12, padding: "4px 0" }}>Bind this template to a case type or campaign (top of page) to load intake questions.</div>}
+                  {catalog.filter((c) => c.group === "Intake questions").length === 0 && (
+                    <div className="pdf-autofill-group">
+                      <div className="pdf-autofill-grouplabel">Intake questions</div>
+                      <div className="muted" style={{ fontSize: 12, lineHeight: 1.45, padding: "2px 0" }}>
+                        {bindCaseType === "any"
+                          ? "Set the case type at the top of the page (it's on \"any\") to load this case's intake questions here."
+                          : `No intake questions found for "${bindCaseType}".`}
+                      </div>
+                    </div>
+                  )}
                   {["Client", "Case", "Intake questions", "Other"].map((grp) => {
                     const opts = catalog.filter((c) => c.group === grp);
                     if (opts.length === 0) return null;

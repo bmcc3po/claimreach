@@ -17,6 +17,35 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
   const [ssnRevealed, setSsnRevealed] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [feeds, setFeeds] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const cid = lead.campaign_id;
+    if (!cid) return;
+    (async () => {
+      try { const d = await (await fetch(`/api/retainer-autofill-map?campaign_id=${cid}`)).json(); setFeeds(d.feeds ?? {}); } catch {}
+    })();
+  }, [lead.campaign_id]);
+  // Map standard contact tokens to the real contact form field ids so the purple
+  // highlight lands on the right box. (Token namespace != form field ids.)
+  const CONTACT_TOKEN_TO_FIELDS: Record<string, string[]> = {
+    "contact.first_name": ["ip_first", "caller_first"],
+    "contact.last_name": ["ip_last", "caller_last"],
+    "contact.full_name": ["ip_first", "ip_last"],
+    "contact.phone": ["caller_phone", "ip_phone"],
+    "contact.email": ["caller_email"],
+    "contact.dob": ["ip_dob", "caller_dob"],
+    "contact.address": ["mail_addr1"],
+  };
+  function feedFor(fieldId: string): string | undefined {
+    // Direct: retainer mapped this exact field id (rare for contact) or its token.
+    if (feeds[fieldId]) return feeds[fieldId];
+    if (feeds[`contact.${fieldId}`]) return feeds[`contact.${fieldId}`];
+    // Indirect: a standard contact token maps to this form field.
+    for (const [tok, ids] of Object.entries(CONTACT_TOKEN_TO_FIELDS)) {
+      if (ids.includes(fieldId) && feeds[tok]) return feeds[tok];
+    }
+    return undefined;
+  }
 
   // New structured contact fields (names split + preferences + emergency permission).
   const [x, setX] = useState<Record<string, any>>({
@@ -83,7 +112,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
               </div>
             );
           }
-          return <FieldRenderer key={fld.id} field={fld} value={f[fld.id]} onChange={(v) => set(fld.id, v)} />;
+          return <FieldRenderer key={fld.id} field={fld} value={f[fld.id]} onChange={(v) => set(fld.id, v)} feeds={feedFor(fld.id)} />;
         })}
       </div>
     );
