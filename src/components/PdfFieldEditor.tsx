@@ -221,7 +221,49 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
               <span className="pdf-tool-dot" />{t.label}
             </button>
           ))}
-          <div className="pdf-tools-hint">Pick a field type and who fills it, then click on the page to drop it. Drag the box to move it, drag the corner handle to resize. Click a box to change its role or delete it. <strong>To autofill a Text box</strong> (client name, address, or an intake answer), drop a Text field, click it, then pick a source from the Autofill dropdown. Bind this template to a case type or campaign (top of page) to see that case's intake questions in the list.</div>
+          <div className="pdf-tools-hint">Pick a field type and who fills it, then click on the page to drop it. Drag to move, corner handle to resize. Click a box to select it.</div>
+
+          <div className="pdf-autofill-panel">
+            <div className="pdf-tools-label">Autofill fields{catalog.length > 0 ? ` (${catalog.length})` : ""}</div>
+            {(() => {
+              const selField = fields.find((f) => f.id === selected);
+              const isTextSel = selField && selField.type === "text";
+              return (
+                <>
+                  <div className="pdf-autofill-hint">
+                    {isTextSel
+                      ? "Click a field below to autofill the selected Text box with it."
+                      : "These are available to autofill. Drop a Text box and click it, then pick one of these."}
+                  </div>
+                  {catalog.length === 0 && <div className="muted" style={{ fontSize: 12, padding: "4px 0" }}>Bind this template to a case type or campaign (top of page) to load intake questions.</div>}
+                  {["Client", "Case", "Intake questions", "Other"].map((grp) => {
+                    const opts = catalog.filter((c) => c.group === grp);
+                    if (opts.length === 0) return null;
+                    return (
+                      <div key={grp} className="pdf-autofill-group">
+                        <div className="pdf-autofill-grouplabel">{grp}</div>
+                        <div className="pdf-autofill-chips">
+                          {opts.map((c) => (
+                            <button key={c.token}
+                              className={`pdf-autofill-chip ${isTextSel && selField!.mapTo === c.token ? "on" : ""}`}
+                              disabled={!isTextSel}
+                              title={isTextSel ? `Autofill selected box with ${c.label}` : "Select a Text box first"}
+                              onClick={() => isTextSel && setFieldMap(selField!.id, c.token)}>
+                              {c.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {isTextSel && selField!.mapTo && (
+                    <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => setFieldMap(selField!.id, "")}>Clear autofill on this box</button>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+
           <div className="pdf-legend">
             <span><i className="lg client" /> Client fills/signs</span>
             <span><i className="lg agent" /> Agent fills</span>

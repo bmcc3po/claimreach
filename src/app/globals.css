@@ -1508,3 +1508,14 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   .es-lead { font-size:17px; }
   .es-btn-go { font-size:21px; padding:20px; }
 }
+
+/* Always-visible autofill panel in the PDF field editor */
+.pdf-autofill-panel { margin-top:14px; padding-top:14px; border-top:1px solid var(--line,#e2e8f0); }
+.pdf-autofill-hint { font-size:11.5px; color:#64748b; margin:0 0 10px; line-height:1.4; }
+.pdf-autofill-group { margin-bottom:10px; }
+.pdf-autofill-grouplabel { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; margin:0 0 5px; }
+.pdf-autofill-chips { display:flex; flex-wrap:wrap; gap:5px; }
+.pdf-autofill-chip { font-size:11.5px; padding:5px 9px; border:1px solid #cbd5e1; border-radius:999px; background:#fff; color:#334155; cursor:pointer; }
+.pdf-autofill-chip:hover:not(:disabled) { border-color:#a855f7; background:#faf5ff; }
+.pdf-autofill-chip.on { border-color:#a855f7; background:#a855f7; color:#fff; font-weight:600; }
+.pdf-autofill-chip:disabled { opacity:.5; cursor:default; }
