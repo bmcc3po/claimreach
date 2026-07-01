@@ -34,7 +34,12 @@ export async function GET(req: NextRequest) {
   const admin = supabaseAdmin();
 
   const url = new URL(req.url);
-  const campaignId = url.searchParams.get("campaign_id");
+  let campaignId = url.searchParams.get("campaign_id");
+  const leadId = url.searchParams.get("lead_id");
+  if (!campaignId && leadId) {
+    const { data: ld } = await admin.from("leads").select("campaign_id").eq("id", leadId).maybeSingle();
+    campaignId = ld?.campaign_id || null;
+  }
   if (!campaignId) return NextResponse.json({ feeds: {} });
 
   const { data: c } = await admin.from("campaigns").select("retainer_packet, retainer_template_id").eq("id", campaignId).maybeSingle();

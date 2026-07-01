@@ -27,6 +27,13 @@ export default function ClaimIntake({
   );
 
   const [step, setStep] = useState(0);
+  const [autofillFeeds, setAutofillFeeds] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!leadId) return;
+    (async () => {
+      try { const d = await (await fetch(`/api/retainer-autofill-map?lead_id=${leadId}`)).json(); setAutofillFeeds(d.feeds ?? {}); } catch {}
+    })();
+  }, [leadId]);
   const [viewAll, setViewAll] = useState(false);
   const [locked, setLocked] = useState(true);
   const [scheduled, setScheduled] = useState(false);
@@ -195,19 +202,19 @@ export default function ClaimIntake({
                   seg.fields.map((f) => {
                     if (!fieldVisible(f, answers)) return null;
                     if (f.kind === "script") {
-                      return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />;
+                      return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} feeds={autofillFeeds[f.id]} />;
                     }
                     if (f.kind === "gate") {
                       return (
                         <div key={f.id} className="qcard gate-wrap">
-                            <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} />
+                            <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
                         </div>
                       );
                     }
                     const ans = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                     return (
                       <div key={f.id} className={`qcard ${ans ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                        <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} />
+                        <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
                       </div>
                     );
                   })
@@ -261,7 +268,7 @@ export default function ClaimIntake({
                       const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                       return (
                         <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                            <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} />
+                            <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
                         </div>
                       );
                     })}
@@ -272,10 +279,10 @@ export default function ClaimIntake({
               fields.forEach((f, i) => {
                 if (f.kind === "script") {
                   flush(`b${i}`);
-                  out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} />);
+                  out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} feeds={autofillFeeds[f.id]} />);
                 } else if (f.kind === "gate") {
                   flush(`b${i}`);
-                  out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} />);
+                  out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />);
                 } else if (SHORT.has(f.kind)) {
                   bucket.push(f);
                 } else {
@@ -283,7 +290,7 @@ export default function ClaimIntake({
                   const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                   out.push(
                     <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                      <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} />
+                      <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
                     </div>
                   );
                 }

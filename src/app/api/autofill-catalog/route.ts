@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   }
   const intakeOpts = (intake || [])
     .filter((f) => DATA_KINDS.includes(f.kind))
-    .map((f) => ({ group: "Intake questions", token: `intake.${f.id}`, label: f.label || f.id }));
+    .map((f, i) => ({ group: "Intake questions", token: `intake.${f.id}`, label: f.label || f.id, fieldId: f.id, qnum: i + 1 }));
 
   return NextResponse.json({ case_type: caseType, catalog: [...STANDARD, ...intakeOpts] });
 }

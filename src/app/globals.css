@@ -1525,3 +1525,9 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .pdf-autofill-chip.on { background:#a855f7; color:#fff; font-weight:600; border-color:#a855f7; }
 .pdf-autofill-chip.on::before { content:"✓"; width:auto; height:auto; background:none; color:#fff; font-size:12px; font-weight:800; margin-right:7px; }
 .pdf-autofill-chip:disabled { opacity:.5; cursor:default; }
+.pdf-autofill-chip.draggable { cursor:grab; }
+.pdf-autofill-chip .pdf-chip-label { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pdf-autofill-chip .pdf-chip-id { font-size:10px; font-family:ui-monospace,monospace; color:#a855f7; background:rgba(168,85,247,.1); padding:1px 5px; border-radius:4px; margin-left:6px; flex-shrink:0; }
+.pdf-autofill-chip.on .pdf-chip-id { color:#fff; background:rgba(255,255,255,.25); }
+.pdf-autofill-chip.draggable:active { cursor:grabbing; }
+.pdf-page.pdf-drop-ok { outline:2px dashed #a855f7; outline-offset:-2px; }

@@ -93,6 +93,21 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   }, [templateId]);
 
   // drop a new field where you click on the page
+  function onPageDrop(e: React.DragEvent, pageNum: number) {
+    const token = e.dataTransfer.getData("text/claimreach-token");
+    if (!token) return;
+    e.preventDefault();
+    const label = e.dataTransfer.getData("text/claimreach-label") || "Autofill";
+    const pageEl = e.currentTarget as HTMLElement;
+    const rect = pageEl.getBoundingClientRect();
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+    const w = 20, h = 5;
+    const nf: PField = { id: crypto.randomUUID(), type: "text", page: pageNum, xPct: clamp(xPct - w / 2, 0, 100 - w), yPct: clamp(yPct - h / 2, 0, 100 - h), wPct: w, hPct: h, role: "client", label, required: true, mapTo: token };
+    setFields((arr) => [...arr, nf]);
+    setSelected(nf.id);
+  }
+
   function onPageMouseDown(e: React.MouseEvent, pageNum: number) {
     // only drop if you clicked empty page area (not an existing field)
     if ((e.target as HTMLElement).closest(".pdf-field")) return;
@@ -240,8 +255,8 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                 <>
                   <div className="pdf-autofill-hint">
                     {isTextSel
-                      ? "Click a field below to autofill the selected Text box with it."
-                      : "These are available to autofill. Drop a Text box and click it, then pick one of these."}
+                      ? "Click a field to autofill the selected box, or drag any field onto the document to drop a new autofill box."
+                      : "Drag any field onto the document to drop an autofill box right where you want it."}
                   </div>
                   {catalog.filter((c) => c.group === "Intake questions").length === 0 && (
                     <div className="pdf-autofill-group">
@@ -263,11 +278,13 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                         <div className="pdf-autofill-chips">
                           {opts.map((c) => (
                             <button key={c.token}
-                              className={`pdf-autofill-chip ${isTextSel && selField!.mapTo === c.token ? "on" : ""}`}
-                              disabled={!isTextSel}
-                              title={isTextSel ? `Autofill selected box with ${c.label}` : "Select a Text box first"}
+                              draggable
+                              onDragStart={(e) => { e.dataTransfer.setData("text/claimreach-token", c.token); e.dataTransfer.setData("text/claimreach-label", c.label); e.dataTransfer.effectAllowed = "copy"; }}
+                              className={`pdf-autofill-chip draggable ${isTextSel && selField!.mapTo === c.token ? "on" : ""}`}
+                              title={isTextSel ? `Click to autofill selected box, or drag onto the document` : "Drag onto the document to place, or select a Text box first"}
                               onClick={() => isTextSel && setFieldMap(selField!.id, c.token)}>
-                              {c.label}
+                              <span className="pdf-chip-label">{c.label}</span>
+                              {(c as any).fieldId && <span className="pdf-chip-id">{(c as any).fieldId}</span>}
                             </button>
                           ))}
                         </div>
@@ -297,6 +314,8 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
             {pages.map((p) => (
               <div key={p.num} className="pdf-page" style={{ width: p.w, height: p.h }}
                 onMouseDown={(e) => onPageMouseDown(e, p.num)}
+                onDragOver={(e) => { if (e.dataTransfer.types.includes("text/claimreach-token")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+                onDrop={(e) => onPageDrop(e, p.num)}
                 ref={(el) => { if (el && !el.querySelector("canvas")) el.insertBefore(p.canvas, el.firstChild); }}>
                 {fields.filter((f) => f.page === p.num).map((f) => {
                   const sel = selected === f.id;
