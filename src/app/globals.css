@@ -1075,7 +1075,7 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .pdf-role-toggle button.on.agent { background: #d9982a; color: #1a1205; }
 
 .pdf-editor-body { display: flex; gap: 14px; flex: 1; min-height: 0; padding-top: 12px; }
-.pdf-tools { width: 200px; flex-shrink: 0; display: flex; flex-direction: column; gap: 7px; }
+.pdf-tools { width: 248px; flex-shrink: 0; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; }
 .pdf-tools-label { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 2px; }
 .pdf-tool { display: flex; align-items: center; gap: 9px; font-size: 13.5px; font-weight: 500; padding: 9px 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 9px; cursor: pointer; color: var(--ink); transition: all .12s; }
 .pdf-tool:hover { border-color: var(--fc); }
@@ -1510,15 +1510,18 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 }
 
 /* Always-visible autofill panel in the PDF field editor */
-.pdf-autofill-panel { margin-top:16px; padding-top:16px; border-top:1px solid var(--line,#e2e8f0); }
-.pdf-autofill-hint { font-size:12px; color:#64748b; margin:0 0 12px; line-height:1.45; }
+.pdf-autofill-panel { margin-top:14px; padding:14px; border:1px solid var(--line,#e2e8f0); border-radius:12px; background:var(--surface,#fff); }
+.pdf-autofill-panel > .pdf-tools-label { color:#a855f7; margin-bottom:8px; }
+.pdf-autofill-hint { font-size:12px; color:#64748b; margin:0 0 12px; line-height:1.45; padding:8px 10px; background:#faf5ff; border-radius:8px; }
+.pdf-autofill-scroll { max-height:340px; overflow-y:auto; margin:0 -4px; padding:0 4px; }
 .pdf-autofill-group { margin-bottom:14px; }
-.pdf-autofill-grouplabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#a855f7; margin:0 0 6px; }
-.pdf-autofill-chips { display:flex; flex-direction:column; gap:3px; }
-.pdf-autofill-chip { display:flex; align-items:center; width:100%; text-align:left; font-size:13px; padding:8px 10px; border:1px solid transparent; border-radius:8px; background:#f8fafc; color:#334155; cursor:pointer; transition:background .12s, border-color .12s; }
+.pdf-autofill-group:last-child { margin-bottom:0; }
+.pdf-autofill-grouplabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; margin:0 0 6px; }
+.pdf-autofill-chips { display:flex; flex-direction:column; gap:2px; }
+.pdf-autofill-chip { display:flex; align-items:center; width:100%; text-align:left; font-size:13px; padding:7px 10px; border:1px solid transparent; border-radius:8px; background:transparent; color:#334155; cursor:pointer; transition:background .12s, border-color .12s; }
 .pdf-autofill-chip::before { content:""; width:6px; height:6px; border-radius:50%; background:#cbd5e1; margin-right:9px; flex-shrink:0; }
 .pdf-autofill-chip:hover:not(:disabled) { background:#faf5ff; border-color:#e9d5ff; }
 .pdf-autofill-chip:hover:not(:disabled)::before { background:#a855f7; }
 .pdf-autofill-chip.on { background:#a855f7; color:#fff; font-weight:600; border-color:#a855f7; }
-.pdf-autofill-chip.on::before { content:"✓"; width:auto; height:auto; background:none; color:#fff; font-size:12px; font-weight:800; }
-.pdf-autofill-chip:disabled { opacity:.55; cursor:default; background:transparent; }
+.pdf-autofill-chip.on::before { content:"✓"; width:auto; height:auto; background:none; color:#fff; font-size:12px; font-weight:800; margin-right:7px; }
+.pdf-autofill-chip:disabled { opacity:.5; cursor:default; }

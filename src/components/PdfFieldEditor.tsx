@@ -33,6 +33,14 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
       try { const d = await (await fetch(`/api/autofill-catalog${qs ? "?" + qs : ""}`)).json(); setCatalog(d.catalog ?? []); } catch { setCatalog([]); }
     })();
   }, [campaignId, bindCaseType]);
+  // When a campaign is chosen, reflect its case type in the dropdown so the binding
+  // is visible and intake questions load without a separate step.
+  useEffect(() => {
+    if (!campaignId) return;
+    const c = campaigns.find((x: any) => x.id === campaignId);
+    const ct = (c?.case_type || c?.intake_template || "").toLowerCase();
+    if (ct && ct !== bindCaseType) setBindCaseType(ct);
+  }, [campaignId, campaigns]);
   useEffect(() => { (async () => { try { const d = await (await fetch("/api/campaigns")).json(); setCampaigns((d.campaigns ?? []).filter((c: any) => c.active)); } catch {} })(); }, []);
   const pageDims = useRef<Record<number, { w: number; h: number }>>({});
   const pageText = useRef<Record<number, { s: string; xPct: number; yPct: number }[]>>({});
@@ -245,6 +253,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                       </div>
                     </div>
                   )}
+                  <div className="pdf-autofill-scroll">
                   {["Client", "Case", "Intake questions", "Other"].map((grp) => {
                     const opts = catalog.filter((c) => c.group === grp);
                     if (opts.length === 0) return null;
@@ -265,6 +274,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                       </div>
                     );
                   })}
+                  </div>
                   {isTextSel && selField!.mapTo && (
                     <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => setFieldMap(selField!.id, "")}>Clear autofill on this box</button>
                   )}
