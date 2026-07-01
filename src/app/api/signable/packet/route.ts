@@ -90,6 +90,13 @@ export async function POST(req: NextRequest) {
   try {
     const { setClaimStatusForLeads } = await import("@/lib/claim-status");
     await setClaimStatusForLeads({ leadIds: [lead_id], status: "signed_grievous" });
+    try {
+      const { data: ld } = await admin.from("leads").select("lead_no, claimant_name, firm_id").eq("id", lead_id).maybeSingle();
+      await admin.from("notifications").insert({
+        firm_id: ld?.firm_id ?? null, sender: null, sender_name: "E-Sign", recipient: null, lead_id,
+        body: `Signed: ${ld?.claimant_name || "Client"} signed the retainer packet (${docs.length} document${docs.length === 1 ? "" : "s"})${ld?.lead_no ? ` (${ld.lead_no})` : ""}.`,
+      });
+    } catch {}
   } catch {}
 
   return NextResponse.json({ ok: true, signed: docs.length });

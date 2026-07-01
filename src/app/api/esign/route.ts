@@ -13,6 +13,8 @@ export async function POST(req: NextRequest) {
   if (!me || !["owner", "admin", "agent", "qa", "manager"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const b = await req.json();
+  const clientMsg = (b.client_message || "").trim();
+  const msgPrefix = clientMsg ? `${clientMsg}\n\n` : "";
   const admin = supabaseAdmin();
 
   // ---- B3: Send the campaign's retainer PACKET (retainer + HIPAA + HITECH) as
@@ -75,7 +77,7 @@ export async function POST(req: NextRequest) {
       try {
         await fetch(new URL("/api/justcall/action", req.url).toString(), {
           method: "POST", headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
-          body: JSON.stringify({ op: "sms", lead_id: lead.id, to: signerPhone, body: `Please review and sign your documents: ${link}` }),
+          body: JSON.stringify({ op: "sms", lead_id: lead.id, to: signerPhone, body: `${msgPrefix}Please review and sign your documents: ${link}` }),
         });
       } catch {}
     }
@@ -173,7 +175,7 @@ export async function POST(req: NextRequest) {
         try {
           const sr = await fetch(new URL("/api/justcall/action", req.url).toString(), {
             method: "POST", headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") || "" },
-            body: JSON.stringify({ op: "sms", lead_id: lead.id, to: signerPhoneP, body: `Please review and sign your retainer: ${link}` }),
+            body: JSON.stringify({ op: "sms", lead_id: lead.id, to: signerPhoneP, body: `${msgPrefix}Please review and sign your retainer: ${link}` }),
           });
           delivered = sr.ok ? "texted" : `text failed: ${((await sr.json().catch(() => ({}))).error) || sr.status}`;
         } catch (e: any) { delivered = `text failed: ${e?.message || "error"}`; }

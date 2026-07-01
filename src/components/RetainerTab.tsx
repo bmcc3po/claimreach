@@ -30,6 +30,8 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
   }
   const [msg, setMsg] = useState("");
   const [lastLink, setLastLink] = useState("");
+  const [sending, setSending] = useState(false);
+  const [clientMessage, setClientMessage] = useState("");
   const [approved, setApproved] = useState(false);
   const [signerName, setSignerName] = useState(""); const [signerEmail, setSignerEmail] = useState(""); const [signerPhone, setSignerPhone] = useState("");
   const [sendVia, setSendVia] = useState("both");
@@ -62,18 +64,36 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
   const [runningGrievous, setRunningGrievous] = useState(false);
   const canOverrideRole = role === "owner" || role === "admin";
   async function sendPacket() {
+    if (sending) return;
     if (!approved && !override) { setMsg("Grievous hasn't approved this file. Run a Grievous review, or check Override."); return; }
-    setMsg("Sending the retainer packet…");
-    const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "send_packet", lead_id: leadId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", override }) });
-    const d = await r.json();
-    if (d.ok) { setMsg(`Packet sent (${d.doc_count} document${d.doc_count === 1 ? "" : "s"}). Client signs once for all.`); if (d.link) setLastLink(d.link); load(); loadSignables(); }
-    else setMsg(d.error || "Packet send failed");
+    setSending(true); setMsg("Sending the retainer packet…");
+    try {
+      const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "send_packet", lead_id: leadId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", override, client_message: clientMessage }) });
+      const d = await r.json();
+      if (d.ok) { setMsg(`Packet sent to ${signerName || "client"} (${d.doc_count} document${d.doc_count === 1 ? "" : "s"}). ${d.delivered || ""} Client signs once for all.`); if (d.link) setLastLink(d.link); load(); loadSignables(); }
+      else setMsg(d.error || "Packet send failed");
+    } catch { setMsg("Packet send failed."); }
+    setSending(false);
   }
   async function loadSignables() {
     try { const d = await (await fetch(`/api/signable?lead_id=${leadId}`)).json(); setSignables(d.docs ?? []); } catch {}
   }
   useEffect(() => { loadSignables(); }, [leadId]);
+  const canDelete = role === "owner" || role === "admin";
+  async function cancelSignable(s: any) {
+    if (!confirm(`Cancel the pending signature for "${s.title}"? The client's link will stop working.${s.packet_group ? " This cancels the whole packet." : ""}`)) return;
+    const r = await fetch("/api/signable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "cancel", id: s.id }) });
+    const d = await r.json();
+    if (d.ok) { setMsg("Signature cancelled."); loadSignables(); } else setMsg(d.error || "Cancel failed");
+  }
+  async function deleteSignable(s: any) {
+    if (!confirm(`Delete the signing record for "${s.title}"? This permanently removes it${s.status === "signed" ? ", including the signed copy" : ""}.${s.packet_group ? " Delete the whole packet too?" : ""}`)) return;
+    const whole = s.packet_group ? confirm("Delete every document in this packet? OK = whole packet, Cancel = just this one.") : false;
+    const r = await fetch("/api/signable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "delete", id: s.id, whole_packet: whole }) });
+    const d = await r.json();
+    if (d.ok) { setMsg("Signing record deleted."); loadSignables(); } else setMsg(d.error || "Delete failed");
+  }
   async function runGrievous() {
     setRunningGrievous(true); setMsg("Running Grievous review on this file…");
     try {
@@ -88,13 +108,17 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
     finally { setRunningGrievous(false); }
   }
   async function sendPdfRetainer() {
+    if (sending) return;
     if (!sendPdfId) { setMsg("Pick a PDF template to send."); return; }
     if (!approved && !override) { setMsg("Grievous hasn't approved this file. Run a Grievous review, or check Override (owner/admin)."); return; }
-    setMsg(pdfMethod === "builtin" ? "Sending PDF retainer via in-house e-sign…" : "Sending PDF retainer via SignWell…");
-    const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "send_pdf_retainer", lead_id: leadId, pdf_template_id: sendPdfId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", method: pdfMethod, override }) });
-    const d = await r.json();
-    if (d.ok) { setMsg(pdfMethod === "builtin" ? `Sent. Link ${d.delivered || "created"} (envelope ${d.envelope_id || ""}). Use the link below if needed.` : "PDF retainer sent via SignWell."); if (d.link) setLastLink(d.link); load(); loadSignables(); } else setMsg(d.error || "Send failed");
+    setSending(true); setMsg(pdfMethod === "builtin" ? "Sending PDF retainer via in-house e-sign…" : "Sending PDF retainer via SignWell…");
+    try {
+      const r = await fetch("/api/esign", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "send_pdf_retainer", lead_id: leadId, pdf_template_id: sendPdfId, signer_name: signerName, signer_email: signerEmail, signer_phone: signerPhone, send_via: sendVia, certified: pdfMethod === "signwell", method: pdfMethod, override, client_message: clientMessage }) });
+      const d = await r.json();
+      if (d.ok) { setMsg(pdfMethod === "builtin" ? `Sent to ${signerName || "client"}. Link ${d.delivered || "created"}. Use the link below to preview or send manually.` : `Sent to ${signerName || "client"} via SignWell.`); if (d.link) setLastLink(d.link); load(); loadSignables(); } else setMsg(d.error || "Send failed");
+    } catch { setMsg("Send failed."); }
+    setSending(false);
   }
 
   async function load() {
@@ -258,7 +282,10 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
                 </select>
               )}
             </div>
-            <button className="btn gold" onClick={() => method === "signwell" ? sendForSign(preview.id) : sendBuiltin(preview.id)}>
+            <div className="row" style={{ marginBottom: 8 }}>
+              <textarea placeholder="Optional message to the client (goes out with the signing text, e.g. 'Hi Tony, here's your retainer to sign. Call me with any questions. - Brett')" value={clientMessage} onChange={(e) => setClientMessage(e.target.value)} rows={2} style={{ width: "100%", fontSize: 13 }} />
+            </div>
+            <button className="btn gold" disabled={sending} onClick={() => method === "signwell" ? sendForSign(preview.id) : sendBuiltin(preview.id)}>
               {method === "signwell" ? "Send retainer for eSign" : "Text client our signing link"}
             </button>
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
@@ -316,9 +343,11 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
                   <td className="muted">{s.sender_ip || "—"}</td>
                   <td className="muted">{s.signed_at ? new Date(s.signed_at).toLocaleString() : "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    {s.status !== "signed" && <a className="btn ghost sm" href={`/sign/${s.id}`} target="_blank" rel="noopener noreferrer">Open link</a>}
+                    {s.status !== "signed" && s.status !== "cancelled" && <a className="btn ghost sm" href={`/sign/${s.id}`} target="_blank" rel="noopener noreferrer">Open link</a>}
                     {s.completed_pdf_url && <a className="btn ghost sm" href={s.completed_pdf_url} target="_blank" rel="noopener noreferrer">Signed PDF</a>}
                     {s.cert_pdf_url && <a className="btn ghost sm" href={s.cert_pdf_url} target="_blank" rel="noopener noreferrer">Certificate</a>}
+                    {s.status !== "signed" && s.status !== "cancelled" && <button className="btn ghost sm" onClick={() => cancelSignable(s)}>Cancel</button>}
+                    {canDelete && <button className="btn ghost sm danger" onClick={() => deleteSignable(s)}>Delete</button>}
                   </td>
                 </tr>
               ))}
@@ -332,7 +361,7 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
             <div className="section-title" style={{ margin: 0 }}>Send retainer packet</div>
             <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>Sends this campaign's full packet (retainer + any HIPAA / HITECH) as one signing link. The client signs once and it applies to every document.</p>
           </div>
-          <button className="btn gold" onClick={sendPacket}>Send packet for signature</button>
+          <button className="btn gold" onClick={sendPacket} disabled={sending}>{sending ? "Sending…" : "Send packet for signature"}</button>
         </div>
         {!approved && (
           <div className="row" style={{ gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -417,7 +446,10 @@ export default function RetainerTab({ leadId, claimId, role }: { leadId: string;
               <span>Court-admissible certified signature. Requires signer email.</span>
             </button>
           </div>
-          <button className="btn gold" onClick={sendPdfRetainer}>Send for signature</button>
+          <div className="row" style={{ marginBottom: 10 }}>
+            <textarea placeholder="Optional message to the client (sent with the signing text)" value={clientMessage} onChange={(e) => setClientMessage(e.target.value)} rows={2} style={{ width: "100%", fontSize: 13 }} />
+          </div>
+          <button className="btn gold" onClick={sendPdfRetainer} disabled={sending}>{sending ? "Sending…" : "Send for signature"}</button>
           {!approved && (
             <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--st-warn-bg)", border: "1px solid var(--st-warn-bd)", borderRadius: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--st-warn)", marginBottom: 8 }}>Grievous hasn't approved this file yet.</div>

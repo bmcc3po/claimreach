@@ -137,6 +137,15 @@ export async function POST(req: NextRequest) {
       } catch {
         await admin.from("leads").update({ signed_at: now }).eq("id", doc.lead_id);
       }
+      // Alert the dashboard: an e-sign just completed. Broadcast (no recipient).
+      try {
+        const { data: ld } = await admin.from("leads").select("lead_no, claimant_name, firm_id").eq("id", doc.lead_id).maybeSingle();
+        await admin.from("notifications").insert({
+          firm_id: ld?.firm_id ?? doc.firm_id ?? null, sender: null, sender_name: "E-Sign",
+          recipient: null, lead_id: doc.lead_id,
+          body: `Signed: ${ld?.claimant_name || doc.signer_name || "Client"} signed ${doc.title || "the retainer"}${ld?.lead_no ? ` (${ld.lead_no})` : ""}.`,
+        });
+      } catch {}
     }
     try {
       const { recordAudit } = await import("@/lib/audit");

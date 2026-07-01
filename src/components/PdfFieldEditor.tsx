@@ -222,7 +222,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
               <span className="pdf-tool-dot" />{t.label}
             </button>
           ))}
-          <div className="pdf-tools-hint">Pick a field type and who fills it, then click on the page to drop it. Drag the box to move it, drag the corner handle to resize. Click a box to change its role or delete it.</div>
+          <div className="pdf-tools-hint">Pick a field type and who fills it, then click on the page to drop it. Drag the box to move it, drag the corner handle to resize. Click a box to change its role or delete it. <strong>To autofill a Text box</strong> (client name, address, or an intake answer), drop a Text field, click it, then pick a source from the Autofill dropdown. Bind this template to a case type or campaign (top of page) to see that case's intake questions in the list.</div>
           <div className="pdf-legend">
             <span><i className="lg client" /> Client fills/signs</span>
             <span><i className="lg agent" /> Agent fills</span>

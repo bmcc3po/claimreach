@@ -41,6 +41,7 @@ export default function SignPage({ id }: { id: string }) {
         setPdf(d.pdf || null);
         setName(d.doc.signer_name || "");
         if (d.doc.status === "signed") { setStep("done"); return; }
+        if (d.doc.status === "cancelled") { setErr("This signing link has been cancelled. Please contact us for a new one."); setStep("error"); return; }
         setStep("consent");
         // mark viewed (best-effort)
         fetch("/api/signable/submit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, op: "viewed" }) }).catch(() => {});
@@ -49,15 +50,35 @@ export default function SignPage({ id }: { id: string }) {
   }, [id]);
 
   // ---- drawing ----
+  // Size the canvas backing store to its actual displayed size (x devicePixelRatio)
+  // so finger drawing lands exactly under the touch on any screen. Without this the
+  // fixed 500-wide backing store mis-maps touches on phones (where 95% sign).
+  function fitCanvas() {
+    const c = canvasRef.current; if (!c) return;
+    const rect = c.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
+    if (c.width !== w || c.height !== h) {
+      c.width = w; c.height = h;
+      const ctx = c.getContext("2d")!; ctx.scale(dpr, dpr);
+    }
+  }
+  useEffect(() => {
+    fitCanvas();
+    const on = () => fitCanvas();
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, [step]);
   function pos(e: any) {
     const c = canvasRef.current!; const r = c.getBoundingClientRect();
     const t = e.touches?.[0];
+    // Coordinates in CSS pixels; the context is already scaled by DPR in fitCanvas.
     return { x: (t ? t.clientX : e.clientX) - r.left, y: (t ? t.clientY : e.clientY) - r.top };
   }
-  function start(e: any) { drawing.current = true; const c = canvasRef.current!.getContext("2d")!; const p = pos(e); c.beginPath(); c.moveTo(p.x, p.y); e.preventDefault(); }
-  function move(e: any) { if (!drawing.current) return; const c = canvasRef.current!.getContext("2d")!; const p = pos(e); c.lineTo(p.x, p.y); c.strokeStyle = "#10243f"; c.lineWidth = 2.5; c.lineCap = "round"; c.stroke(); hasInk.current = true; e.preventDefault(); }
+  function start(e: any) { fitCanvas(); drawing.current = true; const c = canvasRef.current!.getContext("2d")!; const p = pos(e); c.beginPath(); c.moveTo(p.x, p.y); e.preventDefault(); }
+  function move(e: any) { if (!drawing.current) return; const c = canvasRef.current!.getContext("2d")!; const p = pos(e); c.lineTo(p.x, p.y); c.strokeStyle = "#10243f"; c.lineWidth = 2.5; c.lineCap = "round"; c.lineJoin = "round"; c.stroke(); hasInk.current = true; e.preventDefault(); }
   function end() { drawing.current = false; }
-  function clearCanvas() { const c = canvasRef.current; if (!c) return; c.getContext("2d")!.clearRect(0, 0, c.width, c.height); hasInk.current = false; }
+  function clearCanvas() { const c = canvasRef.current; if (!c) return; const ctx = c.getContext("2d")!; ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0, 0, c.width, c.height); const dpr = window.devicePixelRatio||1; ctx.scale(dpr,dpr); hasInk.current = false; }
 
   function buildTypedSignature(): string {
     // Render the typed name in a signature font to a canvas -> dataURL.
@@ -181,7 +202,7 @@ export default function SignPage({ id }: { id: string }) {
 
           {mode === "draw" ? (
             <div className="sign-field">
-              <canvas ref={canvasRef} width={500} height={150} className="sign-canvas"
+              <canvas ref={canvasRef} className="sign-canvas"
                 onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
                 onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
               <button className="btn ghost sm" onClick={clearCanvas} type="button">Clear</button>

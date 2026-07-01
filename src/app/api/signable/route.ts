@@ -73,5 +73,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id: data.id, link });
   }
 
+  if (b.op === "cancel") {
+    // Cancel a pending signature (sent/viewed). Marks it cancelled; the sign page
+    // will refuse it. Does not delete, so the audit trail stays.
+    const { data: doc } = await sb.from("signable_documents").select("id, status, packet_group").eq("id", b.id).maybeSingle();
+    if (!doc) return NextResponse.json({ error: "Not found." }, { status: 404 });
+    if (doc.status === "signed") return NextResponse.json({ error: "Already signed. Use delete instead if this was an error." }, { status: 200 });
+    // If part of a packet, cancel the whole packet group.
+    if (doc.packet_group && b.whole_packet !== false) {
+      await sb.from("signable_documents").update({ status: "cancelled" }).eq("packet_group", doc.packet_group).neq("status", "signed");
+    } else {
+      await sb.from("signable_documents").update({ status: "cancelled" }).eq("id", b.id);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (b.op === "delete") {
+    // Hard delete (owner/admin only), for errors or cleanup. Works on any status
+    // including signed. Deletes the whole packet group if requested.
+    if (!["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "Only an owner or admin can delete a signing record." }, { status: 403 });
+    const { data: doc } = await sb.from("signable_documents").select("id, packet_group").eq("id", b.id).maybeSingle();
+    if (!doc) return NextResponse.json({ error: "Not found." }, { status: 404 });
+    if (doc.packet_group && b.whole_packet) {
+      await sb.from("signable_documents").delete().eq("packet_group", doc.packet_group);
+    } else {
+      await sb.from("signable_documents").delete().eq("id", b.id);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.json({ error: "unknown op" }, { status: 400 });
 }

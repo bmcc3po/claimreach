@@ -971,14 +971,12 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .tpl-card-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
 
 /* public built-in signing page */
-.sign-shell { min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:32px 16px; background:var(--bg, #0b1220); }
-.sign-card { width:100%; max-width:560px; background:var(--surface,#fff); border:1px solid var(--line,#e5e7eb); border-radius:16px; padding:28px; box-shadow:0 8px 40px rgba(0,0,0,.12); }
 .sign-card h2 { margin:0 0 14px; }
 .sign-body { font-size:14px; line-height:1.6; max-height:320px; overflow:auto; padding:14px; border:1px solid var(--line,#e5e7eb); border-radius:10px; background:var(--bg-subtle,#f8fafc); margin-bottom:16px; }
 .sign-field { margin-bottom:14px; }
 .sign-field label { display:block; font-size:12px; font-weight:600; margin-bottom:6px; color:var(--muted,#64748b); }
 .sign-field input { width:100%; }
-.sign-canvas { width:100%; height:150px; border:2px dashed var(--line,#cbd5e1); border-radius:10px; background:#fff; touch-action:none; cursor:crosshair; display:block; margin-bottom:6px; }
+.sign-canvas { width:100%; height:160px; border:2px dashed var(--line,#cbd5e1); border-radius:10px; background:#fff; touch-action:none; cursor:crosshair; display:block; margin-bottom:6px; }
 
 /* ============================================================
    Read-only case record (view mode) — clean, firm-grade
@@ -1427,3 +1425,23 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .sig-pad { border:2px dashed var(--line); border-radius:10px; background:#fff; touch-action:none; }
 .sig-pad canvas { width:100%; height:200px; display:block; }
 .sign-err { color:var(--danger,#c0392b); font-size:14px; margin:8px 0 0; }
+
+/* Mobile signing (95% of clients sign on a phone) */
+@media (max-width: 640px) {
+  .sign-shell { padding:12px 10px 48px; }
+  .sign-topbar, .sign-steps, .sign-card, .sign-foot { max-width:100%; }
+  .sign-card { padding:18px 16px; border-radius:12px; }
+  .sign-steps { gap:6px; }
+  .sign-stepchip { padding:7px 8px; font-size:11px; gap:5px; }
+  .sign-stepchip .sl, .sign-stepchip label { display:none; }
+  .sign-doc { padding:16px; max-height:52vh; }
+  .sign-consent { max-height:40vh; }
+  .sign-pdf { height:60vh; }
+  .packet-doc .sign-pdf { height:56vh; }
+  .sign-canvas { height:180px; }
+  .sign-cta { padding:16px; font-size:16px; min-height:52px; }
+  .sign-card h2 { font-size:19px; }
+  .sign-field input { font-size:16px; padding:12px; }  /* 16px stops iOS zoom-on-focus */
+  .sign-modeswitch .sign-tab { padding:10px 12px; font-size:14px; }
+  .sign-fontrow { flex-wrap:wrap; gap:8px; }
+}
