@@ -91,7 +91,7 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
                 <option value="tbi">tbi</option>
                 <option value="premises">premises</option>
               </select></label>
-              <label>Default retainer<select value={edit.retainer_template_id ?? ""} onChange={(e) => setEdit({ ...edit, retainer_template_id: e.target.value })}><option value="">None</option>{retainerTemplates.filter((t) => (t.kind ?? "text") === "text").map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+              <label>Default retainer<select value={edit.retainer_template_id ?? ""} onChange={(e) => setEdit({ ...edit, retainer_template_id: e.target.value })}><option value="">None (use packet below)</option>{retainerTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
               <label>Tier<input value={edit.tier ?? ""} onChange={(e) => setEdit({ ...edit, tier: e.target.value })} placeholder="A" /></label>
               <label>Bill rate (per sign)<input type="number" step="0.01" value={edit.bill_rate ?? ""} onChange={(e) => setEdit({ ...edit, bill_rate: parseFloat(e.target.value) })} placeholder="0.00" /></label>
             </div>

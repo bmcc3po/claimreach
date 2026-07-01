@@ -79,11 +79,13 @@ export default function RetainerTemplatesManager() {
       <button className="btn" onClick={() => fileRef.current?.click()}>⬆ Upload PDF</button>
 
       <table className="docket" style={{ marginTop: 12 }}>
-        <thead><tr><th>Name</th><th>Fields</th><th>Pages</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Case type</th><th>Default</th><th>Fields</th><th>Pages</th><th></th></tr></thead>
         <tbody>
           {pdfs.map((p) => (
             <tr key={p.id}>
               <td style={{ fontWeight: 600 }}>{p.name}</td>
+              <td>{p.case_type || "any"}</td>
+              <td>{p.is_default ? <span className="badge count">default</span> : "—"}</td>
               <td>{(p.fields?.length ?? 0)} fields</td>
               <td>{p.page_count ?? "—"} pages</td>
               <td style={{ whiteSpace: "nowrap" }}>
@@ -92,7 +94,7 @@ export default function RetainerTemplatesManager() {
               </td>
             </tr>
           ))}
-          {pdfs.length === 0 && <tr><td colSpan={4} className="muted">No PDF retainers uploaded yet.</td></tr>}
+          {pdfs.length === 0 && <tr><td colSpan={6} className="muted">No PDF retainers uploaded yet.</td></tr>}
         </tbody>
       </table>
     </div>

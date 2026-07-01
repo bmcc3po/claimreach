@@ -35,6 +35,13 @@ export default function RetainerEditor({ id }: { id: string }) {
   const isNew = id === "new";
   const [name, setName] = useState("");
   const [caseType, setCaseType] = useState("any");
+  const [intakeChips, setIntakeChips] = useState<{ id: string; label: string; token: string }[]>([]);
+  useEffect(() => {
+    if (!caseType || caseType === "any") { setIntakeChips([]); return; }
+    (async () => {
+      try { const d = await (await fetch(`/api/intake-fields?case_type=${caseType}`)).json(); setIntakeChips(d.fields ?? []); } catch { setIntakeChips([]); }
+    })();
+  }, [caseType]);
   const [isDefault, setIsDefault] = useState(false);
   const [body, setBody] = useState("");
   const [aiDesc, setAiDesc] = useState("");
@@ -106,6 +113,8 @@ export default function RetainerEditor({ id }: { id: string }) {
       <div className="section-title" style={{ marginBottom: 6 }}>Insert merge field</div>
       <div className="merge-row">
         {MERGE_FIELDS.map((m) => <button key={m.tok} className="merge-chip" onClick={() => insert(m.tok)} title={`{{${m.tok}}}`}>{m.label}</button>)}
+        {intakeChips.length > 0 && <span style={{ width: "100%", fontSize: 11, color: "var(--muted)", marginTop: 6 }}>Intake questions for {caseType}:</span>}
+        {intakeChips.map((m) => <button key={m.id} className="merge-chip" style={{ borderColor: "var(--accent)" }} onClick={() => insert(m.token)} title={`{{${m.token}}}`}>{m.label}</button>)}
       </div>
 
       <div className="retainer-split">

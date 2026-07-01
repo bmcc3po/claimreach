@@ -33,7 +33,12 @@ export async function POST(req: NextRequest) {
     // Build the packet list. Prefer the explicit packet; fall back to the single
     // default retainer template so existing campaigns still work.
     let packet: any[] = Array.isArray(campaign.retainer_packet) ? campaign.retainer_packet : [];
-    if (packet.length === 0 && campaign.retainer_template_id) packet = [{ kind: "text", id: campaign.retainer_template_id, label: "Retainer" }];
+    if (packet.length === 0 && campaign.retainer_template_id) {
+      // The default retainer might be a text template OR an uploaded PDF. Detect.
+      const rid = campaign.retainer_template_id;
+      const { data: isPdf } = await admin.from("pdf_templates").select("id").eq("id", rid).maybeSingle();
+      packet = [{ kind: isPdf ? "pdf" : "text", id: rid, label: "Retainer" }];
+    }
     if (packet.length === 0) return NextResponse.json({ error: "No retainer packet configured on this campaign. Add documents to the campaign's packet." }, { status: 200 });
 
     const signerName = b.signer_name || lead.claimant_name || `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Client";

@@ -26,6 +26,14 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignId, setCampaignId] = useState(initialCampaignId || "");
   const [bindCaseType, setBindCaseType] = useState(initialCaseType || "any");
+  const [intakeFields, setIntakeFields] = useState<{ id: string; label: string; token: string }[]>([]);
+  useEffect(() => {
+    const qs = campaignId ? `campaign_id=${campaignId}` : (bindCaseType && bindCaseType !== "any" ? `case_type=${bindCaseType}` : "");
+    if (!qs) { setIntakeFields([]); return; }
+    (async () => {
+      try { const d = await (await fetch(`/api/intake-fields?${qs}`)).json(); setIntakeFields(d.fields ?? []); } catch { setIntakeFields([]); }
+    })();
+  }, [campaignId, bindCaseType]);
   useEffect(() => { (async () => { try { const d = await (await fetch("/api/campaigns")).json(); setCampaigns((d.campaigns ?? []).filter((c: any) => c.active)); } catch {} })(); }, []);
   const pageDims = useRef<Record<number, { w: number; h: number }>>({});
   const pageText = useRef<Record<number, { s: string; xPct: number; yPct: number }[]>>({});
@@ -257,6 +265,11 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
                               <option value="case.type">Case type</option>
                               <option value="case.handling_attorney">Handling attorney</option>
                               <option value="today">Today's date</option>
+                              {intakeFields.length > 0 && (
+                                <optgroup label={`Intake questions (${bindCaseType !== "any" ? bindCaseType : "campaign"})`}>
+                                  {intakeFields.map((f) => <option key={f.id} value={f.token}>{f.label}</option>)}
+                                </optgroup>
+                              )}
                             </select>
                           )}
                           <button className="rm" onClick={() => removeField(f.id)}>Delete</button>
