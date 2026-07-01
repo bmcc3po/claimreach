@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
       const { recordAudit } = await import("@/lib/audit");
       await recordAudit({ firm_id: doc.firm_id, lead_id: doc.lead_id, category: "retainer", actor_name: doc.signer_name || "Client", description: `Client completed in-house e-sign of "${doc.title}" (envelope ${doc.envelope_id}). IP ${ip}.` });
     } catch {}
-    return NextResponse.json({ ok: true, envelope_id: doc.envelope_id, cert_pdf_url: certUrl });
+    return NextResponse.json({ ok: true, envelope_id: doc.envelope_id, cert_pdf_url: certUrl, completed_pdf_url: completedUrl, document_url: completedUrl || certUrl });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });
@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
   const id = new URL(req.url).searchParams.get("id");
   const admin = supabaseAdmin();
   const { data } = await admin.from("signable_documents")
-    .select("id, title, body_html, status, signer_name, certified, envelope_id, pdf_template_id, cert_pdf_url")
+    .select("id, title, body_html, status, signer_name, certified, envelope_id, pdf_template_id, cert_pdf_url, completed_pdf_url, lead_id")
     .eq("id", id).maybeSingle();
   if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
 
@@ -174,7 +174,18 @@ export async function GET(req: NextRequest) {
     const { data: tpl } = await admin.from("pdf_templates").select("file_path, fields, page_count, page_dims, file_name").eq("id", data.pdf_template_id).maybeSingle();
     if (tpl?.file_path) {
       const { data: signed } = await admin.storage.from("retainer-pdfs").createSignedUrl(tpl.file_path, 3600);
-      pdf = { url: signed?.signedUrl || null, fields: tpl.fields || [], page_count: tpl.page_count || 1, page_dims: tpl.page_dims || {}, file_name: tpl.file_name };
+      // Resolve the autofill values for this signer's file so the review screen can
+      // show the client exactly what data will be filled in (name, address, etc.).
+      let values: Record<string, string> = {};
+      try {
+        if ((data as any).lead_id) {
+          const { data: ld } = await admin.from("leads").select("*").eq("id", (data as any).lead_id).maybeSingle();
+          const { data: claim } = await admin.from("claims").select("answers").eq("lead_id", (data as any).lead_id).limit(1).maybeSingle();
+          const { retainerTokens } = await import("@/lib/retainer-tokens");
+          values = retainerTokens(ld || {}, claim?.answers ?? {});
+        }
+      } catch {}
+      pdf = { url: signed?.signedUrl || null, fields: tpl.fields || [], page_count: tpl.page_count || 1, page_dims: tpl.page_dims || {}, file_name: tpl.file_name, values };
     }
   }
   return NextResponse.json({ doc: data, pdf });

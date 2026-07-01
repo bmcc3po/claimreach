@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import DocViewer from "./DocViewer";
 
 // In-house e-sign, built for the hardest case: an 89-year-old with arthritis and
 // a 4-year-old helping. SIMPLE mode = giant buttons, three taps, no reading needed.
@@ -93,7 +94,7 @@ export default function SignPage({ id }: { id: string }) {
       body: JSON.stringify({ id, op: "sign", signed_name: name, signature_data: adopted, signature_type: mode, lock_date: lockDate, manual_date: lockDate ? null : manualDate }),
     });
     const d = await r.json();
-    if (d.ok) { setCertUrl(d.cert_pdf_url || null); setStep("done"); } else setErr(d.error || "Could not submit your signature.");
+    if (d.ok) { setCertUrl(d.document_url || d.completed_pdf_url || d.cert_pdf_url || null); setStep("done"); } else setErr(d.error || "Could not submit your signature.");
   }
 
   // ---------- RENDER ----------
@@ -106,7 +107,7 @@ export default function SignPage({ id }: { id: string }) {
         <div className="es-bigcheck">✓</div>
         <h1 className="es-h1">All done!</h1>
         <p className="es-lead">Thank you, {name || "you're all set"}. Your signature has been received.</p>
-        {certUrl && <a className="es-btn es-btn-ghost" href={certUrl} target="_blank" rel="noopener noreferrer">Download your copy</a>}
+        {certUrl && <a className="es-btn es-btn-ghost" href={certUrl} target="_blank" rel="noopener noreferrer">Download your signed document</a>}
         <p className="es-fine">You can close this page now.</p>
       </div>
     </div>
@@ -134,14 +135,26 @@ export default function SignPage({ id }: { id: string }) {
 
           {advanced && (
             <div className="es-doc-wrap">
-              <p className="es-rotate">Turn your phone sideways to read more easily.</p>
-              <div className="es-doc">
-                {pdf?.url
-                  ? <iframe src={`${pdf.url}#view=FitH`} title="Document" className="es-pdf" />
-                  : doc?.body_html
-                    ? <div className="es-body" dangerouslySetInnerHTML={{ __html: (doc.body_html || "").replace(/\n/g, "<br>") }} />
-                    : <p className="es-muted">Your document will be presented for signature.</p>}
-              </div>
+              {pdf?.values && Object.keys(pdf.values).length > 0 && (
+                <div className="es-confirm">
+                  <div className="es-confirm-title">Please confirm your information</div>
+                  {[
+                    ["Name", pdf.values["contact.full_name"] || name],
+                    ["Phone", pdf.values["contact.phone"]],
+                    ["Email", pdf.values["contact.email"]],
+                    ["Address", pdf.values["contact.address"]],
+                  ].filter(([, v]) => v).map(([k, v]) => (
+                    <div className="es-confirm-row" key={k}><span>{k}</span><strong>{v}</strong></div>
+                  ))}
+                  <p className="es-confirm-note">If anything is wrong, stop and call your representative before signing.</p>
+                </div>
+              )}
+              <p className="es-rotate">Scroll to read the full document. Your details are highlighted in blue.</p>
+              {pdf?.url
+                ? <DocViewer url={pdf.url} fields={pdf.fields || []} values={pdf.values || {}} />
+                : doc?.body_html
+                  ? <div className="es-doc"><div className="es-body" dangerouslySetInnerHTML={{ __html: (doc.body_html || "").replace(/\n/g, "<br>") }} /></div>
+                  : <p className="es-muted">Your document will be presented for signature.</p>}
             </div>
           )}
 

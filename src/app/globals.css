@@ -1531,3 +1531,12 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .pdf-autofill-chip.on .pdf-chip-id { color:#fff; background:rgba(255,255,255,.25); }
 .pdf-autofill-chip.draggable:active { cursor:grabbing; }
 .pdf-page.pdf-drop-ok { outline:2px dashed #a855f7; outline-offset:-2px; }
+
+/* Confirm-your-info box on the advanced sign view */
+.es-confirm { text-align:left; border:2px solid #bfdbfe; background:#eff6ff; border-radius:12px; padding:16px; margin:0 0 16px; }
+.es-confirm-title { font-size:16px; font-weight:800; color:#1e3a8a; margin:0 0 10px; }
+.es-confirm-row { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid #dbeafe; font-size:15px; }
+.es-confirm-row:last-of-type { border-bottom:none; }
+.es-confirm-row span { color:#475569; }
+.es-confirm-row strong { color:#0f172a; text-align:right; }
+.es-confirm-note { font-size:13px; color:#64748b; margin:10px 0 0; }
