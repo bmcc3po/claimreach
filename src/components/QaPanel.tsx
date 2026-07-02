@@ -106,7 +106,7 @@ export default function QaPanel({ leadId, claimId, role }: { leadId: string; cla
         <div className="qa-card grievous">
           <div className="qa-card-h">Grievous report card{grievousCard.created_at ? ` · ${new Date(grievousCard.created_at).toLocaleString()}` : ""}</div>
           <div className="qa-card-grid">
-            {[["QA pass", grievousCard.qa_pass], ["eSign", grievousCard.esign], ["Criteria", grievousCard.criteria], ["Leading", grievousCard.leading], ["Complete", grievousCard.complete]].map(([k, v]) => (
+            {[["QA pass", grievousCard.qa_pass], ["eSign", grievousCard.esign], ["Criteria", grievousCard.criteria], ["Leading", grievousCard.leading_flag], ["Complete", grievousCard.complete]].map(([k, v]) => (
               <div key={k as string} className="qa-card-cell"><span>{k}</span><b className={`qa-dot ${v === "green" ? "good" : v === "yellow" ? "warn" : v === "red" ? "bad" : ""}`}>{v || "—"}</b></div>
             ))}
           </div>

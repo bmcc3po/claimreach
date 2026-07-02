@@ -100,7 +100,7 @@ Return STRICT JSON only: {"verdict":"approved"|"rejected"|"advisory","score":0-1
       qa_pass: score != null ? (score >= 80 ? "green" : score >= 60 ? "yellow" : "red") : grade(false),
       esign: grade(false),
       criteria: verdict === "rejected" ? "red" : verdict === "approved" ? "green" : "yellow",
-      leading: leadingFlag ? "red" : "green",
+      leading_flag: leadingFlag ? "red" : "green",
       complete: incompleteFlag ? "yellow" : "green",
     });
     await sb.from("claims").update({ grievous_verdict: recVerdict }).eq("id", b.claim_id);

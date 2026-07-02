@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       : { data: null } as any;
     await admin.from("report_cards").insert({
       lead_id, claim_id: claim_id ?? null, agent_id: agent?.id ?? null, agent_name: agent?.full_name ?? null,
-      grader: "qa", qa_pass: b.g_qa_pass, esign: b.g_esign, criteria: b.g_criteria, leading: b.c_leading, complete: b.c_complete,
+      grader: "qa", qa_pass: b.g_qa_pass, esign: b.g_esign, criteria: b.g_criteria, leading_flag: b.c_leading, complete: b.c_complete,
     });
 
     // If there's an agent coaching note, drop it into the internal thread.

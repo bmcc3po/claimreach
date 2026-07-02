@@ -41,12 +41,19 @@ create table if not exists report_cards (
   qa_pass     text,
   esign       text,
   criteria    text,
-  leading     text,
+  leading_flag text,
   complete    text,
   created_at  timestamptz not null default now()
 );
 create index if not exists idx_report_cards_agent on report_cards(agent_id, created_at desc);
 create index if not exists idx_report_cards_lead on report_cards(lead_id);
+
+-- If a prior run created the column under its old reserved-word name, rename it.
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_name = 'report_cards' and column_name = 'leading') then
+    alter table report_cards rename column "leading" to leading_flag;
+  end if;
+end $$;
 
 -- Internal two-way comms thread per file between Grievous/QA and the agent.
 -- Firm NEVER sees these (separate from notes scope='message' client comms).
