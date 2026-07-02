@@ -80,6 +80,7 @@ export default function LeadWorkspace({
         <span className="lh-stat"><b>{stats.signed}</b> signed</span>
         <span className="lh-stat"><b>{stats.wip}</b> WIP</span>
         <a className="btn ghost sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
+        {["owner", "admin", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
         <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
         <LockFileButton lead={lead} />
       </div>
@@ -331,4 +332,50 @@ function LockFileButton({ lead }: { lead: any }) {
     if (r.ok) setLocked(!locked); else { const d = await r.json().catch(() => ({})); alert(`Lock failed: ${d.error || r.status}`); }
   }
   return <button className={`btn ${locked ? "" : "ghost"}`} onClick={toggle} disabled={busy} title={locked ? "File is locked, click to unlock" : "Lock this file read-only"}>{locked ? "🔓 Unlock file" : "🔒 Lock file"}</button>;
+}
+
+function SendToFirmButton({ leadId }: { leadId: string }) {
+  const [state, setState] = useState<{ sentAt: string | null; result: string | null }>({ sentAt: null, result: null });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/firm-delivery?lead_id=${leadId}`);
+        if (!r.ok) return;
+        const d = await r.json();
+        if (alive) setState({ sentAt: d.firm_sent_at ?? null, result: d.firm_send_result ?? null });
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [leadId]);
+
+  async function send(force: boolean) {
+    const already = !!state.sentAt;
+    if (already && !force) { if (!confirm("This file was already sent to the firm. Resend it?")) return; force = true; }
+    if (!force && !confirm("Send this file to the firm now?")) return;
+    setBusy(true); setMsg("");
+    try {
+      const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, force }) });
+      const d = await r.json();
+      setBusy(false);
+      if (!r.ok) { setMsg(d.error || "Send failed"); return; }
+      if (d.skipped) { setMsg(`Skipped: ${d.skipped}`); return; }
+      setState({ sentAt: new Date().toISOString(), result: "sent" });
+      setMsg(`Sent to ${d.to || "firm"} (${(d.attachments || []).length} attachment${(d.attachments || []).length === 1 ? "" : "s"})`);
+    } catch (e: any) { setBusy(false); setMsg(e?.message || "Send error"); }
+  }
+
+  const label = busy ? "Sending…" : state.sentAt ? "Resend to firm" : "Send to firm";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <button className="btn ghost sm" onClick={() => send(false)} disabled={busy}
+        title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this file's documents"}>
+        {label}
+      </button>
+      {msg && <span className="muted" style={{ fontSize: 11.5 }}>{msg}</span>}
+    </span>
+  );
 }

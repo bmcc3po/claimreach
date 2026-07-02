@@ -87,6 +87,15 @@ async function runStep(step: Step, ctx: { lead: any; firmId: string | null; orig
       });
       return { email: "queued" };
     }
+    case "send_to_firm": {
+      // Assemble the campaign's firm packet and email it. force resends past guard.
+      const { deliverLeadToFirm } = await import("@/lib/firm-delivery");
+      const res = await deliverLeadToFirm({
+        leadId: lead.id, triggeredBy: "automation", actorName: "Automation",
+        force: step.config?.force === true,
+      });
+      return res.ok ? { firm_delivery: res.skipped ? res.skipped : "sent", to: res.to } : { firm_delivery: "failed", error: res.error };
+    }
     case "wait":
     case "branch":
       return { control: step.type };

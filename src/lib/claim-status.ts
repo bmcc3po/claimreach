@@ -78,6 +78,17 @@ export async function setClaimStatusForLeads(opts: {
     } catch (e) {
       console.error("automation trigger failed", e);
     }
+    // Auto firm delivery: when a file reaches an unlocks_firm status, hand it to
+    // the firm (guarded so it sends once; respects the campaign master switch).
+    // Never blocks the status write.
+    if (def.unlocks_firm === true) {
+      try {
+        const { deliverLeadToFirm } = await import("@/lib/firm-delivery");
+        await deliverLeadToFirm({ leadId, triggeredBy: "auto", actorName: opts.actorName ?? "System" });
+      } catch (e) {
+        console.error("firm delivery trigger failed", e);
+      }
+    }
   }
   return { ok: true };
 }

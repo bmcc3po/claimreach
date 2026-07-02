@@ -34,6 +34,17 @@ export async function POST(req: NextRequest) {
     retainer_packet: Array.isArray(b.retainer_packet) ? b.retainer_packet : [],
     tier: b.tier || null, bill_rate: Number.isFinite(b.bill_rate) ? b.bill_rate : null,
     active: b.active !== false, updated_at: new Date().toISOString(),
+    // Firm delivery config.
+    firm_email: b.firm_email?.trim() || null,
+    firm_cc: b.firm_cc?.trim() || null,
+    firm_reply_to: b.firm_reply_to?.trim() || null,
+    firm_subject_tpl: b.firm_subject_tpl?.trim() || null,
+    firm_body_tpl: b.firm_body_tpl?.trim() || null,
+    attach_intake_pdf: b.attach_intake_pdf !== false,
+    attach_intake_csv: b.attach_intake_csv === true,
+    attach_retainer: b.attach_retainer !== false,
+    attach_certificate: b.attach_certificate !== false,
+    firm_delivery_on: b.firm_delivery_on === true,
   };
   if (b.id) {
     const { error } = await supabaseAdmin().from("campaigns").update(row).eq("id", b.id);

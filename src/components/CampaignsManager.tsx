@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
 
-interface Campaign { id: string; name: string; firm_id: string | null; case_type: string; intake_template: string | null; retainer_template_id: string | null; retainer_packet?: any[]; esign_required?: boolean; tier: string | null; bill_rate: number | null; active: boolean; firms?: { name: string } | null; }
+interface Campaign { id: string; name: string; firm_id: string | null; case_type: string; intake_template: string | null; retainer_template_id: string | null; retainer_packet?: any[]; esign_required?: boolean; tier: string | null; bill_rate: number | null; active: boolean; firms?: { name: string } | null;
+  firm_email?: string | null; firm_cc?: string | null; firm_reply_to?: string | null; firm_subject_tpl?: string | null; firm_body_tpl?: string | null;
+  attach_intake_pdf?: boolean; attach_intake_csv?: boolean; attach_retainer?: boolean; attach_certificate?: boolean; firm_delivery_on?: boolean; }
 
 export default function CampaignsManager({ initial, firms, retainerTemplates }: { initial: Campaign[]; firms: { id: string; name: string }[]; retainerTemplates: { id: string; name: string; kind?: "text" | "pdf" }[] }) {
   const [rows, setRows] = useState<Campaign[]>(initial);
@@ -121,6 +123,43 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
                 <button className="btn ghost sm" onClick={() => setEdit({ ...edit, retainer_packet: [...(edit.retainer_packet ?? []), { kind: "text", id: "", label: "" }] })}>+ Add document</button>
               </div>
             )}
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line, #e6e8ec)" }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <div className="section-title" style={{ margin: 0 }}>Firm delivery</div>
+                <label className="chk" style={{ fontSize: 13, fontWeight: 600 }}>
+                  <input type="checkbox" checked={edit.firm_delivery_on === true} onChange={(e) => setEdit({ ...edit, firm_delivery_on: e.target.checked })} />
+                  Auto-send on Ready/Sent to firm
+                </label>
+              </div>
+              <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>When a file reaches a status flagged "Unlocks file for firm", ClaimReach emails the firm the selected documents. Turn the switch off to send only with the manual "Send to firm" button on the file. Requires RESEND_API_KEY + EMAIL_FROM in Cloudflare.</p>
+
+              <div className="grid2" style={{ marginTop: 8 }}>
+                <label>Firm email<input value={edit.firm_email ?? ""} onChange={(e) => setEdit({ ...edit, firm_email: e.target.value })} placeholder="intake@firm.com" /></label>
+                <label>CC (comma-separated, optional)<input value={edit.firm_cc ?? ""} onChange={(e) => setEdit({ ...edit, firm_cc: e.target.value })} placeholder="paralegal@firm.com" /></label>
+                <label>Reply-to (optional)<input value={edit.firm_reply_to ?? ""} onChange={(e) => setEdit({ ...edit, firm_reply_to: e.target.value })} placeholder="cases@innovativeintake.com" /></label>
+              </div>
+
+              <label style={{ display: "block", marginTop: 8 }}>Email subject
+                <input value={edit.firm_subject_tpl ?? ""} onChange={(e) => setEdit({ ...edit, firm_subject_tpl: e.target.value })} placeholder="New signed file: {{contact.full_name}} ({{case.lead_no}})" />
+              </label>
+              <label style={{ display: "block", marginTop: 8 }}>Email body
+                <textarea value={edit.firm_body_tpl ?? ""} onChange={(e) => setEdit({ ...edit, firm_body_tpl: e.target.value })} rows={5} placeholder="Hello, please find the attached signed file for {{contact.full_name}} ({{case.lead_no}})..." style={{ width: "100%", fontFamily: "inherit" }} />
+              </label>
+              <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                Mail-merge tokens: <code>{"{{contact.full_name}}"}</code> <code>{"{{contact.first_name}}"}</code> <code>{"{{contact.phone}}"}</code> <code>{"{{contact.email}}"}</code> <code>{"{{case.lead_no}}"}</code> <code>{"{{case.type}}"}</code> <code>{"{{campaign.name}}"}</code>. Leave subject/body blank to use the default template.
+              </div>
+
+              <div style={{ marginTop: 12, padding: "10px 14px", background: "var(--script-bg)", borderRadius: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Attachments to include</div>
+                <div className="row" style={{ gap: 18, flexWrap: "wrap" }}>
+                  <label className="chk" style={{ fontSize: 13 }}><input type="checkbox" checked={edit.attach_intake_pdf !== false} onChange={(e) => setEdit({ ...edit, attach_intake_pdf: e.target.checked })} /> Intake Q&amp;A (PDF)</label>
+                  <label className="chk" style={{ fontSize: 13 }}><input type="checkbox" checked={edit.attach_intake_csv === true} onChange={(e) => setEdit({ ...edit, attach_intake_csv: e.target.checked })} /> Intake Q&amp;A (CSV)</label>
+                  <label className="chk" style={{ fontSize: 13 }}><input type="checkbox" checked={edit.attach_retainer !== false} onChange={(e) => setEdit({ ...edit, attach_retainer: e.target.checked })} /> Signed retainer</label>
+                  <label className="chk" style={{ fontSize: 13 }}><input type="checkbox" checked={edit.attach_certificate !== false} onChange={(e) => setEdit({ ...edit, attach_certificate: e.target.checked })} /> Certificate of signature</label>
+                </div>
+              </div>
+            </div>
+
             <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
               <button className="btn ghost" onClick={() => setEdit(null)}>Cancel</button>
               <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save campaign"}</button>
