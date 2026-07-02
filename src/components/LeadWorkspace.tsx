@@ -67,46 +67,37 @@ export default function LeadWorkspace({
 
   return (
     <div>
-      {/* Compact lead header: everything on one tight strip, no dead space. */}
-      <div className="leadhead-compact">
-        <a className="qtab-back" href="/leads" title="Back to your queue">← Queue</a>
-        <div className="leadhead-id">
-          <h2>{lead.claimant_name ?? "Unnamed claimant"}</h2>
-          <div className="leadhead-sub">
-            <span className="leadhead-file">{lead.lead_no}</span>
-            <span className="leadhead-dot">·</span>
-            <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={lead.current_user_role} />
-            <span className="leadhead-dot">·</span>
-            <span className="muted">Created {new Date(lead.created_at).toLocaleDateString()}</span>
-          </div>
-          {claims.length > 1 && (
-            <div className="claimsrow" style={{ marginTop: 8 }}>
-              {claims.map((c) => (
-                <button key={c.id} className={`claimtab ${activeClaimId === c.id ? "on" : ""}`} onClick={() => setActiveClaimId(c.id)}>
-                  {(c.campaign || c.claim_type)}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="leadhead-actions">
-          <div className="myday-inline">
-            <span><b>{stats.signed}</b> signed</span>
-            <span><b>{stats.wip}</b> WIP</span>
-          </div>
-          <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
-          <LockFileButton lead={lead} />
-        </div>
+      {/* One dense header line: name, file, campaign, date, status, lock. */}
+      <div className="leadhead-line">
+        <a className="qtab-back" href="/leads" title="Back to your queue">←</a>
+        <span className="lh-name">{lead.claimant_name ?? "Unnamed claimant"}</span>
+        <span className="lh-file">{lead.lead_no}</span>
+        <span className="leadhead-dot">·</span>
+        <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={lead.current_user_role} />
+        <span className="leadhead-dot">·</span>
+        <span className="muted lh-date">{new Date(lead.created_at).toLocaleDateString()}</span>
+        <span className="lh-spacer" />
+        <span className="lh-stat"><b>{stats.signed}</b> signed</span>
+        <span className="lh-stat"><b>{stats.wip}</b> WIP</span>
+        <a className="btn ghost sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
+        <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+        <LockFileButton lead={lead} />
       </div>
+      {claims.length > 1 && (
+        <div className="claimsrow" style={{ margin: "0 0 12px" }}>
+          {claims.map((c) => (
+            <button key={c.id} className={`claimtab ${activeClaimId === c.id ? "on" : ""}`} onClick={() => setActiveClaimId(c.id)}>
+              {(c.campaign || c.claim_type)}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Injured-party state: collapsible (it's a big block once you've set it). */}
-      <CollapsiblePanel id="lead_pnc" title="Injured party" sub={lead.claimant_name ?? undefined} defaultOpen={true}>
+      {/* Everything else, injured-party + progress, folds into ONE panel that
+          shows just the PNC name when collapsed. */}
+      <CollapsiblePanel id="lead_detail" title="File detail" sub={`${lead.claimant_name ?? ""}${STAGE_LABELS?.[activeClaim?.status ?? lead.status ?? "new"] ? " · " + STAGE_LABELS[activeClaim?.status ?? lead.status ?? "new"] : ""}`} defaultOpen={false}>
         <PncBanner lead={lead} />
-      </CollapsiblePanel>
-
-      {/* Progress: collapsible per-user. */}
-      <CollapsiblePanel id="lead_pipeline" title="Progress" sub={STAGE_LABELS?.[activeClaim?.status ?? lead.status ?? "new"] || undefined} defaultOpen={false}>
-        <PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} />
+        <div style={{ marginTop: 12 }}><PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} /></div>
       </CollapsiblePanel>
 
       {/* WIP fix banner: QA sent this back. Resubmit returns it to the QA queue. */}

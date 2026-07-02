@@ -48,6 +48,7 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
               <td>{c.active ? <span className="badge count">active</span> : <span className="badge dq">inactive</span>}</td>
               <td style={{ whiteSpace: "nowrap" }}>
                 <button className="btn ghost sm" onClick={() => setEdit({ ...c })}>Edit</button>
+                <a className="btn ghost sm" href={`/api/export/answers-csv?campaign_id=${c.id}`} target="_blank" rel="noopener noreferrer" title="Download all intakes for this campaign as a CSV">Export intakes</a>
                 {c.active && <button className="btn ghost sm danger" onClick={() => deactivate(c.id)}>Deactivate</button>}
               </td>
             </tr>
