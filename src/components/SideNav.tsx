@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Logo } from "./Logo";
 import Icon from "./ui/Icon";
+const BUILD_STAMP = "2026.07.03.1509";
 
 type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
@@ -113,6 +114,7 @@ export default function SideNav({
           <button className="minbtn" onClick={() => setMin(!min)} aria-label="Toggle menu">
             {min ? "»" : "« Minimize"}
           </button>
+          {!min && <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", padding: "6px 14px 0", letterSpacing: ".04em" }}>build {BUILD_STAMP}</div>}
         </div>
       </aside>
 
