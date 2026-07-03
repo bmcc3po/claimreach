@@ -6,6 +6,7 @@ import TierBadge from "./TierBadge";
 import StatusBadge from "./ui/StatusBadge";
 import RowActions from "./ui/RowActions";
 import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, type StatusDef, type DqReason } from "@/lib/statuses";
+import { primaryClock } from "@/lib/sla-clocks";
 
 type Row = any;
 
@@ -30,6 +31,12 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     let r = leads.map((l) => {
       const c = (l.claims ?? [])[0] ?? {};
       const status = c.status ?? "new";
+      const statusDef = statuses.find((s) => s.key === status);
+      const clock = primaryClock({
+        signed_at: l.signed_at, firm_sent_at: l.firm_sent_at,
+        esign_sent_at: l.esign_sent_at, esign_status: null,
+        current_status: status, statusLabel: statusDef?.label ?? status,
+      });
       return {
         id: l.id, lead_no: l.lead_no, firm_ref: l.firm_ref_no ?? "",
         name: l.claimant_name ?? "—", phone: l.phone ?? "—",
@@ -38,7 +45,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         status, stage: l.stage ?? "referral_received",
         tier: c.tier ?? "", tier_letter: c.tier_letter, tier_number: c.tier_number,
         summary: c.case_summary ?? "—", created: l.created_at, updated: l.updated_at,
-        flag: l.supervisor_flag,
+        flag: l.supervisor_flag, clock,
         needsAction: status === "new" || status === "contact_attempted" || l.supervisor_flag,
       };
     });
@@ -220,7 +227,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   {canBulk && <td><input type="checkbox" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} /></td>}
                   <td>{r.needsAction && <span className="dot" title="Needs action" />}</td>
                   <td><Link href={`${basePath}/${r.id}`}>{r.lead_no}</Link></td>
-                  <td style={{ fontWeight: 600 }}>{r.name}</td>
+                  <td style={{ fontWeight: 600 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name}{r.clock && <ClockChip clock={r.clock} />}</span></td>
                   <td style={{ whiteSpace: "nowrap" }}>{r.phone}</td>
                   <td>{r.campaign}</td>
                   <td><TierBadge letter={r.tier_letter} number={r.tier_number} claimType={r.type} /></td>
@@ -265,7 +272,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                         <strong style={{ fontSize: 13 }}>{r.lead_no}</strong>
                         <TierBadge letter={r.tier_letter} number={r.tier_number} claimType={r.type} />
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: 14, margin: "3px 0" }}>{r.name}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, margin: "3px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name}{r.clock && <ClockChip clock={r.clock} />}</div>
                       <div className="muted" style={{ fontSize: 12 }}>{r.type}{r.state ? ` · ${r.state}` : ""}</div>
                       <div className="row" style={{ marginTop: 7, justifyContent: "space-between" }}>
                         <span className="badge stage" style={{ fontSize: 10 }}>{STAGE_LABELS[r.stage] ?? r.stage}</span>
@@ -315,5 +322,33 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         </div>
       )}
     </div>
+  );
+}
+
+// In-line SLA countdown chip, shown next to a file name the moment it's on a
+// clock (signed & racing to firm, or e-sign sent & needs a callback). In your
+// face, right where you're already looking. Nobody hides.
+function ClockChip({ clock }: { clock: any }) {
+  const tone: Record<string, { bg: string; fg: string; bd: string }> = {
+    ok:      { bg: "rgba(34,197,94,.10)",  fg: "#15803d", bd: "rgba(34,197,94,.30)" },
+    warn:    { bg: "rgba(245,183,49,.14)", fg: "#a16207", bd: "rgba(245,183,49,.40)" },
+    urgent:  { bg: "rgba(249,115,22,.14)", fg: "#c2410c", bd: "rgba(249,115,22,.45)" },
+    overdue: { bg: "rgba(239,68,68,.14)",  fg: "#b91c1c", bd: "rgba(239,68,68,.55)" },
+  };
+  const t = tone[clock.tone] ?? tone.ok;
+  const icon = clock.kind === "esign_chase" ? "✍️" : "📤";
+  const title = clock.kind === "esign_chase"
+    ? "E-sign sent, get them back on the line within 72h"
+    : `Signed, deliver to firm within 72h${clock.stuckStage ? " · " + clock.stuckStage : ""}`;
+  return (
+    <span title={title} style={{
+      display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 9px",
+      borderRadius: 999, fontSize: 12, fontWeight: 700, lineHeight: 1.6,
+      background: t.bg, color: t.fg, border: `1px solid ${t.bd}`,
+      fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
+    }}>
+      <span style={{ fontSize: 11 }}>{icon}</span>{clock.countdownText}
+      {clock.tone === "overdue" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: t.fg, display: "inline-block" }} />}
+    </span>
   );
 }

@@ -6,7 +6,7 @@ export default async function LeadsPage() {
   const sb = await supabaseServer();
   const { data: leads } = await sb
     .from("leads")
-    .select("id, lead_no, firm_ref_no, claimant_name, phone, email, address, stage, supervisor_flag, created_at, updated_at, case_type")
+    .select("id, lead_no, firm_ref_no, claimant_name, phone, email, address, stage, supervisor_flag, created_at, updated_at, case_type, status, signed_at, firm_sent_at, esign_sent_at")
     .order("updated_at", { ascending: false })
     .limit(300);
 

@@ -71,6 +71,8 @@ export async function POST(req: NextRequest) {
       }
       await admin.from("signable_documents").insert(row);
     }
+    // Start the e-sign chase clock on the lead (72h to get them back on the line).
+    await admin.from("leads").update({ esign_sent_at: new Date().toISOString() }).eq("id", lead.id);
 
     const link = `${new URL(req.url).origin}/sign/packet/${group}`;
     const pResults: string[] = [];
@@ -147,6 +149,7 @@ export async function POST(req: NextRequest) {
     }
 
     await recordAudit({ firm_id: lead?.firm_id ?? me.firm_id, lead_id: lead?.id, actor: auth.user.id, actor_name: me.full_name, category: "retainer", description: `Sent retainer for signature via SignWell to ${signerName} (${b.send_via || "email"}).` });
+    if (lead?.id) await admin.from("leads").update({ esign_sent_at: new Date().toISOString() }).eq("id", lead.id);
 
     return NextResponse.json({ ok: true, signing_url: (res as any).signing_url });
   }

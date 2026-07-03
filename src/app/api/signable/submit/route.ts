@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
         const { setClaimStatusForLeads } = await import("@/lib/claim-status");
         await setClaimStatusForLeads({ leadIds: [doc.lead_id], status: "signed_grievous", actorName: doc.signer_name || "Client" });
       } catch {
-        await admin.from("leads").update({ signed_at: now }).eq("id", doc.lead_id);
+        await admin.from("leads").update({ signed_at: now, esign_sent_at: null }).eq("id", doc.lead_id);
       }
       // Alert the dashboard: an e-sign just completed. Broadcast (no recipient).
       try {

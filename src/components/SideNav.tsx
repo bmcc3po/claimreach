@@ -9,6 +9,7 @@ type NavGroup = { id: string; label: string | null; items: NavItem[] };
 const STAFF_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
     { href: "/dashboard", icon: "home", label: "Home" },
+    { href: "/board", icon: "chart", label: "Delivery Board" },
     { href: "/leads", icon: "files", label: "Leads" },
     { href: "/intake", icon: "plus", label: "Add lead" },
     { href: "/queue", icon: "phone", label: "My queue" },
