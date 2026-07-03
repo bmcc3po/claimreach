@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Campaign { id: string; name: string; firm_id: string | null; case_type: string; intake_template: string | null; retainer_template_id: string | null; retainer_packet?: any[]; esign_required?: boolean; tier: string | null; bill_rate: number | null; active: boolean; firms?: { name: string } | null;
   firm_email?: string | null; firm_cc?: string | null; firm_reply_to?: string | null; firm_subject_tpl?: string | null; firm_body_tpl?: string | null;
@@ -10,6 +10,19 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
   const [edit, setEdit] = useState<Partial<Campaign> | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+
+  // Every selectable form = built-in types + every PUBLISHED builder form (so a
+  // seeded/imported form like Beta Motel appears here automatically).
+  const [claimTypes, setClaimTypes] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/claim-types");
+        const d = await r.json();
+        if (Array.isArray(d.types)) setClaimTypes(d.types);
+      } catch {}
+    })();
+  }, []);
 
   async function save() {
     if (!edit?.name?.trim() || !edit?.case_type?.trim()) { setMsg("Name and case type are required."); return; }
@@ -68,31 +81,11 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
               <label>Firm<select value={edit.firm_id ?? ""} onChange={(e) => setEdit({ ...edit, firm_id: e.target.value })}><option value="">Select firm…</option>{firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
               <label>Case type<select value={edit.case_type ?? ""} onChange={(e) => setEdit({ ...edit, case_type: e.target.value })}>
                 <option value="">Select case type…</option>
-                <option value="motel_trafficking">motel_trafficking</option>
-                <option value="bard_powerport">bard_powerport</option>
-                <option value="pfas">pfas</option>
-                <option value="medmal">medmal</option>
-                <option value="mva">mva</option>
-                <option value="big_trucking">big_trucking</option>
-                <option value="tbi">tbi</option>
-                <option value="premises">premises</option>
-                <option value="sex_abuse">sex_abuse</option>
-                <option value="consumer_product">consumer_product</option>
-                <option value="environmental">environmental</option>
-                <option value="birth_injury">birth_injury</option>
-                <option value="negligent_security">negligent_security</option>
-                <option value="workplace">workplace</option>
+                {claimTypes.map((t) => <option key={t.value} value={t.value}>{t.label !== t.value ? `${t.label} (${t.value})` : t.value}</option>)}
               </select></label>
               <label>Intake template<select value={edit.intake_template ?? ""} onChange={(e) => setEdit({ ...edit, intake_template: e.target.value })}>
                 <option value="">Same as case type ({edit.case_type || "—"})</option>
-                <option value="motel_trafficking">motel_trafficking</option>
-                <option value="bard_powerport">bard_powerport</option>
-                <option value="pfas">pfas</option>
-                <option value="medmal">medmal</option>
-                <option value="mva">mva</option>
-                <option value="big_trucking">big_trucking</option>
-                <option value="tbi">tbi</option>
-                <option value="premises">premises</option>
+                {claimTypes.map((t) => <option key={t.value} value={t.value}>{t.label !== t.value ? `${t.label} (${t.value})` : t.value}</option>)}
               </select></label>
               <label>Default retainer<select value={edit.retainer_template_id ?? ""} onChange={(e) => setEdit({ ...edit, retainer_template_id: e.target.value })}><option value="">None (use packet below)</option>{retainerTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
               <label>Tier<input value={edit.tier ?? ""} onChange={(e) => setEdit({ ...edit, tier: e.target.value })} placeholder="A" /></label>
