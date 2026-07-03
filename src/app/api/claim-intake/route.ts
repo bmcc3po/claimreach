@@ -39,9 +39,31 @@ export async function POST(req: NextRequest) {
   if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
 
   if (Array.isArray(properties)) {
+    // Whitelist writable columns server-side too. brand_mismatch is a GENERATED
+    // column and must never be written; this guards against any caller (not just
+    // the intake UI) sending it and failing the whole insert.
+    const WRITABLE_PROP_COLS = new Set([
+      "canonical_id", "sequence_order", "remembered_brand", "current_brand",
+      "name_as_recalled", "address", "cross_streets", "city", "state",
+      "place_id", "lat", "lng", "loc_confidence", "landmarks",
+      "stay_month", "stay_year", "stay_duration", "room_floor", "age_at_time",
+      "under_18", "acts_count_here", "who_booked_paid", "payment_method",
+      "men_per_day", "asked_staff_for_help", "asked_whom", "police_emt_called",
+      "repeatedly_same_motel", "specific_rooms_req", "room_change_freq",
+      "visitors_check_desk", "men_waiting_areas", "housekeeping_entered",
+      "towel_change_freq", "sheet_change_freq", "dnd_long_periods", "condoms_visible",
+      "staff_interact_traffk", "staff_interact_victim", "mgmt_intervened",
+      "violence_public_areas", "drug_paraphernalia", "staff_witnessed_drugs",
+      "staff_knowledge_other", "has_variance", "variance_notes",
+      "variance_trafficker", "variance_control",
+    ]);
     await sb.from("claim_properties").delete().eq("claim_id", claim_id);
     if (properties.length) {
-      const rows = properties.map((p: any, i: number) => ({ ...p, claim_id, firm_id, sequence_order: i + 1 }));
+      const rows = properties.map((p: any, i: number) => {
+        const clean: Record<string, any> = {};
+        for (const k of Object.keys(p)) if (WRITABLE_PROP_COLS.has(k)) clean[k] = p[k];
+        return { ...clean, claim_id, firm_id, sequence_order: i + 1 };
+      });
       const { error: pErr } = await sb.from("claim_properties").insert(rows);
       if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
     }

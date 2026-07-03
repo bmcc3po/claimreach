@@ -426,8 +426,28 @@ function cleanAnswers(o: Record<string, any>, claimType?: string) {
   for (const k of Object.keys(o)) if (!SYNTH.has(k)) out[k] = o[k];
   return out;
 }
+// Whitelist of writable claim_properties columns. This is intentionally a
+// whitelist, not a blocklist: brand_mismatch is a GENERATED column (Postgres
+// computes it from remembered_brand vs current_brand), so any attempt to write
+// it fails the whole insert. Only these columns may be sent.
+const WRITABLE_PROP_COLS = [
+  "canonical_id", "sequence_order", "remembered_brand", "current_brand",
+  "name_as_recalled", "address", "cross_streets", "city", "state",
+  "place_id", "lat", "lng", "loc_confidence", "landmarks",
+  "stay_month", "stay_year", "stay_duration", "room_floor", "age_at_time",
+  "under_18", "acts_count_here", "who_booked_paid", "payment_method",
+  "men_per_day", "asked_staff_for_help", "asked_whom", "police_emt_called",
+  "repeatedly_same_motel", "specific_rooms_req", "room_change_freq",
+  "visitors_check_desk", "men_waiting_areas", "housekeeping_entered",
+  "towel_change_freq", "sheet_change_freq", "dnd_long_periods", "condoms_visible",
+  "staff_interact_traffk", "staff_interact_victim", "mgmt_intervened",
+  "violence_public_areas", "drug_paraphernalia", "staff_witnessed_drugs",
+  "staff_knowledge_other", "has_variance", "variance_notes",
+  "variance_trafficker", "variance_control",
+] as const;
+
 function cleanProp(o: Record<string, any>) {
   const out: Record<string, any> = {};
-  for (const k of Object.keys(o)) if (k !== "name") out[k] = o[k];
+  for (const k of WRITABLE_PROP_COLS) if (o[k] !== undefined) out[k] = o[k];
   return out;
 }

@@ -87,7 +87,7 @@ export default function FieldRenderer({
       return (
         <div className="field">{label}{note}
           <input type="text" value={value ?? ""}
-            placeholder={field.kind === "monthyear" ? "MM/YYYY" : ""}
+            placeholder={field.placeholder ?? (field.kind === "monthyear" ? "MM/YYYY" : "")}
             onChange={(e) => onChange(e.target.value)} />
         </div>
       );
