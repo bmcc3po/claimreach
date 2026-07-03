@@ -43,7 +43,7 @@ export default function ClaimIntake({
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers || {});
   const [props, setProps] = useState<PropertyState[]>(
     (initialProperties || []).map((p, i) => ({
-      _key: `p${i}`, values: p,
+      _key: `p${i}`, values: { ...(p.custom && typeof p.custom === "object" ? p.custom : {}), ...p },
       resolved: p.place_id ? { place_id: p.place_id, name: p.name_as_recalled, address: p.address, lat: p.lat, lng: p.lng } : undefined,
     }))
   );
@@ -51,7 +51,29 @@ export default function ClaimIntake({
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const isProps = (id: string) => id === "s_properties";
+  // A section is the "property section" if it contains the property_lookup
+  // widget. Detecting by content (not a hardcoded id) means imported/beta forms
+  // like Beta Motel get the Google finder + add-multiple UI too, regardless of
+  // what their section id is.
+  const propSectionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const seg of segments) {
+      if (seg.fields.some((f: any) => f.kind === "property_lookup" || f.scope === "property")) ids.add(seg.id);
+    }
+    // Back-compat: the built-in form uses this id explicitly.
+    ids.add("s_properties");
+    return ids;
+  }, [segments]);
+  const isProps = (id: string) => propSectionIds.has(id);
+  // The property questions for THIS form (built-in or imported/beta). Drives what
+  // PropertyCard renders per hotel, so Beta Motel shows its own property fields.
+  const propFields = useMemo(() => {
+    const fs: any[] = [];
+    for (const seg of segments) for (const f of seg.fields) {
+      if ((f.scope === "property" || f.kind === "property_lookup") && f.kind !== "section" && f.kind !== "script") fs.push(f);
+    }
+    return fs.length ? fs : PROP_FIELDS;
+  }, [segments]);
   const isSchedule = (id: string) => id === "schedule";
   // Global question numbers — every answerable question across the whole intake gets
   // a sequential number so agents can say "read question 5 verbatim".
@@ -68,6 +90,34 @@ export default function ClaimIntake({
   }, [segments]);
   const curStep = steps[step];
   const curSegment = segments.find((s) => s.id === curStep.id);
+
+  // Live completion counter across the ENTIRE intake. Total answerable questions
+  // vs how many are still blank, so the agent and QA always know exactly how much
+  // is left. Property-scope questions count once per property added.
+  const completion = useMemo(() => {
+    const isBlank = (v: any) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+    let total = 0, answered = 0;
+    for (const seg of segments) {
+      for (const f of seg.fields) {
+        if (["section", "script"].includes(f.kind)) continue;
+        if (f.scope === "property" || f.kind === "property_lookup") {
+          // Count property questions across each property block the agent added.
+          const blocks = props.length || 0;
+          if (f.kind === "property_lookup") {
+            total += Math.max(1, blocks);
+            for (const p of props) if (!isBlank(p.values?.name_as_recalled) || p.resolved) answered += 1;
+          } else {
+            total += blocks;
+            for (const p of props) if (!isBlank(p.values?.[f.id])) answered += 1;
+          }
+        } else {
+          total += 1;
+          if (!isBlank(answers[f.id])) answered += 1;
+        }
+      }
+    }
+    return { total, answered, remaining: Math.max(0, total - answered) };
+  }, [segments, answers, props]);
 
   // Auto-advance: when the current section becomes fully answered (and it's not the
   // last step), show a cancelable banner, then move to the next section. The banner
@@ -214,6 +264,18 @@ export default function ClaimIntake({
           <label className="auto-adv-toggle" title="Automatically move to the next section when this one is complete"><input type="checkbox" checked={autoAdvance} onChange={(e) => setAutoAdvance(e.target.checked)} /> Auto-advance</label>
           <button className="btn ghost sm" onClick={() => setLocked(true)}>🔒 Done</button></>
         )}
+        <span className="spacer" style={{ flex: 1 }} />
+        <span className="intake-remaining" title={`${completion.answered} of ${completion.total} answered`} style={{
+          display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 700,
+          padding: "4px 12px", borderRadius: 999, whiteSpace: "nowrap",
+          background: completion.remaining === 0 ? "rgba(34,197,94,.12)" : "rgba(217,152,42,.12)",
+          color: completion.remaining === 0 ? "#15803d" : "#a16207",
+          border: `1px solid ${completion.remaining === 0 ? "rgba(34,197,94,.35)" : "rgba(217,152,42,.35)"}`,
+        }}>
+          {completion.remaining === 0
+            ? <>✓ All {completion.total} answered</>
+            : <>{completion.remaining} of {completion.total} left</>}
+        </span>
       </div>
       <nav className="steprail">
         {steps.map((s, i) => (
@@ -248,10 +310,10 @@ export default function ClaimIntake({
             {segments.map((seg) => (
               <div key={seg.id} style={{ marginBottom: 28 }}>
                 <div className="section-title">{cleanTitle(seg.title)}</div>
-                {seg.id === "s_properties" ? (
+                {isProps(seg.id) ? (
                   <>
                     {props.map((p, idx) => (
-                      <PropertyCard key={p._key} index={idx} state={p}
+                      <PropertyCard key={p._key} index={idx} state={p} fields={propFields}
                         onResolve={(r) => resolveProp(p._key, r)}
                         onChange={(id, v) => setPropVal(p._key, id, v)}
                         onRemove={() => removeProperty(p._key)} />
@@ -305,7 +367,7 @@ export default function ClaimIntake({
           <>
             <p className="seg-sub">Add one property per hotel/motel the claimant can identify.</p>
             {props.map((p, idx) => (
-              <PropertyCard key={p._key} index={idx} state={p}
+              <PropertyCard key={p._key} index={idx} state={p} fields={propFields}
                 onResolve={(r) => resolveProp(p._key, r)}
                 onChange={(id, v) => setPropVal(p._key, id, v)}
                 onRemove={() => removeProperty(p._key)} />
@@ -394,8 +456,8 @@ export default function ClaimIntake({
   );
 }
 
-function PropertyCard({ index, state, onResolve, onChange, onRemove }: {
-  index: number; state: PropertyState;
+function PropertyCard({ index, state, fields, onResolve, onChange, onRemove }: {
+  index: number; state: PropertyState; fields: any[];
   onResolve: (r: ResolvedProperty) => void;
   onChange: (id: string, v: any) => void; onRemove: () => void;
 }) {
@@ -408,7 +470,7 @@ function PropertyCard({ index, state, onResolve, onChange, onRemove }: {
         <button className="btn ghost" onClick={onRemove}>Remove</button>
       </div>
       {!state.resolved && <PropertyLookup onResolved={onResolve} />}
-      {state.resolved && PROP_FIELDS.filter((f) => f.kind !== "property_lookup").map((f) => (
+      {state.resolved && fields.filter((f) => f.kind !== "property_lookup").map((f) => (
         <FieldRenderer key={f.id} field={f} value={state.values[f.id]} onChange={(v) => onChange(f.id, v)} />
       ))}
     </div>
@@ -447,7 +509,10 @@ const WRITABLE_PROP_COLS = [
 ] as const;
 
 function cleanProp(o: Record<string, any>) {
+  // Keep writable fixed columns AND unknown imported-form field ids (the server
+  // routes unknowns into claim_properties.custom). Only strip display-only keys.
+  const DROP = new Set(["name", "place_id_display", "resolved"]);
   const out: Record<string, any> = {};
-  for (const k of WRITABLE_PROP_COLS) if (o[k] !== undefined) out[k] = o[k];
+  for (const k of Object.keys(o)) if (!DROP.has(k)) out[k] = o[k];
   return out;
 }

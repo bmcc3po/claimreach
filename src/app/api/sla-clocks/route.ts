@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest) {
   // Pull candidate files: anything signed-not-delivered OR esign-sent-not-signed.
   // Keep the column set tight for speed.
   let q = admin.from("leads")
-    .select("id, lead_no, claimant_name, first_name, last_name, campaign, campaign_id, firm_id, status, signed_at, firm_sent_at, esign_sent_at, assigned_agent")
+    .select("id, lead_no, claimant_name, first_name, last_name, campaign, campaign_id, firm_id, signed_at, firm_sent_at, esign_sent_at, assigned_agent")
     .or("and(signed_at.not.is.null,firm_sent_at.is.null),esign_sent_at.not.is.null");
 
   // Role scoping.
@@ -40,12 +40,16 @@ export async function GET(_req: NextRequest) {
   // Resolve esign status per lead from signable_documents (sent vs signed).
   const ids = (rows ?? []).map((r) => r.id);
   const esignByLead: Record<string, string> = {};
+  const statusByLead: Record<string, string> = {};
   if (ids.length) {
     const { data: docs } = await admin.from("signable_documents")
       .select("lead_id, status, sent_at, signed_at").in("lead_id", ids).order("sent_at", { ascending: false });
     for (const d of docs ?? []) {
       if (!esignByLead[d.lead_id]) esignByLead[d.lead_id] = d.status; // latest by sent_at
     }
+    // Claim status drives the "stuck stage" label (leads has no status column).
+    const { data: claims } = await admin.from("claims").select("lead_id, status").in("lead_id", ids);
+    for (const c of claims ?? []) if (!statusByLead[c.lead_id]) statusByLead[c.lead_id] = c.status;
   }
 
   const statuses = await loadStatuses();
@@ -53,13 +57,14 @@ export async function GET(_req: NextRequest) {
 
   const items: any[] = [];
   for (const r of rows ?? []) {
-    const def = resolveStatus(r.status, statuses);
+    const leadStatus = statusByLead[r.id] ?? "new";
+    const def = resolveStatus(leadStatus, statuses);
     const clocks = clocksFor({
       signed_at: r.signed_at,
       firm_sent_at: r.firm_sent_at,
       esign_sent_at: r.esign_sent_at,
       esign_status: esignByLead[r.id] ?? null,
-      current_status: r.status,
+      current_status: leadStatus,
       statusLabel: def.label,
     }, thresholds, now);
     if (clocks.length === 0) continue;

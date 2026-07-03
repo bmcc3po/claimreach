@@ -61,8 +61,15 @@ export async function POST(req: NextRequest) {
     if (properties.length) {
       const rows = properties.map((p: any, i: number) => {
         const clean: Record<string, any> = {};
-        for (const k of Object.keys(p)) if (WRITABLE_PROP_COLS.has(k)) clean[k] = p[k];
-        return { ...clean, claim_id, firm_id, sequence_order: i + 1 };
+        const custom: Record<string, any> = {};
+        for (const k of Object.keys(p)) {
+          if (k === "custom") continue;
+          if (WRITABLE_PROP_COLS.has(k)) clean[k] = p[k];
+          else if (k !== "name" && k !== "place_id_display") custom[k] = p[k]; // imported-form fields
+        }
+        // Merge any custom bag the client already sent.
+        const mergedCustom = { ...(p.custom && typeof p.custom === "object" ? p.custom : {}), ...custom };
+        return { ...clean, custom: mergedCustom, claim_id, firm_id, sequence_order: i + 1 };
       });
       const { error: pErr } = await sb.from("claim_properties").insert(rows);
       if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
