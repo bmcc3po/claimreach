@@ -76,6 +76,10 @@ export default function ClaimIntake({
   useEffect(() => {
     if (advanceTimer.current) { clearTimeout(advanceTimer.current); advanceTimer.current = null; }
     if (!autoAdvance || locked || step >= steps.length - 1) { setAdvanceBanner(false); return; }
+    // Never auto-advance the Properties or Schedule steps: adding a property or
+    // setting a callback is ongoing work, so "answered" there is not a signal to
+    // jump. The agent moves on with Save & next when they are ready.
+    if (isProps(curStep.id) || isSchedule(curStep.id)) { setAdvanceBanner(false); return; }
     if (segAnswered(curStep.id)) {
       setAdvanceBanner(true);
       advanceTimer.current = setTimeout(() => { setAdvanceBanner(false); setStep((s) => Math.min(s + 1, steps.length - 1)); }, 2500);
@@ -132,12 +136,32 @@ export default function ClaimIntake({
   }
 
   async function finishWithStatus(status: string) {
+    // The status model requires a reason for any disqualifying status. Capture it
+    // here so the server-side gate accepts the change instead of silently failing.
+    let dqReasonKey: string | null = null;
+    if (status === "dq") {
+      const reason = window.prompt("Disqualification reason (required). Enter one of: sol, diagnosis, already_rep, criteria, prior_signup, location, duplicate, no_contact, other", "other");
+      if (!reason) return; // cancelled: do not change status
+      dqReasonKey = reason.trim().toLowerCase();
+    }
     setSaving(true);
     await save(false);
-    await fetch("/api/claims", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "status", claim_id: claimId, status }),
-    }).catch(() => {});
+    try {
+      const r = await fetch("/api/claims", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "status", claim_id: claimId, status, dq_reason_key: dqReasonKey }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setErr(d.error || "Could not set status");
+        setSaving(false);
+        return; // stay on the page so the disposition is not silently lost
+      }
+    } catch (e: any) {
+      setErr(e?.message || "Could not set status");
+      setSaving(false);
+      return;
+    }
     setSaving(false);
     setFinishing(false);
     if (typeof window !== "undefined" && leadId) window.location.href = `/leads/${leadId}`;
@@ -150,13 +174,19 @@ export default function ClaimIntake({
       for (const p of props) {
         let canonical_id: string | undefined;
         if (p.resolved?.place_id) {
-          const r = await fetch("/api/canonical", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ place_id: p.resolved.place_id, name: p.resolved.name, address: p.resolved.address,
-              lat: p.resolved.lat, lng: p.resolved.lng, current_brand: p.resolved.current_brand, firm_id: firmId }),
-          });
-          const d = await r.json();
-          if (r.ok) canonical_id = d.id;
+          try {
+            const r = await fetch("/api/canonical", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ place_id: p.resolved.place_id, name: p.resolved.name, address: p.resolved.address,
+                lat: p.resolved.lat, lng: p.resolved.lng, current_brand: p.resolved.current_brand, firm_id: firmId }),
+            });
+            const text = await r.text();
+            const d = text ? JSON.parse(text) : {};
+            if (r.ok) canonical_id = d.id;
+          } catch {
+            // Canonical resolution is best-effort; a hiccup here must not block the
+            // whole save or leave a stuck error. Save the property without the id.
+          }
         }
         properties.push({ ...cleanProp(p.values), canonical_id });
       }
@@ -164,11 +194,13 @@ export default function ClaimIntake({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ claim_id: claimId, firm_id: firmId, answers: cleanAnswers(answers, claimType), properties }),
       });
-      const d = await r.json();
+      const text = await r.text();
+      const d = text ? JSON.parse(text) : {};
       if (!r.ok) throw new Error(d.error || "save failed");
+      setErr(null);
       setSavedAt(new Date().toLocaleTimeString());
       if (advance && step < steps.length - 1) setStep(step + 1);
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { setErr(e?.message || "save failed"); }
     setSaving(false);
   }
 
@@ -350,8 +382,8 @@ export default function ClaimIntake({
             <div className="modal-b">
               <p className="muted" style={{ marginTop: 0 }}>Choose the disposition for this intake.</p>
               <div style={{ display: "grid", gap: 8 }}>
-                <button className="btn" disabled={saving} onClick={() => finishWithStatus("qualified")}>✅ Qualified — submit to firm</button>
-                <button className="btn secondary" disabled={saving} onClick={() => finishWithStatus("in_progress")}>⏳ Incomplete — callback scheduled</button>
+                <button className="btn" disabled={saving} onClick={() => finishWithStatus("approved")}>✅ Qualified — submit to firm</button>
+                <button className="btn secondary" disabled={saving} onClick={() => finishWithStatus("contacting")}>⏳ Incomplete — callback scheduled</button>
                 <button className="btn ghost" disabled={saving} onClick={() => finishWithStatus("dq")}>⛔ Disqualified</button>
               </div>
             </div>

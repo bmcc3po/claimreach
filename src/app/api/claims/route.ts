@@ -7,7 +7,7 @@ async function me(sb: Awaited<ReturnType<typeof supabaseServer>>) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return null;
   const { data } = await sb.from("app_users")
-    .select("id, role, firm_id").eq("id", auth.user.id).maybeSingle();
+    .select("id, role, firm_id, full_name").eq("id", auth.user.id).maybeSingle();
   return data ? { ...data, uid: auth.user.id } : null;
 }
 
@@ -70,15 +70,27 @@ export async function POST(req: NextRequest) {
   }
 
   if (p.op === "status") {
-    const patch: Record<string, any> = { status: p.status };
-    if (p.qualification) patch.qualification = p.qualification;
-    if (p.dq_reason !== undefined) patch.dq_reason = p.dq_reason;
-    const { error } = await sb.from("claims").update(patch).eq("id", p.claim_id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    // On qualify/sign, enroll the lead into active drip rules.
-    if (["qualified", "signed"].includes(p.status)) {
-      const { data: cl } = await sb.from("claims").select("lead_id, firm_id").eq("id", p.claim_id).maybeSingle();
-      if (cl?.lead_id) { try { await sb.rpc("enroll_drips_for_lead", { p_lead: cl.lead_id, p_firm: cl.firm_id }); } catch {} }
+    const { data: cl } = await sb.from("claims").select("lead_id, firm_id").eq("id", p.claim_id).maybeSingle();
+    if (!cl?.lead_id) return NextResponse.json({ error: "claim has no lead" }, { status: 400 });
+    // Route through the central setter: enforces the DQ-reason gate, keeps the
+    // QA-queue flags in sync, writes the Activity Log, and fires the automation
+    // + firm-delivery triggers (so "submit to firm" actually hands off).
+    const { setClaimStatusForLeads } = await import("@/lib/claim-status");
+    const res = await setClaimStatusForLeads({
+      leadIds: [cl.lead_id],
+      status: p.status,
+      dqReasonKey: p.dq_reason_key ?? null,
+      dqNote: p.dq_reason ?? null,
+      actorId: u.id,
+      actorName: u.full_name ?? "User",
+    });
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
+    // On a qualifying/approved/signed status, enroll the lead into drip rules.
+    const { resolveStatus } = await import("@/lib/statuses");
+    const { loadStatuses } = await import("@/lib/claim-status");
+    const def = resolveStatus(p.status, await loadStatuses());
+    if (def.qualify === "qualify" || def.track === "esign") {
+      try { await sb.rpc("enroll_drips_for_lead", { p_lead: cl.lead_id, p_firm: cl.firm_id }); } catch {}
     }
     return NextResponse.json({ ok: true });
   }

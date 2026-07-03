@@ -24,13 +24,18 @@ export async function POST(req: NextRequest) {
   if (!claim_id) return NextResponse.json({ error: "claim_id required" }, { status: 400 });
 
   // Fetch existing claim (lead linkage + prior answers for diffing).
-  const { data: claim } = await sb.from("claims").select("lead_id, answers").eq("id", claim_id).maybeSingle();
+  const { data: claim } = await sb.from("claims").select("lead_id, answers, status").eq("id", claim_id).maybeSingle();
   const prior: Record<string, any> = (claim?.answers as any) ?? {};
   const next: Record<string, any> = answers ?? {};
 
-  // Save answers; move claim into in_progress.
-  const { error: cErr } = await sb.from("claims")
-    .update({ answers: next, status: "in_progress" }).eq("id", claim_id);
+  // Save answers. Move the claim to "contacting" (a real status key) only when it
+  // is still at the very start (new/blank). Never downgrade a file that has moved
+  // further along the pipeline (esign_sent, signed_*, qa, approved, etc.), since
+  // a mid-pipeline intake edit must not reset its status.
+  const START_STATUSES = new Set(["new", "", null as any, undefined as any]);
+  const patch: any = { answers: next };
+  if (START_STATUSES.has(claim?.status as any)) patch.status = "contacting";
+  const { error: cErr } = await sb.from("claims").update(patch).eq("id", claim_id);
   if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
 
   if (Array.isArray(properties)) {
