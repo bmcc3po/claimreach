@@ -192,6 +192,10 @@ table.docket th, table.docket td { text-align: left; padding: 12px 14px;
 table.docket th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
 table.docket tr:last-child td { border-bottom: none; }
 table.docket tr:hover td { background: var(--surface-2); }
+/* Statuses table: many columns, keep it compact so it fits without a scrollbar. */
+table.docket.statuses-table { min-width: 0; }
+table.docket.statuses-table th, table.docket.statuses-table td { padding: 9px 10px; font-size: 13px; }
+table.docket.statuses-table .col-flag { text-align: center; width: 62px; white-space: nowrap; }
 
 .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .badge.stage { background: var(--script-bg); color: var(--accent); }
@@ -405,6 +409,10 @@ table.docket tr:hover td { background: var(--surface-2); }
   display:flex; flex-direction:column; position:sticky; top:0; height:100vh; transition:width .16s ease; }
 .sidenav.min { width:64px; }
 .sidenav .brandrow { display:flex; align-items:center; gap:10px; padding:14px 14px 12px; min-height:60px; border-bottom:1px solid rgba(255,255,255,.07); margin-bottom:4px; }
+/* Collapsed: center the logo mark and keep it inside the 64px rail (no clip). */
+.sidenav.min .brandrow { padding:12px 6px; justify-content:center; }
+.sidenav.min .brandrow a { display:inline-flex; }
+.sidenav.min .brandrow img { max-width:40px; height:auto !important; }
 .sidenav .navlinks { display:flex; flex-direction:column; gap:2px; padding:8px; flex:1; overflow-y:auto; }
 .sidenav a.nl { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:9px;
   color:#aebfd2; text-decoration:none; font-size:14px; font-weight:600; white-space:nowrap; }

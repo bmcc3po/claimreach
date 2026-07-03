@@ -42,7 +42,7 @@ export default function StatusManager({ initial }: { initial: StatusDef[] }) {
   }
 
   return (
-    <div className="side-card" style={{ maxWidth: 980 }}>
+    <div className="side-card">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <h3 style={{ margin: 0 }}>Statuses</h3>
         <button className="btn" onClick={() => setEdit({ ...BLANK })}>+ Add status</button>
@@ -51,10 +51,10 @@ export default function StatusManager({ initial }: { initial: StatusDef[] }) {
       {msg && <p className="banner" style={{ margin: "8px 0" }}>{msg}</p>}
 
       <div className="table-scroll">
-        <table className="docket">
+        <table className="docket statuses-table">
           <thead><tr>
             <th>Label</th><th>Key</th><th>Phase</th><th>Qualify</th><th>Side</th>
-            <th>e-Sign</th><th>Billable</th><th>Unlocks firm</th><th>Final</th><th>LawRuler</th><th></th>
+            <th className="col-flag">e-Sign</th><th className="col-flag">Billable</th><th className="col-flag">Unlocks firm</th><th className="col-flag">Final</th><th>LawRuler</th><th></th>
           </tr></thead>
           <tbody>
             {rows.map((s) => (
@@ -64,10 +64,10 @@ export default function StatusManager({ initial }: { initial: StatusDef[] }) {
                 <td>{s.phase}</td>
                 <td>{s.qualify}</td>
                 <td>{s.side}</td>
-                <td>{s.requires_esign ? "Yes" : "—"}</td>
-                <td>{s.billable ? "Yes" : "—"}</td>
-                <td>{s.unlocks_firm ? "Yes" : "—"}</td>
-                <td>{s.is_final ? "Yes" : "—"}</td>
+                <td className="col-flag">{s.requires_esign ? "Yes" : "—"}</td>
+                <td className="col-flag">{s.billable ? "Yes" : "—"}</td>
+                <td className="col-flag">{s.unlocks_firm ? "Yes" : "—"}</td>
+                <td className="col-flag">{s.is_final ? "Yes" : "—"}</td>
                 <td className="muted">{s.lawruler_group || "—"}</td>
                 <td style={{ whiteSpace: "nowrap" }}>
                   <button className="btn ghost sm" onClick={() => setEdit({ ...s })}>Edit</button>

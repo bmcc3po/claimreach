@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { deliverLeadToFirm } from "@/lib/firm-delivery";
+import { gateUser } from "@/lib/gate";
 export const runtime = "edge";
-
-async function gate(sb: any) {
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return { error: "unauthorized", status: 401 as const };
-  const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", auth.user.id).maybeSingle();
-  return { user: auth.user, role: me?.role, name: me?.full_name };
-}
 
 // GET /api/firm-delivery?lead_id=...  -> delivery history for a lead.
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
-  const g = await gate(sb);
-  if ("error" in g) return NextResponse.json({ error: g.error }, { status: g.status });
+  const g = await gateUser(sb);
+  if (!g) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (g.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const leadId = new URL(req.url).searchParams.get("lead_id");
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
@@ -27,9 +21,10 @@ export async function GET(req: NextRequest) {
 // POST /api/firm-delivery  { lead_id, force? }  -> manual send / resend.
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
-  const g = await gate(sb);
-  if ("error" in g) return NextResponse.json({ error: g.error }, { status: g.status });
-  if (!["owner", "admin", "qa"].includes(g.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const g = await gateUser(sb);
+  if (!g) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Sending a file to the firm is a status-moving action; gate on claims.status.
+  if (!g.can("claims.status")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const b = await req.json().catch(() => ({}));
   if (!b.lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
 

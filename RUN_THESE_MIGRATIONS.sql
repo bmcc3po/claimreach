@@ -1,4 +1,31 @@
 -- ============================================================================
+-- COMBINED MIGRATIONS 0030-0044. Run top to bottom in the Supabase SQL editor.
+-- NOTE: 0043 adds the 'manager' enum value and is placed FIRST with a commit
+-- so later statements can use it (Postgres forbids using a new enum value in
+-- the same transaction that adds it). All statements are idempotent.
+-- ============================================================================
+
+-- ============================================================================
+-- 0043 ADD MANAGER ROLE (enum value only)
+-- MUST run and COMMIT before 0044, because Postgres forbids using a newly added
+-- enum value in the same transaction that adds it. This file does nothing but
+-- add the value. Run it by itself (or as the first statement), then run 0044.
+-- Idempotent.
+-- ============================================================================
+do $$
+begin
+  if not exists (
+    select 1 from pg_enum e
+    join pg_type t on t.oid = e.enumtypid
+    where t.typname = 'app_role' and e.enumlabel = 'manager'
+  ) then
+    alter type app_role add value 'manager' after 'admin';
+  end if;
+end $$;
+
+commit;
+
+-- ============================================================================
 -- 0030 STATUS MODEL
 -- Statuses become editable records (not a hardcoded enum) so the owner can add
 -- and edit them in-app. Each status carries behavioral flags that drive the QA
@@ -703,3 +730,33 @@ alter table firm_deliveries enable row level security;
 do $$ begin
   create policy firm_deliveries_read on firm_deliveries for select using (auth.role() = 'authenticated');
 exception when duplicate_object then null; end $$;
+-- ============================================================================
+-- 0044 MANAGER ROLE WIRING (runs after 0043 is committed)
+-- Adds manager to the internal-staff set and adds the money-visibility helper.
+-- New permission keys (payroll.*, deals.clean, hours.manage) live in the typed
+-- layer at src/lib/permissions.ts; no DB change needed for those. Idempotent.
+-- ============================================================================
+
+-- Bring 'manager' into the internal-staff set so managers get staff RLS access.
+create or replace function is_internal() returns boolean language sql stable as $$
+  select exists(
+    select 1 from app_users
+    where id = auth.uid()
+      and role::text in ('owner','admin','manager','agent','qa')
+  );
+$$;
+
+-- Money visibility gate. Owner/admin see money by default; manager/agent/qa see
+-- it only if perm_overrides.money.view is true. An explicit false strips money
+-- from anyone (the Alicia/Ahniyah pattern: full operations access, no dollars).
+create or replace function can_see_money() returns boolean language sql stable as $$
+  select exists (
+    select 1 from app_users u
+    where u.id = auth.uid()
+      and case
+            when u.perm_overrides ? 'money.view'
+              then (u.perm_overrides->>'money.view')::boolean
+            else u.role::text in ('owner','admin')
+          end
+  );
+$$;
