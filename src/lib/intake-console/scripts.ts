@@ -36,11 +36,12 @@ export const SIGN_SCRIPTS = {
     "You mentioned [passenger] was in the car with you. Are they working with an attorney? If not, do you have a good number for them so we can make sure they are taken care of too?",
 };
 
-export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean }[] = [
-  { key: "vehicle",         label: "Vehicle year / make / model" },
-  { key: "auto_carrier",    label: "Their auto carrier" },
-  { key: "health_ins",      label: "Health insurance" },
-  { key: "other_carrier",   label: "Other driver's carrier" },
+export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean; ref?: "vehicle" | "auto_carrier" | "health_carrier"; half?: boolean }[] = [
+  { key: "vehicle_year",    label: "Vehicle year", half: true },
+  { key: "vehicle",         label: "Vehicle make / model", ref: "vehicle" },
+  { key: "auto_carrier",    label: "Their auto carrier", ref: "auto_carrier" },
+  { key: "health_ins",      label: "Health insurance", ref: "health_carrier" },
+  { key: "other_carrier",   label: "Other driver's carrier", ref: "auto_carrier" },
   { key: "media",           label: "Photos / video available?" },
   { key: "dl_number",       label: "Driver's license number", sensitive: true },
   { key: "dob",             label: "Date of birth", sensitive: true },

@@ -104,9 +104,9 @@ export const SPINE_BLOCKS: Record<SpineBlockKey, Field[]> = {
 
   insurance: [
     S("s_insurance", "Insurance"),
-    { id: "health_insurance", scope: "lead", kind: "text", label: "Health insurance carrier", group: "insurance" },
-    { id: "own_carrier", scope: "lead", kind: "text", label: "Their own insurance carrier", group: "insurance" },
-    { id: "other_carrier", scope: "lead", kind: "text", label: "The other party's carrier", group: "insurance" },
+    { id: "health_insurance", scope: "lead", kind: "text", label: "Health insurance carrier", group: "insurance", ref: "health_carrier" },
+    { id: "own_carrier", scope: "lead", kind: "text", label: "Their own insurance carrier", group: "insurance", ref: "auto_carrier" },
+    { id: "other_carrier", scope: "lead", kind: "text", label: "The other party's carrier", group: "insurance", ref: "auto_carrier" },
   ],
 
   history: [

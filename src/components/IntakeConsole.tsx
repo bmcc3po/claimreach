@@ -11,6 +11,7 @@ import {
   REFER_SCRIPTS, DQ_CLOSES, SECONDARY_REVIEW_SCRIPTS, CALLBACK_SCRIPT, COMPLIANCE_RULES,
 } from "@/lib/intake-console/scripts";
 import GuidedStep, { Spoken, Note, Primary } from "@/components/guided/GuidedStep";
+import Typeahead from "@/components/Typeahead";
 
 // ============================================================================
 // Take a call. This is not a screening widget that gets promoted into a lead
@@ -469,9 +470,15 @@ function OutcomeView(p: any) {
             {actuallySigned && <Note tone="hard">Only collect this now that the agreement is signed.</Note>}
             <div className="ic-idgrid">
               {POST_SIGN_FIELDS.map((f) => (
-                <label key={f.key} className="ic-postfield half">
+                <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
                   <span>{f.label}{f.sensitive && <em> · sensitive</em>}</span>
-                  <input value={postSign[f.key] ?? ""} onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })} />
+                  {f.ref ? (
+                    <Typeahead source={f.ref} className="ic-tain"
+                      value={postSign[f.key] ?? ""}
+                      onChange={(v: string) => setPostSign({ ...postSign, [f.key]: v })} />
+                  ) : (
+                    <input value={postSign[f.key] ?? ""} onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })} />
+                  )}
                 </label>
               ))}
             </div>
@@ -628,7 +635,7 @@ const CSS = `
 .ic-postfield { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:650; color:var(--ink-soft); grid-column:span 2; }
 .ic-postfield.half { grid-column:span 1; }
 .ic-postfield em { color:#b91c1c; font-style:normal; font-weight:700; }
-.ic-postfield input { padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface-2); font:inherit; font-size:15px; color:var(--ink); }
+.ic-postfield input, .ic-tain { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface-2); font:inherit; font-size:15px; color:var(--ink); }
 .ic-send { display:flex; gap:8px; }
 .ic-toggle { flex:1; padding:12px; border-radius:10px; border:1.5px solid var(--line); background:var(--surface); font:inherit; font-weight:650; cursor:pointer; color:var(--ink); }
 .ic-toggle.on { border-color:#2563eb; background:#eff5ff; }

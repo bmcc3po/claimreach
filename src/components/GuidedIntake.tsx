@@ -2,6 +2,7 @@
 import { useMemo, useRef, useState } from "react";
 import { fieldVisible, segmentsForType, segmentsFrom, type Field } from "@/lib/questionnaire";
 import PropertyLookup from "@/components/PropertyLookup";
+import Typeahead from "@/components/Typeahead";
 
 // ============================================================================
 // GUIDED INTAKE
@@ -201,7 +202,9 @@ export default function GuidedIntake({
               {step.fields.map((f) => (
                 <label key={f.id} className="gx-gf">
                   <span>{f.label}{f.vital && <em>vital</em>}</span>
-                  <input className="gx-in" value={answers[f.id] ?? ""} onChange={(e) => setAnswer(f.id, e.target.value)} />
+                  {f.ref
+                    ? <Typeahead source={f.ref} value={answers[f.id] ?? ""} onChange={(v: string) => setAnswer(f.id, v)} />
+                    : <input className="gx-in" value={answers[f.id] ?? ""} onChange={(e) => setAnswer(f.id, e.target.value)} />}
                 </label>
               ))}
             </div>
@@ -338,7 +341,17 @@ function QuestionCard({ field, value, draft, setDraft, onAnswer, onSkipScript, h
         </>
       )}
 
-      {textish && (
+      {textish && f.ref && (
+        <>
+          <Typeahead source={f.ref} autoFocus value={String(cur)} onChange={(v: string) => setDraft(v)} />
+          <div className="gx-row">
+            <button className="gx-btn p wide" disabled={!String(cur).trim()} onClick={() => onAnswer(cur)}>Next</button>
+            {value && draft === null && <button className="gx-btn" onClick={onSkipScript}>Leave as is →</button>}
+          </div>
+        </>
+      )}
+
+      {textish && !f.ref && (
         <>
           {f.kind === "longtext"
             ? <textarea className="gx-in area" autoFocus value={cur} onChange={(e) => setDraft(e.target.value)} />

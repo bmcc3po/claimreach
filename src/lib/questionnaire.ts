@@ -35,6 +35,9 @@ export interface Field {
   // capture blocks (address, insurance, vehicle). Never for criteria questions:
   // those are asked one at a time, in order, verbatim.
   group?: string;
+  // Points a text field at a canonical reference list (vehicles, carriers) so the
+  // same real-world thing is spelled one way every time. Free text still allowed.
+  ref?: "vehicle" | "auto_carrier" | "health_carrier";
   // Stored-value -> spoken-label map for choice fields, so exports print the
   // words the caller heard rather than the code we stored.
   choices?: { value: string; label: string }[];
