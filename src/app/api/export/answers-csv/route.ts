@@ -6,6 +6,16 @@ export const runtime = "edge";
 // One row per claimant, columns = every intake question. For firm handoff.
 
 const SKIP_KINDS = ["section", "script", "gate"];
+
+// Choice fields store a code ("le30"); the firm needs the words the caller
+// heard ("Within the last 30 days"). Console-generated fields carry the map.
+function labelFor(field: any, v: any): any {
+  if (v === undefined || v === null) return v;
+  const choices = Array.isArray(field?.choices) ? field.choices : null;
+  if (!choices) return v;
+  if (Array.isArray(v)) return v.map((x) => choices.find((c: any) => c.value === x)?.label ?? x);
+  return choices.find((c: any) => c.value === v)?.label ?? v;
+}
 function esc(v: any): string {
   const s = v === undefined || v === null ? "" : Array.isArray(v) ? v.join("; ") : typeof v === "boolean" ? (v ? "Yes" : "No") : String(v);
   return `"${s.replace(/"/g, '""')}"`;
@@ -57,7 +67,7 @@ export async function GET(req: NextRequest) {
     const a = answersByLead[l.id] || {};
     const row = [
       l.lead_no, l.claimant_name, l.campaign || campaignName, l.created_at ? new Date(l.created_at).toLocaleDateString() : "",
-      ...cols.map((f) => (f.scope === "lead" ? (l as any)[f.id] : a[f.id])),
+      ...cols.map((f) => labelFor(f, f.scope === "lead" ? (l as any)[f.id] : a[f.id])),
     ];
     lines.push(row.map(esc).join(","));
   }

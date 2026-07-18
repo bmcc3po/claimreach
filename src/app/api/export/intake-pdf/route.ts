@@ -7,12 +7,20 @@ export const runtime = "edge";
 
 const SKIP_KINDS = ["section", "script", "gate"];
 
+// Choice fields store a code ("le30"); the firm needs to read the words the
+// caller actually heard ("Within the last 30 days"). Fields generated from the
+// console carry a choices value->label map for exactly this.
+function labelFor(field: any, v: any): string {
+  const hit = Array.isArray(field?.choices) ? field.choices.find((c: any) => c.value === v) : null;
+  return hit ? hit.label : String(v);
+}
+
 function answerText(field: any, leadRow: any, answers: Record<string, any>): string {
   const raw = field.scope === "lead" ? leadRow?.[field.id] : answers?.[field.id];
   if (raw === undefined || raw === null || raw === "") return "—";
-  if (Array.isArray(raw)) return raw.join(", ");
+  if (Array.isArray(raw)) return raw.map((v) => labelFor(field, v)).join(", ");
   if (typeof raw === "boolean") return raw ? "Yes" : "No";
-  return String(raw);
+  return labelFor(field, raw);
 }
 
 export async function GET(req: NextRequest) {
