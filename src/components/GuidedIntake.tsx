@@ -299,13 +299,20 @@ function QuestionCard({ field, value, draft, setDraft, onAnswer, onSkipScript, h
       {f.agentNote && <div className="gx-note">{f.agentNote}</div>}
 
       {isChoice && (
-        <div className="gx-opts">
-          {opts.map((o: any) => (
-            <button key={o.value} className={`gx-opt ${value === o.value ? "sel" : ""}`} onClick={() => onAnswer(o.value)}>
-              <span className="gx-k" /><span className="gx-lab">{o.label}</span>
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="gx-opts">
+            {opts.map((o: any) => (
+              <button key={o.value} className={`gx-opt ${value === o.value ? "sel" : ""}`} onClick={() => onAnswer(o.value)}>
+                <span className="gx-k" /><span className="gx-lab">{o.label}</span>
+              </button>
+            ))}
+          </div>
+          {value !== undefined && value !== null && value !== "" && (
+            <div className="gx-row">
+              <button className="gx-btn wide" onClick={onSkipScript}>Answered · next →</button>
+            </div>
+          )}
+        </>
       )}
 
       {f.kind === "multiselect" && (
@@ -322,7 +329,12 @@ function QuestionCard({ field, value, draft, setDraft, onAnswer, onSkipScript, h
               );
             })}
           </div>
-          <div className="gx-row"><button className="gx-btn p wide" disabled={!Array.isArray(cur) || cur.length === 0} onClick={() => onAnswer(cur)}>Next</button></div>
+          <div className="gx-row">
+            <button className="gx-btn p wide" disabled={!Array.isArray(cur) || cur.length === 0} onClick={() => onAnswer(cur)}>Next</button>
+            {Array.isArray(value) && value.length > 0 && draft === null && (
+              <button className="gx-btn" onClick={onSkipScript}>Leave as is →</button>
+            )}
+          </div>
         </>
       )}
 
@@ -331,7 +343,10 @@ function QuestionCard({ field, value, draft, setDraft, onAnswer, onSkipScript, h
           {f.kind === "longtext"
             ? <textarea className="gx-in area" autoFocus value={cur} onChange={(e) => setDraft(e.target.value)} />
             : <input className="gx-in" autoFocus type={f.kind === "date" ? "date" : f.kind === "int" ? "number" : "text"} value={cur} onChange={(e) => setDraft(e.target.value)} />}
-          <div className="gx-row"><button className="gx-btn p wide" disabled={!String(cur).trim()} onClick={() => onAnswer(cur)}>Next</button></div>
+          <div className="gx-row">
+            <button className="gx-btn p wide" disabled={!String(cur).trim()} onClick={() => onAnswer(cur)}>Next</button>
+            {value && draft === null && <button className="gx-btn" onClick={onSkipScript}>Leave as is →</button>}
+          </div>
         </>
       )}
     </>
@@ -339,7 +354,7 @@ function QuestionCard({ field, value, draft, setDraft, onAnswer, onSkipScript, h
 }
 
 const CSS = `
-.gx { max-width:760px; margin:0 auto; }
+.gx { max-width:760px; margin:0 auto; padding:2px 0 8px; }
 .gx-prog { height:4px; background:var(--line); border-radius:99px; overflow:hidden; }
 .gx-fill { height:100%; background:#1d4ed8; transition:width .18s; }
 .gx-meta { display:flex; justify-content:space-between; font-size:11.5px; font-weight:800; letter-spacing:.06em;
@@ -347,7 +362,7 @@ const CSS = `
 .gx-err { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:10px 14px; border-radius:10px;
   font-size:13.5px; font-weight:600; margin-bottom:12px; }
 
-.gx-card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:22px 24px; }
+.gx-card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:24px 26px; }
 .gx-crumb { font-size:12px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:#1e40af; margin-bottom:6px; }
 .gx-q { font-size:20px; font-weight:800; margin:6px 0 16px; line-height:1.35; letter-spacing:-.01em; }
 .gx-vital { margin-left:9px; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;

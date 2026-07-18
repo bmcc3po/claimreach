@@ -16,12 +16,18 @@ export const runtime = "edge";
 //   (GET)          signature status for polling while the client signs
 // ============================================================================
 
+// Resolve the console's firm. Returns what it found AND how, because silently
+// falling back to the agent's own firm meant the console could spend all day
+// looking for campaigns under the wrong tenant while reporting only "no
+// campaign" — true, but for a firm nobody asked about.
 async function resolveFirm(admin: any, slug: string | null, fallback: string | null) {
   if (slug) {
-    const { data } = await admin.from("firms").select("id").eq("slug", slug).maybeSingle();
-    if (data?.id) return data.id;
+    const { data } = await admin.from("firms").select("id, name").eq("slug", slug).maybeSingle();
+    if (data?.id) return { id: data.id as string, name: data.name as string, matched: true };
   }
-  return fallback;
+  if (!fallback) return { id: null, name: null, matched: false };
+  const { data: fb } = await admin.from("firms").select("id, name").eq("id", fallback).maybeSingle();
+  return { id: fallback as string, name: (fb?.name as string) ?? null, matched: false };
 }
 
 export async function POST(req: NextRequest) {
@@ -40,8 +46,15 @@ export async function POST(req: NextRequest) {
   // is. If no campaign is configured for that firm and case type we refuse and
   // say so plainly rather than creating an orphan.
   if (b.op === "open") {
-    const firmId = await resolveFirm(admin, b.firm_slug, g.firmId);
+    const firm = await resolveFirm(admin, b.firm_slug, g.firmId);
+    const firmId = firm.id;
     if (!firmId) return NextResponse.json({ error: "no firm resolved for this console" }, { status: 400 });
+    if (b.firm_slug && !firm.matched) {
+      return NextResponse.json({
+        error: "no_campaign",
+        message: `No firm is set up with the code "${b.firm_slug}". The console is configured for it but there is no matching firm record, so it cannot find that firm's campaigns. Add the firm in Settings with slug "${b.firm_slug}", then reload.`,
+      }, { status: 200 });
+    }
     if (!b.first_name) return NextResponse.json({ error: "first name required" }, { status: 400 });
     if (!b.case_type) return NextResponse.json({ error: "case type required" }, { status: 400 });
 
@@ -63,7 +76,7 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({
         error: "no_campaign",
-        message: `There is no active campaign for this case type, so a file cannot be opened. Add one in Settings, Campaigns, then reload this page. The call has been logged.`,
+        message: `${firm.name ?? "This firm"} has no active campaign for case type "${registryKey}", so a file cannot be opened. Create one in Settings, Campaigns: firm ${firm.name ?? ""}, case type ${registryKey.toUpperCase()}, active. Then reload. The call has been logged.`,
       }, { status: 200 });
     }
 

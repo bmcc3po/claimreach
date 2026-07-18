@@ -4,7 +4,7 @@ import { STAGE_LABELS } from "@/lib/questionnaire";
 import { LX } from "@/lib/lexicon";
 import FloatingDock from "./FloatingDock";
 import CollapsiblePanel from "./CollapsiblePanel";
-import ClaimIntake from "./ClaimIntake";
+import IntakeSurface from "./IntakeSurface";
 import CaseOverview from "./CaseOverview";
 import StatusBadge from "./ui/StatusBadge";
 import FileStatusControl from "./FileStatusControl";
@@ -128,7 +128,7 @@ export default function LeadWorkspace({
                   Leading statements of any kind result in forfeiture of file credit and disciplinary
                   action. Ask every question in order and verbatim.
                 </div>
-                <ClaimIntake
+                <IntakeSurface
                   claimId={activeClaim.id}
                   firmId={lead.firm_id}
                   initialAnswers={activeClaim.answers ?? {}}
