@@ -51,8 +51,15 @@ export async function POST(req: NextRequest) {
     const { data: leadNo, error: mintErr } = await admin.rpc("mint_lead_no", { p_firm: firmId });
     if (mintErr) return NextResponse.json({ error: mintErr.message }, { status: 500 });
 
+    // case_type is NOT NULL on leads and defaults to 'motel_trafficking'. At this
+    // point in the call we genuinely do not know what the matter is yet, and
+    // letting the default apply would mislabel every console file as a Motel 6
+    // case. 'unassigned' is the honest value; op=case_type overwrites it the
+    // moment the agent picks, and a call that drops in between stays truthful.
+    const openType = caseType ?? "unassigned";
+
     const { data: lead, error } = await admin.from("leads").insert({
-      firm_id: firmId, lead_no: leadNo, case_type: caseType,
+      firm_id: firmId, lead_no: leadNo, case_type: openType,
       campaign_id: campaign?.id ?? null, campaign: campaign?.name ?? null,
       first_name: b.first_name, claimant_name: b.first_name,
       phone: b.callback ?? null, stage: "referral_received", origin: "console",
@@ -61,7 +68,7 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     const { data: claim } = await admin.from("claims").insert({
-      firm_id: firmId, lead_id: lead.id, claim_type: caseType,
+      firm_id: firmId, lead_id: lead.id, claim_type: openType,
       campaign: campaign?.name ?? null, status: "contacting", answers: {},
     }).select("id").single();
 
@@ -109,6 +116,7 @@ export async function POST(req: NextRequest) {
         .eq("firm_id", firmId).eq("case_type", caseType).eq("active", true).limit(1).maybeSingle();
       campaign = data ?? null;
     }
+    if (!caseType) return NextResponse.json({ error: "case_type required" }, { status: 400 });
     await admin.from("leads").update({
       case_type: caseType, campaign_id: campaign?.id ?? null, campaign: campaign?.name ?? null,
     }).eq("id", b.lead_id);
