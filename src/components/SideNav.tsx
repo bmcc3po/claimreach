@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Logo } from "./Logo";
 import Icon from "./ui/Icon";
-const BUILD_STAMP = "2026.07.18.1618";
+const BUILD_STAMP = "2026.07.18.1736";
 
 type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
