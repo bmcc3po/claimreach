@@ -245,11 +245,15 @@ export const INTAKE: Field[] = [
 // questions. Bespoke per-type forms (medmal, etc.) override this entirely.
 export const SPINE: Field[] = [
   { id: "s_open", scope: "lead", kind: "section", label: "Opening" },
+  // Generic opener. This spine is what EVERY non-motel case type falls back to,
+  // so it must not carry trafficking-specific language. The "are you in a safe
+  // place to speak" safety gate belongs to the trafficking intake only; asking it
+  // on a car accident is nonsense and made every file read as a Motel 6 form.
   { id: "script_intro_generic", scope: "lead", kind: "script", label: "Intro (read verbatim)",
-    script: "Thank you. My name is ___. I'm calling from the law firm handling your claim. Before we begin, are you in a safe place to speak right now?",
-    agentNote: "If NOT in a safe place: schedule a callback and stop here." },
-  { id: "safe_to_speak", scope: "lead", kind: "gate", label: "Is the claimant in a safe place to speak?", gateType: "safety",
-    agentNote: "If no, schedule callback. Do not proceed with intake." },
+    script: "Thank you. My name is ___. I'm calling from the law firm handling your claim. Is now a good time to go through this with you?",
+    agentNote: "If now is not a good time, schedule a callback and stop here." },
+  { id: "ok_to_proceed", scope: "lead", kind: "bool", label: "Is now a good time to proceed?",
+    agentNote: "If no, schedule the callback. Do not run the intake." },
   // Universal contact surface (reused from INTAKE's contact-surface fields).
   ...INTAKE.filter((f) => f.surface === "contact"),
   // The three mandatory gates, generic phrasing.

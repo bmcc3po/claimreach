@@ -28,6 +28,11 @@ export async function POST(req: NextRequest) {
   if (op === "create") {
     if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const firm_id = payload.firm_id;
+    // A file must know what it is. case_type no longer carries a database
+    // default, so an unstated one used to become a Motel 6 trafficking case by
+    // accident. Both of these are required at every creation path now.
+    if (!payload.case_type) return NextResponse.json({ error: "A case type is required. Pick what this file is before saving it." }, { status: 400 });
+    if (!payload.campaign_id) return NextResponse.json({ error: "A campaign is required. Every file has to belong to one." }, { status: 400 });
     const { data: leadNo, error: mintErr } = await sb.rpc("mint_lead_no", { p_firm: firm_id });
     if (mintErr) return NextResponse.json({ error: mintErr.message }, { status: 500 });
 
@@ -36,8 +41,8 @@ export async function POST(req: NextRequest) {
       lead_no: leadNo,
       firm_ref_no: payload.firm_ref_no ?? null,
       lawruler_ref_no: payload.lawruler_ref_no ?? null,
-      case_type: payload.case_type ?? null,
-      campaign_id: payload.campaign_id ?? null,
+      case_type: payload.case_type,
+      campaign_id: payload.campaign_id,
       campaign: payload.campaign ?? null,
       first_name: payload.first_name ?? null,
       last_name: payload.last_name ?? null,

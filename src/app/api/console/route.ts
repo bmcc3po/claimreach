@@ -34,33 +34,35 @@ export async function POST(req: NextRequest) {
   const admin = supabaseAdmin();
 
   // ---------------------------------------------------------------- open
+  // A file is not allowed to exist without a case type AND a campaign. The
+  // console therefore opens it at case-type selection, not at caller details:
+  // one screen later, but it is the first moment we actually know what the file
+  // is. If no campaign is configured for that firm and case type we refuse and
+  // say so plainly rather than creating an orphan.
   if (b.op === "open") {
     const firmId = await resolveFirm(admin, b.firm_slug, g.firmId);
     if (!firmId) return NextResponse.json({ error: "no firm resolved for this console" }, { status: 400 });
     if (!b.first_name) return NextResponse.json({ error: "first name required" }, { status: 400 });
+    if (!b.case_type) return NextResponse.json({ error: "case type required" }, { status: 400 });
 
-    const caseType = b.case_type ?? null;
-    let campaign: any = null;
-    if (caseType) {
-      const { data } = await admin.from("campaigns")
-        .select("id, name, retainer_template_id, retainer_packet, allow_live_sign")
-        .eq("firm_id", firmId).eq("case_type", caseType).eq("active", true).limit(1).maybeSingle();
-      campaign = data ?? null;
+    const caseType = b.case_type;
+    const { data: campaign } = await admin.from("campaigns")
+      .select("id, name, retainer_template_id, retainer_packet, allow_live_sign")
+      .eq("firm_id", firmId).eq("case_type", caseType).eq("active", true).limit(1).maybeSingle();
+
+    if (!campaign) {
+      return NextResponse.json({
+        error: "no_campaign",
+        message: `There is no active campaign for this case type, so a file cannot be opened. Add one in Settings, Campaigns, then reload this page. The call is still being logged.`,
+      }, { status: 200 });
     }
 
     const { data: leadNo, error: mintErr } = await admin.rpc("mint_lead_no", { p_firm: firmId });
     if (mintErr) return NextResponse.json({ error: mintErr.message }, { status: 500 });
 
-    // case_type is NOT NULL on leads and defaults to 'motel_trafficking'. At this
-    // point in the call we genuinely do not know what the matter is yet, and
-    // letting the default apply would mislabel every console file as a Motel 6
-    // case. 'unassigned' is the honest value; op=case_type overwrites it the
-    // moment the agent picks, and a call that drops in between stays truthful.
-    const openType = caseType ?? "unassigned";
-
     const { data: lead, error } = await admin.from("leads").insert({
-      firm_id: firmId, lead_no: leadNo, case_type: openType,
-      campaign_id: campaign?.id ?? null, campaign: campaign?.name ?? null,
+      firm_id: firmId, lead_no: leadNo, case_type: caseType,
+      campaign_id: campaign.id, campaign: campaign.name,
       first_name: b.first_name, claimant_name: b.first_name,
       phone: b.callback ?? null, stage: "referral_received", origin: "console",
       created_by: g.id, assigned_agent: g.id,
@@ -68,8 +70,8 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     const { data: claim } = await admin.from("claims").insert({
-      firm_id: firmId, lead_id: lead.id, claim_type: openType,
-      campaign: campaign?.name ?? null, status: "contacting", answers: {},
+      firm_id: firmId, lead_id: lead.id, claim_type: caseType,
+      campaign: campaign.name, status: "contacting", answers: {},
     }).select("id").single();
 
     // Log the call alongside the file so the caller ID still ties to the recording.
@@ -92,42 +94,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true, lead_id: lead.id, lead_no: lead.lead_no, claim_id: claim?.id ?? null, call_id: call?.id ?? null,
       campaign: campaign?.name ?? null,
-      can_send_retainer: !!(campaign && hasPacket && campaign.allow_live_sign),
-      retainer_blocker: !campaign
-        ? "No active campaign for this firm and case type, so there is no retainer to send."
-        : !hasPacket ? `The ${campaign.name} campaign has no retainer packet configured.`
-        : !campaign.allow_live_sign ? `The ${campaign.name} campaign is not enabled for signing live on a call.`
-        : null,
-    });
-  }
-
-  // ---------------------------------------------------------------- case_type
-  // The file opens at caller details, before we know what the call is about.
-  // This attaches the case type and its campaign once the agent picks it, and
-  // reports whether a retainer can actually be sent for it.
-  if (b.op === "case_type") {
-    if (!b.lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
-    const firmId = await resolveFirm(admin, b.firm_slug, g.firmId);
-    const caseType = b.case_type ?? null;
-    let campaign: any = null;
-    if (caseType && firmId) {
-      const { data } = await admin.from("campaigns")
-        .select("id, name, retainer_template_id, retainer_packet, allow_live_sign")
-        .eq("firm_id", firmId).eq("case_type", caseType).eq("active", true).limit(1).maybeSingle();
-      campaign = data ?? null;
-    }
-    if (!caseType) return NextResponse.json({ error: "case_type required" }, { status: 400 });
-    await admin.from("leads").update({
-      case_type: caseType, campaign_id: campaign?.id ?? null, campaign: campaign?.name ?? null,
-    }).eq("id", b.lead_id);
-    if (b.claim_id) {
-      await admin.from("claims").update({ claim_type: caseType, campaign: campaign?.name ?? null }).eq("id", b.claim_id);
-    }
-    if (b.call_id) await admin.from("intake_calls").update({ matter: caseType }).eq("id", b.call_id);
-
-    const hasPacket = !!(campaign && ((Array.isArray(campaign.retainer_packet) && campaign.retainer_packet.length) || campaign.retainer_template_id));
-    return NextResponse.json({
-      ok: true, campaign: campaign?.name ?? null,
       can_send_retainer: !!(campaign && hasPacket && campaign.allow_live_sign),
       retainer_blocker: !campaign
         ? "No active campaign for this firm and case type, so there is no retainer to send."

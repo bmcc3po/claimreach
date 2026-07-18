@@ -220,7 +220,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       {view === "table" && (
         <div className="table-scroll">
           <table className="docket leads">
-            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("campaign", "Campaign")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}<th style={{ width: 40 }}></th></tr></thead>
+            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("campaign", "Campaign")}{th("type", "Case type")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}<th style={{ width: 40 }}></th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={`${r.needsAction ? "needs-action" : ""} ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
@@ -229,7 +229,10 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   <td><Link href={`${basePath}/${r.id}`}>{r.lead_no}</Link></td>
                   <td style={{ fontWeight: 600 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name}{r.clock && <ClockChip clock={r.clock} />}</span></td>
                   <td style={{ whiteSpace: "nowrap" }}>{r.phone}</td>
-                  <td>{r.campaign}</td>
+                  <td>{r.campaign && r.campaign !== "—"
+                    ? r.campaign
+                    : <span title="This file has no campaign. It cannot be delivered or papered until one is set." style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11.5, fontWeight:700, padding:"2px 8px", borderRadius:999, background:"#fef2f2", color:"#b91c1c", border:"1px solid #fecaca", whiteSpace:"nowrap" }}>No campaign</span>}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{r.type}</td>
                   <td><TierBadge letter={r.tier_letter} number={r.tier_number} claimType={r.type} /></td>
                   <td>{statusBadge(r.status)}{r.flag && <span className="badge flag" style={{ marginLeft: 4 }}>flag</span>}</td>
                   <td><span className="badge stage">{STAGE_LABELS[r.stage] ?? r.stage}</span></td>

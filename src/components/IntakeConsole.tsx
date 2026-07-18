@@ -63,6 +63,10 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   const [client, setClient] = useState<Record<string, string>>({});
   const [sendVia, setSendVia] = useState<"sms" | "email">("sms");
   const [sigStatus, setSigStatus] = useState<{ signed_count: number; total: number; all_signed: boolean } | null>(null);
+  // Whether a signature ACTUALLY landed. Deliberately separate from signStage:
+  // signStage says which screen we are on, and "skip signing" also lands on the
+  // post-signature screen. Conflating the two marked unsigned files as signed.
+  const [actuallySigned, setActuallySigned] = useState(false);
   const [postSign, setPostSign] = useState<Record<string, string>>({});
   const [ladderDone, setLadderDone] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
@@ -83,28 +87,23 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     return d;
   }
 
-  async function openFile() {
+  // The file opens here, not at caller details: this is the first moment we know
+  // both who is on the line AND what the file is. No campaign means no file.
+  async function pickCaseType(t: CaseTypeKey) {
     setBusy(true); setErr("");
     try {
       const d = await api({
         op: "open", firm_slug: firmSlug, caller_id: callerId,
-        first_name: firstName.trim(), callback, call_type: callType,
+        first_name: firstName.trim(), callback, call_type: callType, case_type: t,
       });
+      if (d.error === "no_campaign") { setErr(d.message); setBusy(false); return; }
       setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
+      setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
       setClient((c) => ({ ...c, first_name: firstName.trim(), phone: callback }));
-      setStage("casetype");
+      setCaseType(t); setAnswers({}); setHistory([]);
+      setCurrentQ(nextQuestionKey(t, {})); setStage("questions");
     } catch (e: any) { setErr(e?.message || "could not open the file"); }
     setBusy(false);
-  }
-
-  async function pickCaseType(t: CaseTypeKey) {
-    setCaseType(t); setAnswers({}); setHistory([]);
-    setCurrentQ(nextQuestionKey(t, {})); setStage("questions");
-    if (!file) return;
-    try {
-      const d = await api({ op: "case_type", firm_slug: firmSlug, lead_id: file.lead_id, claim_id: file.claim_id, call_id: file.call_id, case_type: t });
-      setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
-    } catch { /* the intake keeps running even if the campaign lookup hiccups */ }
   }
 
   // Every answer is written as it lands, so a dropped call leaves a usable file.
@@ -181,7 +180,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         const d = await r.json();
         if (!alive) return;
         setSigStatus(d);
-        if (d.all_signed) setSignStage("signed");
+        if (d.all_signed) { setActuallySigned(true); setSignStage("signed"); }
       } catch {}
     };
     tick();
@@ -197,7 +196,8 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         op: "disposition", lead_id: file.lead_id, call_id: file.call_id,
         disposition: outcome.disposition, reason: outcome.reason, close_key: outcome.closeKey,
         flags: outcome.flags, post_sign: Object.keys(postSign).length ? postSign : null,
-        status_key: signStage === "signed" ? "signed_wip" : undefined,
+        // Only a real signature moves the file onto the signed track.
+        status_key: actuallySigned ? "signed_wip" : undefined,
       });
     } catch (e: any) { setErr(e?.message || "could not close the file"); }
     setBusy(false); setDone(true);
@@ -308,17 +308,17 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           {firstName && <Spoken small>{fill(CALLER_DETAIL_SCRIPTS.firstNamePermission)}</Spoken>}
           <label className="ic-label">Best callback number</label>
           <input className="ic-input" value={callback} onChange={(e) => setCallback(e.target.value)} placeholder="(702) 555-0134" />
-          <Note>Continuing opens the file. Everything from here saves as you go, so a dropped call is still a working file you can pick back up.</Note>
-          <Primary disabled={!firstName.trim() || busy} onClick={openFile}>{busy ? "Opening the file…" : "Open file and continue"}</Primary>
+          <Primary disabled={!firstName.trim()} onClick={() => setStage("casetype")}>Continue</Primary>
         </div>
       )}
 
       {stage === "casetype" && (
         <div className="ic-card-wrap">
           <h2 className="ic-q">What is this about?</h2>
+          <Note>Picking opens the file. Every answer after this saves as you go, so a dropped call still leaves a working file you can pick back up.</Note>
           <div className="ic-grid">
             {CASE_TYPES.filter((c) => cfg.caseTypes.includes(c.key)).map((c) => (
-              <button key={c.key} className={`ic-card ${c.key === "auto" ? "lead" : ""}`} onClick={() => pickCaseType(c.key)}>
+              <button key={c.key} disabled={busy} className={`ic-card ${c.key === "auto" ? "lead" : ""}`} onClick={() => pickCaseType(c.key)}>
                 <span className="ic-card-t">{c.label}</span><span className="ic-card-s">{c.sub}</span>
               </button>
             ))}
@@ -342,6 +342,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           outcome={outcome} cfg={cfg} fill={fill} signStage={signStage} setSignStage={setSignStage}
           client={client} setClient={setClient} sendVia={sendVia} setSendVia={setSendVia}
           retainer={retainer} sigStatus={sigStatus} postSign={postSign} setPostSign={setPostSign}
+          actuallySigned={actuallySigned} setActuallySigned={setActuallySigned}
           ladderDone={ladderDone} setLadderDone={setLadderDone} busy={busy}
           onSend={saveIdentityAndSend} onFinish={finishCall} onBack={back} answers={answers} file={file}
         />
@@ -356,7 +357,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 function OutcomeView(p: any) {
   const { outcome, cfg, fill, signStage, setSignStage, client, setClient, sendVia, setSendVia,
           retainer, sigStatus, postSign, setPostSign, ladderDone, setLadderDone, busy,
-          onSend, onFinish, onBack, answers, file } = p;
+          actuallySigned, setActuallySigned, onSend, onFinish, onBack, answers, file } = p;
   const d: string = outcome.disposition;
   const tone = d === "SIGN" ? "sign" : d === "REFER" ? "refer" : d === "DISQUALIFY" ? "dq" : d === "SECONDARY_REVIEW" ? "sr" : "neutral";
   const sr = SECONDARY_REVIEW_SCRIPTS[(outcome.closeKey as keyof typeof SECONDARY_REVIEW_SCRIPTS)] ?? SECONDARY_REVIEW_SCRIPTS.default;
@@ -403,7 +404,7 @@ function OutcomeView(p: any) {
             <Primary disabled={!identityReady || busy || !retainer.can} onClick={onSend}>
               {busy ? "Sending…" : retainer.can ? `Send the agreement by ${sendVia === "sms" ? "text" : "email"}` : "Retainer not available"}
             </Primary>
-            {!retainer.can && <button className="ic-btn wide" onClick={() => setSignStage("signed")}>Skip signing, finish the file</button>}
+            {!retainer.can && <button className="ic-btn wide" onClick={() => { setActuallySigned(false); setSignStage("signed"); }}>Skip signing, finish the file</button>}
           </>
         )}
 
@@ -432,15 +433,19 @@ function OutcomeView(p: any) {
               );
             })}
             <Spoken>{fill(SIGN_SCRIPTS.reassurance)}</Spoken>
-            <button className="ic-btn wide" onClick={() => setSignStage("signed")}>They signed, continue</button>
+            <button className="ic-btn wide" onClick={() => { setActuallySigned(true); setSignStage("signed"); }}>
+              They signed, continue
+            </button>
           </>
         )}
 
         {d === "SIGN" && signStage === "signed" && (
           <>
-            <div className="ic-wait done"><span className="ic-tick">✓</span><b>Signed. Now finish the file.</b></div>
-            <h3 className="ic-h3">After the signature</h3>
-            <Note tone="hard">Only collect this now that the agreement is signed.</Note>
+            {actuallySigned
+              ? <div className="ic-wait done"><span className="ic-tick">✓</span><b>Signed. Now finish the file.</b></div>
+              : <Note tone="hard">Nothing was signed on this call. The file stays unsigned and will not move onto the signed track.</Note>}
+            <h3 className="ic-h3">{actuallySigned ? "After the signature" : "Finish the file"}</h3>
+            {actuallySigned && <Note tone="hard">Only collect this now that the agreement is signed.</Note>}
             <div className="ic-idgrid">
               {POST_SIGN_FIELDS.map((f) => (
                 <label key={f.key} className="ic-postfield half">
