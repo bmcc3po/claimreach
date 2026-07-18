@@ -1,23 +1,43 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { FIRM_CONFIGS, getFirmConfig, DEFAULT_FIRM_SLUG } from "@/lib/intake-console/config";
 import { CASE_TYPES, questionByKey, questionsFor, type Question } from "@/lib/intake-console/questions";
 import {
-  evaluate, nextQuestionKey, buildSummary,
+  evaluate, nextQuestionKey, buildSummary, questionApplies,
   type Answers, type CaseTypeKey, type CallType, type Outcome,
 } from "@/lib/intake-console/engine";
 import {
   CALLER_DETAIL_SCRIPTS, NOT_TREATED_TELL, WRONGFUL_DEATH_SCRIPT, SIGN_SCRIPTS, POST_SIGN_FIELDS,
   REFER_SCRIPTS, DQ_CLOSES, SECONDARY_REVIEW_SCRIPTS, CALLBACK_SCRIPT, COMPLIANCE_RULES,
 } from "@/lib/intake-console/scripts";
+import GuidedStep, { Spoken, Note, Primary } from "@/components/guided/GuidedStep";
+
+// ============================================================================
+// Take a call. This is not a screening widget that gets promoted into a lead
+// later — it IS the lead intake. The file opens the moment there is a real
+// person on the line, and every answer writes against it as the agent goes.
+// ============================================================================
 
 type Stage = "greeting" | "callerid" | "calltype" | "details" | "casetype" | "questions" | "outcome";
+type SignStage = "intro" | "identity" | "waiting" | "signed";
 
 const CALL_TYPES: { value: CallType; label: string; sub: string; lead?: boolean }[] = [
-  { value: "new_potential", label: "New Potential Client", sub: "Run the intake", lead: true },
+  { value: "new_potential", label: "New Potential Client", sub: "Open a file and run the intake", lead: true },
   { value: "existing",      label: "Existing Client",      sub: "Route to their team" },
   { value: "non_client",    label: "Non-Client Matter",    sub: "Route to the firm" },
   { value: "not_legal",     label: "Not a Legal Matter",   sub: "Close politely" },
+];
+
+const IDENTITY_FIELDS: { key: string; label: string; type?: string; half?: boolean }[] = [
+  { key: "first_name", label: "Legal first name", half: true },
+  { key: "last_name",  label: "Legal last name",  half: true },
+  { key: "dob",        label: "Date of birth", type: "date", half: true },
+  { key: "phone",      label: "Best phone", half: true },
+  { key: "email",      label: "Email" },
+  { key: "addr1",      label: "Street address" },
+  { key: "city",       label: "City", half: true },
+  { key: "state",      label: "State", half: true },
+  { key: "zip",        label: "ZIP", half: true },
 ];
 
 export default function IntakeConsole({ agentName }: { agentName: string }) {
@@ -35,37 +55,91 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   const [currentQ, setCurrentQ] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [outcomeSource, setOutcomeSource] = useState<"questions" | "calltype">("questions");
-  const [draft, setDraft] = useState<any>("");        // holds multi-select / text in progress
+
+  const [file, setFile] = useState<{ lead_id: string; lead_no: string; claim_id: string; call_id: string } | null>(null);
+  const [retainer, setRetainer] = useState<{ can: boolean; blocker: string | null; campaign: string | null }>({ can: false, blocker: null, campaign: null });
+
+  const [signStage, setSignStage] = useState<SignStage | null>(null);
+  const [client, setClient] = useState<Record<string, string>>({});
+  const [sendVia, setSendVia] = useState<"sms" | "email">("sms");
+  const [sigStatus, setSigStatus] = useState<{ signed_count: number; total: number; all_signed: boolean } | null>(null);
   const [postSign, setPostSign] = useState<Record<string, string>>({});
   const [ladderDone, setLadderDone] = useState<number[]>([]);
-  const [savedId, setSavedId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
 
   const fill = (s: string) =>
     s.replace(/\[agent\]/g, agentName || "your name")
-     .replace(/\[name\]/g, firstName || "there")
+     .replace(/\[name\]/g, client.first_name || firstName || "there")
      .replace(/\[passenger\]/g, postSign.passenger || "your passenger")
      .replace(/\[X\]/g, cfg.referTurnaround || "___");
 
-  // ------------------------------------------------------------ advancing
+  async function api(body: any) {
+    const r = await fetch("/api/console", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const t = await r.text();
+    const d = t ? JSON.parse(t) : {};
+    if (!r.ok) throw new Error(d.error || "request failed");
+    return d;
+  }
+
+  async function openFile() {
+    setBusy(true); setErr("");
+    try {
+      const d = await api({
+        op: "open", firm_slug: firmSlug, caller_id: callerId,
+        first_name: firstName.trim(), callback, call_type: callType,
+      });
+      setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
+      setClient((c) => ({ ...c, first_name: firstName.trim(), phone: callback }));
+      setStage("casetype");
+    } catch (e: any) { setErr(e?.message || "could not open the file"); }
+    setBusy(false);
+  }
+
+  async function pickCaseType(t: CaseTypeKey) {
+    setCaseType(t); setAnswers({}); setHistory([]);
+    setCurrentQ(nextQuestionKey(t, {})); setStage("questions");
+    if (!file) return;
+    try {
+      const d = await api({ op: "case_type", firm_slug: firmSlug, lead_id: file.lead_id, claim_id: file.claim_id, call_id: file.call_id, case_type: t });
+      setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
+    } catch { /* the intake keeps running even if the campaign lookup hiccups */ }
+  }
+
+  // Every answer is written as it lands, so a dropped call leaves a usable file.
+  const saveTimer = useRef<any>(null);
+  function persist(next: Answers, summary?: string) {
+    if (!file) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      api({ op: "save", claim_id: file.claim_id, call_id: file.call_id, answers: next, summary }).catch(() => {});
+    }, 400);
+  }
+
   function answerQuestion(key: string, value: any) {
     const next = { ...answers, [key]: value };
     setAnswers(next);
     setHistory((h) => [...h, key]);
-    setDraft("");
+    persist(next);
     const ct = caseType!;
     const o = evaluate(ct, next, cfg);
-    if (o) { setOutcome(o); setOutcomeSource("questions"); setStage("outcome"); return; }
+    if (o) { finishWith(o, next); return; }
     setCurrentQ(nextQuestionKey(ct, next));
   }
 
-  function pickCaseType(t: CaseTypeKey) {
-    setCaseType(t);
-    setAnswers({});
-    setHistory([]);
-    setCurrentQ(nextQuestionKey(t, {}));
-    setStage("questions");
+  async function finishWith(o: Outcome, ans: Answers) {
+    setOutcome(o); setOutcomeSource("questions"); setStage("outcome");
+    setSignStage(o.disposition === "SIGN" ? "intro" : null);
+    if (!file || !caseType) return;
+    const summary = buildSummary(caseType, ans, o, client.first_name || firstName);
+    try {
+      await api({
+        op: "disposition", lead_id: file.lead_id, call_id: file.call_id,
+        disposition: o.disposition, reason: o.reason, close_key: o.closeKey,
+        flags: o.flags, summary,
+      });
+    } catch (e: any) { setErr(e?.message || "could not set the file status"); }
   }
 
   function pickCallType(t: CallType) {
@@ -73,36 +147,80 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     if (t === "new_potential") { setStage("details"); return; }
     const r = cfg.callTypeRouting[t];
     setOutcome({ disposition: r.disposition, reason: r.reason, flags: [], closeKey: t === "not_legal" ? "not_legal" : undefined });
-    setOutcomeSource("calltype");
-    setStage("outcome");
+    setOutcomeSource("calltype"); setStage("outcome");
   }
 
-  // Back is available on every screen, including the outcome. It never restarts.
+  async function saveIdentityAndSend() {
+    if (!file) return;
+    setBusy(true); setErr("");
+    try {
+      await api({ op: "identity", lead_id: file.lead_id, client });
+      const r = await fetch("/api/esign", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          op: "send_packet", lead_id: file.lead_id, live_call: true,
+          send_via: sendVia, signer_name: `${client.first_name ?? ""} ${client.last_name ?? ""}`.trim(),
+          signer_phone: client.phone, signer_email: client.email,
+        }),
+      });
+      const t = await r.text();
+      const d = t ? JSON.parse(t) : {};
+      if (d.error) throw new Error(d.error);
+      setSignStage("waiting");
+    } catch (e: any) { setErr(e?.message || "could not send the retainer"); }
+    setBusy(false);
+  }
+
+  // Poll for the signature while the agent works the buy-in ladder.
+  useEffect(() => {
+    if (signStage !== "waiting" || !file) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/console?lead_id=${file.lead_id}`);
+        const d = await r.json();
+        if (!alive) return;
+        setSigStatus(d);
+        if (d.all_signed) setSignStage("signed");
+      } catch {}
+    };
+    tick();
+    const i = setInterval(tick, 5000);
+    return () => { alive = false; clearInterval(i); };
+  }, [signStage, file]);
+
+  async function finishCall() {
+    if (!file || !outcome) { setDone(true); return; }
+    setBusy(true);
+    try {
+      await api({
+        op: "disposition", lead_id: file.lead_id, call_id: file.call_id,
+        disposition: outcome.disposition, reason: outcome.reason, close_key: outcome.closeKey,
+        flags: outcome.flags, post_sign: Object.keys(postSign).length ? postSign : null,
+        status_key: signStage === "signed" ? "signed_wip" : undefined,
+      });
+    } catch (e: any) { setErr(e?.message || "could not close the file"); }
+    setBusy(false); setDone(true);
+  }
+
   function back() {
     setErr("");
     if (stage === "outcome") {
+      if (signStage && signStage !== "intro") { setSignStage(signStage === "signed" ? "waiting" : "intro"); return; }
       if (outcomeSource === "calltype") { setOutcome(null); setStage("calltype"); return; }
-      const h = [...history];
-      const last = h.pop();
-      setHistory(h);
+      const h = [...history]; const last = h.pop(); setHistory(h);
       if (last) {
         const a = { ...answers }; delete a[last];
-        setAnswers(a);
-        setCurrentQ(last);
-        setOutcome(null);
-        setStage("questions");
+        setAnswers(a); setCurrentQ(last); setOutcome(null); setSignStage(null); setStage("questions");
       } else { setOutcome(null); setStage("casetype"); }
       return;
     }
     if (stage === "questions") {
-      const h = [...history];
-      const last = h.pop();
+      const h = [...history]; const last = h.pop();
       if (!last) { setStage("casetype"); setCurrentQ(null); return; }
       setHistory(h);
       const a = { ...answers }; delete a[last];
-      setAnswers(a);
-      setCurrentQ(last);
-      setDraft("");
+      setAnswers(a); setCurrentQ(last);
       return;
     }
     if (stage === "casetype") { setStage("details"); return; }
@@ -111,36 +229,23 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     if (stage === "callerid") { setStage("greeting"); return; }
   }
 
-  async function save() {
-    setSaving(true); setErr("");
-    try {
-      const summary = outcome && caseType ? buildSummary(caseType, answers, outcome, firstName) : "";
-      const r = await fetch("/api/intake-calls", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firm_slug: firmSlug, caller_id: callerId, first_name: firstName, callback,
-          call_type: callType, matter: caseType, answers,
-          disposition: outcome?.disposition, reason: outcome?.reason, close_key: outcome?.closeKey,
-          flags: outcome?.flags ?? [], summary,
-          post_sign: Object.keys(postSign).length ? postSign : null,
-        }),
-      });
-      const text = await r.text();
-      const d = text ? JSON.parse(text) : {};
-      if (!r.ok) throw new Error(d.error || "save failed");
-      setSavedId(d.id);
-    } catch (e: any) { setErr(e?.message || "save failed"); }
-    setSaving(false);
-  }
-
-  function reset() {
-    setStage("greeting"); setCallerId(""); setFirstName(""); setCallback("");
-    setCallType(null); setCaseType(null); setAnswers({}); setHistory([]); setCurrentQ(null);
-    setOutcome(null); setDraft(""); setPostSign({}); setLadderDone([]); setSavedId(null); setErr("");
-  }
+  function reset() { window.location.reload(); }
 
   const q: Question | undefined = currentQ && caseType ? questionByKey(caseType, currentQ) : undefined;
-  const total = caseType ? questionsFor(caseType).length : 0;
+  const applicable = caseType ? questionsFor(caseType).filter((x) => questionApplies(caseType, x.key, answers)).length : 0;
+  const remaining = Math.max(0, applicable - history.length - 1);
+
+  if (done) {
+    return (
+      <div className="ic-root"><style>{CSS}</style>
+        <div className="ic-card-wrap" style={{ textAlign: "center" }}>
+          <h2 className="ic-q">Call complete</h2>
+          <p className="ic-muted">{file ? `File ${file.lead_no} saved.` : "Saved."}</p>
+          <Primary onClick={reset}>Take the next call</Primary>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ic-root">
@@ -148,7 +253,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
       <header className="ic-head">
         <div>
-          <div className="ic-eyebrow">Intake console</div>
+          <div className="ic-eyebrow">Take a call</div>
           <h1>{cfg.firmName}</h1>
         </div>
         <div className="ic-headright">
@@ -156,124 +261,89 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
             <select className="ic-firm" value={firmSlug} onChange={(e) => setFirmSlug(e.target.value)}>
               {Object.values(FIRM_CONFIGS).map((f) => <option key={f.slug} value={f.slug}>{f.firmName}</option>)}
             </select>
-          ) : <span className="ic-caller">{callerId}</span>}
+          ) : (
+            <span className="ic-caller">{file ? <b>{file.lead_no}</b> : callerId}</span>
+          )}
           {stage !== "greeting" && <button className="ic-btn ghost" onClick={back}>← Back</button>}
         </div>
       </header>
 
-      {/* ------------------------------------------------ GREETING */}
+      {err && <div className="ic-banner err">{err}</div>}
+
       {stage === "greeting" && (
-        <Card>
+        <div className="ic-card-wrap">
           <Spoken>{fill(cfg.greeting)}</Spoken>
           <Note tone="hard">{cfg.recordingDisclosure}</Note>
           <Primary onClick={() => setStage("callerid")}>Disclosure read, continue</Primary>
-        </Card>
+        </div>
       )}
 
-      {/* ------------------------------------------------ CALLER ID GATE */}
       {stage === "callerid" && (
-        <Card>
+        <div className="ic-card-wrap">
           <h2 className="ic-q">Paste the caller ID from JustCall</h2>
           <Note>This has to match the call recording. Nothing unlocks until it is filled.</Note>
           <input className="ic-input" autoFocus value={callerId} onChange={(e) => setCallerId(e.target.value)} placeholder="(702) 555-0134" />
           <Primary disabled={!callerId.trim()} onClick={() => setStage("calltype")}>Continue</Primary>
-        </Card>
+        </div>
       )}
 
-      {/* ------------------------------------------------ CALL TYPE */}
       {stage === "calltype" && (
-        <Card>
+        <div className="ic-card-wrap">
           <h2 className="ic-q">What kind of call is this?</h2>
           <div className="ic-grid">
             {CALL_TYPES.map((c) => (
               <button key={c.value} className={`ic-card ${c.lead ? "lead" : ""}`} onClick={() => pickCallType(c.value)}>
-                <span className="ic-card-t">{c.label}</span>
-                <span className="ic-card-s">{c.sub}</span>
+                <span className="ic-card-t">{c.label}</span><span className="ic-card-s">{c.sub}</span>
               </button>
             ))}
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* ------------------------------------------------ CALLER DETAILS */}
       {stage === "details" && (
-        <Card>
+        <div className="ic-card-wrap">
           <Spoken>{CALLER_DETAIL_SCRIPTS.nameAsk}</Spoken>
           <label className="ic-label">First name</label>
           <input className="ic-input" autoFocus value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name only" />
           {firstName && <Spoken small>{fill(CALLER_DETAIL_SCRIPTS.firstNamePermission)}</Spoken>}
           <label className="ic-label">Best callback number</label>
           <input className="ic-input" value={callback} onChange={(e) => setCallback(e.target.value)} placeholder="(702) 555-0134" />
-          <Primary disabled={!firstName.trim()} onClick={() => setStage("casetype")}>Continue</Primary>
-        </Card>
+          <Note>Continuing opens the file. Everything from here saves as you go, so a dropped call is still a working file you can pick back up.</Note>
+          <Primary disabled={!firstName.trim() || busy} onClick={openFile}>{busy ? "Opening the file…" : "Open file and continue"}</Primary>
+        </div>
       )}
 
-      {/* ------------------------------------------------ CASE TYPE */}
       {stage === "casetype" && (
-        <Card>
+        <div className="ic-card-wrap">
           <h2 className="ic-q">What is this about?</h2>
           <div className="ic-grid">
             {CASE_TYPES.filter((c) => cfg.caseTypes.includes(c.key)).map((c) => (
               <button key={c.key} className={`ic-card ${c.key === "auto" ? "lead" : ""}`} onClick={() => pickCaseType(c.key)}>
-                <span className="ic-card-t">{c.label}</span>
-                <span className="ic-card-s">{c.sub}</span>
+                <span className="ic-card-t">{c.label}</span><span className="ic-card-s">{c.sub}</span>
               </button>
             ))}
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* ------------------------------------------------ QUESTIONS */}
       {stage === "questions" && q && (
-        <Card>
-          <div className="ic-progress">Question {history.length + 1}{total ? ` of up to ${total}` : ""}</div>
-          <Spoken>{fill(q.script)}</Spoken>
-          {q.note && <Note>{q.note}</Note>}
-          {q.key === "willing" && <Note tone="tell"><strong>If they hesitate, read this:</strong> {NOT_TREATED_TELL}</Note>}
-
-          {q.kind === "single" && (
-            <div className="ic-opts">
-              {q.options!.map((o) => (
-                <button key={o.value} className="ic-opt" onClick={() => answerQuestion(q.key, o.value)}>{o.label}</button>
-              ))}
-            </div>
-          )}
-
-          {q.kind === "multi" && (
-            <>
-              <div className="ic-opts multi">
-                {q.options!.map((o) => {
-                  const sel: string[] = Array.isArray(draft) ? draft : [];
-                  const on = sel.includes(o.value);
-                  return (
-                    <button key={o.value} className={`ic-opt ${on ? "on" : ""}`}
-                      onClick={() => setDraft(on ? sel.filter((v) => v !== o.value) : [...sel, o.value])}>
-                      <span className="ic-check">{on ? "✓" : ""}</span>{o.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <Primary disabled={!Array.isArray(draft) || draft.length === 0} onClick={() => answerQuestion(q.key, draft)}>Continue</Primary>
-            </>
-          )}
-
-          {q.kind === "text" && (
-            <>
-              <textarea className="ic-input area" autoFocus value={typeof draft === "string" ? draft : ""} onChange={(e) => setDraft(e.target.value)} rows={4} />
-              <Primary disabled={!String(draft).trim()} onClick={() => answerQuestion(q.key, draft)}>Continue</Primary>
-            </>
-          )}
-        </Card>
+        <GuidedStep
+          step={{ key: q.key, kind: q.kind as any, script: q.script, note: q.note, options: q.options }}
+          value={answers[q.key]}
+          index={history.length}
+          remaining={remaining}
+          onAnswer={(v) => answerQuestion(q.key, v)}
+          extra={q.key === "willing" ? <Note tone="tell"><strong>If they hesitate, read this:</strong> {NOT_TREATED_TELL}</Note> : undefined}
+        />
       )}
 
-      {/* ------------------------------------------------ OUTCOME */}
       {stage === "outcome" && outcome && (
         <OutcomeView
-          outcome={outcome} cfg={cfg} fill={fill} firstName={firstName}
-          postSign={postSign} setPostSign={setPostSign}
-          ladderDone={ladderDone} setLadderDone={setLadderDone}
-          onSave={save} saving={saving} savedId={savedId} err={err}
-          onReset={reset} onBack={back} answers={answers}
+          outcome={outcome} cfg={cfg} fill={fill} signStage={signStage} setSignStage={setSignStage}
+          client={client} setClient={setClient} sendVia={sendVia} setSendVia={setSendVia}
+          retainer={retainer} sigStatus={sigStatus} postSign={postSign} setPostSign={setPostSign}
+          ladderDone={ladderDone} setLadderDone={setLadderDone} busy={busy}
+          onSend={saveIdentityAndSend} onFinish={finishCall} onBack={back} answers={answers} file={file}
         />
       )}
 
@@ -284,10 +354,13 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
 // ---------------------------------------------------------------- outcome
 function OutcomeView(p: any) {
-  const { outcome, cfg, fill, postSign, setPostSign, ladderDone, setLadderDone, onSave, saving, savedId, err, onReset, onBack, answers } = p;
+  const { outcome, cfg, fill, signStage, setSignStage, client, setClient, sendVia, setSendVia,
+          retainer, sigStatus, postSign, setPostSign, ladderDone, setLadderDone, busy,
+          onSend, onFinish, onBack, answers, file } = p;
   const d: string = outcome.disposition;
   const tone = d === "SIGN" ? "sign" : d === "REFER" ? "refer" : d === "DISQUALIFY" ? "dq" : d === "SECONDARY_REVIEW" ? "sr" : "neutral";
   const sr = SECONDARY_REVIEW_SCRIPTS[(outcome.closeKey as keyof typeof SECONDARY_REVIEW_SCRIPTS)] ?? SECONDARY_REVIEW_SCRIPTS.default;
+  const identityReady = client.first_name && client.last_name && client.email;
 
   return (
     <div className={`ic-outcome ${tone}`}>
@@ -300,38 +373,84 @@ function OutcomeView(p: any) {
       )}
 
       <div className="ic-out-body">
-        {d === "SIGN" && (
+        {d === "SIGN" && signStage === "intro" && (
           <>
+            <Spoken>{fill(cfg.signTransition)}</Spoken>
+            <Note>You do not have what you need yet. Take their legal name, date of birth, email and address next, then the agreement goes out.</Note>
+            <Primary onClick={() => setSignStage("identity")}>Take their details</Primary>
+          </>
+        )}
+
+        {d === "SIGN" && signStage === "identity" && (
+          <>
+            <h3 className="ic-h3">Details for the agreement</h3>
+            <div className="ic-idgrid">
+              {IDENTITY_FIELDS.map((f) => (
+                <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
+                  <span>{f.label}</span>
+                  <input type={f.type ?? "text"} value={client[f.key] ?? ""} onChange={(e) => setClient({ ...client, [f.key]: e.target.value })} />
+                </label>
+              ))}
+            </div>
+            <h3 className="ic-h3">Send the agreement</h3>
+            <div className="ic-send">
+              <button className={`ic-toggle ${sendVia === "sms" ? "on" : ""}`} onClick={() => setSendVia("sms")}>Text it</button>
+              <button className={`ic-toggle ${sendVia === "email" ? "on" : ""}`} onClick={() => setSendVia("email")}>Email it</button>
+            </div>
+            {retainer.blocker && <Note tone="hard">{retainer.blocker} You can still finish and save the file, but nothing goes out to sign.</Note>}
             <Spoken>{fill(SIGN_SCRIPTS.nextStep)}</Spoken>
             <Note tone="hard">{SIGN_SCRIPTS.nextStepNote}</Note>
+            <Primary disabled={!identityReady || busy || !retainer.can} onClick={onSend}>
+              {busy ? "Sending…" : retainer.can ? `Send the agreement by ${sendVia === "sms" ? "text" : "email"}` : "Retainer not available"}
+            </Primary>
+            {!retainer.can && <button className="ic-btn wide" onClick={() => setSignStage("signed")}>Skip signing, finish the file</button>}
+          </>
+        )}
+
+        {d === "SIGN" && signStage === "waiting" && (
+          <>
+            <div className="ic-wait">
+              <span className="ic-dot" />
+              {sigStatus?.total
+                ? <b>Waiting on signature · {sigStatus.signed_count} of {sigStatus.total} signed</b>
+                : <b>Sent. Waiting on their signature…</b>}
+            </div>
+            <Note tone="hard">Stay on the line. Work the buy-in below while they sign. Do not hang up before it is signed.</Note>
             <h3 className="ic-h3">Insurance buy-in — each line waits for a yes</h3>
             <Note>{SIGN_SCRIPTS.ladderNote}</Note>
-            {SIGN_SCRIPTS.ladder.map((line, i) => {
+            {SIGN_SCRIPTS.ladder.map((line: string, i: number) => {
               const unlocked = i === 0 || ladderDone.includes(i - 1);
-              const done = ladderDone.includes(i);
+              const doneRung = ladderDone.includes(i);
               return (
-                <div key={i} className={`ic-rung ${unlocked ? "" : "locked"} ${done ? "done" : ""}`}>
+                <div key={i} className={`ic-rung ${unlocked ? "" : "locked"} ${doneRung ? "done" : ""}`}>
                   <button className="ic-rung-btn" disabled={!unlocked}
-                    onClick={() => setLadderDone(done ? ladderDone.filter((x: number) => x !== i) : [...ladderDone, i])}>
-                    {done ? "✓" : i + 1}
+                    onClick={() => setLadderDone(doneRung ? ladderDone.filter((x: number) => x !== i) : [...ladderDone, i])}>
+                    {doneRung ? "✓" : i + 1}
                   </button>
                   <p>{fill(line)}</p>
                 </div>
               );
             })}
             <Spoken>{fill(SIGN_SCRIPTS.reassurance)}</Spoken>
-            <Spoken>{fill(SIGN_SCRIPTS.beforeHangup)}</Spoken>
-            <h3 className="ic-h3">After the signature is confirmed</h3>
-            <Note tone="hard">Do not collect any of this until the retainer is signed.</Note>
-            <div className="ic-postgrid">
+            <button className="ic-btn wide" onClick={() => setSignStage("signed")}>They signed, continue</button>
+          </>
+        )}
+
+        {d === "SIGN" && signStage === "signed" && (
+          <>
+            <div className="ic-wait done"><span className="ic-tick">✓</span><b>Signed. Now finish the file.</b></div>
+            <h3 className="ic-h3">After the signature</h3>
+            <Note tone="hard">Only collect this now that the agreement is signed.</Note>
+            <div className="ic-idgrid">
               {POST_SIGN_FIELDS.map((f) => (
-                <label key={f.key} className="ic-postfield">
+                <label key={f.key} className="ic-postfield half">
                   <span>{f.label}{f.sensitive && <em> · sensitive</em>}</span>
                   <input value={postSign[f.key] ?? ""} onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })} />
                 </label>
               ))}
             </div>
             {postSign.passenger && <Spoken>{fill(SIGN_SCRIPTS.passengerAsk)}</Spoken>}
+            <Spoken>{fill(SIGN_SCRIPTS.beforeHangup)}</Spoken>
           </>
         )}
 
@@ -363,36 +482,20 @@ function OutcomeView(p: any) {
         )}
 
         {d === "CALLBACK" && <Spoken>{CALLBACK_SCRIPT}</Spoken>}
-
-        {d === "TRANSFER" && <Spoken>{fill(cfg.callTypeRouting[Object.keys(cfg.callTypeRouting).find((k) => cfg.callTypeRouting[k].reason === outcome.reason) ?? "existing"]?.script ?? "One moment.")}</Spoken>}
+        {d === "TRANSFER" && <Spoken>One moment, let me get you to the right person.</Spoken>}
       </div>
 
       <div className="ic-out-foot">
         <button className="ic-btn ghost" onClick={onBack}>← Back</button>
         <div className="spacer" />
-        {err && <span className="ic-err">{err}</span>}
-        {savedId ? (
-          <>
-            <span className="ic-saved">✓ Saved</span>
-            <button className="ic-btn" onClick={onReset}>Next call</button>
-          </>
-        ) : (
-          <button className="ic-btn solid" disabled={saving} onClick={onSave}>{saving ? "Saving…" : "Save intake"}</button>
+        {file && <span className="ic-filenote">File {file.lead_no} · saving as you go</span>}
+        {(d !== "SIGN" || signStage === "signed") && (
+          <button className="ic-btn solid" disabled={busy} onClick={onFinish}>{busy ? "Saving…" : "Finish call"}</button>
         )}
       </div>
     </div>
   );
 }
-
-// ---------------------------------------------------------------- bits
-function Card({ children }: any) { return <div className="ic-card-wrap">{children}</div>; }
-function Spoken({ children, small }: any) {
-  return <div className={`ic-spoken ${small ? "sm" : ""}`}><span className="ic-spoken-tag">Read verbatim</span><p>{children}</p></div>;
-}
-function Note({ children, tone }: any) {
-  return <div className={`ic-note ${tone ?? ""}`}><span className="ic-note-tag">Agent{tone === "hard" ? " · required" : ""}</span><p>{children}</p></div>;
-}
-function Primary({ children, ...rest }: any) { return <button className="ic-btn solid wide" {...rest}>{children}</button>; }
 
 function ComplianceRail() {
   const [open, setOpen] = useState(false);
@@ -413,14 +516,18 @@ const CSS = `
 .ic-head h1 { font-size:24px; font-weight:800; margin:3px 0 0; letter-spacing:-.02em; }
 .ic-headright { display:flex; align-items:center; gap:10px; }
 .ic-firm { padding:8px 10px; border-radius:9px; border:1px solid var(--line); background:var(--surface); font:inherit; }
-.ic-caller { font-variant-numeric:tabular-nums; font-weight:700; color:var(--ink-soft); font-size:14px; }
+.ic-caller { font-variant-numeric:tabular-nums; font-weight:600; color:var(--ink-soft); font-size:14px; }
+.ic-banner { padding:11px 16px; border-radius:10px; margin-bottom:14px; font-size:14px; font-weight:600; }
+.ic-banner.err { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+.ic-muted { color:var(--ink-soft); }
 
 .ic-card-wrap { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:26px; }
-.ic-progress { font-size:11.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:12px; }
+.ic-progress { font-size:11.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:12px; display:flex; gap:10px; align-items:center; }
+.ic-remaining { background:var(--surface-2); border:1px solid var(--line); padding:2px 8px; border-radius:999px; letter-spacing:.02em; }
+.ic-vital { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:2px 8px; border-radius:999px; letter-spacing:.02em; }
 .ic-q { font-size:22px; font-weight:750; margin:0 0 8px; letter-spacing:-.02em; }
 
-.ic-spoken { border-left:4px solid var(--brand,#2563eb); background:#eff5ff; border-radius:0 12px 12px 0; padding:16px 18px; margin:14px 0; }
-.ic-spoken.sm { opacity:.92; }
+.ic-spoken { border-left:4px solid #2563eb; background:#eff5ff; border-radius:0 12px 12px 0; padding:16px 18px; margin:14px 0; }
 .ic-spoken-tag { font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#1d4ed8; }
 .ic-spoken p { margin:6px 0 0; font-size:19px; line-height:1.5; font-weight:600; color:#0d1420; }
 .ic-spoken.sm p { font-size:16px; font-weight:500; }
@@ -436,16 +543,16 @@ const CSS = `
 .ic-opts { display:flex; flex-direction:column; gap:9px; margin-top:18px; }
 .ic-opt { text-align:left; padding:16px 18px; font-size:16.5px; font-weight:600; border:1.5px solid var(--line);
   border-radius:12px; background:var(--surface); cursor:pointer; transition:all .08s; color:var(--ink); }
-.ic-opt:hover { border-color:var(--brand,#2563eb); background:#f5f9ff; transform:translateX(2px); }
-.ic-opt.on { border-color:var(--brand,#2563eb); background:#eff5ff; }
-.ic-check { display:inline-block; width:20px; color:var(--brand,#2563eb); font-weight:800; }
+.ic-opt:hover { border-color:#2563eb; background:#f5f9ff; transform:translateX(2px); }
+.ic-opt.on { border-color:#2563eb; background:#eff5ff; }
+.ic-check { display:inline-block; width:20px; color:#2563eb; font-weight:800; }
 
 .ic-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
 @media (max-width:640px){ .ic-grid{ grid-template-columns:1fr; } }
 .ic-card { display:flex; flex-direction:column; gap:4px; text-align:left; padding:20px; border:1.5px solid var(--line);
   border-radius:14px; background:var(--surface); cursor:pointer; transition:all .08s; }
-.ic-card:hover { border-color:var(--brand,#2563eb); transform:translateY(-1px); }
-.ic-card.lead { border-color:var(--brand,#2563eb); background:#eff5ff; }
+.ic-card:hover { border-color:#2563eb; transform:translateY(-1px); }
+.ic-card.lead { border-color:#2563eb; background:#eff5ff; }
 .ic-card-t { font-size:16.5px; font-weight:700; color:var(--ink); }
 .ic-card-s { font-size:12.5px; color:var(--ink-faint); }
 
@@ -459,7 +566,7 @@ const CSS = `
 .ic-btn.ghost { background:transparent; }
 .ic-btn.solid { background:#0d1420; color:#fff; border-color:#0d1420; }
 .ic-btn.solid:disabled { opacity:.35; cursor:not-allowed; }
-.ic-btn.wide { width:100%; margin-top:18px; padding:15px; font-size:16px; }
+.ic-btn.wide { width:100%; margin-top:12px; padding:15px; font-size:16px; }
 
 .ic-outcome { border-radius:18px; overflow:hidden; border:1px solid var(--line); background:var(--surface); }
 .ic-out-head { padding:20px 24px; color:#fff; }
@@ -475,6 +582,13 @@ const CSS = `
   background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:4px 10px; border-radius:999px; }
 .ic-out-body { padding:16px 24px 6px; }
 .ic-h3 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); margin:22px 0 8px; }
+
+.ic-wait { display:flex; align-items:center; gap:10px; padding:14px 16px; border-radius:12px; background:#eff6ff; border:1px solid #bfdbfe; font-size:15px; margin-bottom:6px; }
+.ic-wait.done { background:#f0fdf4; border-color:#bbf7d0; }
+.ic-dot { width:10px; height:10px; border-radius:50%; background:#2563eb; animation:icp 1.2s infinite; }
+.ic-tick { color:#15803d; font-weight:900; }
+@keyframes icp { 0%,100%{opacity:1} 50%{opacity:.25} }
+
 .ic-rung { display:flex; gap:12px; align-items:flex-start; padding:11px 0; border-bottom:1px solid var(--line); }
 .ic-rung.locked { opacity:.35; }
 .ic-rung.done p { color:var(--ink-faint); }
@@ -482,15 +596,20 @@ const CSS = `
 .ic-rung-btn { flex-shrink:0; width:30px; height:30px; border-radius:50%; border:1.5px solid var(--line);
   background:var(--surface); font-weight:800; cursor:pointer; color:var(--ink-soft); }
 .ic-rung.done .ic-rung-btn { background:#15803d; color:#fff; border-color:#15803d; }
-.ic-postgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-@media (max-width:640px){ .ic-postgrid{ grid-template-columns:1fr; } }
-.ic-postfield { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:650; color:var(--ink-soft); }
+
+.ic-idgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+@media (max-width:640px){ .ic-idgrid{ grid-template-columns:1fr; } }
+.ic-postfield { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:650; color:var(--ink-soft); grid-column:span 2; }
+.ic-postfield.half { grid-column:span 1; }
 .ic-postfield em { color:#b91c1c; font-style:normal; font-weight:700; }
-.ic-postfield input { padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:var(--surface-2); font:inherit; font-size:14px; color:var(--ink); }
+.ic-postfield input { padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface-2); font:inherit; font-size:15px; color:var(--ink); }
+.ic-send { display:flex; gap:8px; }
+.ic-toggle { flex:1; padding:12px; border-radius:10px; border:1.5px solid var(--line); background:var(--surface); font:inherit; font-weight:650; cursor:pointer; color:var(--ink); }
+.ic-toggle.on { border-color:#2563eb; background:#eff5ff; }
+
 .ic-out-foot { display:flex; align-items:center; gap:10px; padding:16px 24px; border-top:1px solid var(--line); background:var(--surface-2); }
 .ic-out-foot .spacer { flex:1; }
-.ic-saved { color:#15803d; font-weight:700; font-size:14px; }
-.ic-err { color:#b91c1c; font-size:13px; font-weight:600; }
+.ic-filenote { font-size:12px; color:var(--ink-faint); }
 
 .ic-comp { margin-top:20px; border:1px solid var(--line); border-radius:12px; background:var(--surface); overflow:hidden; }
 .ic-comp-head { width:100%; display:flex; justify-content:space-between; padding:11px 16px; background:transparent;

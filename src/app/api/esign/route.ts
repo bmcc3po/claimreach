@@ -24,12 +24,16 @@ export async function POST(req: NextRequest) {
     const { data: lead } = await admin.from("leads").select("id, firm_id, campaign_id, grievous_approved, first_name, last_name, claimant_name, phone, email").eq("id", b.lead_id).maybeSingle();
     if (!lead) return NextResponse.json({ error: "lead not found" }, { status: 404 });
     const ownerAdmin = ["owner", "admin"].includes(me.role);
-    if (!lead.grievous_approved && !(ownerAdmin && b.override)) {
+    const { data: campaign } = lead.campaign_id
+      ? await admin.from("campaigns").select("retainer_packet, retainer_template_id, esign_required, allow_live_sign, name").eq("id", lead.campaign_id).maybeSingle()
+      : { data: null as any };
+    // A campaign explicitly enabled for live signing skips the QA gate: the point
+    // of an inbound call is to paper the client while they are still on the phone.
+    // Nothing here fakes a Grievous approval; the audit trail says it went out live.
+    const liveSign = campaign?.allow_live_sign === true && b.live_call === true;
+    if (!lead.grievous_approved && !liveSign && !(ownerAdmin && b.override)) {
       return NextResponse.json({ error: "Grievous has not approved this file yet. Run a Grievous review or use owner override." }, { status: 200 });
     }
-    const { data: campaign } = lead.campaign_id
-      ? await admin.from("campaigns").select("retainer_packet, retainer_template_id, esign_required").eq("id", lead.campaign_id).maybeSingle()
-      : { data: null as any };
     if (!campaign) return NextResponse.json({ error: "This lead has no campaign, so there is no retainer packet to send." }, { status: 200 });
 
     // Build the packet list. Prefer the explicit packet; fall back to the single

@@ -20,6 +20,10 @@ export interface FirmConsoleConfig {
   // "This sounds like a case we can handle" is approved for TMP only. TMT runs
   // the network model and must never imply acceptance.
   allowSoundsLikeACase: boolean;
+  // Spoken the moment the file qualifies, BEFORE identity is captured. The old
+  // "I have everything I need" line moved to just before the retainer goes out,
+  // because at this point we do not have everything yet.
+  signTransition: string;
 }
 
 const TMT_ROUTING: FirmConsoleConfig["callTypeRouting"] = {
@@ -55,6 +59,7 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
     network: "the Lexamica network",
     callTypeRouting: TMT_ROUTING,
     allowSoundsLikeACase: false,
+    signTransition: "Alright [name], I can get you started right now. I just need a few details from you so I can send your agreement over.",
   },
 
   // Config stubs. Fill in greeting + thresholds when each firm signs off; no
@@ -73,6 +78,7 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
     network: "our referral network",
     callTypeRouting: TMT_ROUTING,
     allowSoundsLikeACase: true, // approved for TMP only
+    signTransition: "Good news [name], this sounds like a case we can handle. Let me grab a few details so I can send your agreement over.",
   },
 
   roth: {
@@ -89,6 +95,7 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
     network: "our referral network",
     callTypeRouting: TMT_ROUTING,
     allowSoundsLikeACase: false,
+    signTransition: "Alright [name], I can get you started right now. I just need a few details so I can send your agreement over.",
   },
 };
 
