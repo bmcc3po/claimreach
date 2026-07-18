@@ -73,3 +73,52 @@ select f.name as firm, c.name as campaign, c.case_type, c.active,
 from campaigns c
 join firms f on f.id = c.firm_id
 where f.slug = 'tmt' and c.case_type = 'mva' and c.active;
+
+-- ---------------------------------------------------------------- TURNBULL
+-- Same intake as TMT until told otherwise. The MVA form is global (firm_id
+-- null, keyed on claim type), so TMP only needs a campaign pointed at 'mva'.
+-- intake_template is left NULL on purpose: if it is set, it overrides case_type
+-- and the campaign would resolve some other form.
+insert into firms (slug, name, lead_prefix)
+select 'tmp', 'Turnbull, Moak & Pendergrass', 'TMP'
+where not exists (select 1 from firms where slug = 'tmp');
+
+insert into campaigns (firm_id, name, case_type, active, allow_live_sign)
+select f.id, 'TMP MVA', 'mva', true, true
+from firms f
+where f.slug = 'tmp'
+  and not exists (
+    select 1 from campaigns c where c.firm_id = f.id and c.case_type = 'mva' and c.active
+  );
+
+-- Clear any stale template override so it resolves the MVA script.
+update campaigns c set intake_template = null
+from firms f
+where c.firm_id = f.id and f.slug in ('tmp','tmt') and c.case_type = 'mva';
+
+-- Verify: both firms should return a row, same case type, no template override.
+select f.name as firm, c.name as campaign, c.case_type, c.intake_template, c.active, c.allow_live_sign
+from campaigns c join firms f on f.id = c.firm_id
+where f.slug in ('tmt','tmp') and c.case_type = 'mva';
+
+-- ---------------------------------------------------------------- ROTH
+-- Same intake as TMT and Turnbull. The MVA form is global, so Roth needs only a
+-- campaign pointed at 'mva' with no intake_template override.
+insert into firms (slug, name, lead_prefix)
+select 'roth', 'The Roth Law Firm', 'ROTH'
+where not exists (select 1 from firms where slug = 'roth');
+
+insert into campaigns (firm_id, name, case_type, active, allow_live_sign)
+select f.id, 'Roth MVA', 'mva', true, true
+from firms f
+where f.slug = 'roth'
+  and not exists (select 1 from campaigns c where c.firm_id = f.id and c.case_type = 'mva' and c.active);
+
+update campaigns c set intake_template = null
+from firms f
+where c.firm_id = f.id and f.slug in ('tmt','tmp','roth') and c.case_type = 'mva';
+
+-- All three firms should return a row with case_type mva and a null template.
+select f.name as firm, c.name as campaign, c.case_type, c.intake_template, c.active, c.allow_live_sign
+from campaigns c join firms f on f.id = c.firm_id
+where f.slug in ('tmt','tmp','roth') and c.case_type = 'mva';

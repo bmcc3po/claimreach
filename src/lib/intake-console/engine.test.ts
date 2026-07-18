@@ -15,17 +15,31 @@ function check(name: string, got: any, want: any) {
 }
 const disp = (a: Answers, t: any = "mva") => evaluate(t, a, cfg)?.disposition ?? null;
 
-// base answer set that reaches the end of the auto tree cleanly
+// base answer set that reaches the end of the auto tree cleanly.
+// The narrative, agent read, police report, citations and role questions do not
+// change the outcome, but they are part of the flow, so a base that omits them
+// never reaches a terminal.
 const base: Answers = {
-  authority: "self", attorney: "no", commercial: "no", injured: "yes",
+  authority: "self", role: "driver", attorney: "no", commercial: "no", injured: "yes",
+  what_happened: "Rear-ended at a light.", agent_read: "yes",
+  police_report: "yes", citations: "other", symptoms_ongoing: "yes",
   injuries: ["neck_back"], surgery: "no", hosp: "no", fault: "other",
   settled: "no", date: "le30", treatment: "still", bills: "under_10k",
+  ins_other: "yes", ins_own: "yes", ins_uim: "unsure",
 };
 
 console.log("\nAUTO — immediate terminals");
 check("deceased -> secondary review", disp({ authority: "deceased" }), "SECONDARY_REVIEW");
 check("no POA -> callback", disp({ authority: "alive", poa: "no" }), "CALLBACK");
 check("has attorney -> disqualify", disp({ ...base, attorney: "yes" }), "DISQUALIFY");
+
+console.log("\nAUTO — insurance triangle");
+check("no coverage on all three -> refer",
+  disp({ ...base, ins_other: "no", ins_own: "no", ins_uim: "no" }), "REFER");
+check("unsure UIM is not a no -> still signs",
+  disp({ ...base, ins_other: "no", ins_own: "no", ins_uim: "unsure" }), "SIGN");
+check("no coverage but commercial -> secondary review",
+  disp({ ...base, commercial: "yes", ins_other: "no", ins_own: "no", ins_uim: "no" }), "SECONDARY_REVIEW");
 
 console.log("\nAUTO — base disqualifiers");
 check("no injuries -> DQ", disp({ ...base, injured: "no", injuries: [], surgery: undefined, hosp: undefined, treatment: undefined, bills: undefined }), "DISQUALIFY");
@@ -54,7 +68,7 @@ check("willing only asked when never treated", questionApplies("mva", "willing",
 check("first question is authority", nextQuestionKey("mva", {}), "authority");
 
 console.log("\nGENERAL PI");
-const g: Answers = { presence: "yes", injured: "yes", injuries: ["neck_back"], surgery: "no", date: "le30", treatment: "still", bills: "under_10k" };
+const g: Answers = { presence: "yes", injured: "yes", symptoms_ongoing: "yes", injuries: ["neck_back"], surgery: "no", date: "le30", treatment: "still", bills: "under_10k" };
 check("trespassing -> DQ", disp({ ...g, presence: "no" }, "prem"), "DISQUALIFY");
 check("within 30 days -> SIGN", disp(g, "prem"), "SIGN");
 check("still treating -> SIGN", disp({ ...g, date: "mid" }, "prem"), "SIGN");

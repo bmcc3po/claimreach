@@ -110,6 +110,16 @@ function autoOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
     return { disposition: "DISQUALIFY", reason: dq, flags, closeKey };
   }
 
+  // Nobody to recover from. A definite no on all three coverage questions is the
+  // only version of this that blocks a signature: "not sure" is never treated as
+  // a no, because coverage nobody knew about is exactly what rescues these files
+  // (an unsigned UIM waiver turned a dead claim into a six-figure policy).
+  if (a.ins_other === "no" && a.ins_own === "no" && a.ins_uim === "no") {
+    if (override)
+      return { disposition: "SECONDARY_REVIEW", reason: `No coverage on any of the three, elevated by ${flags.join(", ")}`, flags, closeKey: "elevated" };
+    return { disposition: "REFER", reason: "No insurance on the other driver, the caller, or UIM", flags, closeKey: "no_coverage" };
+  }
+
   if (a.date === "le30") return { disposition: "SIGN", reason: "Within 30 days, injured, treated or willing", flags };
   if (a.date === "mid") {
     if (a.treatment === "still") return { disposition: "SIGN", reason: "Over 30 days, still treating", flags };
@@ -135,6 +145,16 @@ function gpiOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
   if (a.injured === "no") return elevate("No injuries", "no_injury");
   if (a.injured === "yes" && a.treatment === "never" && a.willing === "no")
     return elevate("Unwilling to seek treatment", "wont_treat");
+
+  // Nobody to recover from. A definite no on all three coverage questions is the
+  // only version of this that blocks a signature: "not sure" is never treated as
+  // a no, because coverage nobody knew about is exactly what rescues these files
+  // (an unsigned UIM waiver turned a dead claim into a six-figure policy).
+  if (a.ins_other === "no" && a.ins_own === "no" && a.ins_uim === "no") {
+    if (override)
+      return { disposition: "SECONDARY_REVIEW", reason: `No coverage on any of the three, elevated by ${flags.join(", ")}`, flags, closeKey: "elevated" };
+    return { disposition: "REFER", reason: "No insurance on the other driver, the caller, or UIM", flags, closeKey: "no_coverage" };
+  }
 
   if (a.date === "le30") return { disposition: "SIGN", reason: "Within 30 days, injured, treated or willing", flags };
   if (a.treatment === "still") return { disposition: "SIGN", reason: "Still treating", flags };

@@ -92,7 +92,9 @@ export default function GuidedIntake({
     let n = 0;
     for (const s of steps) {
       if (s.kind === "single" && s.field.kind !== "script" && blank(answers[s.field.id])) n++;
-      if (s.kind === "group") n += s.fields.filter((f) => blank(answers[f.id])).length ? 1 : 0;
+      // Count each field in a capture block, not the block, so this number means
+      // the same thing as the one on the review screen.
+      if (s.kind === "group") n += s.fields.filter((f) => blank(answers[f.id])).length;
       if (s.kind === "propfield" && blank(props[s.index]?.values?.[s.field.id])) n++;
     }
     return n;
@@ -177,7 +179,7 @@ export default function GuidedIntake({
       <div className="gx-prog"><div className="gx-fill" style={{ width: `${((idx + 1) / total) * 100}%` }} /></div>
       <div className="gx-meta">
         <span>{step.section}</span>
-        <span>{idx + 1} of {total}{remaining > 0 ? ` · ${remaining} left` : ""}</span>
+        <span>{remaining > 0 ? `${remaining} question${remaining === 1 ? "" : "s"} left` : "All answered"}</span>
       </div>
 
       {err && <div className="gx-err">{err}</div>}

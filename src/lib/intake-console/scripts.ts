@@ -5,8 +5,8 @@
 // ============================================================================
 
 export const CALLER_DETAIL_SCRIPTS = {
-  nameAsk: "I can absolutely help you with that. Who do I have the pleasure of speaking with?",
-  firstNamePermission: "Thanks [name]. Mind if I go by your first name while we work through this?",
+  nameAsk: "I can help you with that. What's your name?",
+  firstNamePermission: "Thanks [name]. Let's get into it.",
 };
 
 // Used when the caller has not treated. This is a tell, not a question.
@@ -37,6 +37,10 @@ export const SIGN_SCRIPTS = {
 };
 
 export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean; ref?: "vehicle" | "auto_carrier" | "health_carrier"; half?: boolean }[] = [
+  { key: "incident_location", label: "Location of the incident (city / state)" },
+  { key: "vehicle_status",  label: "Was the vehicle drivable, towed, or totaled?" },
+  { key: "preferred_language", label: "Preferred language", half: true },
+  { key: "best_time",       label: "Best time of day to reach you", half: true },
   { key: "vehicle_year",    label: "Vehicle year", half: true },
   { key: "vehicle",         label: "Vehicle make / model", ref: "vehicle" },
   { key: "auto_carrier",    label: "Their auto carrier", ref: "auto_carrier" },
