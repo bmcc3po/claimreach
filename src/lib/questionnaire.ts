@@ -31,6 +31,13 @@ export interface Field {
   kind: FieldKind;
   label: string;
   options?: string[];
+  // Fields sharing a group render on ONE screen in the guided runner. Use it for
+  // capture blocks (address, insurance, vehicle). Never for criteria questions:
+  // those are asked one at a time, in order, verbatim.
+  group?: string;
+  // Stored-value -> spoken-label map for choice fields, so exports print the
+  // words the caller heard rather than the code we stored.
+  choices?: { value: string; label: string }[];
   script?: string;       // verbatim read-aloud text
   agentNote?: string;    // agent-only guidance, never read aloud
   placeholder?: string;  // input hint text
