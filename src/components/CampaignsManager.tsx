@@ -5,6 +5,8 @@ interface Campaign { id: string; name: string; firm_id: string | null; case_type
   firm_email?: string | null; firm_cc?: string | null; firm_reply_to?: string | null; firm_subject_tpl?: string | null; firm_body_tpl?: string | null;
   attach_intake_pdf?: boolean; attach_intake_csv?: boolean; attach_retainer?: boolean; attach_certificate?: boolean; firm_delivery_on?: boolean; }
 
+import CampaignRetainers from "./CampaignRetainers";
+
 export default function CampaignsManager({ initial, firms, retainerTemplates }: { initial: Campaign[]; firms: { id: string; name: string }[]; retainerTemplates: { id: string; name: string; kind?: "text" | "pdf" }[] }) {
   const [rows, setRows] = useState<Campaign[]>(initial);
   const [edit, setEdit] = useState<Partial<Campaign> | null>(null);
@@ -114,6 +116,8 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
                   </div>
                 ))}
                 <button className="btn ghost sm" onClick={() => setEdit({ ...edit, retainer_packet: [...(edit.retainer_packet ?? []), { kind: "text", id: "", label: "" }] })}>+ Add document</button>
+
+                {edit.id && <CampaignRetainers campaignId={edit.id} templates={retainerTemplates} />}
               </div>
             )}
             <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line, #e6e8ec)" }}>
