@@ -1,8 +1,7 @@
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
 import BoardCard from "@/components/BoardCard";
-import QuoteBanner from "@/components/QuoteBanner";
-import { randomLiner } from "@/lib/silver-liners";
+import DailyRail from "@/components/DailyRail";
 import { computeAlerts } from "@/lib/alerts";
 
 export default async function Dashboard() {
@@ -76,7 +75,7 @@ export default async function Dashboard() {
     <div>
       <h1 style={{ margin: "0 0 4px" }}>Welcome back{me?.full_name ? `, ${me.full_name.split(" ")[0]}` : ""}</h1>
       <p className="muted" style={{ marginTop: 0 }}>{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
-      {(() => { const l = randomLiner(); return <div className="liner-suggest" style={{ marginBottom: 16, maxWidth: 560 }}><span style={{ fontStyle: "italic", fontWeight: 600 }}>"{l.line}"</span> <span className="muted" style={{ fontSize: 12 }}>— a Silver Liner for {l.when.toLowerCase()}</span></div>; })()}
+      <DailyRail />
 
       {alerts.length > 0 && (
         <div style={{ marginBottom: 18 }}>
@@ -135,7 +134,6 @@ export default async function Dashboard() {
           ))}
         </div>
         <div>
-          <QuoteBanner />
           <div className="board">
             <div className="board-h"><h3>Needs attention</h3>
               {attention.length > 0 && <span className="badge dq" style={{ marginLeft: "auto" }}>{attention.length}</span>}

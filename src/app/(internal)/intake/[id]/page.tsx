@@ -1,7 +1,7 @@
 export const runtime = "edge";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
-import ClaimIntake from "@/components/ClaimIntake";
+import IntakeSurface from "@/components/IntakeSurface";
 
 export default async function IntakeEditor({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -63,7 +63,7 @@ export default async function IntakeEditor({ params }: { params: Promise<{ id: s
           <p className="muted" style={{ marginBottom: 0 }}>No intake questionnaire is set for this file's campaign. Set the campaign's intake template in Settings → Campaigns, then reopen this file. (We never fall back to a generic form, so the agent never reads the wrong questions.)</p>
         </div>
       ) : (
-      <ClaimIntake
+      <IntakeSurface
         claimId={claim.id}
         firmId={lead.firm_id}
         initialAnswers={claim.answers ?? {}}

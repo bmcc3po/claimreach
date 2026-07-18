@@ -1,253 +1,396 @@
 "use client";
-import { useMemo, useState } from "react";
-import { fieldVisible, type Field } from "@/lib/questionnaire";
+import { useMemo, useRef, useState } from "react";
+import { fieldVisible, segmentsForType, segmentsFrom, type Field } from "@/lib/questionnaire";
+import PropertyLookup from "@/components/PropertyLookup";
 
 // ============================================================================
 // GUIDED INTAKE
 //
-// The same surface the intake console uses, pointed at any composed form. One
-// question per screen, in order, with no sidebar to jump around in — because the
-// compliance rule is "ask every question in order and verbatim" and a section
-// list is an invitation to do the opposite.
+// One question on the screen at a time, bold, in the agent's face, telling them
+// exactly what to do next. Ported from the TMT console prototype so every case
+// type runs the same surface instead of a section list the agent can wander
+// around in. The compliance rule is "ask every question in order and verbatim";
+// a sidebar full of jump links is an invitation to do the opposite.
 //
-// The one exception is a capture block: fields that share a `group` render
-// together (address, insurance, vehicle). Criteria questions are never grouped.
+// Three step shapes:
+//   single    one question, one screen (all criteria questions)
+//   group     fields sharing a `group` render together (address, insurance)
+//   property  the hotel/property loop: manage the list, then walk each one
 // ============================================================================
 
-const SKIP: string[] = ["section"];
+type PropRow = { values: Record<string, any>; resolved?: any };
 
-type Step = { kind: "single"; field: Field } | { kind: "group"; group: string; fields: Field[]; section: string };
-
-function buildSteps(fields: Field[], answers: Record<string, any>): Step[] {
-  const steps: Step[] = [];
-  let section = "";
-  const seenGroups = new Set<string>();
-  for (const f of fields) {
-    if (f.kind === "section") { section = f.label; continue; }
-    if (SKIP.includes(f.kind)) continue;
-    if (!fieldVisible(f as any, answers)) continue;
-    if (f.group) {
-      if (seenGroups.has(f.group)) continue;
-      seenGroups.add(f.group);
-      const members = fields.filter((x) => x.group === f.group && fieldVisible(x as any, answers));
-      steps.push({ kind: "group", group: f.group, fields: members, section });
-      continue;
-    }
-    steps.push({ kind: "single", field: f });
-  }
-  return steps;
-}
-
-function sectionOf(fields: Field[], target: Field): string {
-  let s = "";
-  for (const f of fields) { if (f.kind === "section") s = f.label; if (f.id === target.id) return s; }
-  return s;
-}
+type Step =
+  | { kind: "single"; field: Field; section: string }
+  | { kind: "group"; name: string; fields: Field[]; section: string }
+  | { kind: "propmanage"; section: string }
+  | { kind: "propfield"; field: Field; index: number; section: string };
 
 export default function GuidedIntake({
-  fields, initialAnswers = {}, onSave, onExit, title,
+  claimId, firmId, leadId, claimType, customFields,
+  initialAnswers = {}, initialProperties = [], claimantName, onExit,
 }: {
-  fields: Field[];
+  claimId: string; firmId: string; leadId?: string; claimType?: string;
+  customFields?: Field[] | null;
   initialAnswers?: Record<string, any>;
-  onSave: (answers: Record<string, any>) => Promise<void> | void;
+  initialProperties?: PropRow[];
+  claimantName?: string;
   onExit?: () => void;
-  title?: string;
 }) {
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers);
+  const [props, setProps] = useState<PropRow[]>(initialProperties ?? []);
   const [idx, setIdx] = useState(0);
   const [draft, setDraft] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
 
-  // Recomputed after every answer so conditional questions appear and disappear
-  // as the file changes underneath the agent.
-  const steps = useMemo(() => buildSteps(fields, answers), [fields, answers]);
-  const step = steps[Math.min(idx, steps.length - 1)];
-  const total = steps.length;
+  const segments = useMemo(
+    () => (customFields && customFields.length ? segmentsFrom(customFields) : segmentsForType(claimType ?? "mva")),
+    [customFields, claimType]
+  );
+  const allFields: Field[] = useMemo(() => segments.flatMap((s: any) => s.fields as Field[]), [segments]);
 
-  function setVal(id: string, v: any) { setAnswers((a) => ({ ...a, [id]: v })); }
-
-  async function advance() {
-    if (idx + 1 >= total) {
-      setSaving(true);
-      try { await onSave(answers); setDone(true); } finally { setSaving(false); }
-      return;
+  // Rebuilt after every answer so conditional questions appear and vanish live.
+  const steps: Step[] = useMemo(() => {
+    const out: Step[] = [];
+    let section = "";
+    const seenGroups = new Set<string>();
+    let propEmitted = false;
+    for (const seg of segments as any[]) {
+      section = seg.title || section;
+      for (const f of seg.fields as Field[]) {
+        if (f.kind === "section") continue;
+        const isProp = f.scope === "property" || f.kind === "property_lookup";
+        if (isProp) {
+          if (!propEmitted) { out.push({ kind: "propmanage", section }); propEmitted = true; }
+          if (f.kind === "property_lookup") continue;   // handled inside the manager
+          for (let i = 0; i < props.length; i++) out.push({ kind: "propfield", field: f, index: i, section });
+          continue;
+        }
+        if (f.kind === "script") { out.push({ kind: "single", field: f, section }); continue; }
+        if (!fieldVisible(f as any, answers)) continue;
+        if (f.group) {
+          if (seenGroups.has(f.group)) continue;
+          seenGroups.add(f.group);
+          const members = (allFields as Field[]).filter((x) => x.group === f.group && fieldVisible(x as any, answers));
+          out.push({ kind: "group", name: f.group, fields: members, section });
+          continue;
+        }
+        out.push({ kind: "single", field: f, section });
+      }
     }
-    setIdx(idx + 1); setDraft(null);
+    return out;
+  }, [segments, allFields, answers, props.length]);
+
+  const total = steps.length;
+  const step = steps[Math.min(idx, Math.max(0, total - 1))];
+
+  const remaining = useMemo(() => {
+    const blank = (v: any) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+    let n = 0;
+    for (const s of steps) {
+      if (s.kind === "single" && s.field.kind !== "script" && blank(answers[s.field.id])) n++;
+      if (s.kind === "group") n += s.fields.filter((f) => blank(answers[f.id])).length ? 1 : 0;
+      if (s.kind === "propfield" && blank(props[s.index]?.values?.[s.field.id])) n++;
+    }
+    return n;
+  }, [steps, answers, props]);
+
+  const saveTimer = useRef<any>(null);
+  function persist(nextAnswers = answers, nextProps = props) {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { void doSave(nextAnswers, nextProps, false); }, 800);
   }
 
-  if (done) {
+  async function doSave(a = answers, p = props, loud = true) {
+    if (loud) setSaving(true);
+    setErr(null);
+    try {
+      const properties: any[] = [];
+      for (const row of p) {
+        let canonical_id: string | undefined;
+        if (row.resolved?.place_id) {
+          try {
+            const r = await fetch("/api/canonical", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ place_id: row.resolved.place_id, name: row.resolved.name, address: row.resolved.address,
+                lat: row.resolved.lat, lng: row.resolved.lng, current_brand: row.resolved.current_brand, firm_id: firmId }),
+            });
+            const t = await r.text(); const d = t ? JSON.parse(t) : {};
+            if (r.ok) canonical_id = d.id;
+          } catch { /* best effort: never block the save on the canonical lookup */ }
+        }
+        properties.push({ ...row.values, canonical_id });
+      }
+      const r = await fetch("/api/claim-intake", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claim_id: claimId, firm_id: firmId, answers: a, properties }),
+      });
+      const t = await r.text(); const d = t ? JSON.parse(t) : {};
+      if (!r.ok) throw new Error(d.error || "save failed");
+    } catch (e: any) { setErr(e?.message || "save failed"); }
+    if (loud) setSaving(false);
+  }
+
+  function setAnswer(id: string, v: any) {
+    const next = { ...answers, [id]: v };
+    setAnswers(next); persist(next, props);
+  }
+  function setPropVal(i: number, id: string, v: any) {
+    const next = props.map((p, n) => (n === i ? { ...p, values: { ...p.values, [id]: v } } : p));
+    setProps(next); persist(answers, next);
+  }
+
+  function advance() {
+    setDraft(null);
+    if (idx + 1 >= total) { void doSave(); setFinished(true); return; }
+    setIdx(idx + 1);
+  }
+  function back() { setDraft(null); setIdx(Math.max(0, idx - 1)); }
+
+  if (finished) {
     return (
-      <div className="gi-root"><style>{CSS}</style>
-        <div className="gi-card" style={{ textAlign: "center" }}>
-          <h2 className="gi-q">Intake complete</h2>
-          <p className="gi-muted">Every answer has been saved to the file.</p>
-          {onExit && <button className="gi-btn solid wide" onClick={onExit}>Back to the file</button>}
+      <div className="gx"><style>{CSS}</style>
+        <div className="gx-card">
+          <div className="gx-crumb">Done</div>
+          <div className="gx-q">Intake complete</div>
+          <p className="gx-note">Every answer is saved to the file{claimantName ? ` for ${claimantName}` : ""}.</p>
+          <div className="gx-row">
+            <button className="gx-btn" onClick={() => { setFinished(false); setIdx(0); }}>Review from the top</button>
+            {onExit && <button className="gx-btn p" onClick={onExit}>Back to the file</button>}
+          </div>
         </div>
       </div>
     );
   }
 
   if (!step) {
-    return <div className="gi-root"><style>{CSS}</style><div className="gi-card"><p className="gi-muted">No questions to ask on this form.</p></div></div>;
+    return <div className="gx"><style>{CSS}</style><div className="gx-card"><p className="gx-note">This form has no questions yet.</p></div></div>;
   }
 
-  const secLabel = step.kind === "group" ? step.section : sectionOf(fields, step.field);
-
   return (
-    <div className="gi-root">
+    <div className="gx">
       <style>{CSS}</style>
 
-      <div className="gi-bar">
-        <div className="gi-fill" style={{ width: `${((idx + 1) / total) * 100}%` }} />
-      </div>
-      <div className="gi-meta">
-        <span>{secLabel}</span>
-        <span>{idx + 1} of {total}</span>
+      <div className="gx-prog"><div className="gx-fill" style={{ width: `${((idx + 1) / total) * 100}%` }} /></div>
+      <div className="gx-meta">
+        <span>{step.section}</span>
+        <span>{idx + 1} of {total}{remaining > 0 ? ` · ${remaining} left` : ""}</span>
       </div>
 
-      <div className="gi-card">
-        {step.kind === "single" ? (
-          <FieldStep
+      {err && <div className="gx-err">{err}</div>}
+
+      <div className="gx-card">
+        {step.kind === "single" && (
+          <QuestionCard
             field={step.field}
             value={answers[step.field.id]}
-            draft={draft}
-            setDraft={setDraft}
-            onAnswer={(v: any) => { setVal(step.field.id, v); setDraft(null); setTimeout(advance, 0); }}
+            draft={draft} setDraft={setDraft}
+            onAnswer={(v: any) => { setAnswer(step.field.id, v); setTimeout(advance, 0); }}
+            onSkipScript={advance}
           />
-        ) : (
+        )}
+
+        {step.kind === "group" && (
           <>
-            <div className="gi-grouphead">{step.group.replace(/_/g, " ")}</div>
-            <div className="gi-grid">
+            <div className="gx-crumb">{step.section}</div>
+            <div className="gx-q">{step.name.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())}</div>
+            <div className="gx-note">Capture these together, then keep moving.</div>
+            <div className="gx-grid">
               {step.fields.map((f) => (
-                <label key={f.id} className="gi-gf">
-                  <span>{f.label}{f.vital && <em> vital</em>}</span>
-                  <input value={answers[f.id] ?? ""} onChange={(e) => setVal(f.id, e.target.value)} />
+                <label key={f.id} className="gx-gf">
+                  <span>{f.label}{f.vital && <em>vital</em>}</span>
+                  <input className="gx-in" value={answers[f.id] ?? ""} onChange={(e) => setAnswer(f.id, e.target.value)} />
                 </label>
               ))}
             </div>
-            <button className="gi-btn solid wide" onClick={advance}>Continue</button>
+            <div className="gx-row"><button className="gx-btn p wide" onClick={advance}>Next</button></div>
+          </>
+        )}
+
+        {step.kind === "propmanage" && (
+          <>
+            <div className="gx-crumb">{step.section}</div>
+            <div className="gx-q">Which properties are we talking about?</div>
+            <div className="gx-say"><div className="gx-cap">Say</div><div className="gx-txt">"Let's go through each place one at a time. What was the first one?"</div></div>
+            <div className="gx-note">Search and pick the real property. The right one now saves the firm from naming the wrong defendant later.</div>
+
+            {props.map((p, i) => (
+              <div key={i} className="gx-prop">
+                <div className="gx-prop-h">
+                  <b>{p.resolved?.name || p.values?.name_as_recalled || `Property ${i + 1}`}</b>
+                  <button className="gx-x" onClick={() => { const n = props.filter((_, x) => x !== i); setProps(n); persist(answers, n); }}>Remove</button>
+                </div>
+                {p.resolved?.address && <div className="gx-prop-a">{p.resolved.address}</div>}
+                <input className="gx-in" placeholder="How the caller described it"
+                  value={p.values?.name_as_recalled ?? ""}
+                  onChange={(e) => setPropVal(i, "name_as_recalled", e.target.value)} />
+              </div>
+            ))}
+
+            <div className="gx-lookup">
+              <PropertyLookup onResolved={(r: any) => {
+                const n = [...props, { values: { name_as_recalled: r.name }, resolved: r }];
+                setProps(n); persist(answers, n);
+              }} />
+            </div>
+
+            <div className="gx-row">
+              <button className="gx-btn" onClick={() => { const n = [...props, { values: {} }]; setProps(n); persist(answers, n); }}>Add one manually</button>
+              <button className="gx-btn p" disabled={props.length === 0} onClick={advance}>
+                {props.length === 0 ? "Add a property to continue" : `Next · ${props.length} propert${props.length === 1 ? "y" : "ies"}`}
+              </button>
+            </div>
+          </>
+        )}
+
+        {step.kind === "propfield" && (
+          <>
+            <div className="gx-crumb">
+              {step.section} · {props[step.index]?.resolved?.name || props[step.index]?.values?.name_as_recalled || `Property ${step.index + 1}`}
+            </div>
+            <QuestionCard
+              field={step.field}
+              value={props[step.index]?.values?.[step.field.id]}
+              draft={draft} setDraft={setDraft}
+              hideCrumb
+              onAnswer={(v: any) => { setPropVal(step.index, step.field.id, v); setTimeout(advance, 0); }}
+              onSkipScript={advance}
+            />
           </>
         )}
       </div>
 
-      <div className="gi-foot">
-        <button className="gi-btn ghost" disabled={idx === 0} onClick={() => { setIdx(Math.max(0, idx - 1)); setDraft(null); }}>← Back</button>
-        <div className="gi-spacer" />
-        <button className="gi-btn ghost" disabled={saving} onClick={async () => { setSaving(true); try { await onSave(answers); } finally { setSaving(false); } }}>
-          {saving ? "Saving…" : "Save and finish later"}
-        </button>
+      <div className="gx-foot">
+        <button className="gx-btn" disabled={idx === 0} onClick={back}>← Back</button>
+        <div className="gx-sp" />
+        <button className="gx-btn" disabled={saving} onClick={() => void doSave()}>{saving ? "Saving…" : "Save and finish later"}</button>
       </div>
     </div>
   );
 }
 
-function FieldStep({ field, value, draft, setDraft, onAnswer }: any) {
+// ---------------------------------------------------------------- question
+function QuestionCard({ field, value, draft, setDraft, onAnswer, onSkipScript, hideCrumb }: any) {
   const f: Field = field;
-  const isChoice = f.kind === "select" || f.kind === "bool";
-  const opts = f.kind === "bool"
+  const isChoice = f.kind === "select" || f.kind === "bool" || f.kind === "gate";
+  const opts = (f.kind === "bool" || f.kind === "gate")
     ? [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]
     : (f.choices ?? (f.options ?? []).map((o: string) => ({ value: o, label: o })));
-
   const textish = ["text", "longtext", "int", "date", "phone", "email", "monthyear"].includes(f.kind);
   const cur = draft ?? value ?? (f.kind === "multiselect" ? [] : "");
 
+  if (f.kind === "script") {
+    return (
+      <>
+        <div className="gx-q">Read this before you go on</div>
+        <div className="gx-say"><div className="gx-cap">Say</div><div className="gx-txt">"{f.script}"</div></div>
+        {f.agentNote && <div className="gx-note">{f.agentNote}</div>}
+        <div className="gx-row"><button className="gx-btn p wide" onClick={onSkipScript}>Read it, continue</button></div>
+      </>
+    );
+  }
+
   return (
     <>
-      {f.script ? (
-        <div className="gi-spoken"><span className="gi-tag">Read verbatim</span><p>{f.script}</p></div>
-      ) : (
-        <h2 className="gi-q">{f.label}{f.vital && <span className="gi-vital">Vital</span>}</h2>
-      )}
-      {f.script && <h2 className="gi-q sub">{f.label}</h2>}
-      {f.agentNote && <div className="gi-note"><span className="gi-tag warn">Agent</span><p>{f.agentNote}</p></div>}
+      <div className="gx-q">{f.label}{f.vital && <span className="gx-vital">Vital</span>}</div>
+      {f.script && <div className="gx-say"><div className="gx-cap">Say</div><div className="gx-txt">"{f.script}"</div></div>}
+      {f.agentNote && <div className="gx-note">{f.agentNote}</div>}
 
       {isChoice && (
-        <div className="gi-opts">
+        <div className="gx-opts">
           {opts.map((o: any) => (
-            <button key={o.value} className={`gi-opt ${value === o.value ? "on" : ""}`} onClick={() => onAnswer(o.value)}>{o.label}</button>
+            <button key={o.value} className={`gx-opt ${value === o.value ? "sel" : ""}`} onClick={() => onAnswer(o.value)}>
+              <span className="gx-k" /><span className="gx-lab">{o.label}</span>
+            </button>
           ))}
         </div>
       )}
 
       {f.kind === "multiselect" && (
         <>
-          <div className="gi-opts">
+          <div className="gx-opts">
             {opts.map((o: any) => {
               const sel: string[] = Array.isArray(cur) ? cur : [];
               const on = sel.includes(o.value);
               return (
-                <button key={o.value} className={`gi-opt ${on ? "on" : ""}`}
+                <button key={o.value} className={`gx-opt ${on ? "sel" : ""}`}
                   onClick={() => setDraft(on ? sel.filter((x) => x !== o.value) : [...sel, o.value])}>
-                  <span className="gi-check">{on ? "✓" : ""}</span>{o.label}
+                  <span className="gx-k" /><span className="gx-lab">{o.label}</span>
                 </button>
               );
             })}
           </div>
-          <button className="gi-btn solid wide" disabled={!Array.isArray(cur) || cur.length === 0} onClick={() => onAnswer(cur)}>Continue</button>
+          <div className="gx-row"><button className="gx-btn p wide" disabled={!Array.isArray(cur) || cur.length === 0} onClick={() => onAnswer(cur)}>Next</button></div>
         </>
       )}
 
       {textish && (
         <>
           {f.kind === "longtext"
-            ? <textarea className="gi-input area" autoFocus rows={4} value={cur} onChange={(e) => setDraft(e.target.value)} />
-            : <input className="gi-input" autoFocus type={f.kind === "date" ? "date" : f.kind === "int" ? "number" : "text"} value={cur} onChange={(e) => setDraft(e.target.value)} />}
-          <button className="gi-btn solid wide" disabled={!String(cur).trim()} onClick={() => onAnswer(cur)}>Continue</button>
+            ? <textarea className="gx-in area" autoFocus value={cur} onChange={(e) => setDraft(e.target.value)} />
+            : <input className="gx-in" autoFocus type={f.kind === "date" ? "date" : f.kind === "int" ? "number" : "text"} value={cur} onChange={(e) => setDraft(e.target.value)} />}
+          <div className="gx-row"><button className="gx-btn p wide" disabled={!String(cur).trim()} onClick={() => onAnswer(cur)}>Next</button></div>
         </>
-      )}
-
-      {f.kind === "gate" && (
-        <div className="gi-opts">
-          <button className="gi-opt danger" onClick={() => onAnswer("yes")}>Yes</button>
-          <button className="gi-opt" onClick={() => onAnswer("no")}>No</button>
-        </div>
       )}
     </>
   );
 }
 
 const CSS = `
-.gi-root { max-width:820px; margin:0 auto; padding:8px 0 40px; }
-.gi-bar { height:3px; background:var(--line); border-radius:99px; overflow:hidden; }
-.gi-fill { height:100%; background:#2563eb; transition:width .18s; }
-.gi-meta { display:flex; justify-content:space-between; font-size:11px; font-weight:800; letter-spacing:.1em;
-  text-transform:uppercase; color:var(--ink-faint); margin:10px 2px 14px; }
-.gi-card { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:26px; }
-.gi-q { font-size:22px; font-weight:750; margin:0 0 8px; letter-spacing:-.02em; line-height:1.35; }
-.gi-q.sub { font-size:16px; font-weight:650; color:var(--ink-soft); margin-top:12px; }
-.gi-vital { margin-left:8px; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+.gx { max-width:760px; margin:0 auto; }
+.gx-prog { height:4px; background:var(--line); border-radius:99px; overflow:hidden; }
+.gx-fill { height:100%; background:#1d4ed8; transition:width .18s; }
+.gx-meta { display:flex; justify-content:space-between; font-size:11.5px; font-weight:800; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ink-faint); margin:10px 2px 12px; }
+.gx-err { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:10px 14px; border-radius:10px;
+  font-size:13.5px; font-weight:600; margin-bottom:12px; }
+
+.gx-card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:22px 24px; }
+.gx-crumb { font-size:12px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:#1e40af; margin-bottom:6px; }
+.gx-q { font-size:20px; font-weight:800; margin:6px 0 16px; line-height:1.35; letter-spacing:-.01em; }
+.gx-vital { margin-left:9px; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
   background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:3px 8px; border-radius:999px; vertical-align:middle; }
-.gi-spoken { border-left:4px solid #2563eb; background:#eff5ff; border-radius:0 12px 12px 0; padding:16px 18px; margin-bottom:12px; }
-.gi-spoken p { margin:6px 0 0; font-size:19px; line-height:1.5; font-weight:600; color:#0d1420; }
-.gi-note { border-left:4px solid #d9982a; background:#fff8ec; border-radius:0 10px 10px 0; padding:11px 14px; margin:12px 0; }
-.gi-note p { margin:4px 0 0; font-size:13.5px; line-height:1.5; color:var(--ink-soft); }
-.gi-tag { font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#1d4ed8; }
-.gi-tag.warn { color:#a16207; }
-.gi-opts { display:flex; flex-direction:column; gap:9px; margin-top:16px; }
-.gi-opt { text-align:left; padding:15px 18px; font-size:16px; font-weight:600; border:1.5px solid var(--line);
-  border-radius:12px; background:var(--surface); cursor:pointer; color:var(--ink); transition:all .08s; }
-.gi-opt:hover { border-color:#2563eb; background:#f5f9ff; transform:translateX(2px); }
-.gi-opt.on { border-color:#2563eb; background:#eff5ff; }
-.gi-opt.danger:hover { border-color:#dc2626; background:#fef2f2; }
-.gi-check { display:inline-block; width:20px; color:#2563eb; font-weight:800; }
-.gi-input { width:100%; padding:14px 16px; font-size:17px; border:1.5px solid var(--line); border-radius:12px;
-  background:var(--surface-2); font-family:inherit; color:var(--ink); margin-top:14px; }
-.gi-input.area { font-size:15px; line-height:1.55; resize:vertical; }
-.gi-grouphead { font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:14px; }
-.gi-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-@media (max-width:640px){ .gi-grid{ grid-template-columns:1fr; } }
-.gi-gf { display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:650; color:var(--ink-soft); }
-.gi-gf em { color:#b91c1c; font-style:normal; font-weight:800; text-transform:uppercase; font-size:9.5px; }
-.gi-gf input { padding:11px 13px; border:1px solid var(--line); border-radius:9px; background:var(--surface-2);
-  font:inherit; font-size:15px; color:var(--ink); }
-.gi-btn { padding:11px 18px; border-radius:10px; border:1px solid var(--line); background:var(--surface);
-  font:inherit; font-weight:650; cursor:pointer; color:var(--ink); }
-.gi-btn.ghost { background:transparent; }
-.gi-btn.solid { background:#0d1420; color:#fff; border-color:#0d1420; }
-.gi-btn.solid:disabled { opacity:.35; cursor:not-allowed; }
-.gi-btn.wide { width:100%; margin-top:16px; padding:15px; font-size:16px; }
-.gi-foot { display:flex; align-items:center; gap:10px; margin-top:14px; }
-.gi-spacer { flex:1; }
-.gi-muted { color:var(--ink-soft); }
+
+.gx-say { border-left:4px solid #0f1a2a; background:#f6f8fb; padding:10px 14px; border-radius:0 8px 8px 0; margin:0 0 14px; }
+.gx-cap { font-size:11px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:var(--ink-faint); }
+.gx-txt { font-size:16px; margin-top:4px; line-height:1.5; color:#0d1420; font-weight:600; }
+.gx-note { font-size:13px; color:var(--ink-soft); font-style:italic; margin:8px 0 0; line-height:1.5; }
+
+.gx-opts { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
+.gx-opt { display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--surface);
+  border:1.5px solid var(--line); border-radius:10px; padding:14px 16px; font-size:15.5px; cursor:pointer;
+  transition:border-color .1s, background .1s; color:var(--ink); }
+.gx-opt:hover { border-color:#1d4ed8; background:#f5f9ff; }
+.gx-opt.sel { border-color:#1d4ed8; background:#eef5ff; }
+.gx-k { width:22px; height:22px; border-radius:6px; border:1.5px solid #c3ccd6; flex:0 0 auto; }
+.gx-opt.sel .gx-k { background:#1d4ed8; border-color:#1d4ed8; }
+.gx-lab { font-weight:600; }
+
+.gx-in { width:100%; font-family:inherit; font-size:15px; padding:11px 12px; border:1.5px solid var(--line);
+  border-radius:8px; background:var(--surface-2); color:var(--ink); margin-top:14px; }
+.gx-in.area { min-height:110px; resize:vertical; line-height:1.55; }
+.gx-in:focus { outline:none; border-color:#1d4ed8; }
+
+.gx-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
+@media (max-width:640px){ .gx-grid{ grid-template-columns:1fr; } }
+.gx-gf { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:700; color:var(--ink-soft); }
+.gx-gf em { color:#b91c1c; font-style:normal; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; margin-left:6px; }
+.gx-gf .gx-in { margin-top:0; }
+
+.gx-prop { border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-top:10px; background:var(--surface-2); }
+.gx-prop-h { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:14.5px; }
+.gx-prop-a { font-size:12.5px; color:var(--ink-faint); margin-top:2px; }
+.gx-x { background:none; border:0; color:#b91c1c; font:inherit; font-size:12px; font-weight:700; cursor:pointer; }
+.gx-lookup { margin-top:14px; }
+
+.gx-row { display:flex; gap:10px; margin-top:20px; flex-wrap:wrap; }
+.gx-btn { border:1px solid var(--line); background:var(--surface); border-radius:9px; padding:12px 20px;
+  font-size:14.5px; font-weight:700; cursor:pointer; color:var(--ink); font-family:inherit; }
+.gx-btn.p { background:#0f1a2a; color:#fff; border-color:#0f1a2a; }
+.gx-btn.wide { flex:1; }
+.gx-btn:disabled { opacity:.4; cursor:not-allowed; }
+.gx-foot { display:flex; align-items:center; gap:10px; margin-top:14px; }
+.gx-sp { flex:1; }
 `;

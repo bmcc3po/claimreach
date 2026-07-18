@@ -212,6 +212,19 @@ export const SILVER_LINERS: SilverGroup[] = [
 // Flat list for "surprise me" / peppering.
 export const ALL_LINERS: SilverLiner[] = SILVER_LINERS.flatMap((g) => g.liners);
 
+
+// The dashboard is AGENT-facing, not caller-facing. Pulling from every group put
+// crisis-management lines ("let's breathe our way through the next minute") in
+// front of someone about to dial, which is the wrong register entirely. These
+// groups are the ones that lift a chin rather than talk someone down.
+const UPLIFTING_GROUPS = ["hope", "strength", "happiness", "folksy", "connection"];
+
+export function randomUpliftingLiner(): SilverLiner {
+  const pool = SILVER_LINERS.filter((g) => UPLIFTING_GROUPS.includes(g.id)).flatMap((g) => g.liners);
+  const from = pool.length ? pool : ALL_LINERS;
+  return from[Math.floor(Math.random() * from.length)];
+}
+
 export function randomLiner(): SilverLiner {
   return ALL_LINERS[Math.floor(Math.random() * ALL_LINERS.length)];
 }
