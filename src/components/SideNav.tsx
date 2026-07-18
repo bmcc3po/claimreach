@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Logo } from "./Logo";
 import Icon from "./ui/Icon";
-const BUILD_STAMP = "2026.07.03.1557";
+const BUILD_STAMP = "2026.07.18.1333";
 
 type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
@@ -10,6 +10,7 @@ type NavGroup = { id: string; label: string | null; items: NavItem[] };
 const STAFF_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
     { href: "/dashboard", icon: "home", label: "Home" },
+    { href: "/console", icon: "phone", label: "Take a call" },
     { href: "/board", icon: "chart", label: "Delivery Board" },
     { href: "/leads", icon: "files", label: "Leads" },
     { href: "/intake", icon: "plus", label: "Add lead" },

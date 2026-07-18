@@ -16,6 +16,7 @@ const KINDS: { kind: FieldKind; label: string }[] = [
   { kind: "facility_lookup", label: "Facility (verify)" }, { kind: "property_lookup", label: "Property (verify)" },
   { kind: "gate", label: "Gate (DQ)" },
 ];
+const KIND_LABEL: Record<string, string> = Object.fromEntries(KINDS.map((k) => [k.kind, k.label]));
 
 function blankField(kind: FieldKind): Field {
   const id = `f_${Math.random().toString(36).slice(2, 8)}`;
@@ -259,6 +260,7 @@ export default function FormBuilder({ formId }: { formId?: string }) {
                 {tf.hidden && <span className="badge dq" style={{ marginLeft: 6, fontSize: 9 }}>hidden</span>}
                 {f.showIf && f.showIf.rules.length > 0 && <span className="badge stage" style={{ marginLeft: 6, fontSize: 9 }}>conditional</span>}
               </span>
+              {f.kind !== "section" && <span className="builder-type">{KIND_LABEL[f.kind] ?? f.kind}</span>}
               <span className="builder-tools" onClick={(e) => e.stopPropagation()}>
                 <button className="btn ghost sm" onClick={() => move(i, -1)} disabled={!canReorder(role)}>↑</button>
                 <button className="btn ghost sm" onClick={() => move(i, 1)} disabled={!canReorder(role)}>↓</button>
