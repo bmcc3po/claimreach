@@ -36,9 +36,27 @@ export async function POST(req: NextRequest) {
     }
     if (!campaign) return NextResponse.json({ error: "This lead has no campaign, so there is no retainer packet to send." }, { status: 200 });
 
-    // Build the packet list. Prefer the explicit packet; fall back to the single
-    // default retainer template so existing campaigns still work.
-    let packet: any[] = Array.isArray(campaign.retainer_packet) ? campaign.retainer_packet : [];
+    // A file can only ever be sent a retainer that belongs to its campaign. A
+    // Turnbull MVA client gets the Turnbull MVA retainer and nothing else. The
+    // agent may still pick BETWEEN retainers (per-state partners, per-diagnosis
+    // mass tort), but only from the set tagged to this campaign.
+    const { data: allowed } = await admin.from("campaign_retainers")
+      .select("id, label, kind, template_id, is_default")
+      .eq("campaign_id", lead.campaign_id).eq("active", true).order("sort");
+    let packet: any[] = [];
+    if ((allowed ?? []).length > 0) {
+      const chosen = b.retainer_id
+        ? (allowed ?? []).find((r) => r.id === b.retainer_id)
+        : (allowed ?? []).find((r) => r.is_default) ?? (allowed ?? [])[0];
+      if (!chosen) {
+        return NextResponse.json({ error: "That retainer is not one of this campaign's retainers, so it cannot be sent." }, { status: 200 });
+      }
+      packet = [{ kind: chosen.kind, id: chosen.template_id, label: chosen.label }];
+    } else {
+      // Campaign predates retainer tagging: fall back to what it already had so
+      // nothing that works today stops working.
+      packet = Array.isArray(campaign.retainer_packet) ? campaign.retainer_packet : [];
+    }
     if (packet.length === 0 && campaign.retainer_template_id) {
       // The default retainer might be a text template OR an uploaded PDF. Detect.
       const rid = campaign.retainer_template_id;

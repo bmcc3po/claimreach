@@ -45,15 +45,25 @@ export async function POST(req: NextRequest) {
     if (!b.first_name) return NextResponse.json({ error: "first name required" }, { status: 400 });
     if (!b.case_type) return NextResponse.json({ error: "case type required" }, { status: 400 });
 
-    const caseType = b.case_type;
+    const caseType = b.case_type;                       // granular picker value
+    const registryKey = b.registry_key || b.case_type;   // what the campaign is keyed on
     const { data: campaign } = await admin.from("campaigns")
       .select("id, name, retainer_template_id, retainer_packet, allow_live_sign")
-      .eq("firm_id", firmId).eq("case_type", caseType).eq("active", true).limit(1).maybeSingle();
+      .eq("firm_id", firmId).eq("case_type", registryKey).eq("active", true).limit(1).maybeSingle();
 
     if (!campaign) {
+      // No campaign means no file, per the rule. But the call still happened, so
+      // log it rather than losing it: a supervisor can attach it to a campaign
+      // later and it still counts toward the agent's volume.
+      await admin.from("intake_calls").insert({
+        firm_id: firmId, firm_slug: b.firm_slug ?? null, agent_id: g.id, agent_name: g.name ?? null,
+        caller_id: b.caller_id ?? null, first_name: b.first_name, callback: b.callback ?? null,
+        call_type: b.call_type ?? null, matter: caseType,
+        disposition: "CALLBACK", reason: "No active campaign for this case type at the time of the call",
+      });
       return NextResponse.json({
         error: "no_campaign",
-        message: `There is no active campaign for this case type, so a file cannot be opened. Add one in Settings, Campaigns, then reload this page. The call is still being logged.`,
+        message: `There is no active campaign for this case type, so a file cannot be opened. Add one in Settings, Campaigns, then reload this page. The call has been logged.`,
       }, { status: 200 });
     }
 
@@ -61,7 +71,7 @@ export async function POST(req: NextRequest) {
     if (mintErr) return NextResponse.json({ error: mintErr.message }, { status: 500 });
 
     const { data: lead, error } = await admin.from("leads").insert({
-      firm_id: firmId, lead_no: leadNo, case_type: caseType,
+      firm_id: firmId, lead_no: leadNo, case_type: registryKey,
       campaign_id: campaign.id, campaign: campaign.name,
       first_name: b.first_name, claimant_name: b.first_name,
       phone: b.callback ?? null, stage: "referral_received", origin: "console",
@@ -70,7 +80,7 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     const { data: claim } = await admin.from("claims").insert({
-      firm_id: firmId, lead_id: lead.id, claim_type: caseType,
+      firm_id: firmId, lead_id: lead.id, claim_type: registryKey,
       campaign: campaign.name, status: "contacting", answers: {},
     }).select("id").single();
 
@@ -90,10 +100,15 @@ export async function POST(req: NextRequest) {
       });
     } catch {}
 
-    const hasPacket = !!(campaign && ((Array.isArray(campaign.retainer_packet) && campaign.retainer_packet.length) || campaign.retainer_template_id));
+    // Only retainers tagged to this campaign are offerable.
+    const { data: allowedRetainers } = await admin.from("campaign_retainers")
+      .select("id, label, kind, is_default").eq("campaign_id", campaign.id).eq("active", true).order("sort");
+    const hasPacket = (allowedRetainers ?? []).length > 0
+      || !!((Array.isArray(campaign.retainer_packet) && campaign.retainer_packet.length) || campaign.retainer_template_id);
     return NextResponse.json({
       ok: true, lead_id: lead.id, lead_no: lead.lead_no, claim_id: claim?.id ?? null, call_id: call?.id ?? null,
       campaign: campaign?.name ?? null,
+      retainers: allowedRetainers ?? [],
       can_send_retainer: !!(campaign && hasPacket && campaign.allow_live_sign),
       retainer_blocker: !campaign
         ? "No active campaign for this firm and case type, so there is no retainer to send."
@@ -138,6 +153,9 @@ export async function POST(req: NextRequest) {
   // automations and firm-delivery trigger all fire exactly as they do elsewhere.
   if (b.op === "disposition") {
     if (!b.lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
+    if (Array.isArray(b.modifiers)) {
+      await admin.from("leads").update({ modifiers: b.modifiers }).eq("id", b.lead_id);
+    }
     const map: Record<string, string> = {
       SIGN: "contacting", REFER: "contacting", DISQUALIFY: "dq",
       SECONDARY_REVIEW: "flag", CALLBACK: "contacting", TRANSFER: "contacting",

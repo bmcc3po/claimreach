@@ -2,7 +2,7 @@
 // Decision-tree checks. These are the routing rules the firm approved, so they
 // get asserted rather than assumed. Run: npx tsx src/lib/intake-console/engine.test.ts
 // ============================================================================
-import { evaluate, nextQuestionKey, questionApplies, type Answers } from "./engine";
+import { evaluate, nextQuestionKey, questionApplies, registryKeyFor, modifiersFor, type Answers } from "./engine";
 import { getFirmConfig } from "./config";
 
 const cfg = getFirmConfig("tmt");
@@ -13,7 +13,7 @@ function check(name: string, got: any, want: any) {
   if (ok) { pass++; console.log(`  ok   ${name}`); }
   else { fail++; console.log(`  FAIL ${name}\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`); }
 }
-const disp = (a: Answers, t: any = "auto") => evaluate(t, a, cfg)?.disposition ?? null;
+const disp = (a: Answers, t: any = "mva") => evaluate(t, a, cfg)?.disposition ?? null;
 
 // base answer set that reaches the end of the auto tree cleanly
 const base: Answers = {
@@ -48,23 +48,34 @@ check("9 months or older -> REFER", disp({ ...base, date: "old" }), "REFER");
 check("strain is minor, tear is serious", disp({ ...base, date: "mid", injuries: ["lig_strain"], treatment: "finished" }), "REFER");
 
 console.log("\nAUTO — skip logic");
-check("POA only asked when calling for a living person", questionApplies("auto", "poa", { authority: "self" }), false);
-check("injury questions skipped when uninjured", questionApplies("auto", "injuries", { injured: "no" }), false);
-check("willing only asked when never treated", questionApplies("auto", "willing", { injured: "yes", treatment: "still" }), false);
-check("first question is authority", nextQuestionKey("auto", {}), "authority");
+check("POA only asked when calling for a living person", questionApplies("mva", "poa", { authority: "self" }), false);
+check("injury questions skipped when uninjured", questionApplies("mva", "injuries", { injured: "no" }), false);
+check("willing only asked when never treated", questionApplies("mva", "willing", { injured: "yes", treatment: "still" }), false);
+check("first question is authority", nextQuestionKey("mva", {}), "authority");
 
 console.log("\nGENERAL PI");
 const g: Answers = { presence: "yes", injured: "yes", injuries: ["neck_back"], surgery: "no", date: "le30", treatment: "still", bills: "under_10k" };
-check("trespassing -> DQ", disp({ ...g, presence: "no" }, "gpi"), "DISQUALIFY");
-check("within 30 days -> SIGN", disp(g, "gpi"), "SIGN");
-check("still treating -> SIGN", disp({ ...g, date: "mid" }, "gpi"), "SIGN");
-check("finished + under the GPI line -> REFER", disp({ ...g, date: "mid", treatment: "finished", bills: "10k_50k" }, "gpi"), "REFER");
-check("finished + over the GPI line -> SIGN", disp({ ...g, date: "mid", treatment: "finished", bills: "over_50k" }, "gpi"), "SIGN");
-check("no commercial flag on premises", evaluate("gpi", { ...g, commercial: "yes" }, cfg)?.flags ?? [], []);
+check("trespassing -> DQ", disp({ ...g, presence: "no" }, "prem"), "DISQUALIFY");
+check("within 30 days -> SIGN", disp(g, "prem"), "SIGN");
+check("still treating -> SIGN", disp({ ...g, date: "mid" }, "prem"), "SIGN");
+check("finished + under the GPI line -> REFER", disp({ ...g, date: "mid", treatment: "finished", bills: "10k_50k" }, "prem"), "REFER");
+check("finished + over the GPI line -> SIGN", disp({ ...g, date: "mid", treatment: "finished", bills: "over_50k" }, "prem"), "SIGN");
+check("no commercial flag on premises", evaluate("prem", { ...g, commercial: "yes" }, cfg)?.flags ?? [], []);
 
 console.log("\nBRIEF CAPTURE");
 check("represented + satisfied -> DQ", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "yes_satisfied" }, "other"), "DISQUALIFY");
 check("everything else -> REFER", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "no" }, "other"), "REFER");
+
+
+console.log("\nREGISTRY KEYS + MODIFIERS");
+check("mva maps to itself", registryKeyFor("mva"), "mva");
+check("prem maps to itself", registryKeyFor("prem"), "prem");
+check("employment falls into the referral bucket", registryKeyFor("employment"), "referral");
+check("commercial vehicle becomes a CMV modifier", modifiersFor("mva", { commercial: "yes" }), ["cmv"]);
+check("no CMV modifier on premises", modifiersFor("prem", { commercial: "yes" }), []);
+check("head injury sets TBI and catastrophic", modifiersFor("mva", { injuries: ["head"] }), ["tbi", "catastrophic"]);
+check("deceased sets wrongful death", modifiersFor("mva", { authority: "deceased" }), ["wrongful_death"]);
+check("3+ day stay sets catastrophic and hospitalized", modifiersFor("mva", { hosp: "long" }), ["catastrophic", "hospitalized"]);
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);

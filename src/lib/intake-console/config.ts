@@ -52,10 +52,10 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
       "Thank you for calling The Money Team Law Firm, this is [agent]. This call may be recorded for quality and training. Is this about an injury to you, or to someone close to you?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question — do not pause for permission and do not shorten it.",
-    caseTypes: ["auto", "gpi", "employment", "family", "criminal", "contract", "other"],
+    caseTypes: ["mva", "prem", "employment", "family", "criminal", "contract", "other"],
     autoBillsThreshold: 10000,
     gpiBillsThreshold: 50000,
-    referTurnaround: null, // OPEN ITEM: firm has not given the number yet
+    referTurnaround: "72 hours",
     network: "the Lexamica network",
     callTypeRouting: TMT_ROUTING,
     allowSoundsLikeACase: false,
@@ -71,10 +71,10 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
       "Thank you for calling Turnbull, Moak and Pendergrass, this is [agent]. This call may be recorded for quality and training. Is this about an injury to you, or to someone close to you?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question.",
-    caseTypes: ["auto", "gpi", "other"],
+    caseTypes: ["mva", "prem", "other"],
     autoBillsThreshold: 10000,
     gpiBillsThreshold: 50000,
-    referTurnaround: null,
+    referTurnaround: "72 hours",
     network: "our referral network",
     callTypeRouting: TMT_ROUTING,
     allowSoundsLikeACase: true, // approved for TMP only
@@ -88,10 +88,10 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
       "Thank you for calling The Roth Law Firm, this is [agent]. This call may be recorded for quality and training. How can I help you today?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question.",
-    caseTypes: ["auto", "gpi", "other"],
+    caseTypes: ["mva", "prem", "other"],
     autoBillsThreshold: 10000,
     gpiBillsThreshold: 50000,
-    referTurnaround: null,
+    referTurnaround: "72 hours",
     network: "our referral network",
     callTypeRouting: TMT_ROUTING,
     allowSoundsLikeACase: false,

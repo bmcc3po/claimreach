@@ -7,7 +7,7 @@ import { INJURY_OPTIONS, questionsFor } from "./questions";
 import type { FirmConsoleConfig } from "./config";
 
 export type Disposition = "SIGN" | "REFER" | "DISQUALIFY" | "SECONDARY_REVIEW" | "CALLBACK" | "TRANSFER";
-export type CaseTypeKey = "auto" | "gpi" | "employment" | "family" | "criminal" | "contract" | "other";
+export type CaseTypeKey = "mva" | "prem" | "employment" | "family" | "criminal" | "contract" | "other";
 export type CallType = "new_potential" | "existing" | "non_client" | "not_legal";
 export type Answers = Record<string, any>;
 
@@ -18,17 +18,17 @@ export interface Outcome {
   closeKey?: string;   // selects the matched close script
 }
 
-const isFull = (t: CaseTypeKey) => t === "auto" || t === "gpi";
+const isFull = (t: CaseTypeKey) => t === "mva" || t === "prem";
 
 // ---------------------------------------------------------------- skip logic
 export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers): boolean {
-  if (caseType === "auto") {
+  if (caseType === "mva") {
     if (key === "poa") return a.authority === "alive";
     if (["injuries", "surgery", "hosp", "treatment", "bills"].includes(key)) return a.injured === "yes";
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
     return true;
   }
-  if (caseType === "gpi") {
+  if (caseType === "prem") {
     if (["injuries", "surgery", "treatment", "bills"].includes(key)) return a.injured === "yes";
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
     return true;
@@ -66,7 +66,7 @@ export function isCatastrophic(a: Answers): boolean {
 // Override sits above everything, including a disqualifier.
 export function computeFlags(caseType: CaseTypeKey, a: Answers): string[] {
   const f: string[] = [];
-  if (caseType === "auto" && a.commercial === "yes") f.push("commercial vehicle");
+  if (caseType === "mva" && a.commercial === "yes") f.push("commercial vehicle");
   if (isCatastrophic(a)) f.push("catastrophic injury");
   if (a.hosp === "long") f.push("hospitalized more than 3 days");
   return f;
@@ -82,7 +82,7 @@ function billsAtLeast(bills: any, threshold: number): boolean {
 // ---------------------------------------------------------------- terminals
 // Fire the moment the answer lands, ending the call flow on the spot.
 export function terminalOutcome(caseType: CaseTypeKey, a: Answers): Outcome | null {
-  if (caseType === "auto") {
+  if (caseType === "mva") {
     if (a.authority === "deceased")
       return { disposition: "SECONDARY_REVIEW", reason: "Wrongful death, set aside for the firm", flags: [], closeKey: "wrongful_death" };
     if (a.poa === "no")
@@ -95,7 +95,7 @@ export function terminalOutcome(caseType: CaseTypeKey, a: Answers): Outcome | nu
 
 // ---------------------------------------------------------------- final
 function autoOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
-  const flags = computeFlags("auto", a);
+  const flags = computeFlags("mva", a);
   const override = flags.length > 0;
 
   let dq: string | null = null;
@@ -123,7 +123,7 @@ function autoOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
 }
 
 function gpiOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
-  const flags = computeFlags("gpi", a);
+  const flags = computeFlags("prem", a);
   const override = flags.length > 0;
   const elevate = (reason: string, closeKey: string): Outcome =>
     override
@@ -150,8 +150,8 @@ function briefOutcome(a: Answers): Outcome {
 }
 
 export function finalOutcome(caseType: CaseTypeKey, a: Answers, cfg: FirmConsoleConfig): Outcome {
-  if (caseType === "auto") return autoOutcome(a, cfg);
-  if (caseType === "gpi") return gpiOutcome(a, cfg);
+  if (caseType === "mva") return autoOutcome(a, cfg);
+  if (caseType === "prem") return gpiOutcome(a, cfg);
   return briefOutcome(a);
 }
 
@@ -179,7 +179,7 @@ const LABEL: Record<string, Record<string, string>> = {
 export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome, firstName?: string): string {
   const parts: string[] = [];
   const who = firstName ? firstName : "Caller";
-  const typeLabel = caseType === "auto" ? "Auto accident" : caseType === "gpi" ? "Premises / slip and fall" : caseType.replace(/^\w/, (c) => c.toUpperCase());
+  const typeLabel = caseType === "mva" ? "Auto accident" : caseType === "prem" ? "Premises / slip and fall" : caseType.replace(/^\w/, (c) => c.toUpperCase());
   parts.push(`${typeLabel}. ${who}.`);
 
   const push = (k: string) => { const v = a[k]; if (v && LABEL[k]?.[v]) parts.push(LABEL[k][v]); };
@@ -202,4 +202,29 @@ export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome
   parts.push(`Outcome: ${outcome.disposition.replace("_", " ")} — ${outcome.reason}`);
   if (outcome.flags.length) parts.push(`Flags: ${outcome.flags.join(", ")}`);
   return parts.join(". ").replace(/\.\./g, ".");
+}
+
+// ---------------------------------------------------------------- registry
+// The console picker is finer-grained than the case type registry: an agent
+// picks "Employment" or "Family", but those are all one retained-nothing
+// referral bucket as far as campaign and process go. The specific matter is
+// still recorded on the call.
+export function registryKeyFor(caseType: CaseTypeKey): string {
+  if (caseType === "mva") return "mva";
+  if (caseType === "prem") return "prem";
+  return "referral";
+}
+
+// Modifiers are what makes THIS file different inside its type. They are derived
+// from answers the agent already gave, never asked as extra questions, so the
+// approved script does not change.
+export function modifiersFor(caseType: CaseTypeKey, a: Answers): string[] {
+  const m = new Set<string>();
+  if (caseType === "mva" && a.commercial === "yes") m.add("cmv");
+  if (a.authority === "deceased") m.add("wrongful_death");
+  if (Array.isArray(a.injuries) && a.injuries.includes("head")) m.add("tbi");
+  if (Array.isArray(a.injuries) && a.injuries.includes("death")) m.add("wrongful_death");
+  if (isCatastrophic(a)) m.add("catastrophic");
+  if (a.hosp === "long") m.add("hospitalized");
+  return [...m];
 }

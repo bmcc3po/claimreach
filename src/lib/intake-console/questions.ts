@@ -204,8 +204,8 @@ export const BRIEF_QUESTIONS: Question[] = [
 ];
 
 export const CASE_TYPES: { key: CaseTypeKey; label: string; sub: string }[] = [
-  { key: "auto",       label: "Auto accident",          sub: "Full screening" },
-  { key: "gpi",        label: "Slip / fall / premises",  sub: "Full screening" },
+  { key: "mva",       label: "Auto accident",          sub: "Full screening" },
+  { key: "prem",        label: "Slip / fall / premises",  sub: "Full screening" },
   { key: "employment", label: "Employment",              sub: "Brief capture" },
   { key: "family",     label: "Family",                  sub: "Brief capture" },
   { key: "criminal",   label: "Criminal",                sub: "Brief capture" },
@@ -214,8 +214,8 @@ export const CASE_TYPES: { key: CaseTypeKey; label: string; sub: string }[] = [
 ];
 
 export function questionsFor(caseType: CaseTypeKey): Question[] {
-  if (caseType === "auto") return AUTO_QUESTIONS;
-  if (caseType === "gpi") return GPI_QUESTIONS;
+  if (caseType === "mva") return AUTO_QUESTIONS;
+  if (caseType === "prem") return GPI_QUESTIONS;
   return BRIEF_QUESTIONS;
 }
 

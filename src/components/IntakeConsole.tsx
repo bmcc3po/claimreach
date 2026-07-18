@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { FIRM_CONFIGS, getFirmConfig, DEFAULT_FIRM_SLUG } from "@/lib/intake-console/config";
 import { CASE_TYPES, questionByKey, questionsFor, type Question } from "@/lib/intake-console/questions";
 import {
-  evaluate, nextQuestionKey, buildSummary, questionApplies,
+  evaluate, nextQuestionKey, buildSummary, questionApplies, registryKeyFor, modifiersFor,
   type Answers, type CaseTypeKey, type CallType, type Outcome,
 } from "@/lib/intake-console/engine";
 import {
@@ -58,10 +58,14 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
   const [file, setFile] = useState<{ lead_id: string; lead_no: string; claim_id: string; call_id: string } | null>(null);
   const [retainer, setRetainer] = useState<{ can: boolean; blocker: string | null; campaign: string | null }>({ can: false, blocker: null, campaign: null });
+  // Only retainers tagged to this campaign. The agent may pick between them, but
+  // cannot reach one that is not on the campaign.
+  const [retainerOptions, setRetainerOptions] = useState<{ id: string; label: string; is_default: boolean }[]>([]);
+  const [retainerId, setRetainerId] = useState<string | null>(null);
 
   const [signStage, setSignStage] = useState<SignStage | null>(null);
   const [client, setClient] = useState<Record<string, string>>({});
-  const [sendVia, setSendVia] = useState<"sms" | "email">("sms");
+  const [sendVia, setSendVia] = useState<"sms" | "email">("sms"); // text is the proven channel; email is not configured yet
   const [sigStatus, setSigStatus] = useState<{ signed_count: number; total: number; all_signed: boolean } | null>(null);
   // Whether a signature ACTUALLY landed. Deliberately separate from signStage:
   // signStage says which screen we are on, and "skip signing" also lands on the
@@ -94,11 +98,15 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     try {
       const d = await api({
         op: "open", firm_slug: firmSlug, caller_id: callerId,
-        first_name: firstName.trim(), callback, call_type: callType, case_type: t,
+        first_name: firstName.trim(), callback, call_type: callType,
+        case_type: t, registry_key: registryKeyFor(t),
       });
       if (d.error === "no_campaign") { setErr(d.message); setBusy(false); return; }
       setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
       setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
+      const opts = d.retainers ?? [];
+      setRetainerOptions(opts);
+      setRetainerId((opts.find((o: any) => o.is_default) ?? opts[0])?.id ?? null);
       setClient((c) => ({ ...c, first_name: firstName.trim(), phone: callback }));
       setCaseType(t); setAnswers({}); setHistory([]);
       setCurrentQ(nextQuestionKey(t, {})); setStage("questions");
@@ -136,7 +144,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       await api({
         op: "disposition", lead_id: file.lead_id, call_id: file.call_id,
         disposition: o.disposition, reason: o.reason, close_key: o.closeKey,
-        flags: o.flags, summary,
+        flags: o.flags, summary, modifiers: modifiersFor(caseType, ans),
       });
     } catch (e: any) { setErr(e?.message || "could not set the file status"); }
   }
@@ -157,7 +165,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       const r = await fetch("/api/esign", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          op: "send_packet", lead_id: file.lead_id, live_call: true,
+          op: "send_packet", lead_id: file.lead_id, live_call: true, retainer_id: retainerId,
           send_via: sendVia, signer_name: `${client.first_name ?? ""} ${client.last_name ?? ""}`.trim(),
           signer_phone: client.phone, signer_email: client.email,
         }),
@@ -318,7 +326,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           <Note>Picking opens the file. Every answer after this saves as you go, so a dropped call still leaves a working file you can pick back up.</Note>
           <div className="ic-grid">
             {CASE_TYPES.filter((c) => cfg.caseTypes.includes(c.key)).map((c) => (
-              <button key={c.key} disabled={busy} className={`ic-card ${c.key === "auto" ? "lead" : ""}`} onClick={() => pickCaseType(c.key)}>
+              <button key={c.key} disabled={busy} className={`ic-card ${c.key === "mva" ? "lead" : ""}`} onClick={() => pickCaseType(c.key)}>
                 <span className="ic-card-t">{c.label}</span><span className="ic-card-s">{c.sub}</span>
               </button>
             ))}
@@ -343,6 +351,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           client={client} setClient={setClient} sendVia={sendVia} setSendVia={setSendVia}
           retainer={retainer} sigStatus={sigStatus} postSign={postSign} setPostSign={setPostSign}
           actuallySigned={actuallySigned} setActuallySigned={setActuallySigned}
+          retainerOptions={retainerOptions} retainerId={retainerId} setRetainerId={setRetainerId}
           ladderDone={ladderDone} setLadderDone={setLadderDone} busy={busy}
           onSend={saveIdentityAndSend} onFinish={finishCall} onBack={back} answers={answers} file={file}
         />
@@ -357,7 +366,8 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 function OutcomeView(p: any) {
   const { outcome, cfg, fill, signStage, setSignStage, client, setClient, sendVia, setSendVia,
           retainer, sigStatus, postSign, setPostSign, ladderDone, setLadderDone, busy,
-          actuallySigned, setActuallySigned, onSend, onFinish, onBack, answers, file } = p;
+          actuallySigned, setActuallySigned, retainerOptions, retainerId, setRetainerId,
+          onSend, onFinish, onBack, answers, file } = p;
   const d: string = outcome.disposition;
   const tone = d === "SIGN" ? "sign" : d === "REFER" ? "refer" : d === "DISQUALIFY" ? "dq" : d === "SECONDARY_REVIEW" ? "sr" : "neutral";
   const sr = SECONDARY_REVIEW_SCRIPTS[(outcome.closeKey as keyof typeof SECONDARY_REVIEW_SCRIPTS)] ?? SECONDARY_REVIEW_SCRIPTS.default;
@@ -393,10 +403,21 @@ function OutcomeView(p: any) {
                 </label>
               ))}
             </div>
+            {retainerOptions.length > 1 && (
+              <>
+                <h3 className="ic-h3">Which retainer</h3>
+                <Note>These are the only retainers on this campaign. If the right one is not here, stop and check with a supervisor.</Note>
+                <div className="ic-opts">
+                  {retainerOptions.map((r: any) => (
+                    <button key={r.id} className={`ic-opt ${retainerId === r.id ? "on" : ""}`} onClick={() => setRetainerId(r.id)}>{r.label}</button>
+                  ))}
+                </div>
+              </>
+            )}
             <h3 className="ic-h3">Send the agreement</h3>
             <div className="ic-send">
               <button className={`ic-toggle ${sendVia === "sms" ? "on" : ""}`} onClick={() => setSendVia("sms")}>Text it</button>
-              <button className={`ic-toggle ${sendVia === "email" ? "on" : ""}`} onClick={() => setSendVia("email")}>Email it</button>
+              <button className={`ic-toggle ${sendVia === "email" ? "on" : ""}`} onClick={() => setSendVia("email")} title="Email delivery is not configured yet">Email it</button>
             </div>
             {retainer.blocker && <Note tone="hard">{retainer.blocker} You can still finish and save the file, but nothing goes out to sign.</Note>}
             <Spoken>{fill(SIGN_SCRIPTS.nextStep)}</Spoken>
