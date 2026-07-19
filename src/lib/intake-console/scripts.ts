@@ -18,26 +18,37 @@ export const WRONGFUL_DEATH_SCRIPT =
 
 // ---------------------------------------------------------------- SIGN
 export const SIGN_SCRIPTS = {
-  nextStep: "I have everything I need. I am getting you set up right now.",
-  nextStepNote: "Send the retainer and stay on the line through the signature. Do not hang up before it is signed.",
+  nextStep:
+    "Alright [name], I just need a couple more details so I can be sure I put the right information on the retainer. This is something I think we can handle on a contingency basis, which is great news for you, because that means you do not need to pay any money upfront, and in fact, if there is no recovery, we charge you nothing out of pocket.",
+  nextStepNote: "Take their legal name, date of birth, email and address next, then the agreement goes out.",
   // Each rung waits for a yes before the next is read.
   ladder: [
-    "One important thing, [name]. If that insurance company reaches out to you, do not get on the phone with them. Send them straight to us. Clear?",
-    "Want to know why I am so firm about that?",
-    "Insurance companies keep their own numbers on this, and what those numbers show is that a represented claim costs them meaningfully more to close. Read that the other way and you can see why they would rather you go it alone.",
-    "So from today forward, every call from them comes to us. You good with that?",
+    "One important thing, [name]. If that insurance company reaches out to you, do not get on the phone with them. Send them straight to us. Is that totally clear?",
+    "Just because it is so important, do you understand why?",
+    "Insurance companies track their wins and their losses. And in the L column, they can see clearly that a represented claim with a firm like ours costs them a substantial amount more than if they just dealt with you direct. So our job is to not let them try to trick you into saying or agreeing on something you do not understand.",
+    "Did you get a chance to finish that e-sign?",
+  ],
+  ladderNotes: [
+    "",
+    "Read the next line regardless of how they answer.",
+    "The statistic stays attributed to the insurance industry's own data and is NEVER applied to this caller's case.",
+    "If they balk, isolate the objection and use the three Rs: Recognize, Reframe, Reask. ALWAYS REASK.",
   ],
   ladderNote:
     "Each line waits for a yes before you read the next one. The statistic stays attributed to the insurance industry's own data and is NEVER applied to this caller's case.",
   reassurance:
-    "Here is the deal from here. You put your energy into healing and into your family. The case, the paperwork, the legal side, that is ours to carry. Fair?",
+    "Got it on my end. Here is the plan from here. You put your energy into healing yourself. The paperwork and the headaches on the legal side is ours to carry for you. Sound fair?",
+  afterSignAsk:
+    "Great. A couple more details and I will get you on your way. I know you said earlier it happened in [city], can you give me a more specific intersection perhaps?",
+  closing:
+    "Perfect. Here is what happens next. I am going to shoot your file over to your case manager. Once they get you added to the system, they are going to call you direct, so be on the lookout for a call and a text from them. I do not have their name yet, but if you do not hear something in the next 72 hours, I want you to call me back directly. Or you can feel free to text me at the number I gave you. I hope you feel better soon. Have a good day.",
   beforeHangup: "Have I covered everything for you today?",
   passengerAsk:
     "You mentioned [passenger] was in the car with you. Are they working with an attorney? If not, do you have a good number for them so we can make sure they are taken care of too?",
 };
 
 export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean; ref?: "vehicle" | "auto_carrier" | "health_carrier"; half?: boolean }[] = [
-  { key: "incident_location", label: "Location of the incident (city / state)" },
+  { key: "incident_intersection", label: "More specific location (intersection, mile marker, address)" },
   { key: "vehicle_status",  label: "Was the vehicle drivable, towed, or totaled?" },
   { key: "preferred_language", label: "Preferred language", half: true },
   { key: "best_time",       label: "Best time of day to reach you", half: true },

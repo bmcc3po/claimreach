@@ -7,6 +7,8 @@ import type { CaseTypeKey } from "./engine";
 
 export interface QOption { value: string; label: string; note?: string }
 export interface Question {
+  /** Render as a paragraph box: Enter adds a line instead of advancing. */
+  multiline?: boolean;
   key: string;
   script: string;
   note?: string;
@@ -191,7 +193,14 @@ export const AUTO_QUESTIONS: Question[] = [
       { value: "yes", label: "Yes", note: "Car repair money alone is not an injury release" },
     ] },
   {
+    key: "incident_city_state",
+    script: "And where did this happen? City and state.",
+    kind: "text",
+    note: "Ask this every single time, right alongside the date. State drives the statute of limitations and the venue.",
+  },
+  {
     key: "what_happened",
+    multiline: true,
     script: "Tell me, to the best of your ability, a brief description of what happened. Do not worry about exact details right now. I just need the broad strokes so I can understand it from a high level.",
     kind: "text",
     note: "Outline only. If they ramble or start giving exact speeds and directions, cut them off and redirect: \"Sorry to interrupt, remember, I just need an outline of what happened. We will get into specifics afterwards.\"",
@@ -293,6 +302,7 @@ export const GPI_QUESTIONS: Question[] = [
 export const BRIEF_QUESTIONS: Question[] = [
   {
     key: "what_happened",
+    multiline: true,
     script: "Okay, tell me what is going on and I will get this over to the right attorney in our network.",
     note: "Capture it in their words. Do not screen it, do not evaluate it, do not react to it.",
     kind: "text",
@@ -321,9 +331,42 @@ export const CASE_TYPES: { key: CaseTypeKey; label: string; sub: string }[] = [
   { key: "other",      label: "Other",                   sub: "Brief capture" },
 ];
 
+// ---------------------------------------------------------------- ASK ORDER
+// The order questions are ASKED is not the order they print. This sequence is
+// built to kill a bad file fast: the story, then the date and the state, then
+// injury and treatment. A wreck from last year where nobody ever treated is
+// disqualified inside the first ten questions instead of the last five, so the
+// agent stops burning call time on a file that was never going to sign.
+//
+// State rides with the date because it drives the statute of limitations.
+// Anything a question does not depend on gets asked later.
+const AUTO_ASK_ORDER = [
+  "authority", "poa", "role", "attorney",
+  "what_happened", "agent_read",
+  "date", "incident_city_state",
+  "injured", "symptoms_ongoing", "treatment", "willing",
+  "injuries", "surgery", "hosp",
+  "fault", "police_report", "citations", "commercial", "settled", "bills",
+  "ins_other", "ins_own", "ins_uim",
+];
+
+const GPI_ASK_ORDER = [
+  "presence", "what_happened", "agent_read",
+  "date", "incident_city_state",
+  "injured", "symptoms_ongoing", "treatment", "willing",
+  "injuries", "surgery", "bills",
+];
+
+function inAskOrder(qs: Question[], order: string[]): Question[] {
+  const rank = new Map(order.map((k, i) => [k, i]));
+  // Anything missing from the order list keeps its original position at the end
+  // rather than vanishing, so adding a question can never silently drop it.
+  return [...qs].sort((a, b) => (rank.get(a.key) ?? 999) - (rank.get(b.key) ?? 999));
+}
+
 export function questionsFor(caseType: CaseTypeKey): Question[] {
-  if (caseType === "mva") return AUTO_QUESTIONS;
-  if (caseType === "prem") return GPI_QUESTIONS;
+  if (caseType === "mva") return inAskOrder(AUTO_QUESTIONS, AUTO_ASK_ORDER);
+  if (caseType === "prem") return inAskOrder(GPI_QUESTIONS, GPI_ASK_ORDER);
   return BRIEF_QUESTIONS;
 }
 

@@ -21,7 +21,7 @@ const disp = (a: Answers, t: any = "mva") => evaluate(t, a, cfg)?.disposition ??
 // never reaches a terminal.
 const base: Answers = {
   authority: "self", role: "driver", attorney: "no", commercial: "no", injured: "yes",
-  what_happened: "Rear-ended at a light.", agent_read: "yes",
+  what_happened: "Rear-ended at a light.", agent_read: "yes", incident_city_state: "Las Vegas, NV",
   police_report: "yes", citations: "other", symptoms_ongoing: "yes",
   injuries: ["neck_back"], surgery: "no", hosp: "no", fault: "other",
   settled: "no", date: "le30", treatment: "still", bills: "under_10k",
@@ -68,7 +68,7 @@ check("willing only asked when never treated", questionApplies("mva", "willing",
 check("first question is authority", nextQuestionKey("mva", {}), "authority");
 
 console.log("\nGENERAL PI");
-const g: Answers = { presence: "yes", injured: "yes", symptoms_ongoing: "yes", injuries: ["neck_back"], surgery: "no", date: "le30", treatment: "still", bills: "under_10k" };
+const g: Answers = { presence: "yes", injured: "yes", symptoms_ongoing: "yes", what_happened: "Fell on a wet floor.", agent_read: "yes", incident_city_state: "Las Vegas, NV", injuries: ["neck_back"], surgery: "no", date: "le30", treatment: "still", bills: "under_10k" };
 check("trespassing -> DQ", disp({ ...g, presence: "no" }, "prem"), "DISQUALIFY");
 check("within 30 days -> SIGN", disp(g, "prem"), "SIGN");
 check("still treating -> SIGN", disp({ ...g, date: "mid" }, "prem"), "SIGN");

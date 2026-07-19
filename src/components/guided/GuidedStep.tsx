@@ -13,6 +13,7 @@ export interface GuidedOption { value: string; label: string }
 export interface GuidedStepDef {
   key: string;
   kind: "single" | "multi" | "text" | "longtext" | "bool" | "int" | "date" | "monthyear" | "phone" | "email" | "script" | "section";
+  multiline?: boolean;
   script?: string;          // spoken verbatim
   label?: string;           // shown when there is no spoken line
   note?: string;            // agent-only, never read aloud
@@ -44,6 +45,8 @@ export default function GuidedStep({
   useEffect(() => { setDraft(value ?? (step.kind === "multi" ? [] : "")); }, [step.key, value, step.kind]);
 
   const isText = ["text", "longtext", "int", "date", "monthyear", "phone", "email"].includes(step.kind);
+  // A narrative needs room and needs Enter to make a new line, not to advance.
+  const isPara = step.multiline === true || step.kind === "longtext";
   const inputType = step.kind === "int" ? "number" : step.kind === "date" ? "date" : step.kind === "email" ? "email" : "text";
 
   return (
@@ -89,8 +92,8 @@ export default function GuidedStep({
 
       {isText && (
         <>
-          {step.kind === "longtext"
-            ? <textarea className="ic-input area" autoFocus rows={4} value={draft} placeholder={step.placeholder} onChange={(e) => setDraft(e.target.value)} />
+          {isPara
+            ? <textarea className="ic-input area" autoFocus rows={6} value={draft} placeholder={step.placeholder} onChange={(e) => setDraft(e.target.value)} />
             : <input className="ic-input" autoFocus type={inputType} value={draft} placeholder={step.placeholder} onChange={(e) => setDraft(e.target.value)} />}
           <Primary disabled={!String(draft).trim()} onClick={() => onAnswer(draft)}>Continue</Primary>
         </>

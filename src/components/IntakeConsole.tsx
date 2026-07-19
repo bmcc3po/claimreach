@@ -337,7 +337,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
       {stage === "questions" && q && (
         <GuidedStep
-          step={{ key: q.key, kind: q.kind as any, script: q.script, note: q.note, options: q.options }}
+          step={{ key: q.key, kind: q.kind as any, multiline: q.multiline, script: q.script, note: q.note, options: q.options }}
           value={answers[q.key]}
           index={history.length}
           remaining={remaining}
@@ -450,11 +450,15 @@ function OutcomeView(p: any) {
                     onClick={() => setLadderDone(doneRung ? ladderDone.filter((x: number) => x !== i) : [...ladderDone, i])}>
                     {doneRung ? "✓" : i + 1}
                   </button>
-                  <p>{fill(line)}</p>
+                  <div>
+                    <p>{fill(line)}</p>
+                    {SIGN_SCRIPTS.ladderNotes?.[i] ? <span className="ic-rung-note">{SIGN_SCRIPTS.ladderNotes[i]}</span> : null}
+                  </div>
                 </div>
               );
             })}
             <Spoken>{fill(SIGN_SCRIPTS.reassurance)}</Spoken>
+            <Spoken>{fill(SIGN_SCRIPTS.afterSignAsk).replace("[city]", answers.incident_city_state ?? "that area")}</Spoken>
             <button className="ic-btn wide" onClick={() => { setActuallySigned(true); setSignStage("signed"); }}>
               They signed, continue
             </button>
@@ -625,6 +629,7 @@ const CSS = `
 .ic-rung { display:flex; gap:12px; align-items:flex-start; padding:11px 0; border-bottom:1px solid var(--line); }
 .ic-rung.locked { opacity:.35; }
 .ic-rung.done p { color:var(--ink-faint); }
+.ic-rung-note { display:block; margin-top:4px; font-size:12.5px; font-style:italic; color:#a16207; line-height:1.45; }
 .ic-rung p { margin:0; font-size:16px; line-height:1.5; font-weight:600; }
 .ic-rung-btn { flex-shrink:0; width:30px; height:30px; border-radius:50%; border:1.5px solid var(--line);
   background:var(--surface); font-weight:800; cursor:pointer; color:var(--ink-soft); }
