@@ -49,7 +49,7 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
     slug: "tmt",
     firmName: "The Money Team Law Firm",
     greeting:
-      "Thank you for calling The Money Team Law Firm, this is [agent]. This call may be recorded for quality and training. Is this about an injury to you, or to someone close to you?",
+      "Thank you for calling The Money Team Law Firm, this is [agent]. This call may be recorded for quality and training. Are you calling on behalf of yourself or a family member?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question — do not pause for permission and do not shorten it.",
     caseTypes: ["mva", "prem", "employment", "family", "criminal", "contract", "other"],

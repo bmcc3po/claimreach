@@ -53,7 +53,6 @@ export default function GuidedStep({
     <div className="ic-card-wrap">
       <div className="ic-progress">
         Question {index + 1}{total ? ` of ${total}` : ""}
-        {typeof remaining === "number" && remaining > 0 && <span className="ic-remaining">{remaining} left</span>}
         {step.vital && <span className="ic-vital">Vital</span>}
       </div>
 

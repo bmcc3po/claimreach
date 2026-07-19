@@ -337,7 +337,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
       {stage === "questions" && q && (
         <GuidedStep
-          step={{ key: q.key, kind: q.kind as any, multiline: q.multiline, script: q.script, note: q.note, options: q.options }}
+          step={{ key: q.key, kind: q.kind as any, multiline: q.multiline, script: q.script, label: q.label, note: q.note, options: q.options }}
           value={answers[q.key]}
           index={history.length}
           remaining={remaining}
@@ -388,14 +388,14 @@ function OutcomeView(p: any) {
         {d === "SIGN" && signStage === "intro" && (
           <>
             <Spoken>{fill(cfg.signTransition)}</Spoken>
-            <Note>You do not have what you need yet. Take their legal name, date of birth, email and address next, then the agreement goes out.</Note>
+            <Note>{SIGN_SCRIPTS.nextStepNote}</Note>
             <Primary onClick={() => setSignStage("identity")}>Take their details</Primary>
           </>
         )}
 
         {d === "SIGN" && signStage === "identity" && (
           <>
-            <h3 className="ic-h3">Details for the agreement</h3>
+            <h3 className="ic-h3">Details for the paperwork</h3>
             <div className="ic-idgrid">
               {IDENTITY_FIELDS.map((f) => (
                 <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
@@ -415,7 +415,9 @@ function OutcomeView(p: any) {
                 </div>
               </>
             )}
-            <h3 className="ic-h3">Send the agreement</h3>
+            <h3 className="ic-h3">Send it</h3>
+            <Spoken>{fill(SIGN_SCRIPTS.sending)}</Spoken>
+            <Note>{SIGN_SCRIPTS.sendingNote}</Note>
             <div className="ic-send">
               <button className={`ic-toggle ${sendVia === "sms" ? "on" : ""}`} onClick={() => setSendVia("sms")}>Text it</button>
               <button className={`ic-toggle ${sendVia === "email" ? "on" : ""}`} onClick={() => setSendVia("email")} title="Email delivery is not configured yet">Email it</button>
@@ -424,7 +426,7 @@ function OutcomeView(p: any) {
             <Spoken>{fill(SIGN_SCRIPTS.nextStep)}</Spoken>
             <Note tone="hard">{SIGN_SCRIPTS.nextStepNote}</Note>
             <Primary disabled={!identityReady || busy || !retainer.can} onClick={onSend}>
-              {busy ? "Sending…" : retainer.can ? `Send the agreement by ${sendVia === "sms" ? "text" : "email"}` : "Retainer not available"}
+              {busy ? "Sending…" : retainer.can ? `Send it by ${sendVia === "sms" ? "text" : "email"}` : "No document set up for this campaign"}
             </Primary>
             {!retainer.can && <button className="ic-btn wide" onClick={() => { setActuallySigned(false); setSignStage("signed"); }}>Skip signing, finish the file</button>}
           </>
@@ -471,7 +473,7 @@ function OutcomeView(p: any) {
               ? <div className="ic-wait done"><span className="ic-tick">✓</span><b>Signed. Now finish the file.</b></div>
               : <Note tone="hard">Nothing was signed on this call. The file stays unsigned and will not move onto the signed track.</Note>}
             <h3 className="ic-h3">{actuallySigned ? "After the signature" : "Finish the file"}</h3>
-            {actuallySigned && <Note tone="hard">Only collect this now that the agreement is signed.</Note>}
+            {actuallySigned && <Note tone="hard">Only collect this now that it is signed.</Note>}
             <div className="ic-idgrid">
               {POST_SIGN_FIELDS.map((f) => (
                 <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
@@ -487,6 +489,8 @@ function OutcomeView(p: any) {
               ))}
             </div>
             {postSign.passenger && <Spoken>{fill(SIGN_SCRIPTS.passengerAsk)}</Spoken>}
+            <Spoken>{fill(SIGN_SCRIPTS.closing)}</Spoken>
+            <Note>Give them the 72 hour promise exactly as written. It is the only thing standing between a signed file and a client who thinks they were forgotten.</Note>
             <Spoken>{fill(SIGN_SCRIPTS.beforeHangup)}</Spoken>
           </>
         )}

@@ -20,7 +20,7 @@ export const WRONGFUL_DEATH_SCRIPT =
 export const SIGN_SCRIPTS = {
   nextStep:
     "Alright [name], I just need a couple more details so I can be sure I put the right information on the retainer. This is something I think we can handle on a contingency basis, which is great news for you, because that means you do not need to pay any money upfront, and in fact, if there is no recovery, we charge you nothing out of pocket.",
-  nextStepNote: "Take their legal name, date of birth, email and address next, then the agreement goes out.",
+  nextStepNote: "Take their legal name, date of birth, email and address next, then it goes straight to their phone.",
   // Each rung waits for a yes before the next is read.
   ladder: [
     "One important thing, [name]. If that insurance company reaches out to you, do not get on the phone with them. Send them straight to us. Is that totally clear?",
@@ -42,6 +42,11 @@ export const SIGN_SCRIPTS = {
     "Great. A couple more details and I will get you on your way. I know you said earlier it happened in [city], can you give me a more specific intersection perhaps?",
   closing:
     "Perfect. Here is what happens next. I am going to shoot your file over to your case manager. Once they get you added to the system, they are going to call you direct, so be on the lookout for a call and a text from them. I do not have their name yet, but if you do not hear something in the next 72 hours, I want you to call me back directly. Or you can feel free to text me at the number I gave you. I hope you feel better soon. Have a good day.",
+  // Speakerphone keeps them on the line while they sign, which is the whole
+  // requirement. It also gives the agent a reason to stay on that does not
+  // sound like supervision.
+  sending: "Okay perfect. Go ahead and put me on speaker phone, I am going to send you a text right now.",
+  sendingNote: "Say this as you hit send, not after. Stay on the line through the signature.",
   beforeHangup: "Have I covered everything for you today?",
   passengerAsk:
     "You mentioned [passenger] was in the car with you. Are they working with an attorney? If not, do you have a good number for them so we can make sure they are taken care of too?",

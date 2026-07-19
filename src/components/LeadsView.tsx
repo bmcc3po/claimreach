@@ -26,6 +26,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const [allMatching, setAllMatching] = useState(false);
   const [busy, setBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
+  const [bulkErr, setBulkErr] = useState(false);
 
   const rows = useMemo(() => {
     let r = leads.map((l) => {
@@ -87,12 +88,12 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
 
   async function runBulk(body: any) {
     if (selCount === 0) return;
-    setBusy(true); setBulkMsg("");
+    setBusy(true); setBulkMsg(""); setBulkErr(false);
     const r = await fetch("/api/leads/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, ids: targetIds }) });
     const d = await r.json();
     setBusy(false);
-    if (!r.ok) { setBulkMsg(d.error || "Bulk action failed"); return; }
+    if (!r.ok) { setBulkErr(true); setBulkMsg(d.error || "Bulk action failed"); return; }
     setBulkMsg(`Done: ${d.count} updated. Refreshing…`);
     setTimeout(() => window.location.reload(), 700);
   }
@@ -181,7 +182,12 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
           <span className="bulk-sep" />
           <button className="btn ghost sm" onClick={clearSel}>Clear</button>
           {busy && <span className="muted" style={{ fontSize: 12 }}>Working…</span>}
-          {bulkMsg && <span className="muted" style={{ fontSize: 12 }}>{bulkMsg}</span>}
+          {bulkMsg && (
+            <span style={{ fontSize: 12.5, fontWeight: bulkErr ? 700 : 400,
+              color: bulkErr ? "#fecaca" : undefined, maxWidth: 460, lineHeight: 1.4 }}>
+              {bulkMsg}
+            </span>
+          )}
         </div>
       )}
       <div className="leads-bar">

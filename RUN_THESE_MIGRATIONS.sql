@@ -1243,3 +1243,67 @@ values (null, 'mva', 'MVA intake', 'Approved script in ask order: story, then da
 delete from intake_forms where claim_type = 'prem';
 insert into intake_forms (firm_id, claim_type, name, description, status, version, fields)
 values (null, 'prem', 'Premises intake', 'Approved script in ask order: story, then date and state, then injury and treatment.', 'published', 6, '[{"id": "s_prem", "scope": "lead", "kind": "section", "label": "Premises criteria"}, {"id": "presence", "scope": "lead", "kind": "bool", "label": "Were you allowed to be where this happened? Were you a customer, a guest, a tenant, or an employee?", "vital": true, "options": ["Yes, lawfully there", "No / trespassing"], "choices": [{"value": "yes", "label": "Yes, lawfully there"}, {"value": "no", "label": "No / trespassing"}]}, {"id": "date", "scope": "lead", "kind": "select", "label": "When did the incident happen?", "vital": true, "options": ["Within the last 30 days", "31 days to under 9 months", "9 months or older"], "choices": [{"value": "le30", "label": "Within the last 30 days"}, {"value": "mid", "label": "31 days to under 9 months"}, {"value": "old", "label": "9 months or older"}]}, {"id": "injured", "scope": "lead", "kind": "bool", "label": "Were you hurt in the incident?", "vital": true, "options": ["Yes", "No"], "choices": [{"value": "yes", "label": "Yes"}, {"value": "no", "label": "No"}]}, {"id": "symptoms_ongoing", "scope": "lead", "kind": "bool", "label": "Are you still having symptoms?", "vital": true, "options": ["Yes, still having symptoms", "No, symptoms resolved"], "choices": [{"value": "yes", "label": "Yes, still having symptoms"}, {"value": "no", "label": "No, symptoms resolved"}]}, {"id": "treatment", "scope": "lead", "kind": "select", "label": "Where are you at with treatment? Have you been seen, are you still going, or have you wrapped up?", "vital": true, "options": ["Already treated", "Still treating", "Finished treatment", "Stopped early, or one-time only", "Has not seen a doctor yet"], "choices": [{"value": "treated", "label": "Already treated"}, {"value": "still", "label": "Still treating"}, {"value": "finished", "label": "Finished treatment"}, {"value": "stopped", "label": "Stopped early, or one-time only"}, {"value": "never", "label": "Has not seen a doctor yet"}]}, {"id": "willing", "scope": "lead", "kind": "bool", "label": "Are you willing to get checked out by a doctor?", "vital": true, "agentNote": "If they hesitate, use the tell on the next line. Do not move on until you have an answer.", "options": ["Yes, willing", "No"], "choices": [{"value": "yes", "label": "Yes, willing"}, {"value": "no", "label": "No"}]}, {"id": "injuries", "scope": "lead", "kind": "multiselect", "label": "Tell me about your injuries. What is hurting?", "vital": true, "agentNote": "Do not read this list. Let them describe it, then mark what they said. Strain and tear route differently \u2014 never upgrade it for them.", "options": ["Neck or back pain", "Muscle strain", "Whiplash", "Shoulder / knee ligament STRAIN", "Anxiety / emotional distress", "Head injury / concussion", "Broken bones", "Shoulder / knee ligament TEAR", "Internal bleeding / ruptured organ", "Scarring / permanent marks", "Death"], "choices": [{"value": "neck_back", "label": "Neck or back pain"}, {"value": "strain", "label": "Muscle strain"}, {"value": "whiplash", "label": "Whiplash"}, {"value": "lig_strain", "label": "Shoulder / knee ligament STRAIN"}, {"value": "anxiety", "label": "Anxiety / emotional distress"}, {"value": "head", "label": "Head injury / concussion"}, {"value": "broken", "label": "Broken bones"}, {"value": "lig_tear", "label": "Shoulder / knee ligament TEAR"}, {"value": "internal", "label": "Internal bleeding / ruptured organ"}, {"value": "scarring", "label": "Scarring / permanent marks"}, {"value": "death", "label": "Death"}]}, {"id": "surgery", "scope": "lead", "kind": "bool", "label": "Has any surgery been done, or has a doctor recommended surgery?", "vital": true, "options": ["No", "Yes"], "choices": [{"value": "no", "label": "No"}, {"value": "yes", "label": "Yes", "note": "Flags for secondary review"}]}, {"id": "bills", "scope": "lead", "kind": "select", "label": "Do you have a rough idea what your medical bills are so far?", "vital": true, "agentNote": "Do NOT read these ranges aloud. Ask it open, listen, then tap the range they land on.", "options": ["Nothing yet", "Under $10,000", "$10,000 to $50,000", "Over $50,000", "Not sure"], "choices": [{"value": "none", "label": "Nothing yet"}, {"value": "under_10k", "label": "Under $10,000"}, {"value": "10k_50k", "label": "$10,000 to $50,000"}, {"value": "over_50k", "label": "Over $50,000"}, {"value": "unknown", "label": "Not sure"}]}]'::jsonb);
+
+-- ============================================================================
+-- 0060 LEADS CAN BE DELETED AGAIN
+--
+-- Every foreign key pointing at leads cascades on delete except one:
+-- intake_calls.lead_id, added in 0049, had no delete rule at all. The console
+-- writes an intake_calls row on every single call, so any lead created through
+-- Take a Call could not be deleted, individually or in bulk. Postgres refused
+-- the delete and the UI reported nothing useful.
+--
+-- SET NULL rather than CASCADE on purpose: the call log is the billing and
+-- audit record. Deleting a junk test lead should not erase the evidence that a
+-- call happened, and lead_id is already nullable for unmatched calls.
+-- Idempotent.
+-- ============================================================================
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.table_constraints
+    where constraint_name = 'intake_calls_lead_id_fkey'
+      and table_name = 'intake_calls'
+  ) then
+    alter table intake_calls drop constraint intake_calls_lead_id_fkey;
+  end if;
+end $$;
+
+alter table intake_calls
+  add constraint intake_calls_lead_id_fkey
+  foreign key (lead_id) references leads(id) on delete set null;
+
+-- ============================================================================
+-- 0061 THE ADDRESS COLUMNS THAT NEVER EXISTED
+--
+-- Ten files write and read leads.mail_addr1 / mail_addr2. Neither column was
+-- ever created; the table has a single mail_addr. Postgres rejects an UPDATE
+-- naming a column that does not exist, and it rejects the WHOLE statement, so:
+--
+--   * the console's identity capture failed entirely — name, DOB, phone, email
+--     and address never persisted, which meant a live retainer went out with a
+--     blank name and no address
+--   * the Contact Info tab could not save anything, including the phone number,
+--     because one bad field name killed the whole update
+--   * retainer autofill read mail_addr1 and always got nothing
+--   * the file header showed "Not collected" forever
+--
+-- Adding the columns rather than rewriting ten files: addr1/addr2 is also the
+-- correct shape, since apartment and unit numbers need their own line for the
+-- retainer and for mail that actually arrives.
+-- Idempotent.
+-- ============================================================================
+
+alter table leads add column if not exists mail_addr1 text;
+alter table leads add column if not exists mail_addr2 text;
+
+-- Carry over anything captured under the old single-line column.
+update leads
+set mail_addr1 = mail_addr
+where mail_addr1 is null
+  and mail_addr is not null
+  and mail_addr <> '';
+
+comment on column leads.mail_addr1 is 'Street address line 1. Canonical: the app writes here, not mail_addr.';
+comment on column leads.mail_addr2 is 'Apartment, suite or unit number.';

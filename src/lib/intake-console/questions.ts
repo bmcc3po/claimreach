@@ -7,6 +7,8 @@ import type { CaseTypeKey } from "./engine";
 
 export interface QOption { value: string; label: string; note?: string }
 export interface Question {
+  /** Heading shown when there is nothing to read aloud. */
+  label?: string;
   /** Render as a paragraph box: Enter adds a line instead of advancing. */
   multiline?: boolean;
   key: string;
@@ -90,7 +92,12 @@ const billsQ = (): Question => ({
 export const AUTO_QUESTIONS: Question[] = [
   {
     key: "authority",
-    script: "Are you the person who was injured, or are you calling for someone close to you?",
+    // Asked in the greeting. Re-reading it makes the agent sound like they were
+    // not listening, which is the opposite of the impression we want in the
+    // first fifteen seconds.
+    script: "",
+    label: "Record what they just told you",
+    note: "They answered this in the greeting. Do not ask again, just tap it.",
     kind: "single",
     options: [
       { value: "self", label: "The caller was injured" },
@@ -157,7 +164,7 @@ export const AUTO_QUESTIONS: Question[] = [
   },
   {
     key: "fault",
-    script: "In your own words, whose fault was the accident?",
+    script: "Do you believe you or the other party was at fault?",
     note: "The caller states fault. Never tell them who was at fault.",
     kind: "single",
     options: [

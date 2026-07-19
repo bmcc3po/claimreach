@@ -56,6 +56,16 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: "unknown op" }, { status: 400 });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "bulk failed" }, { status: 500 });
+    const raw = String(e?.message ?? "bulk failed");
+    // A foreign key violation here means some child row still points at the
+    // lead. The raw Postgres text names a constraint nobody recognizes, so say
+    // what is actually blocking it instead.
+    if (/foreign key|violates/i.test(raw)) {
+      return NextResponse.json({
+        error: "These leads have records attached that block deletion. Run the latest migrations, then try again. If it persists, tell me which lead IDs.",
+        detail: raw,
+      }, { status: 409 });
+    }
+    return NextResponse.json({ error: raw }, { status: 500 });
   }
 }

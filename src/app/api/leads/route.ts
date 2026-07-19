@@ -82,7 +82,19 @@ export async function POST(req: NextRequest) {
     if (lead && "full_name" in lead) delete lead.full_name;
 
     const { error: leadErr } = await sb.from("leads").update(lead).eq("id", lead_id);
-    if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });
+    if (leadErr) {
+      // Postgres rejects the ENTIRE update when one field names a column that
+      // does not exist, so a single typo silently threw away every other change
+      // on the form. Name the offending field instead of failing quietly.
+      const m = /column "?([a-z_0-9.]+)"? of relation|column ([a-z_0-9.]+) does not exist/i.exec(leadErr.message);
+      const bad = m?.[1] || m?.[2];
+      return NextResponse.json({
+        error: bad
+          ? `Could not save: "${bad}" is not a field on this record, so nothing was saved. Run the latest migrations, then try again.`
+          : leadErr.message,
+        detail: leadErr.message,
+      }, { status: 400 });
+    }
 
     // Activity Log: summarize what changed in plain words.
     if (lead && typeof lead === "object") {

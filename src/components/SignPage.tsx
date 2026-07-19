@@ -19,7 +19,13 @@ export default function SignPage({ id }: { id: string }) {
   const [doc, setDoc] = useState<any | null>(null);
   const [pdf, setPdf] = useState<any | null>(null);
   const [err, setErr] = useState("");
-  const [advanced, setAdvanced] = useState(false);
+  type View = "doc" | "spots" | "simple";
+  const [view, setView] = useState<View>("doc");   // show the document by default
+  const advanced = view !== "simple";
+  const setAdvanced = (v: boolean | ((a: boolean) => boolean)) => {
+    const next = typeof v === "function" ? v(advanced) : v;
+    setView(next ? "doc" : "simple");
+  };
 
   const [name, setName] = useState("");
   const [mode, setMode] = useState<"draw" | "type">("type"); // type is easier for elderly; default to it
@@ -118,9 +124,11 @@ export default function SignPage({ id }: { id: string }) {
       {/* tiny header + mode toggle */}
       <div className="es-top">
         <span className="es-brand">CLAIMREACH</span>
-        <button className="es-modelink" onClick={() => setAdvanced((a) => !a)}>
-          {advanced ? "Simple mode" : "Read the document"}
-        </button>
+        <div className="es-views">
+          <button className={`es-view ${view === "doc" ? "on" : ""}`} onClick={() => setView("doc")}>View the document</button>
+          <button className={`es-view ${view === "spots" ? "on" : ""}`} onClick={() => setView("spots")}>Signature spots</button>
+          <button className={`es-view ${view === "simple" ? "on" : ""}`} onClick={() => setView("simple")}>Simple mode</button>
+        </div>
       </div>
 
       {step === "start" && (
@@ -151,7 +159,7 @@ export default function SignPage({ id }: { id: string }) {
               )}
               <p className="es-rotate">Scroll to read the full document. Your details are highlighted in blue.</p>
               {pdf?.url
-                ? <DocViewer url={pdf.url} fields={pdf.fields || []} values={pdf.values || {}} />
+                ? <DocViewer url={pdf.url} fields={pdf.fields || []} values={pdf.values || {}} spotsOnly={view === "spots"} />
                 : doc?.body_html
                   ? <div className="es-doc"><div className="es-body" dangerouslySetInnerHTML={{ __html: (doc.body_html || "").replace(/\n/g, "<br>") }} /></div>
                   : <p className="es-muted">Your document will be presented for signature.</p>}
@@ -159,7 +167,7 @@ export default function SignPage({ id }: { id: string }) {
           )}
 
           <button className="es-btn es-btn-go" onClick={goSign}>Start →</button>
-          {!advanced && <button className="es-textlink" onClick={() => setAdvanced(true)}>I want to read the document first</button>}
+          {view === "simple" && <button className="es-textlink" onClick={() => setView("doc")}>I want to see the document first</button>}
           {err && <p className="es-err">{err}</p>}
         </div>
       )}
@@ -216,6 +224,12 @@ export default function SignPage({ id }: { id: string }) {
             <p className="es-insertall">✓ This signature will be placed on all {fieldCount.total} spots in your document automatically.</p>
           )}
           <p className="es-lead">By tapping below, this becomes your legal electronic signature, dated {lockDate || !manualDate ? new Date().toLocaleDateString() : new Date(manualDate).toLocaleDateString()}.</p>
+          {view !== "simple" && pdf?.url && (
+            <details className="es-peek">
+              <summary>{view === "spots" ? "See each place your signature goes" : "See the document again before you sign"}</summary>
+              <DocViewer url={pdf.url} fields={pdf.fields || []} values={pdf.values || {}} spotsOnly={view === "spots"} />
+            </details>
+          )}
           <button className="es-btn es-btn-go" onClick={finish}>Sign &amp; Submit ✓</button>
           <button className="es-textlink" onClick={() => setStep("sign")}>Go back and change it</button>
           {err && <p className="es-err">{err}</p>}

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { contactFieldsForType } from "@/lib/questionnaire";
+import { fieldVisible, contactFieldsForType } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PhoneInput, { formatUsPhone } from "./PhoneInput";
 
@@ -8,15 +8,29 @@ import PhoneInput, { formatUsPhone } from "./PhoneInput";
 // the single source of truth (stored on the lead). Any inline-in-intake copy
 // reads/writes the same data, so they stay in sync (most recent write wins).
 export default function ContactInfo({ lead, claimType, editMode = true, onRequestEdit }: { lead: any; claimType?: string; editMode?: boolean; onRequestEdit?: () => void }) {
-  const fields = contactFieldsForType(claimType ?? "motel_trafficking");
+  const allFields = contactFieldsForType(claimType ?? "motel_trafficking");
+
+  // Conditions the field definitions do not carry yet. Keyed by field id.
+  const HIDE_UNLESS: Record<string, (v: Record<string, any>) => boolean> = {
+    ip_dod:            (v) => String(v.ip_deceased ?? "").toLowerCase() === "yes",
+    caller_relation_ip:(v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
+    pnc_relation:      (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
+    caller_first:      (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
+    caller_last:       (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
+    caller_phone:      (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
+    caller_email:      (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
+    caller_ssn:        (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
+    caller_type:       (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
+  };
   const [f, setF] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
-    for (const fld of fields) if (fld.kind !== "section" && fld.kind !== "script") init[fld.id] = lead[fld.id] ?? "";
+    for (const fld of allFields) if (fld.kind !== "section" && fld.kind !== "script") init[fld.id] = lead[fld.id] ?? "";
     return init;
   });
   const [ssnRevealed, setSsnRevealed] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState("");
   const [feeds, setFeeds] = useState<Record<string, string>>({});
   useEffect(() => {
     const cid = lead.campaign_id;
@@ -74,13 +88,22 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
   function set(k: string, v: any) { setF((s) => ({ ...s, [k]: v })); }
 
   async function save() {
-    setSaving(true);
-    // Persist only real lead columns that exist; answers fields go to claim later.
-    await fetch("/api/leads", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "save", lead_id: lead.id, lead: { ...f, ...x } }),
-    }).catch(() => {});
-    setSaving(false); setSavedAt(new Date().toLocaleTimeString());
+    setSaving(true); setSaveErr("");
+    try {
+      const r = await fetch("/api/leads", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "save", lead_id: lead.id, lead: { ...f, ...x } }),
+      });
+      const d = await r.json().catch(() => ({}));
+      // This used to swallow every error and then print "Saved" anyway, so a
+      // failed write looked identical to a successful one. Never again: if it
+      // did not save, the screen says so.
+      if (!r.ok) { setSaveErr(d.error || "Could not save. Nothing was written."); setSaving(false); return; }
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch {
+      setSaveErr("Could not reach the server. Nothing was saved.");
+    }
+    setSaving(false);
   }
 
   async function revealSsn(field: string) {
@@ -118,6 +141,15 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     );
     bucket = [];
   };
+
+  // Recomputed on every keystroke, so answering "deceased: yes" reveals the
+  // date of death immediately rather than on a reload.
+  const merged: Record<string, any> = { ...lead, ...f, ...x };
+  const fields = allFields.filter((fld) => {
+    const rule = HIDE_UNLESS[fld.id];
+    if (rule && !rule(merged)) return false;
+    return fieldVisible(fld as any, merged);
+  });
 
   fields.forEach((fld, i) => {
     if (fld.kind === "section") { flush(`s${i}`); blocks.push(<div className="section-title" key={fld.id} style={{ marginTop: 18 }}>{fld.label}</div>); }
@@ -224,8 +256,10 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       {blocks}
       <div className="seg-nav">
         <div className="spacer" />
-        {savedAt && <span className="muted">Saved {savedAt}</span>}
-        <span className="muted" style={{ fontSize: 12 }}>{saving ? "Saving…" : "Changes save automatically."}</span>
+        {savedAt && !saveErr && <span className="muted">Saved {savedAt}</span>}
+        {saveErr
+          ? <span style={{ color: "#b91c1c", fontWeight: 700, fontSize: 12.5, maxWidth: 520, lineHeight: 1.4 }}>{saveErr}</span>
+          : <span className="muted" style={{ fontSize: 12 }}>{saving ? "Saving…" : "Changes save automatically."}</span>}
       </div>
     </div>
   );
