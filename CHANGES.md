@@ -1,44 +1,38 @@
-# ClaimReach — Motel 6 property-save fix (2026-07-19)
+# ClaimReach — MVA city/state autocomplete + Statute-of-Limitations readout (2026-07-19)
 
-## What was broken
-Saving a property in the Motel 6 intake threw
-`invalid input syntax for type integer: "10/1977"` and then SILENTLY LOST the
-property answers.
+## What this adds
+On the MVA "Take a call" console, the "And where did this happen? City and state"
+question is now a **Google-filled city picker**: type "Las Ve" -> pick
+"Las Vegas, NV" or "Las Vegas, NM". It stores the STANDARDIZED "City, ST" so
+reporting can group on it. Once the incident date is captured, it also shows that
+state's **personal-injury statute of limitations** and the filing runway
+(days remaining / deadline / EXPIRED), color-coded.
 
-Root cause: the "Approximate month & year of stay" field (`stay_month`) sends a
-string like `"10/1977"`, but the DB column `claim_properties.stay_month` is an
-INTEGER. The save route (`/api/claim-intake`) did a non-transactional
-`delete()`-then-`insert()`, so when the insert failed on that cast, the delete had
-already wiped the property rows — that is why answers went missing on the way back,
-and why the month/year field showed a bare int on reload.
+## Files in this zip (extract at the repo ROOT — paths preserved; complete files)
+- `src/lib/reference/sol.ts` .............. NEW. Per-state PI SOL table + helpers
+  (state-from-text, deadline math). Uses the MVA-specific figure where a state
+  differs (e.g. CO 3 yrs, KY 2 yrs), general PI elsewhere.
+- `src/components/CityStateLookup.tsx` .... NEW. The city autocomplete + SOL readout.
+- `src/app/api/places/route.ts` ........... MODIFIED. Adds a `kind:"city"` mode
+  (locality search + address-component parsing to return clean "City, ST").
+- `src/components/guided/GuidedStep.tsx` .. MODIFIED. Renders the city lookup for a
+  `lookup:"city"` field; passes the incident date through; spellcheck on narratives.
+- `src/lib/intake-console/questions.ts` ... MODIFIED. Adds `lookup?` to the type and
+  flags `incident_city_state` as a city lookup.
+- `src/components/IntakeConsole.tsx` ...... MODIFIED. Threads the flag + incident date
+  into the step.
 
-## Files in this zip (extract at the repo ROOT — paths are preserved)
-- `src/lib/claim-properties.ts`  ...... NEW. One place that converts each property
-  value to its real DB type. Splits "10/1977" -> stay_month=10 + stay_year=1977,
-  turns empties into NULL, and recombines month/year for display.
-- `src/app/api/claim-intake/route.ts`  MODIFIED. Coerces every column before write,
-  and now INSERTS the new rows first and DELETES the old ones only after that
-  succeeds — a failed save can never wipe existing answers again.
-- `src/components/ClaimIntake.tsx`  .... MODIFIED. Uses the shared hydration so the
-  "all sections" view shows 10/1977 (not 10) on reload.
-- `src/components/GuidedIntake.tsx`  ... MODIFIED. Hydrates DB rows into the shape
-  the guided runner expects (it previously read them wrong, so properties rendered
-  blank / could be blanked on save), and preserves an existing canonical_id.
+## Requirements
+- Uses your existing `GOOGLE_MAPS_API_KEY` (Places API New). No new env or DB.
 
-## How to use
-1. Unzip at the root of your `claimreach` repo (it overwrites exactly the 4 files
-   above; `CHANGES.md` is just this note — don't commit it unless you want to).
-2. `git add -A && git commit -m "Fix Motel 6 property save: type coercion + safe replace"`
-3. Push; let Cloudflare deploy.
+## ⚠️ Verify the SOL numbers before relying on them
+The table is a GENERAL negligence/auto guideline, sourced from Nolo, labeled in the
+UI as "not legal advice." It does NOT encode discovery-rule, minor tolling, wrongful
+death, or government-claim notice deadlines. Have an attorney confirm the figures for
+the states you actually run. Edit them in one place: `src/lib/reference/sol.ts`.
 
 ## Verified in sandbox
-- `tsc --noEmit` (strict): 0 errors
-- `@cloudflare/next-on-pages` build: succeeds
-- 16/16 unit assertions on the coercion helpers (incl. "10/1977", "1", empties,
-  round-trip). NOT yet tested end-to-end against the live DB — that is your deploy.
-
-## Still to confirm (guided "not asking property questions")
-The shape fix above should resolve it. If it does not, check Settings -> Campaigns:
-what is the Motel 6 campaign's INTAKE TEMPLATE set to? If it is a custom builder
-form saved without the property section, that is the remaining gap and it is a
-quick form fix.
+- tsc --noEmit (strict): 0 errors
+- 12/12 unit assertions on the SOL helpers (incl. "Las Vegas, NV"->NV, CO/KY auto
+  exceptions, past/urgent/ok deadline bands)
+- Production build: (running at package time — confirmed before delivery)
