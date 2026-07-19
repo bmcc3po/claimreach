@@ -14,7 +14,7 @@ export interface Question {
   key: string;
   script: string;
   note?: string;
-  kind: "single" | "multi" | "text" | "date";
+  kind: "single" | "multi" | "text" | "date" | "time";
   options?: QOption[];
 }
 
@@ -257,8 +257,8 @@ export const AUTO_QUESTIONS: Question[] = [
   {
     key: "incident_time",
     script: "And roughly what time of day was it?",
-    kind: "text",
-    note: "Approximate is fine, e.g. 7:30 AM or just after dark. Police pull reports by date AND time.",
+    kind: "time",
+    note: "Close enough is fine. Police pull reports by date AND time, so an approximate hour still narrows it.",
   },
   TREATMENT_Q,
   WILLING_Q,

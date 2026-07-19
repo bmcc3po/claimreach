@@ -9,6 +9,9 @@ export default async function LeadsPage() {
   const { data: leads } = await sb
     .from("leads")
     .select("id, lead_no, firm_ref_no, claimant_name, phone, email, address, stage, supervisor_flag, created_at, updated_at, case_type")
+    // Archived files are hidden everywhere by default. They are recoverable for
+    // 90 days; only an owner can destroy one, and only after it is archived.
+    .is("archived_at", null)
     .order("updated_at", { ascending: false })
     .limit(300);
 

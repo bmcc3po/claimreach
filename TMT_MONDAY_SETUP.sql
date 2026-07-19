@@ -150,3 +150,38 @@ update case_type_registry set active = true where key = 'referral';
 select f.name as firm, c.name as campaign, c.case_type, c.active
 from campaigns c join firms f on f.id = c.firm_id
 where c.case_type = 'referral' order by f.name;
+
+-- ============================================================================
+-- ALL CAMPAIGNS FOR ALL FIRMS  <-- run this one block and the "no active
+-- campaign" errors stop for good.
+--
+-- Every console picker option resolves to one of three case types: mva, prem,
+-- or referral. Creating them one at a time is how we ended up chasing the same
+-- error three times in an afternoon. This creates every combination each firm's
+-- console can actually produce.
+-- ============================================================================
+
+insert into campaigns (firm_id, name, case_type, active, allow_live_sign)
+select f.id,
+       f.name || ' ' || upper(t.case_type),
+       t.case_type,
+       true,
+       t.case_type <> 'referral'          -- referred-out work is never signed here
+from firms f
+cross join (values ('mva'), ('prem'), ('referral')) as t(case_type)
+where f.slug in ('tmt','tmp','roth')
+  and not exists (
+    select 1 from campaigns c
+    where c.firm_id = f.id and c.case_type = t.case_type and c.active
+  );
+
+-- A template override silently beats case_type, so make sure none is set.
+update campaigns c set intake_template = null
+from firms f
+where c.firm_id = f.id and f.slug in ('tmt','tmp','roth');
+
+-- Verify: nine rows, three per firm.
+select f.name as firm, c.case_type, c.name as campaign, c.active, c.allow_live_sign
+from campaigns c join firms f on f.id = c.firm_id
+where f.slug in ('tmt','tmp','roth')
+order by f.name, c.case_type;

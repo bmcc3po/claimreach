@@ -36,3 +36,30 @@ function ensurePropertyLookup(fields: Field[], claimType: string): Field[] {
   }
   return [section, lookup, ...cleaned];
 }
+
+
+// ============================================================================
+// ONE ANSWER TO "WHICH FORM IS THIS FILE ON"
+//
+// The intake page, the PDF export and the CSV export each worked this out their
+// own way. The intake page asked the campaign first; the exporters asked the
+// claim. When those disagreed the exporter rendered a form the answers had
+// never been stored under, and the PDF came out blank with every question
+// present and every answer missing.
+//
+// Everything calls this now. Campaign wins, because the campaign is what
+// decided which questions the agent was shown in the first place.
+// ============================================================================
+export async function resolveFormKey(sb: any, leadId: string): Promise<string | null> {
+  const { data: lead } = await sb.from("leads").select("case_type, campaign_id").eq("id", leadId).maybeSingle();
+  const { data: claim } = await sb.from("claims").select("claim_type, campaign_id").eq("lead_id", leadId).limit(1).maybeSingle();
+
+  const campaignId = claim?.campaign_id || lead?.campaign_id;
+  if (campaignId) {
+    const { data: camp } = await sb.from("campaigns").select("intake_template, case_type").eq("id", campaignId).maybeSingle();
+    const fromCampaign = camp?.intake_template || camp?.case_type;
+    if (fromCampaign) return String(fromCampaign).toLowerCase();
+  }
+  const fallback = claim?.claim_type || lead?.case_type;
+  return fallback ? String(fallback).toLowerCase() : null;
+}

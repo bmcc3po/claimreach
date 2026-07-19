@@ -23,6 +23,20 @@ export default function IncidentLocation({
   const [hits, setHits] = useState<any[]>([]);
   const [chosen, setChosen] = useState<any>(null);
   const [note, setNote] = useState("");
+  const [station, setStation] = useState<any>(null);
+
+  // Phone numbers cost a second call, so only fetch for the one they tap.
+  async function loadStation(st: any) {
+    setStation({ name: st.name, address: st.address, phone: null });
+    try {
+      const r = await fetch("/api/geocode", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ station_place_id: st.place_id }),
+      });
+      const d = await r.json();
+      if (d.station) setStation(d.station);
+    } catch { /* keep the name and address we already have */ }
+  }
 
   async function look() {
     if (q.trim().length < 3) return;
@@ -95,6 +109,31 @@ export default function IncidentLocation({
               <p className="il-ask">Ask them: do you remember whether it was city police, the sheriff, or a state trooper?</p>
             </>
           )}
+
+          {chosen.stations?.length > 0 && (
+            <>
+              <div className="il-cap">Nearest stations — tap one for the phone number</div>
+              {chosen.stations.map((st: any, i: number) => (
+                <button key={i} className="il-ag" onClick={() => void loadStation(st)}>
+                  <span className="il-dot possible" />
+                  <span className="il-ag-body">
+                    <b>{st.name}</b>
+                    <em>{st.address}</em>
+                  </span>
+                </button>
+              ))}
+              {station && (
+                <div className="il-station">
+                  <b>{station.name}</b>
+                  <span>{station.address}</span>
+                  {station.phone
+                    ? <a href={`tel:${station.phone.replace(/[^0-9+]/g, "")}`}>{station.phone}</a>
+                    : <em>No published number. The client can ask for records at the front desk.</em>}
+                  <p>Tell the client to call this precinct and ask for the records or traffic division to request the crash report.</p>
+                </div>
+              )}
+            </>
+          )}
           <button className="il-again" onClick={() => { setChosen(null); setHits([]); }}>Search again</button>
         </div>
       )}
@@ -129,6 +168,13 @@ export default function IncidentLocation({
         .il-dot.likely { background:#16a34a; }
         .il-dot.possible { background:#d1d5db; }
         .il-ask { font-size:12.5px; font-style:italic; color:#a16207; margin:8px 0 0; }
+        .il-station { margin-top:10px; padding:11px 13px; border-radius:9px; background:#eef5ff;
+          border:1px solid #bfdbfe; display:flex; flex-direction:column; gap:3px; }
+        .il-station b { font-size:14px; }
+        .il-station span { font-size:12.5px; color:var(--ink-faint,#6b7a90); }
+        .il-station a { font-size:17px; font-weight:800; color:#1d4ed8; text-decoration:none; }
+        .il-station em { font-size:12.5px; color:#a16207; font-style:italic; }
+        .il-station p { margin:6px 0 0; font-size:12.5px; color:var(--ink-soft,#41506a); line-height:1.45; }
         .il-again { margin-top:10px; background:none; border:0; color:#1d4ed8; font:inherit; font-size:12.5px;
           font-weight:700; cursor:pointer; padding:0; }
       `}</style>

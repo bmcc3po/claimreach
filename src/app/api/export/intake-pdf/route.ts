@@ -38,7 +38,10 @@ export async function GET(req: NextRequest) {
   if (!lead) return NextResponse.json({ error: "lead not found" }, { status: 404 });
   const { data: claim } = await admin.from("claims").select("answers, claim_type, campaign").eq("lead_id", leadId).limit(1).maybeSingle();
   const answers = claim?.answers ?? {};
-  const caseType = (claim?.claim_type || lead.case_type || "").toLowerCase();
+    // Same resolution the intake screen used, or the export renders a different
+  // form than the one the agent filled in and every answer comes out blank.
+  const { resolveFormKey } = await import("@/lib/forms");
+  const caseType = (await resolveFormKey(admin, leadId)) || (claim?.claim_type || lead.case_type || "").toLowerCase();
 
   // Resolve the questionnaire (published custom form first, else preset).
   let fields: any[] = [];

@@ -12,7 +12,7 @@ import { useState, useEffect } from "react";
 export interface GuidedOption { value: string; label: string }
 export interface GuidedStepDef {
   key: string;
-  kind: "single" | "multi" | "text" | "longtext" | "bool" | "int" | "date" | "monthyear" | "phone" | "email" | "script" | "section";
+  kind: "single" | "multi" | "text" | "longtext" | "bool" | "int" | "date" | "time" | "monthyear" | "phone" | "email" | "script" | "section";
   multiline?: boolean;
   script?: string;          // spoken verbatim
   label?: string;           // shown when there is no spoken line
@@ -67,10 +67,10 @@ export default function GuidedStep({
   const [draft, setDraft] = useState<any>(value ?? (step.kind === "multi" ? [] : ""));
   useEffect(() => { setDraft(value ?? (step.kind === "multi" ? [] : "")); }, [step.key, value, step.kind]);
 
-  const isText = ["text", "longtext", "int", "date", "monthyear", "phone", "email"].includes(step.kind);
+  const isText = ["text", "longtext", "int", "date", "time", "monthyear", "phone", "email"].includes(step.kind);
   // A narrative needs room and needs Enter to make a new line, not to advance.
   const isPara = step.multiline === true || step.kind === "longtext";
-  const inputType = step.kind === "int" ? "number" : step.kind === "date" ? "date" : step.kind === "email" ? "email" : "text";
+  const inputType = step.kind === "int" ? "number" : step.kind === "date" ? "date" : step.kind === "time" ? "time" : step.kind === "email" ? "email" : "text";
 
   return (
     <div className="ic-card-wrap">

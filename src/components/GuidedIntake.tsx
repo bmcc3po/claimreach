@@ -46,10 +46,24 @@ export default function GuidedIntake({
   const [err, setErr] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
 
-  const segments = useMemo(
-    () => (customFields && customFields.length ? segmentsFrom(customFields) : segmentsForType(claimType ?? "mva")),
-    [customFields, claimType]
-  );
+  const segments = useMemo(() => {
+    const base = customFields && customFields.length ? segmentsFrom(customFields) : segmentsForType(claimType ?? "mva");
+    const hasProps = base.some((sg: any) => (sg.fields as Field[]).some((f) => f.scope === "property" || f.kind === "property_lookup"));
+    if (hasProps) return base;
+
+    // The stored form has no property questions. If the built-in definition for
+    // this case type does, splice that section in rather than silently skipping
+    // the whole property loop, which is the entire point of a Motel 6 intake.
+    const builtIn = segmentsForType(claimType ?? "mva");
+    const propSegs = builtIn.filter((sg: any) =>
+      (sg.fields as Field[]).some((f) => f.scope === "property" || f.kind === "property_lookup"));
+    if (!propSegs.length) return base;
+
+    const out = [...base];
+    const at = Math.min(out.length, Math.max(1, out.findIndex((sg: any) => /control|coercion/i.test(sg.title || ""))));
+    out.splice(at < 1 ? out.length : at, 0, ...propSegs);
+    return out;
+  }, [customFields, claimType]);
   const allFields: Field[] = useMemo(() => segments.flatMap((s: any) => s.fields as Field[]), [segments]);
 
   // Rebuilt after every answer so conditional questions appear and vanish live.
@@ -280,8 +294,9 @@ export default function GuidedIntake({
 function QuestionCard({ field, value, draft, setDraft, onAnswer, onSkipScript, hideCrumb }: any) {
   const f: Field = field;
   const isChoice = f.kind === "select" || f.kind === "bool" || f.kind === "gate";
-  const opts = (f.kind === "bool" || f.kind === "gate")
-    ? [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]
+  const isBool = f.kind === "bool" || f.kind === "gate";
+  const opts = isBool
+    ? [{ value: true, label: "Yes" }, { value: false, label: "No" }]
     : (f.choices ?? (f.options ?? []).map((o: string) => ({ value: o, label: o })));
   const textish = ["text", "longtext", "int", "date", "phone", "email", "monthyear"].includes(f.kind);
   const cur = draft ?? value ?? (f.kind === "multiselect" ? [] : "");
@@ -307,7 +322,7 @@ function QuestionCard({ field, value, draft, setDraft, onAnswer, onSkipScript, h
         <>
           <div className="gx-opts">
             {opts.map((o: any) => (
-              <button key={o.value} className={`gx-opt ${value === o.value ? "sel" : ""}`} onClick={() => onAnswer(o.value)}>
+              <button key={String(o.value)} className={`gx-opt ${value === o.value ? "sel" : ""}`} onClick={() => onAnswer(o.value)}>
                 <span className="gx-k" /><span className="gx-lab">{o.label}</span>
               </button>
             ))}

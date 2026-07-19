@@ -83,6 +83,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     s.replace(/\[agent\]/g, agentName || "your name")
      .replace(/\[name\]/g, client.first_name || firstName || "there")
      .replace(/\[passenger\]/g, postSign.passenger || "your passenger")
+     .replace(/\[firm\]/g, cfg.firmName || "the firm")
      .replace(/\[X\]/g, cfg.referTurnaround || "___");
 
   async function api(body: any) {

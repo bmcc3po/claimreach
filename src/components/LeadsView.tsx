@@ -178,7 +178,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
               {firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           )}
-          <button className="btn ghost sm danger" onClick={() => { if (confirm(`Delete ${selCount} lead(s)? This cannot be undone.`)) runBulk({ op: "delete" }); }}>Delete</button>
+          <button className="btn ghost sm danger" onClick={() => { if (confirm(`Archive ${sel.size} file(s)? They stay recoverable for 90 days and only the owner can delete them permanently.`)) runBulk({ op: "delete" }); }}>Archive</button>
           <span className="bulk-sep" />
           <button className="btn ghost sm" onClick={clearSel}>Clear</button>
           {busy && <span className="muted" style={{ fontSize: 12 }}>Working…</span>}
