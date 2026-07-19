@@ -15,6 +15,11 @@ function check(name: string, got: any, want: any) {
 }
 const disp = (a: Answers, t: any = "mva") => evaluate(t, a, cfg)?.disposition ?? null;
 
+// The date question captures a real date now, so tests express age in days and
+// let the engine bucket it. Legacy bucket strings still evaluate, which is what
+// the two dateBucket checks below prove.
+const isoDaysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
 // base answer set that reaches the end of the auto tree cleanly.
 // The narrative, agent read, police report, citations and role questions do not
 // change the outcome, but they are part of the flow, so a base that omits them
@@ -22,9 +27,10 @@ const disp = (a: Answers, t: any = "mva") => evaluate(t, a, cfg)?.disposition ??
 const base: Answers = {
   authority: "self", role: "driver", attorney: "no", commercial: "no", injured: "yes",
   what_happened: "Rear-ended at a light.", agent_read: "yes", incident_city_state: "Las Vegas, NV",
-  police_report: "yes", citations: "other", symptoms_ongoing: "yes",
+  police_report: "yes", police_agency: "Metro PD", police_report_number: "25-11234",
+  citations: "other", symptoms_ongoing: "yes", incident_time: "7:30 AM",
   injuries: ["neck_back"], surgery: "no", hosp: "no", fault: "other",
-  settled: "no", date: "le30", treatment: "still", bills: "under_10k",
+  settled: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k",
   ins_other: "yes", ins_own: "yes", ins_uim: "unsure",
 };
 
@@ -32,6 +38,12 @@ console.log("\nAUTO — immediate terminals");
 check("deceased -> secondary review", disp({ authority: "deceased" }), "SECONDARY_REVIEW");
 check("no POA -> callback", disp({ authority: "alive", poa: "no" }), "CALLBACK");
 check("has attorney -> disqualify", disp({ ...base, attorney: "yes" }), "DISQUALIFY");
+
+console.log("\nAUTO — real dates bucket correctly");
+check("10 days ago -> signs like le30", disp({ ...base, date: isoDaysAgo(10) }), "SIGN");
+check("120 days ago + still treating -> signs like mid", disp({ ...base, date: isoDaysAgo(120) }), "SIGN");
+check("2 years ago -> refer like old", disp({ ...base, date: isoDaysAgo(730) }), "REFER");
+check("legacy bucket string still works", disp({ ...base, date: "le30" }), "SIGN");
 
 console.log("\nAUTO — insurance triangle");
 check("no coverage on all three -> refer",
@@ -54,12 +66,12 @@ check("hospitalized 3+ days + unwilling -> secondary review", disp({ ...base, ho
 
 console.log("\nAUTO — sign vs refer");
 check("within 30 days -> SIGN", disp({ ...base, date: "le30" }), "SIGN");
-check("mid + still treating -> SIGN", disp({ ...base, date: "mid", treatment: "still" }), "SIGN");
-check("mid + serious + finished -> SIGN", disp({ ...base, date: "mid", injuries: ["lig_tear"], treatment: "finished" }), "SIGN");
-check("mid + minor + finished + low bills -> REFER", disp({ ...base, date: "mid", treatment: "finished", bills: "under_10k" }), "REFER");
-check("mid + bills over the line -> SIGN", disp({ ...base, date: "mid", treatment: "finished", bills: "10k_50k" }), "SIGN");
-check("9 months or older -> REFER", disp({ ...base, date: "old" }), "REFER");
-check("strain is minor, tear is serious", disp({ ...base, date: "mid", injuries: ["lig_strain"], treatment: "finished" }), "REFER");
+check("mid + still treating -> SIGN", disp({ ...base, date: isoDaysAgo(120), treatment: "still" }), "SIGN");
+check("mid + serious + finished -> SIGN", disp({ ...base, date: isoDaysAgo(120), injuries: ["lig_tear"], treatment: "finished" }), "SIGN");
+check("mid + minor + finished + low bills -> REFER", disp({ ...base, date: isoDaysAgo(120), treatment: "finished", bills: "under_10k" }), "REFER");
+check("mid + bills over the line -> SIGN", disp({ ...base, date: isoDaysAgo(120), treatment: "finished", bills: "10k_50k" }), "SIGN");
+check("9 months or older -> REFER", disp({ ...base, date: isoDaysAgo(730) }), "REFER");
+check("strain is minor, tear is serious", disp({ ...base, date: isoDaysAgo(120), injuries: ["lig_strain"], treatment: "finished" }), "REFER");
 
 console.log("\nAUTO — skip logic");
 check("POA only asked when calling for a living person", questionApplies("mva", "poa", { authority: "self" }), false);
@@ -68,12 +80,12 @@ check("willing only asked when never treated", questionApplies("mva", "willing",
 check("first question is authority", nextQuestionKey("mva", {}), "authority");
 
 console.log("\nGENERAL PI");
-const g: Answers = { presence: "yes", injured: "yes", symptoms_ongoing: "yes", what_happened: "Fell on a wet floor.", agent_read: "yes", incident_city_state: "Las Vegas, NV", injuries: ["neck_back"], surgery: "no", date: "le30", treatment: "still", bills: "under_10k" };
+const g: Answers = { incident_time: "2:00 PM", presence: "yes", injured: "yes", symptoms_ongoing: "yes", what_happened: "Fell on a wet floor.", agent_read: "yes", incident_city_state: "Las Vegas, NV", injuries: ["neck_back"], surgery: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k" };
 check("trespassing -> DQ", disp({ ...g, presence: "no" }, "prem"), "DISQUALIFY");
 check("within 30 days -> SIGN", disp(g, "prem"), "SIGN");
-check("still treating -> SIGN", disp({ ...g, date: "mid" }, "prem"), "SIGN");
-check("finished + under the GPI line -> REFER", disp({ ...g, date: "mid", treatment: "finished", bills: "10k_50k" }, "prem"), "REFER");
-check("finished + over the GPI line -> SIGN", disp({ ...g, date: "mid", treatment: "finished", bills: "over_50k" }, "prem"), "SIGN");
+check("still treating -> SIGN", disp({ ...g, date: isoDaysAgo(120) }, "prem"), "SIGN");
+check("finished + under the GPI line -> REFER", disp({ ...g, date: isoDaysAgo(120), treatment: "finished", bills: "10k_50k" }, "prem"), "REFER");
+check("finished + over the GPI line -> SIGN", disp({ ...g, date: isoDaysAgo(120), treatment: "finished", bills: "over_50k" }, "prem"), "SIGN");
 check("no commercial flag on premises", evaluate("prem", { ...g, commercial: "yes" }, cfg)?.flags ?? [], []);
 
 console.log("\nBRIEF CAPTURE");

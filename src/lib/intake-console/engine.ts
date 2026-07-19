@@ -21,15 +21,36 @@ export interface Outcome {
 const isFull = (t: CaseTypeKey) => t === "mva" || t === "prem";
 
 // ---------------------------------------------------------------- skip logic
+// The date question now captures a REAL date, not a bucket, because a statute of
+// limitations cannot be computed from "31 days to under 9 months" and neither
+// can a demand letter. The criteria still think in buckets, so derive one.
+// Accepts a legacy bucket value so old files keep evaluating.
+export function dateBucket(v: any): "le30" | "mid" | "old" | undefined {
+  if (!v) return undefined;
+  if (v === "le30" || v === "mid" || v === "old") return v;
+  const d = new Date(String(v));
+  if (isNaN(d.getTime())) return undefined;
+  const days = (Date.now() - d.getTime()) / 86_400_000;
+  if (days <= 30) return "le30";
+  if (days < 274) return "mid";      // roughly nine months
+  return "old";
+}
+
+const REPORT_ONLY = new Set(["police_agency", "police_report_number"]);
+
 export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers): boolean {
   if (caseType === "mva") {
     if (key === "poa") return a.authority === "alive";
     if (["injuries", "surgery", "hosp", "treatment", "bills"].includes(key)) return a.injured === "yes";
+    // No report means there is no agency or number to ask about.
+    if (REPORT_ONLY.has(key)) return a.police_report === "yes";
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
     return true;
   }
   if (caseType === "prem") {
     if (["injuries", "surgery", "treatment", "bills"].includes(key)) return a.injured === "yes";
+    // No report means there is no agency or number to ask about.
+    if (REPORT_ONLY.has(key)) return a.police_report === "yes";
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
     return true;
   }
@@ -120,8 +141,8 @@ function autoOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
     return { disposition: "REFER", reason: "No insurance on the other driver, the caller, or UIM", flags, closeKey: "no_coverage" };
   }
 
-  if (a.date === "le30") return { disposition: "SIGN", reason: "Within 30 days, injured, treated or willing", flags };
-  if (a.date === "mid") {
+  if (dateBucket(a.date) === "le30") return { disposition: "SIGN", reason: "Within 30 days, injured, treated or willing", flags };
+  if (dateBucket(a.date) === "mid") {
     if (a.treatment === "still") return { disposition: "SIGN", reason: "Over 30 days, still treating", flags };
     if (hasSeriousInjury(a) && a.treatment === "finished")
       return { disposition: "SIGN", reason: "Over 30 days, serious injury, finished treating", flags };
@@ -156,7 +177,7 @@ function gpiOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
     return { disposition: "REFER", reason: "No insurance on the other driver, the caller, or UIM", flags, closeKey: "no_coverage" };
   }
 
-  if (a.date === "le30") return { disposition: "SIGN", reason: "Within 30 days, injured, treated or willing", flags };
+  if (dateBucket(a.date) === "le30") return { disposition: "SIGN", reason: "Within 30 days, injured, treated or willing", flags };
   if (a.treatment === "still") return { disposition: "SIGN", reason: "Still treating", flags };
   if ((a.treatment === "stopped" || a.treatment === "finished") && billsAtLeast(a.bills, cfg.gpiBillsThreshold))
     return { disposition: "SIGN", reason: "Treatment concluded, medical bills over the retainer line", flags };

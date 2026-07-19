@@ -12,6 +12,7 @@ import {
 } from "@/lib/intake-console/scripts";
 import GuidedStep, { Spoken, Note, Primary } from "@/components/guided/GuidedStep";
 import Typeahead from "@/components/Typeahead";
+import IncidentLocation from "@/components/IncidentLocation";
 
 // ============================================================================
 // Take a call. This is not a screening widget that gets promoted into a lead
@@ -478,7 +479,18 @@ function OutcomeView(p: any) {
               {POST_SIGN_FIELDS.map((f) => (
                 <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
                   <span>{f.label}{f.sensitive && <em> · sensitive</em>}</span>
-                  {f.ref ? (
+                  {f.key === "incident_intersection" ? (
+                    <IncidentLocation
+                      value={postSign[f.key] ?? ""}
+                      near={answers.incident_city_state as string | undefined}
+                      onResolved={(r) => setPostSign({
+                        ...postSign,
+                        incident_intersection: r.formatted,
+                        incident_county: r.county ?? "",
+                        incident_agency: r.agency ?? "",
+                      })}
+                    />
+                  ) : f.ref ? (
                     <Typeahead source={f.ref} className="ic-tain"
                       value={postSign[f.key] ?? ""}
                       onChange={(v: string) => setPostSign({ ...postSign, [f.key]: v })} />
@@ -490,7 +502,7 @@ function OutcomeView(p: any) {
             </div>
             {postSign.passenger && <Spoken>{fill(SIGN_SCRIPTS.passengerAsk)}</Spoken>}
             <Spoken>{fill(SIGN_SCRIPTS.closing)}</Spoken>
-            <Note>Give them the 72 hour promise exactly as written. It is the only thing standing between a signed file and a client who thinks they were forgotten.</Note>
+            <Note>{SIGN_SCRIPTS.closingNote}</Note>
             <Spoken>{fill(SIGN_SCRIPTS.beforeHangup)}</Spoken>
           </>
         )}

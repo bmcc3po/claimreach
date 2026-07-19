@@ -14,7 +14,7 @@ export interface Question {
   key: string;
   script: string;
   note?: string;
-  kind: "single" | "multi" | "text";
+  kind: "single" | "multi" | "text" | "date";
   options?: QOption[];
 }
 
@@ -184,6 +184,18 @@ export const AUTO_QUESTIONS: Question[] = [
     ],
   },
   {
+    key: "police_agency",
+    script: "Do you know which department responded?",
+    kind: "text",
+    note: "City police, county sheriff, or a state trooper. If they are unsure, leave it, the location lookup narrows it after the signature.",
+  },
+  {
+    key: "police_report_number",
+    script: "And do you have the report or case number?",
+    kind: "text",
+    note: "Often on a card or slip handed over at the scene. If they do not have it, that is fine, we order it by date and location.",
+  },
+  {
     key: "citations",
     script: "Were any citations issued, and to whom?",
     kind: "single",
@@ -225,13 +237,15 @@ export const AUTO_QUESTIONS: Question[] = [
   },
   {
     key: "date",
-    script: "When did the accident happen?",
-    kind: "single",
-    options: [
-      { value: "le30", label: "Within the last 30 days" },
-      { value: "mid",  label: "31 days to under 9 months" },
-      { value: "old",  label: "9 months or older" },
-    ],
+    script: "What was the exact date of the accident?",
+    kind: "date",
+    note: "Get the real date, not a rough guess. The statute of limitations runs from this day and the firm calculates deadlines off it.",
+  },
+  {
+    key: "incident_time",
+    script: "And roughly what time of day was it?",
+    kind: "text",
+    note: "Approximate is fine, e.g. 7:30 AM or just after dark. Police pull reports by date AND time.",
   },
   TREATMENT_Q,
   WILLING_Q,
@@ -350,16 +364,16 @@ export const CASE_TYPES: { key: CaseTypeKey; label: string; sub: string }[] = [
 const AUTO_ASK_ORDER = [
   "authority", "poa", "role", "attorney",
   "what_happened", "agent_read",
-  "date", "incident_city_state",
+  "date", "incident_time", "incident_city_state",
   "injured", "symptoms_ongoing", "treatment", "willing",
   "injuries", "surgery", "hosp",
-  "fault", "police_report", "citations", "commercial", "settled", "bills",
+  "fault", "police_report", "police_agency", "police_report_number", "citations", "commercial", "settled", "bills",
   "ins_other", "ins_own", "ins_uim",
 ];
 
 const GPI_ASK_ORDER = [
   "presence", "what_happened", "agent_read",
-  "date", "incident_city_state",
+  "date", "incident_time", "incident_city_state",
   "injured", "symptoms_ongoing", "treatment", "willing",
   "injuries", "surgery", "bills",
 ];

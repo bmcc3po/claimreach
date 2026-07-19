@@ -22,12 +22,23 @@
 alter table leads add column if not exists mail_addr1 text;
 alter table leads add column if not exists mail_addr2 text;
 
--- Carry over anything captured under the old single-line column.
-update leads
-set mail_addr1 = mail_addr
-where mail_addr1 is null
-  and mail_addr is not null
-  and mail_addr <> '';
+-- Carry over anything captured under an older single-line column, IF one exists.
+-- Guarded because mail_addr turned out never to have been created either: it
+-- lives in a migration that was written but never applied, so an unguarded
+-- backfill aborts the whole script after the columns are already added.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_name = 'leads' and column_name = 'mail_addr'
+  ) then
+    execute $sql$
+      update leads
+      set mail_addr1 = mail_addr
+      where mail_addr1 is null and mail_addr is not null and mail_addr <> ''
+    $sql$;
+  end if;
+end $$;
 
 comment on column leads.mail_addr1 is 'Street address line 1. Canonical: the app writes here, not mail_addr.';
 comment on column leads.mail_addr2 is 'Apartment, suite or unit number.';

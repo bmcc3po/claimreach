@@ -41,12 +41,14 @@ export const SIGN_SCRIPTS = {
   afterSignAsk:
     "Great. A couple more details and I will get you on your way. I know you said earlier it happened in [city], can you give me a more specific intersection perhaps?",
   closing:
-    "Perfect. Here is what happens next. I am going to shoot your file over to your case manager. Once they get you added to the system, they are going to call you direct, so be on the lookout for a call and a text from them. I do not have their name yet, but if you do not hear something in the next 72 hours, I want you to call me back directly. Or you can feel free to text me at the number I gave you. I hope you feel better soon. Have a good day.",
+    "Perfect. Here is what happens next. I am sending your file straight over to your case manager. They should reach out within the next 72 business hours to schedule your next steps, so keep an eye out for a call and a text from them. Two things until you hear from them. First, only talk to us about this accident, nobody else. Second, please stay off social media about the accident or your injuries, do not post about it at all. If you have not heard anything in 72 business hours, call me back directly, or text me at the number I gave you. I hope you feel better soon, and have a good day.",
   // Speakerphone keeps them on the line while they sign, which is the whole
   // requirement. It also gives the agent a reason to stay on that does not
   // sound like supervision.
   sending: "Okay perfect. Go ahead and put me on speaker phone, I am going to send you a text right now.",
   sendingNote: "Say this as you hit send, not after. Stay on the line through the signature.",
+  closingNote:
+    "Do not shorten this. The social media line and the 'only talk to us' line are the two that protect the case, and the 72 business hours sets the expectation that stops the callback complaints.",
   beforeHangup: "Have I covered everything for you today?",
   passengerAsk:
     "You mentioned [passenger] was in the car with you. Are they working with an attorney? If not, do you have a good number for them so we can make sure they are taken care of too?",
@@ -54,6 +56,8 @@ export const SIGN_SCRIPTS = {
 
 export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean; ref?: "vehicle" | "auto_carrier" | "health_carrier"; half?: boolean }[] = [
   { key: "incident_intersection", label: "More specific location (intersection, mile marker, address)" },
+  { key: "incident_county", label: "County (auto-filled from the lookup)", half: true },
+  { key: "incident_agency", label: "Agency that likely has the report", half: true },
   { key: "vehicle_status",  label: "Was the vehicle drivable, towed, or totaled?" },
   { key: "preferred_language", label: "Preferred language", half: true },
   { key: "best_time",       label: "Best time of day to reach you", half: true },
