@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import { fieldVisible, segmentsForType, segmentsFrom, type Field } from "@/lib/questionnaire";
 import PropertyLookup from "@/components/PropertyLookup";
 import Typeahead from "@/components/Typeahead";
+import { dbRowToFormValues, dbRowToResolved } from "@/lib/claim-properties";
 
 // ============================================================================
 // GUIDED INTAKE
@@ -39,7 +40,17 @@ export default function GuidedIntake({
   onExit?: () => void;
 }) {
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers);
-  const [props, setProps] = useState<PropRow[]>(initialProperties ?? []);
+  // Hydrate flat claim_properties rows from the DB into the {values, resolved}
+  // shape this runner uses. Without this, reopening a file in guided mode showed
+  // blank property fields and a save wrote them back empty (row.values was
+  // undefined). ClaimIntake already adapts the same rows; now both agree.
+  const [props, setProps] = useState<PropRow[]>(
+    (initialProperties ?? []).map((p: any) =>
+      p && typeof p === "object" && p.values && !p.claim_id
+        ? p // already in runner shape (defensive)
+        : { values: dbRowToFormValues(p), resolved: dbRowToResolved(p) }
+    )
+  );
   const [idx, setIdx] = useState(0);
   const [draft, setDraft] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -138,7 +149,7 @@ export default function GuidedIntake({
             if (r.ok) canonical_id = d.id;
           } catch { /* best effort: never block the save on the canonical lookup */ }
         }
-        properties.push({ ...row.values, canonical_id });
+        properties.push({ ...row.values, canonical_id: canonical_id ?? row.values?.canonical_id });
       }
       const r = await fetch("/api/claim-intake", {
         method: "POST", headers: { "Content-Type": "application/json" },

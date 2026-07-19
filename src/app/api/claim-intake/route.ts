@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { recordAudit } from "@/lib/audit";
 import { fieldLabelMap } from "@/lib/questionnaire";
+import { coercePropCol, splitStayMonth } from "@/lib/claim-properties";
 
 export const runtime = "edge";
 
@@ -57,23 +58,43 @@ export async function POST(req: NextRequest) {
       "staff_knowledge_other", "has_variance", "variance_notes",
       "variance_trafficker", "variance_control",
     ]);
-    await sb.from("claim_properties").delete().eq("claim_id", claim_id);
-    if (properties.length) {
-      const rows = properties.map((p: any, i: number) => {
-        const clean: Record<string, any> = {};
-        const custom: Record<string, any> = {};
-        for (const k of Object.keys(p)) {
-          if (k === "custom") continue;
-          if (WRITABLE_PROP_COLS.has(k)) clean[k] = p[k];
-          else if (k !== "name" && k !== "place_id_display") custom[k] = p[k]; // imported-form fields
+    // Build fully type-coerced rows BEFORE any destructive write. A "MM/YYYY"
+    // month-year string headed for the stay_month int column (and empty strings
+    // headed for any int/bool/jsonb column) are converted here, so the insert
+    // cannot fail on a type cast after we have already removed the old rows.
+    const rows = properties.map((p: any, i: number) => {
+      const clean: Record<string, any> = {};
+      const custom: Record<string, any> = {};
+      const derived = splitStayMonth(p.stay_month); // "10/1977" -> { month: 10, year: 1977 }
+      for (const k of Object.keys(p)) {
+        if (k === "custom") continue;
+        if (WRITABLE_PROP_COLS.has(k)) {
+          const c = coercePropCol(k, p[k]);
+          if (c !== undefined) clean[k] = c; // undefined => omit, let DB default / NULL apply
+        } else if (k !== "name" && k !== "place_id_display") {
+          custom[k] = p[k]; // imported-form fields
         }
-        // Merge any custom bag the client already sent.
-        const mergedCustom = { ...(p.custom && typeof p.custom === "object" ? p.custom : {}), ...custom };
-        return { ...clean, custom: mergedCustom, claim_id, firm_id, sequence_order: i + 1 };
-      });
+      }
+      // The UI carries month+year in one field; persist the year column too.
+      if (clean.stay_year === undefined && derived.year != null) clean.stay_year = derived.year;
+      // Merge any custom bag the client already sent.
+      const mergedCustom = { ...(p.custom && typeof p.custom === "object" ? p.custom : {}), ...custom };
+      return { ...clean, custom: mergedCustom, claim_id, firm_id, sequence_order: i + 1 };
+    });
+
+    // Non-destructive replace. The old code did delete()-then-insert(), so any
+    // failed insert (e.g. the stay_month cast) left the claim with ZERO
+    // properties — silent data loss on a victim's intake. Instead: capture the
+    // current rows, insert the new set, and only delete the old rows once the
+    // insert has succeeded. On insert error we return early, data untouched.
+    const { data: existingRows } = await sb.from("claim_properties").select("id").eq("claim_id", claim_id);
+    const oldIds = (existingRows ?? []).map((r: any) => r.id);
+
+    if (rows.length) {
       const { error: pErr } = await sb.from("claim_properties").insert(rows);
       if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
     }
+    if (oldIds.length) await sb.from("claim_properties").delete().in("id", oldIds);
   }
 
   // ---- Field-level audit: diff prior vs next, log each change with old→new ----

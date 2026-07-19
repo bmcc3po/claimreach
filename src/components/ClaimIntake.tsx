@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { INTAKE, intakeForType, segmentsForType, segmentsFrom, fieldVisible } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PropertyLookup, { type ResolvedProperty } from "./PropertyLookup";
+import { dbRowToFormValues, dbRowToResolved } from "@/lib/claim-properties";
 import CalendlyEmbed from "./CalendlyEmbed";
 
 const PROP_FIELDS = INTAKE.filter((f) => f.scope === "property");
@@ -43,8 +44,7 @@ export default function ClaimIntake({
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers || {});
   const [props, setProps] = useState<PropertyState[]>(
     (initialProperties || []).map((p, i) => ({
-      _key: `p${i}`, values: { ...(p.custom && typeof p.custom === "object" ? p.custom : {}), ...p },
-      resolved: p.place_id ? { place_id: p.place_id, name: p.name_as_recalled, address: p.address, lat: p.lat, lng: p.lng } : undefined,
+      _key: `p${i}`, values: dbRowToFormValues(p), resolved: dbRowToResolved(p),
     }))
   );
   const [saving, setSaving] = useState(false);
