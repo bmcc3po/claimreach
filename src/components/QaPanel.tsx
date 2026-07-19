@@ -47,6 +47,33 @@ export default function QaPanel({ leadId, claimId, role }: { leadId: string; cla
   const anyRed = [gQa, gEsign, gCrit].includes("red");
   const gatesSet = gQa && gEsign && gCrit;
 
+  // Grades used to live only in React state, so leaving the tab threw the
+  // whole review away. Autosave them; the permanent record is still qa_reviews.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`/api/qa?lead_id=${leadId}`);
+        const j = await r.json();
+        const d = j?.draft;
+        if (!d) return;
+        if (d.gQa) setGQa(d.gQa); if (d.gEsign) setGEsign(d.gEsign); if (d.gCrit) setGCrit(d.gCrit);
+        if (d.cLead) setCLead(d.cLead); if (d.cComplete) setCComplete(d.cComplete);
+        if (d.qaNote) setQaNote(d.qaNote); if (d.agentNote) setAgentNote(d.agentNote);
+      } catch { /* a missing draft is not an error */ }
+    })();
+  }, [leadId]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void fetch("/api/qa", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "draft", lead_id: leadId,
+          draft: { gQa, gEsign, gCrit, cLead, cComplete, qaNote, agentNote } }),
+      }).catch(() => {});
+    }, 900);
+    return () => clearTimeout(t);
+  }, [gQa, gEsign, gCrit, cLead, cComplete, qaNote, agentNote, leadId]);
+
   async function submit(decision: string, dqReasonKey?: string, dupAck?: boolean) {
     if (!gatesSet) { setMsg("Set all three hard-gate checks first."); return; }
     if (decision === "approve" && anyRed) {

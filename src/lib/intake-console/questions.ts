@@ -43,6 +43,18 @@ const INJURY_Q: Question = {
   options: INJURY_OPTIONS.map((i) => ({ value: i.value, label: i.label })),
 };
 
+export const WILLING_MORE_Q: Question = {
+  key: "willing_more",
+  script: "If a doctor suggests more treatment, are you willing to go?",
+  kind: "single",
+  note: "Only asked when treatment has already ended. A finished or abandoned course of care is worth far more if they are still willing to be seen.",
+  options: [
+    { value: "yes",    label: "Yes, willing to go back" },
+    { value: "no",     label: "No, they are done", note: "Weakens the file. Flag it in your notes" },
+    { value: "unsure", label: "Not sure" },
+  ],
+};
+
 const SURGERY_Q: Question = {
   key: "surgery",
   script: "Has any surgery been done, or has a doctor recommended surgery?",
@@ -151,6 +163,7 @@ export const AUTO_QUESTIONS: Question[] = [
     kind: "single",
     options: [{ value: "yes", label: "Yes, still having symptoms" }, { value: "no", label: "No, symptoms resolved" }],
   },
+  WILLING_MORE_Q,
   SURGERY_Q,
   {
     key: "hosp",
@@ -302,6 +315,7 @@ export const GPI_QUESTIONS: Question[] = [
     kind: "single",
     options: [{ value: "yes", label: "Yes, still having symptoms" }, { value: "no", label: "No, symptoms resolved" }],
   },
+  WILLING_MORE_Q,
   SURGERY_Q,
   {
     key: "date",
@@ -320,6 +334,134 @@ export const GPI_QUESTIONS: Question[] = [
 
 // ---------------------------------------------------------------- EVERYTHING ELSE
 // Brief capture only. No criteria, no screening, no agent judgment.
+
+// ---------------------------------------------------------------- CRIMINAL
+// The firm's own written list, verbatim. Brief capture: enough to route it to
+// the right attorney in the network, not a full screening.
+export const CRIMINAL_QUESTIONS: Question[] = [
+  {
+    key: "what_happened",
+    multiline: true,
+    script: "Tell me what is going on, and I will get this over to the right attorney in our network.",
+    kind: "text",
+    note: "Outline only. Do not ask them to explain or justify anything.",
+  },
+  { key: "incident_date", script: "What date did this happen?", kind: "date" },
+  { key: "charges", script: "What charges or accusations are you facing?", kind: "text" },
+  {
+    key: "court_date",
+    script: "Do you have a scheduled court date or any pending deadlines?",
+    kind: "text",
+    note: "If there is a date inside a week, say so in your notes. It changes how fast this has to move.",
+  },
+  {
+    key: "law_enforcement_contact",
+    script: "Were you arrested, questioned, or searched by law enforcement?",
+    kind: "single",
+    options: [
+      { value: "arrested",  label: "Arrested" },
+      { value: "questioned", label: "Questioned" },
+      { value: "searched",  label: "Searched" },
+      { value: "multiple",  label: "More than one of these" },
+      { value: "none",      label: "None of these" },
+    ],
+  },
+  {
+    key: "agency",
+    script: "Which law enforcement agency was involved?",
+    kind: "text",
+    note: "State police, park police, DEA, city police, sheriff. Their words are fine.",
+  },
+  {
+    key: "represented",
+    script: "Do you have, or have you previously had, an attorney for this case?",
+    kind: "single",
+    options: [
+      { value: "no",      label: "No" },
+      { value: "current", label: "Yes, currently represented", note: "Do not ask who; do not comment on the other firm" },
+      { value: "past",    label: "Had one before, not now" },
+    ],
+  },
+  { key: "state", script: "And what state is this in?", kind: "text" },
+];
+
+// ---------------------------------------------------------------- FAMILY LAW
+export const FAMILY_QUESTIONS: Question[] = [
+  {
+    key: "what_happened",
+    multiline: true,
+    script: "Tell me a little about what is going on, and I will get this to the right attorney in our network.",
+    kind: "text",
+    note: "Outline only. This is often a hard call for them. Let them talk, do not push for detail.",
+  },
+  { key: "state",  script: "What state do you need legal help in?", kind: "text" },
+  { key: "county", script: "And what county do you live in?", kind: "text" },
+  { key: "began",  script: "About when did this issue begin?", kind: "text", note: "Approximate is fine." },
+  {
+    key: "matter_type",
+    script: "What is the main reason you are looking for representation today?",
+    kind: "single",
+    options: [
+      { value: "divorce",     label: "Divorce or dissolution" },
+      { value: "separation",  label: "Legal separation" },
+      { value: "custody",     label: "Child custody" },
+      { value: "parenting",   label: "Parenting time or visitation" },
+      { value: "child_support", label: "Child support" },
+      { value: "spousal",     label: "Spousal support or alimony" },
+      { value: "modification", label: "Modifying an existing order" },
+      { value: "contempt",    label: "Contempt or enforcement" },
+      { value: "paternity",   label: "Paternity" },
+      { value: "adoption",    label: "Adoption" },
+      { value: "guardianship", label: "Guardianship" },
+      { value: "prenup",      label: "Prenuptial or postnuptial agreement" },
+      { value: "dv",          label: "Domestic violence or protective order", note: "Handle gently. Ask if they are safe to talk right now" },
+      { value: "property",    label: "Property division" },
+      { value: "other",       label: "Something else" },
+    ],
+  },
+  {
+    key: "other_side_counsel",
+    script: "Has the other party already hired an attorney?",
+    kind: "single",
+    options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }, { value: "unsure", label: "Not sure" }],
+  },
+  {
+    key: "minor_children",
+    script: "Are there minor children involved?",
+    kind: "single",
+    options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }],
+  },
+  {
+    key: "existing_orders",
+    script: "Is there already a custody, parenting, or child support order in place?",
+    kind: "single",
+    options: [
+      { value: "custody",  label: "Custody or parenting plan" },
+      { value: "support",  label: "Child support order" },
+      { value: "both",     label: "Both" },
+      { value: "none",     label: "Neither" },
+      { value: "unsure",   label: "Not sure" },
+    ],
+  },
+  {
+    key: "case_filed",
+    script: "Has a court case already been filed?",
+    kind: "single",
+    options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }, { value: "unsure", label: "Not sure" }],
+  },
+  { key: "goal", script: "What are you hoping to get out of this?", kind: "text", multiline: true },
+  {
+    key: "represented",
+    script: "Are you working with an attorney on this already?",
+    kind: "single",
+    options: [
+      { value: "no", label: "No" },
+      { value: "yes_satisfied", label: "Yes, and happy with them", note: "Disqualifier. Wish them well" },
+      { value: "yes_unhappy",   label: "Yes, but looking to change" },
+    ],
+  },
+];
+
 export const BRIEF_QUESTIONS: Question[] = [
   {
     key: "what_happened",
@@ -365,7 +507,7 @@ const AUTO_ASK_ORDER = [
   "authority", "poa", "role", "attorney",
   "what_happened", "agent_read",
   "date", "incident_time", "incident_city_state",
-  "injured", "symptoms_ongoing", "treatment", "willing",
+  "injured", "symptoms_ongoing", "treatment", "willing", "willing_more",
   "injuries", "surgery", "hosp",
   "fault", "police_report", "police_agency", "police_report_number", "citations", "commercial", "settled", "bills",
   "ins_other", "ins_own", "ins_uim",
@@ -374,7 +516,7 @@ const AUTO_ASK_ORDER = [
 const GPI_ASK_ORDER = [
   "presence", "what_happened", "agent_read",
   "date", "incident_time", "incident_city_state",
-  "injured", "symptoms_ongoing", "treatment", "willing",
+  "injured", "symptoms_ongoing", "treatment", "willing", "willing_more",
   "injuries", "surgery", "bills",
 ];
 
@@ -388,6 +530,8 @@ function inAskOrder(qs: Question[], order: string[]): Question[] {
 export function questionsFor(caseType: CaseTypeKey): Question[] {
   if (caseType === "mva") return inAskOrder(AUTO_QUESTIONS, AUTO_ASK_ORDER);
   if (caseType === "prem") return inAskOrder(GPI_QUESTIONS, GPI_ASK_ORDER);
+  if (caseType === "criminal") return CRIMINAL_QUESTIONS;
+  if (caseType === "family") return FAMILY_QUESTIONS;
   return BRIEF_QUESTIONS;
 }
 

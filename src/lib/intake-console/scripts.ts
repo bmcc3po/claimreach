@@ -41,7 +41,7 @@ export const SIGN_SCRIPTS = {
   afterSignAsk:
     "Great. A couple more details and I will get you on your way. I know you said earlier it happened in [city], can you give me a more specific intersection perhaps?",
   closing:
-    "Perfect. Here is what happens next. I am sending your file straight over to your case manager. They should reach out within the next 72 business hours to schedule your next steps, so keep an eye out for a call and a text from them. Two things until you hear from them. First, only talk to us about this accident, nobody else. Second, please stay off social media about the accident or your injuries, do not post about it at all. If you have not heard anything in 72 business hours, call me back directly, or text me at the number I gave you. I hope you feel better soon, and have a good day.",
+    "Perfect. Here is what happens next. I am sending your file straight over to your case manager. They should reach out within the next 72 business hours to schedule your next steps, so keep an eye out for a call and a text from them. Two things until you hear from them. First, only talk to us about this accident, nobody else. Second, please stay off social media about the accident or your injuries, do not post about it at all. I do not have your case manager's name yet, but if you do not hear something in the next 72 hours, text me back on the number I texted you from, or feel free to call the office at the number I gave you. I hope you feel better.",
   // Speakerphone keeps them on the line while they sign, which is the whole
   // requirement. It also gives the agent a reason to stay on that does not
   // sound like supervision.
@@ -49,12 +49,12 @@ export const SIGN_SCRIPTS = {
   sendingNote: "Say this as you hit send, not after. Stay on the line through the signature.",
   closingNote:
     "Do not shorten this. The social media line and the 'only talk to us' line are the two that protect the case, and the 72 business hours sets the expectation that stops the callback complaints.",
-  beforeHangup: "Have I covered everything for you today?",
+  beforeHangup: "Did I cover everything you needed answered for today? Thank you, and welcome to [firm].",
   passengerAsk:
     "You mentioned [passenger] was in the car with you. Are they working with an attorney? If not, do you have a good number for them so we can make sure they are taken care of too?",
 };
 
-export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean; ref?: "vehicle" | "auto_carrier" | "health_carrier"; half?: boolean }[] = [
+export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean; ref?: "vehicle" | "auto_carrier" | "health_carrier"; half?: boolean; kind?: "date" }[] = [
   { key: "incident_intersection", label: "More specific location (intersection, mile marker, address)" },
   { key: "incident_county", label: "County (auto-filled from the lookup)", half: true },
   { key: "incident_agency", label: "Agency that likely has the report", half: true },
@@ -68,7 +68,7 @@ export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean
   { key: "other_carrier",   label: "Other driver's carrier", ref: "auto_carrier" },
   { key: "media",           label: "Photos / video available?" },
   { key: "dl_number",       label: "Driver's license number", sensitive: true },
-  { key: "dob",             label: "Date of birth", sensitive: true },
+  { key: "dob",             label: "Date of birth", sensitive: true, kind: "date" },
   { key: "ssn",             label: "SSN", sensitive: true },
   { key: "passenger",       label: "Passenger name + number (if any)" },
 ];

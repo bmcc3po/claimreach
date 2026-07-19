@@ -490,6 +490,9 @@ function OutcomeView(p: any) {
                         incident_agency: r.agency ?? "",
                       })}
                     />
+                  ) : f.kind === "date" ? (
+                    <input type="date" value={postSign[f.key] ?? ""}
+                      onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })} />
                   ) : f.ref ? (
                     <Typeahead source={f.ref} className="ic-tain"
                       value={postSign[f.key] ?? ""}
@@ -642,8 +645,17 @@ const CSS = `
 .ic-tick { color:#15803d; font-weight:900; }
 @keyframes icp { 0%,100%{opacity:1} 50%{opacity:.25} }
 
+.ic-since { display:flex; flex-direction:column; gap:3px; margin-top:12px; padding:11px 14px;
+  border-radius:10px; border:1px solid var(--line); background:var(--surface-2); }
+.ic-since b { font-size:16px; }
+.ic-since span { font-size:12.5px; color:var(--ink-soft); line-height:1.45; }
+.ic-since.le30 { border-color:#bbf7d0; background:#f0fdf4; }
+.ic-since.mid  { border-color:#fde68a; background:#fffbeb; }
+.ic-since.old  { border-color:#fecaca; background:#fef2f2; }
 .ic-rung { display:flex; gap:12px; align-items:flex-start; padding:11px 0; border-bottom:1px solid var(--line); }
-.ic-rung.locked { opacity:.35; }
+.ic-rung.locked .ic-rung-btn { opacity:.4; }
+.ic-rung.locked p { color:var(--ink-soft); }
+.ic-rung.locked .ic-rung-note { opacity:.85; }
 .ic-rung.done p { color:var(--ink-faint); }
 .ic-rung-note { display:block; margin-top:4px; font-size:12.5px; font-style:italic; color:#a16207; line-height:1.45; }
 .ic-rung p { margin:0; font-size:16px; line-height:1.5; font-weight:600; }

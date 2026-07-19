@@ -44,12 +44,13 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const lead_id = url.searchParams.get("lead_id");
   if (lead_id) {
+    const { data: draftRow } = await sb.from("leads").select("qa_draft").eq("id", lead_id).maybeSingle();
     const { data: reviews } = await sb.from("qa_reviews").select("*").eq("lead_id", lead_id).order("created_at", { ascending: false });
     const { data: cards } = await sb.from("report_cards").select("*").eq("lead_id", lead_id).order("created_at", { ascending: false });
     const { data: thread } = await sb.from("qa_thread").select("*").eq("lead_id", lead_id).order("created_at");
     const { data: dupClaims } = await sb.from("claims").select("claim_type, dup_override, dup_override_reason, dup_ack_at").eq("lead_id", lead_id).eq("dup_override", true);
     const dupOverride = (dupClaims ?? []).length ? { claims: dupClaims, acknowledged: (dupClaims ?? []).every((c: any) => c.dup_ack_at) } : null;
-    return NextResponse.json({ reviews: reviews ?? [], cards: cards ?? [], thread: thread ?? [], dupOverride });
+    return NextResponse.json({ draft: draftRow?.qa_draft ?? null, reviews: reviews ?? [], cards: cards ?? [], thread: thread ?? [], dupOverride });
   }
   // QA queue: files in a QA-phase status (source of truth, not the flag).
   const QA_STATUSES = ["grievous", "qa", "signed_grievous", "signed_qa"];
@@ -72,6 +73,15 @@ export async function POST(req: NextRequest) {
   const admin = supabaseAdmin();
 
   // Post to the internal QA<->agent thread.
+  // Autosaved in-progress grades. A reviewer who clicks to the Calls tab and
+  // back should not lose their work; only a real decision writes qa_reviews.
+  if (b.op === "draft") {
+    if (!b.lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
+    const { error } = await admin.from("leads").update({ qa_draft: b.draft ?? null }).eq("id", b.lead_id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (b.op === "thread") {
     if (!b.lead_id || !b.body?.trim()) return NextResponse.json({ error: "lead_id and body required" }, { status: 400 });
     const { data: lead } = await sb.from("leads").select("firm_id").eq("id", b.lead_id).maybeSingle();

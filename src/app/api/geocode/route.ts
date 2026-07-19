@@ -37,7 +37,20 @@ export async function POST(req: NextRequest) {
     const r = await fetch(url);
     const d: any = await r.json();
     if (d.status !== "OK" || !Array.isArray(d.results) || d.results.length === 0) {
-      return NextResponse.json({ results: [], note: d.status === "ZERO_RESULTS" ? "No match. Try adding the city." : d.status });
+      // Say what actually happened. "It doesn't work" is unfixable; "Geocoding
+      // API is not enabled on this project" is a thirty second fix.
+      const explain: Record<string, string> = {
+        ZERO_RESULTS: "No match. Add the city, or try a nearby cross street.",
+        REQUEST_DENIED: "Google refused the request. The Geocoding API is probably not enabled on the same project as your Places key: Google Cloud Console, APIs and Services, enable Geocoding API.",
+        OVER_QUERY_LIMIT: "Google rate limited or billing is not enabled on the project.",
+        INVALID_REQUEST: "The search text was empty or malformed.",
+      };
+      return NextResponse.json({
+        results: [],
+        note: explain[d.status] ?? `Google returned ${d.status}.`,
+        google_status: d.status,
+        google_message: d.error_message ?? null,
+      });
     }
 
     const results = d.results.slice(0, 4).map((res: any) => {

@@ -30,6 +30,29 @@ export function Note({ children, tone }: any) {
 }
 export function Primary({ children, ...rest }: any) { return <button className="ic-btn solid wide" {...rest}>{children}</button>; }
 
+// How long ago, in words, plus which criteria band it lands in.
+function sinceLabel(v: string): { text: string; band: "le30" | "mid" | "old" } | null {
+  if (!v) return null;
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return null;
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (days < 0) return null;
+  const months = Math.floor(days / 30.44);
+  const text = days === 0 ? "today"
+    : days === 1 ? "yesterday"
+    : days < 45 ? `${days} days ago`
+    : months < 24 ? `${months} months ago (${days} days)`
+    : `${Math.floor(days / 365)} years ago`;
+  const band: "le30" | "mid" | "old" = days <= 30 ? "le30" : days < 274 ? "mid" : "old";
+  return { text, band };
+}
+
+const BAND_COPY = {
+  le30: "Within 30 days. Signs with any listed injury if treated or willing.",
+  mid:  "Over 30 days. Needs continuing treatment, serious injury with treatment finished, or over $10,000 in bills.",
+  old:  "Nine months or older. Refer unless something elevates it.",
+};
+
 export default function GuidedStep({
   step, value, onAnswer, index, total, remaining, extra,
 }: {
@@ -94,6 +117,15 @@ export default function GuidedStep({
           {isPara
             ? <textarea className="ic-input area" autoFocus rows={6} value={draft} placeholder={step.placeholder} onChange={(e) => setDraft(e.target.value)} />
             : <input className="ic-input" autoFocus type={inputType} value={draft} placeholder={step.placeholder} onChange={(e) => setDraft(e.target.value)} />}
+          {step.kind === "date" && (() => {
+            const info = sinceLabel(String(draft));
+            return info ? (
+              <div className={`ic-since ${info.band}`}>
+                <b>{info.text}</b>
+                <span>{BAND_COPY[info.band]}</span>
+              </div>
+            ) : null;
+          })()}
           <Primary disabled={!String(draft).trim()} onClick={() => onAnswer(draft)}>Continue</Primary>
         </>
       )}

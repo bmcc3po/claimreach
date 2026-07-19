@@ -122,3 +122,31 @@ where c.firm_id = f.id and f.slug in ('tmt','tmp','roth') and c.case_type = 'mva
 select f.name as firm, c.name as campaign, c.case_type, c.intake_template, c.active, c.allow_live_sign
 from campaigns c join firms f on f.id = c.firm_id
 where f.slug in ('tmt','tmp','roth') and c.case_type = 'mva';
+
+-- ---------------------------------------------------------------- REFERRAL
+-- Employment, family, criminal, contract and "other" all route to one referral
+-- campaign per firm. Without it the console refuses to open a file, because the
+-- rule is that no lead exists without a campaign, and that rule is correct: it
+-- is what stopped files landing in a void all year.
+--
+-- One campaign rather than five keeps the network response and the billing in a
+-- single place.
+insert into campaigns (firm_id, name, case_type, active, allow_live_sign)
+select f.id, f.name || ' Referral', 'referral', true, false
+from firms f
+where f.slug in ('tmt','tmp','roth')
+  and not exists (
+    select 1 from campaigns c where c.firm_id = f.id and c.case_type = 'referral' and c.active
+  );
+
+-- Make sure the registry knows about it, or the picker will not offer it.
+insert into case_type_registry (key, label, active, sort)
+select 'referral', 'Referral / other matter', true, 90
+where not exists (select 1 from case_type_registry where key = 'referral');
+
+update case_type_registry set active = true where key = 'referral';
+
+-- Verify: three firms, three referral campaigns.
+select f.name as firm, c.name as campaign, c.case_type, c.active
+from campaigns c join firms f on f.id = c.firm_id
+where c.case_type = 'referral' order by f.name;

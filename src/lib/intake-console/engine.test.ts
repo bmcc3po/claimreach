@@ -67,11 +67,11 @@ check("hospitalized 3+ days + unwilling -> secondary review", disp({ ...base, ho
 console.log("\nAUTO — sign vs refer");
 check("within 30 days -> SIGN", disp({ ...base, date: "le30" }), "SIGN");
 check("mid + still treating -> SIGN", disp({ ...base, date: isoDaysAgo(120), treatment: "still" }), "SIGN");
-check("mid + serious + finished -> SIGN", disp({ ...base, date: isoDaysAgo(120), injuries: ["lig_tear"], treatment: "finished" }), "SIGN");
-check("mid + minor + finished + low bills -> REFER", disp({ ...base, date: isoDaysAgo(120), treatment: "finished", bills: "under_10k" }), "REFER");
-check("mid + bills over the line -> SIGN", disp({ ...base, date: isoDaysAgo(120), treatment: "finished", bills: "10k_50k" }), "SIGN");
+check("mid + serious + finished -> SIGN", disp({ ...base, date: isoDaysAgo(120), injuries: ["lig_tear"], treatment: "finished", willing_more: "yes" }), "SIGN");
+check("mid + minor + finished + low bills -> REFER", disp({ ...base, date: isoDaysAgo(120), treatment: "finished", willing_more: "yes", bills: "under_10k" }), "REFER");
+check("mid + bills over the line -> SIGN", disp({ ...base, date: isoDaysAgo(120), treatment: "finished", willing_more: "yes", bills: "10k_50k" }), "SIGN");
 check("9 months or older -> REFER", disp({ ...base, date: isoDaysAgo(730) }), "REFER");
-check("strain is minor, tear is serious", disp({ ...base, date: isoDaysAgo(120), injuries: ["lig_strain"], treatment: "finished" }), "REFER");
+check("strain is minor, tear is serious", disp({ ...base, date: isoDaysAgo(120), injuries: ["lig_strain"], treatment: "finished", willing_more: "yes" }), "REFER");
 
 console.log("\nAUTO — skip logic");
 check("POA only asked when calling for a living person", questionApplies("mva", "poa", { authority: "self" }), false);
@@ -84,8 +84,8 @@ const g: Answers = { incident_time: "2:00 PM", presence: "yes", injured: "yes", 
 check("trespassing -> DQ", disp({ ...g, presence: "no" }, "prem"), "DISQUALIFY");
 check("within 30 days -> SIGN", disp(g, "prem"), "SIGN");
 check("still treating -> SIGN", disp({ ...g, date: isoDaysAgo(120) }, "prem"), "SIGN");
-check("finished + under the GPI line -> REFER", disp({ ...g, date: isoDaysAgo(120), treatment: "finished", bills: "10k_50k" }, "prem"), "REFER");
-check("finished + over the GPI line -> SIGN", disp({ ...g, date: isoDaysAgo(120), treatment: "finished", bills: "over_50k" }, "prem"), "SIGN");
+check("finished + under the GPI line -> REFER", disp({ ...g, date: isoDaysAgo(120), treatment: "finished", willing_more: "yes", bills: "10k_50k" }, "prem"), "REFER");
+check("finished + over the GPI line -> SIGN", disp({ ...g, date: isoDaysAgo(120), treatment: "finished", willing_more: "yes", bills: "over_50k" }, "prem"), "SIGN");
 check("no commercial flag on premises", evaluate("prem", { ...g, commercial: "yes" }, cfg)?.flags ?? [], []);
 
 console.log("\nBRIEF CAPTURE");

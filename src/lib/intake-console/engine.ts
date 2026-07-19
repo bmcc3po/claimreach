@@ -44,6 +44,8 @@ export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers):
     if (["injuries", "surgery", "hosp", "treatment", "bills"].includes(key)) return a.injured === "yes";
     // No report means there is no agency or number to ask about.
     if (REPORT_ONLY.has(key)) return a.police_report === "yes";
+    // Only worth asking once a course of care has ended.
+    if (key === "willing_more") return a.injured === "yes" && (a.treatment === "finished" || a.treatment === "stopped");
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
     return true;
   }
@@ -51,6 +53,8 @@ export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers):
     if (["injuries", "surgery", "treatment", "bills"].includes(key)) return a.injured === "yes";
     // No report means there is no agency or number to ask about.
     if (REPORT_ONLY.has(key)) return a.police_report === "yes";
+    // Only worth asking once a course of care has ended.
+    if (key === "willing_more") return a.injured === "yes" && (a.treatment === "finished" || a.treatment === "stopped");
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
     return true;
   }
@@ -253,6 +257,8 @@ export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome
 export function registryKeyFor(caseType: CaseTypeKey): string {
   if (caseType === "mva") return "mva";
   if (caseType === "prem") return "prem";
+  // Everything the firm refers out rather than screens shares one campaign, so
+  // there is a single place to change the network response and the billing.
   return "referral";
 }
 

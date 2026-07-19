@@ -71,7 +71,7 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
       "Thank you for calling Turnbull, Moak and Pendergrass, this is [agent]. This call may be recorded for quality and training. Is this about an injury to you, or to someone close to you?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question.",
-    caseTypes: ["mva", "prem", "other"],
+    caseTypes: ["mva", "prem", "employment", "family", "criminal", "contract", "other"],
     autoBillsThreshold: 10000,
     gpiBillsThreshold: 50000,
     referTurnaround: "72 hours",
@@ -88,7 +88,7 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
       "Thank you for calling The Roth Law Firm, this is [agent]. This call may be recorded for quality and training. How can I help you today?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question.",
-    caseTypes: ["mva", "prem", "other"],
+    caseTypes: ["mva", "prem", "employment", "family", "criminal", "contract", "other"],
     autoBillsThreshold: 10000,
     gpiBillsThreshold: 50000,
     referTurnaround: "72 hours",

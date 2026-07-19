@@ -45,7 +45,12 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
 
   async function save() {
     setSaving(true); setMsg("");
-    const payload = { ...f, case_tags: f.case_tags.split(",").map((t: string) => t.trim()).filter(Boolean),
+    const KEYS = ["marketing_source","referring_attorney","handling_attorney","intake_agent_id",
+      "qa_agent_id","case_manager_id","office_location","case_rating","call_outcome","esign_date",
+      "case_summary","case_description","case_tags"];
+    const base: Record<string, any> = {};
+    for (const k of KEYS) base[k] = (f as any)[k] ?? "";
+    const payload = { ...base, ...f, case_tags: String(f.case_tags ?? "").split(",").map((t: string) => t.trim()).filter(Boolean),
       intake_agent_id: f.intake_agent_id || null, qa_agent_id: f.qa_agent_id || null, case_manager_id: f.case_manager_id || null,
       esign_date: f.esign_date || null };
     const r = await fetch("/api/case/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead.id, ...payload }) });

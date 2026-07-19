@@ -76,9 +76,13 @@ export const INTAKE: Field[] = [
     },
   { id: "poa_nok_confirmed", scope: "lead", kind: "bool", label: "POA / NOK authority confirmed" },
   {
-      id: "g_at_hotel", scope: "lead", kind: "gate", gateType: "end_intake", vital: true,
+      id: "g_at_hotel", scope: "lead", kind: "gate", gateType: "dq", vital: true,
       label: "Did this occur at a hotel or motel?",
-      agentNote: "If NO: end intake.",
+      // These callers are already retained. A no here disqualifies the file for
+      // THIS campaign, it does not end the interview: our job is the complete
+      // secondary interview, then a judgment call to the firm. The client is
+      // never told our opinion either way.
+      agentNote: "If NO, this does not qualify for Motel 6, but DO NOT end the call. Record it and complete the entire intake. Your notes and the firm decide, not this answer. Say nothing to the caller about whether it qualifies.",
     },
   {
       id: "g_can_identify", scope: "lead", kind: "gate", gateType: "supervisor", vital: true,
@@ -178,7 +182,7 @@ export const INTAKE: Field[] = [
   { id: "could_refuse", scope: "lead", kind: "bool", label: "Were you able to refuse without consequences?" },
   { id: "had_phone_money_id", scope: "lead", kind: "bool", label: "Did you have access to your own phone, money, and ID during this time?" },
   { id: "s_recruit", scope: "lead", kind: "section", label: "How You Met" },
-  { id: "met_how", scope: "lead", kind: "text", label: "How did you first meet the trafficker?" },
+  { id: "met_how", scope: "lead", kind: "longtext", label: "How did you first meet the trafficker?" },
   { id: "met_where", scope: "lead", kind: "text", label: "Where did you first meet them? (City/State)" },
   { id: "met_age", scope: "lead", kind: "int", label: "How old were you when you first met them?" },
   { id: "initial_relationship", scope: "lead", kind: "text", label: "What was your relationship to them at first?" },
@@ -186,7 +190,7 @@ export const INTAKE: Field[] = [
       options: ["Love/relationship","Money","Job","Housing","Modeling/career","Travel","Drugs","Protection","Other"] },
   { id: "provided_early", scope: "lead", kind: "multiselect", label: "Did they provide anything early on? (select all)",
       options: ["Money","Gifts","Housing","Drugs","Clothing","Phone","Other"] },
-  { id: "topic_first_arose", scope: "lead", kind: "text", label: "How did the topic of sex work first come up?" },
+  { id: "topic_first_arose", scope: "lead", kind: "longtext", label: "How did the topic of sex work first come up?" },
   { id: "used_deception", scope: "lead", kind: "bool", label: "Did they use deception or false promises to get you involved?" },
   { id: "deception_detail", scope: "lead", kind: "text", label: "What were you told?" },
   { id: "s_recruit2", scope: "lead", kind: "section", label: "Early Control & Movement" },
@@ -226,7 +230,7 @@ export const INTAKE: Field[] = [
       options: ["Drug","Theft/property","Violent","Solicitation/prostitution","Fraud","Other"] },
   { id: "felony_years", scope: "lead", kind: "text", label: "Approximately what years? (exact or range)" },
   { id: "felony_during_traffic", scope: "lead", kind: "bool", label: "Were any convictions during the same period as the trafficking?" },
-  { id: "open_cases", scope: "lead", kind: "text", label: "Any open felony cases, warrants, probation, or parole?" },
+  { id: "open_cases", scope: "lead", kind: "longtext", label: "Any open felony cases, warrants, probation, or parole?" },
   { id: "open_case_status", scope: "lead", kind: "text", label: "Current status?" },
   { id: "bankruptcy", scope: "lead", kind: "text", label: "Ever filed for bankruptcy? If yes, what type and when?" },
   { id: "aliases", scope: "lead", kind: "text", label: "Ever used another name or alias that may appear on records?" },
