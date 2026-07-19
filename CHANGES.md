@@ -1,38 +1,35 @@
-# ClaimReach — MVA city/state autocomplete + Statute-of-Limitations readout (2026-07-19)
+# ClaimReach — Search-first entry for "Take a Call" (2026-07-19)
 
 ## What this adds
-On the MVA "Take a call" console, the "And where did this happen? City and state"
-question is now a **Google-filled city picker**: type "Las Ve" -> pick
-"Las Vegas, NV" or "Las Vegas, NM". It stores the STANDARDIZED "City, ST" so
-reporting can group on it. Once the incident date is captured, it also shows that
-state's **personal-injury statute of limitations** and the filing runway
-(days remaining / deadline / EXPIRED), color-coded.
+After the caller-ID step, the console now searches for the caller BEFORE opening
+anything. The number is prefilled from the caller ID and searched automatically
+(you can also type a name).
+- **Match found** -> click it and their EXISTING file opens straight into the
+  questionnaire, resuming from where it left off. This call is logged against that
+  file. No duplicate lead.
+- **No match** -> "Not in the system - new caller" continues to the existing
+  new-lead flow (call type -> details -> case type -> open), exactly as before.
 
-## Files in this zip (extract at the repo ROOT — paths preserved; complete files)
-- `src/lib/reference/sol.ts` .............. NEW. Per-state PI SOL table + helpers
-  (state-from-text, deadline math). Uses the MVA-specific figure where a state
-  differs (e.g. CO 3 yrs, KY 2 yrs), general PI elsewhere.
-- `src/components/CityStateLookup.tsx` .... NEW. The city autocomplete + SOL readout.
-- `src/app/api/places/route.ts` ........... MODIFIED. Adds a `kind:"city"` mode
-  (locality search + address-component parsing to return clean "City, ST").
-- `src/components/guided/GuidedStep.tsx` .. MODIFIED. Renders the city lookup for a
-  `lookup:"city"` field; passes the incident date through; spellcheck on narratives.
-- `src/lib/intake-console/questions.ts` ... MODIFIED. Adds `lookup?` to the type and
-  flags `incident_city_state` as a city lookup.
-- `src/components/IntakeConsole.tsx` ...... MODIFIED. Threads the flag + incident date
-  into the step.
+New flow: greeting -> caller ID -> **search** -> (open existing file) OR (new caller -> case type ...).
 
-## Requirements
-- Uses your existing `GOOGLE_MAPS_API_KEY` (Places API New). No new env or DB.
+## Files in this zip (complete files; unzip at the repo ROOT)
+- `src/app/api/console/route.ts` ...... MODIFIED. Adds `op:"open_existing"`: loads
+  (or creates) the caller's active claim, logs this call against the lead, and
+  returns the saved answers so the console resumes the questionnaire.
+- `src/components/IntakeConsole.tsx` .. MODIFIED. New "search" stage + logic; reuses
+  your existing `/api/person-search` (phone or name). Back-navigation updated.
 
-## ⚠️ Verify the SOL numbers before relying on them
-The table is a GENERAL negligence/auto guideline, sourced from Nolo, labeled in the
-UI as "not legal advice." It does NOT encode discovery-rule, minor tolling, wrongful
-death, or government-claim notice deadlines. Have an attorney confirm the figures for
-the states you actually run. Edit them in one place: `src/lib/reference/sol.ts`.
+## No migration
+Reuses `/api/person-search`, the `intake_calls` and `claims` tables, and the
+indexed `phone_norm` column — all already exist. Zero DDL.
+
+## Notes / one small decision
+- If a matched file is a case type the console doesn't run (e.g. a trafficking
+  file), it opens the FULL file at `/leads/<id>` instead of the guided questions.
+- `/api/person-search` is RLS-scoped, so internal staff see matches across firms
+  (good for duplicate-catching). If you'd rather scope matches to the console's
+  selected firm only, that's a one-line filter — say the word.
 
 ## Verified in sandbox
 - tsc --noEmit (strict): 0 errors
-- 12/12 unit assertions on the SOL helpers (incl. "Las Vegas, NV"->NV, CO/KY auto
-  exceptions, past/urgent/ok deadline bands)
-- Production build: (running at package time — confirmed before delivery)
+- Production build: confirmed before delivery

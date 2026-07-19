@@ -20,7 +20,7 @@ import IncidentLocation from "@/components/IncidentLocation";
 // person on the line, and every answer writes against it as the agent goes.
 // ============================================================================
 
-type Stage = "greeting" | "callerid" | "calltype" | "details" | "casetype" | "questions" | "outcome";
+type Stage = "greeting" | "callerid" | "search" | "calltype" | "details" | "casetype" | "questions" | "outcome";
 type SignStage = "intro" | "identity" | "waiting" | "signed";
 
 const CALL_TYPES: { value: CallType; label: string; sub: string; lead?: boolean }[] = [
@@ -48,6 +48,11 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
   const [stage, setStage] = useState<Stage>("greeting");
   const [callerId, setCallerId] = useState("");
+  // Search-first entry: look the caller up before opening anything new.
+  const [searchQ, setSearchQ] = useState("");
+  const [searchHits, setSearchHits] = useState<any[]>([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const searchTimer = useRef<any>(null);
   const [firstName, setFirstName] = useState("");
   const [callback, setCallback] = useState("");
   const [callType, setCallType] = useState<CallType | null>(null);
@@ -152,6 +157,45 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     } catch (e: any) { setErr(e?.message || "could not set the file status"); }
   }
 
+  // Debounced person lookup (reuses the existing /api/person-search: phone or name).
+  function runSearch(text: string) {
+    setSearchQ(text);
+    clearTimeout(searchTimer.current);
+    if (text.trim().length < 2) { setSearchHits([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setSearchBusy(true);
+      try {
+        const r = await fetch(`/api/person-search?q=${encodeURIComponent(text)}`);
+        const d = await r.json();
+        setSearchHits(Array.isArray(d.results) ? d.results : []);
+      } catch { setSearchHits([]); }
+      setSearchBusy(false);
+    }, 300);
+  }
+
+  // Open a caller's EXISTING file into the questionnaire (resume, no duplicate).
+  async function openExisting(leadId: string) {
+    setBusy(true); setErr("");
+    try {
+      const d = await api({ op: "open_existing", lead_id: leadId, caller_id: callerId, firm_slug: firmSlug, call_type: "existing" });
+      const ct = String(d.case_type ?? "");
+      // The console only runs its guided questions for its own case types; for a
+      // file of another type (e.g. trafficking), open the full file instead.
+      if (!CASE_TYPES.some((c) => c.key === ct)) { window.location.href = `/leads/${d.lead_id}`; return; }
+      setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
+      setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
+      const opts = d.retainers ?? [];
+      setRetainerOptions(opts);
+      setRetainerId((opts.find((o: any) => o.is_default) ?? opts[0])?.id ?? null);
+      setClient((c) => ({ ...c, first_name: d.claimant_name ?? c.first_name, phone: d.phone ?? c.phone }));
+      const ans = (d.answers ?? {}) as Answers;
+      setCaseType(ct as CaseTypeKey); setFirstName(d.claimant_name ?? firstName);
+      setAnswers(ans); setHistory([]);
+      setCurrentQ(nextQuestionKey(ct as CaseTypeKey, ans)); setStage("questions");
+    } catch (e: any) { setErr(e?.message || "could not open that file"); }
+    setBusy(false);
+  }
+
   function pickCallType(t: CallType) {
     setCallType(t);
     if (t === "new_potential") { setStage("details"); return; }
@@ -236,7 +280,8 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     }
     if (stage === "casetype") { setStage("details"); return; }
     if (stage === "details") { setStage("calltype"); return; }
-    if (stage === "calltype") { setStage("callerid"); return; }
+    if (stage === "calltype") { setStage("search"); return; }
+    if (stage === "search") { setStage("callerid"); return; }
     if (stage === "callerid") { setStage("greeting"); return; }
   }
 
@@ -294,7 +339,46 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           <h2 className="ic-q">Paste the caller ID from JustCall</h2>
           <Note>This has to match the call recording. Nothing unlocks until it is filled.</Note>
           <input className="ic-input" autoFocus value={callerId} onChange={(e) => setCallerId(e.target.value)} placeholder="(702) 555-0134" />
-          <Primary disabled={!callerId.trim()} onClick={() => setStage("calltype")}>Continue</Primary>
+          <Primary disabled={!callerId.trim()} onClick={() => { setSearchQ(callerId); runSearch(callerId); setStage("search"); }}>Continue</Primary>
+        </div>
+      )}
+
+      {stage === "search" && (
+        <div className="ic-card-wrap">
+          <h2 className="ic-q">Who's on the line?</h2>
+          <Note>Search their number (or name) first. If we already have them, open their file — don't create a duplicate. If not, start a new caller.</Note>
+          <input className="ic-input" autoFocus value={searchQ}
+            onChange={(e) => runSearch(e.target.value)} placeholder="Phone or name…" />
+          {searchBusy && <p className="ic-muted" style={{ fontSize: 13, marginTop: 8 }}>Searching…</p>}
+
+          {searchHits.length > 0 && (
+            <div className="ic-hits">
+              {searchHits.map((p) => (
+                <button key={p.id} className="ic-hit" disabled={busy} onClick={() => openExisting(p.id)}>
+                  <div className="ic-hit-top">
+                    <b>{p.claimant_name || "Unnamed"}</b>
+                    <span className="ic-hit-no">{p.lead_no}</span>
+                  </div>
+                  <div className="ic-hit-meta">{p.phone || "no phone"}{p.email ? ` · ${p.email}` : ""}</div>
+                  <div className="ic-hit-claims">
+                    {(p.claims ?? []).length === 0
+                      ? <span className="ic-hit-claim muted">no claims yet</span>
+                      : (p.claims ?? []).map((c: any) => (
+                          <span key={c.id} className="ic-hit-claim">{(c.campaign || c.claim_type)} · {c.status}</span>
+                        ))}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {searchQ.trim().length >= 2 && !searchBusy && searchHits.length === 0 && (
+            <div className="ic-nohit">No existing file matches. Start a new caller below.</div>
+          )}
+
+          <button className="ic-btn solid wide" disabled={busy} onClick={() => setStage("calltype")}>
+            Not in the system — new caller
+          </button>
         </div>
       )}
 
@@ -683,4 +767,17 @@ const CSS = `
   border:0; font:inherit; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); cursor:pointer; }
 .ic-comp ul { margin:0; padding:0 20px 16px 34px; }
 .ic-comp li { font-size:13px; color:var(--ink-soft); line-height:1.65; }
+
+.ic-hits { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+.ic-hit { text-align:left; border:1.5px solid var(--line); border-radius:12px; padding:13px 15px; background:var(--surface); cursor:pointer; }
+.ic-hit:hover { border-color:#2563eb; background:#f5f9ff; }
+.ic-hit:disabled { opacity:.5; cursor:default; }
+.ic-hit-top { display:flex; align-items:baseline; gap:8px; }
+.ic-hit-top b { font-size:16px; }
+.ic-hit-no { font-size:12px; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+.ic-hit-meta { font-size:13px; color:var(--ink-soft); margin-top:2px; }
+.ic-hit-claims { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.ic-hit-claim { font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:999px; background:var(--surface-2); border:1px solid var(--line); color:var(--ink-soft); }
+.ic-hit-claim.muted { font-weight:500; }
+.ic-nohit { margin-top:12px; padding:11px 14px; border-radius:10px; background:#f0fdf4; border:1px solid #bbf7d0; font-size:13.5px; color:var(--ink-soft); }
 `;
