@@ -43,7 +43,9 @@ const IDENTITY_FIELDS: { key: string; label: string; type?: string; half?: boole
 ];
 
 export default function IntakeConsole({ agentName }: { agentName: string }) {
-  const [firmSlug, setFirmSlug] = useState(DEFAULT_FIRM_SLUG);
+  // No default firm — the agent must pick one before a call (a wrong default firm
+  // silently mis-scopes the greeting, screening, and campaigns).
+  const [firmSlug, setFirmSlug] = useState("");
   const cfg = useMemo(() => getFirmConfig(firmSlug), [firmSlug]);
 
   const [stage, setStage] = useState<Stage>("greeting");
@@ -310,11 +312,12 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       <header className="ic-head">
         <div>
           <div className="ic-eyebrow">Take a call</div>
-          <h1>{cfg.firmName}</h1>
+          <h1>{firmSlug ? cfg.firmName : "Select a firm to begin"}</h1>
         </div>
         <div className="ic-headright">
           {stage === "greeting" ? (
             <select className="ic-firm" value={firmSlug} onChange={(e) => setFirmSlug(e.target.value)}>
+              <option value="" disabled>Select a firm…</option>
               {Object.values(FIRM_CONFIGS).map((f) => <option key={f.slug} value={f.slug}>{f.firmName}</option>)}
             </select>
           ) : (
@@ -326,11 +329,27 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
       {err && <div className="ic-banner err">{err}</div>}
 
-      {stage === "greeting" && (
+      {stage === "greeting" && !firmSlug && (
+        <div className="ic-card-wrap">
+          <h2 className="ic-q">Which firm are you taking calls for?</h2>
+          <Note>Pick the firm before the call. The greeting, screening, and case types are set per firm — there is no default, so the wrong firm can't be assumed.</Note>
+          <div className="ic-grid">
+            {Object.values(FIRM_CONFIGS).map((f) => (
+              <button key={f.slug} className="ic-card" onClick={() => setFirmSlug(f.slug)}>
+                <span className="ic-card-t">{f.firmName}</span>
+                <span className="ic-card-s">{f.caseTypes.length} case types</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {stage === "greeting" && firmSlug && (
         <div className="ic-card-wrap">
           <Spoken>{fill(cfg.greeting)}</Spoken>
           <Note tone="hard">{cfg.recordingDisclosure}</Note>
           <Primary onClick={() => setStage("callerid")}>Disclosure read, continue</Primary>
+          <button className="ic-btn ghost wide" onClick={() => setFirmSlug("")}>Wrong firm? Pick again</button>
         </div>
       )}
 
