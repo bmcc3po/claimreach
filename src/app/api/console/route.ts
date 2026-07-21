@@ -275,7 +275,12 @@ export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
   const g = await gateUser(sb);
   if (!g) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const leadId = new URL(req.url).searchParams.get("lead_id");
+  const url = new URL(req.url);
+  // Self permission check for the intake surface's "All sections" toggle.
+  if (url.searchParams.get("me")) {
+    return NextResponse.json({ can_full_intake: g.can("intake.full") });
+  }
+  const leadId = url.searchParams.get("lead_id");
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
   const admin = supabaseAdmin();
   const { data: docs } = await admin.from("signable_documents")

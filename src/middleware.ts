@@ -3,6 +3,15 @@ import { createServerClient } from "@supabase/ssr";
 
 // Refresh the Supabase session on every request and guard route groups.
 export async function middleware(req: NextRequest) {
+  const path = req.nextUrl.pathname;
+  const isAuthPage = path === "/login" || path === "/firm-login" || path.startsWith("/auth");
+  const isProtected =
+    path.startsWith("/leads") || path.startsWith("/intake") || path.startsWith("/portal");
+  // Only the auth-gated routes use the session in this middleware. Skip the
+  // Supabase round-trip on every other route so a cold edge instance isn't
+  // paying for wasted work — it lowers per-request cost and cold-start time.
+  if (!isProtected && !isAuthPage) return NextResponse.next({ request: req });
+
   let res = NextResponse.next({ request: req });
 
   const supabase = createServerClient(
@@ -21,11 +30,6 @@ export async function middleware(req: NextRequest) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
-  const path = req.nextUrl.pathname;
-
-  const isAuthPage = path === "/login" || path === "/firm-login" || path.startsWith("/auth");
-  const isProtected =
-    path.startsWith("/leads") || path.startsWith("/intake") || path.startsWith("/portal");
 
   if (!user && isProtected) {
     const url = req.nextUrl.clone();
