@@ -7,7 +7,7 @@ import { INJURY_OPTIONS, questionsFor } from "./questions";
 import type { FirmConsoleConfig } from "./config";
 
 export type Disposition = "SIGN" | "REFER" | "DISQUALIFY" | "SECONDARY_REVIEW" | "CALLBACK" | "TRANSFER";
-export type CaseTypeKey = "mva" | "prem" | "employment" | "family" | "criminal" | "contract" | "other";
+export type CaseTypeKey = "mva" | "prem" | "employment" | "family" | "criminal" | "contract" | "other" | "motel_trafficking";
 export type CallType = "new_potential" | "existing" | "non_client" | "not_legal";
 export type Answers = Record<string, any>;
 
@@ -284,6 +284,7 @@ export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome
 export function registryKeyFor(caseType: CaseTypeKey): string {
   if (caseType === "mva") return "mva";
   if (caseType === "prem") return "prem";
+  if (caseType === "motel_trafficking") return "motel_trafficking";
   // Everything the firm refers out rather than screens shares one campaign, so
   // there is a single place to change the network response and the billing.
   return "referral";

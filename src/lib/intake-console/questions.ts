@@ -624,6 +624,7 @@ export const BRIEF_QUESTIONS: Question[] = [
 ];
 
 export const CASE_TYPES: { key: CaseTypeKey; label: string; sub: string }[] = [
+  { key: "motel_trafficking", label: "Motel 6 / trafficking", sub: "Full intake" },
   { key: "mva",       label: "Auto accident",          sub: "Full screening" },
   { key: "prem",        label: "Slip / fall / premises",  sub: "Full screening" },
   { key: "employment", label: "Employment",              sub: "Brief capture" },

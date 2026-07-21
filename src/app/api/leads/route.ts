@@ -3,6 +3,8 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { FIRM_WRITABLE_STAGES } from "@/lib/questionnaire";
 import { recordAudit } from "@/lib/audit";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
+import { nullifyEmpty } from "@/lib/coerce";
+import { coercePropCol } from "@/lib/claim-properties";
 
 export const runtime = "edge";
 
@@ -80,8 +82,11 @@ export async function POST(req: NextRequest) {
     if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const { lead_id, lead, properties } = payload;
     if (lead && "full_name" in lead) delete lead.full_name;
+    // Blank fields arrive as "" — turn them into NULL so a date/number/uuid
+    // column can't reject the entire update and silently drop every change.
+    const leadPatch = nullifyEmpty(lead ?? {});
 
-    const { error: leadErr } = await sb.from("leads").update(lead).eq("id", lead_id);
+    const { error: leadErr } = await sb.from("leads").update(leadPatch).eq("id", lead_id);
     if (leadErr) {
       // Postgres rejects the ENTIRE update when one field names a column that
       // does not exist, so a single typo silently threw away every other change
@@ -128,9 +133,14 @@ export async function POST(req: NextRequest) {
       // Replace property rows for this lead (simple, idempotent save).
       await sb.from("lead_properties").delete().eq("lead_id", lead_id);
       if (properties.length) {
-        const rows = properties.map((p: any, i: number) => ({
-          ...p, lead_id, firm_id: lead.firm_id, sequence_order: i + 1,
-        }));
+        // Same coercion the claim-intake route uses: string month-year → int,
+        // empty strings omitted, null not-null bools (has_variance) omitted so
+        // the DB default applies instead of violating the constraint.
+        const rows = properties.map((p: any, i: number) => {
+          const clean: Record<string, any> = {};
+          for (const k of Object.keys(p)) { const c = coercePropCol(k, p[k]); if (c !== undefined) clean[k] = c; }
+          return { ...clean, lead_id, firm_id: lead?.firm_id, sequence_order: i + 1 };
+        });
         const { error: pErr } = await sb.from("lead_properties").insert(rows);
         if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
       }

@@ -120,6 +120,9 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         case_type: t, registry_key: registryKeyFor(t),
       });
       if (d.error === "no_campaign") { setErr(d.message); setBusy(false); return; }
+      // Motel 6 / trafficking isn't screened in the console — it opens the file
+      // and drops the agent straight into the guided property intake (the spine).
+      if (t === "motel_trafficking") { window.location.href = `/intake/${d.lead_id}`; return; }
       setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
       setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
       const opts = d.retainers ?? [];
