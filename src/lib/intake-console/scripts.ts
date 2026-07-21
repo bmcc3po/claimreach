@@ -54,22 +54,50 @@ export const SIGN_SCRIPTS = {
     "You mentioned [passenger] was in the car with you. Are they working with an attorney? If not, do you have a good number for them so we can make sure they are taken care of too?",
 };
 
-export const POST_SIGN_FIELDS: { key: string; label: string; sensitive?: boolean; ref?: "vehicle" | "auto_carrier" | "health_carrier"; half?: boolean; kind?: "date" }[] = [
+export interface PostSignField {
+  key: string;
+  label: string;
+  sensitive?: boolean;
+  ref?: "vehicle" | "auto_carrier" | "health_carrier";
+  half?: boolean;
+  kind?: "date" | "year";
+  options?: { value: string; label: string }[];  // renders a dropdown
+  verify?: "ssn";                                 // 9-digit format check
+}
+
+export const POST_SIGN_FIELDS: PostSignField[] = [
   { key: "incident_intersection", label: "More specific location (intersection, mile marker, address)" },
   { key: "incident_county", label: "County (auto-filled from the lookup)", half: true },
   { key: "incident_agency", label: "Agency that likely has the report", half: true },
-  { key: "vehicle_status",  label: "Was the vehicle drivable, towed, or totaled?" },
-  { key: "preferred_language", label: "Preferred language", half: true },
-  { key: "best_time",       label: "Best time of day to reach you", half: true },
-  { key: "vehicle_year",    label: "Vehicle year", half: true },
+  { key: "vehicle_status",  label: "Was the vehicle drivable, towed, or totaled?", half: true, options: [
+    { value: "drivable", label: "Drivable" },
+    { value: "towed",    label: "Towed" },
+    { value: "totaled",  label: "Totaled" },
+    { value: "unknown",  label: "Not sure" },
+  ] },
+  { key: "preferred_language", label: "Preferred language", half: true, options: [
+    { value: "english", label: "English" },
+    { value: "spanish", label: "Spanish" },
+    { value: "other",   label: "Other" },
+  ] },
+  { key: "best_time",       label: "Best time of day to reach you", half: true, options: [
+    { value: "morning",   label: "Morning" },
+    { value: "afternoon", label: "Afternoon" },
+    { value: "evening",   label: "Evening" },
+    { value: "anytime",   label: "Anytime" },
+  ] },
+  { key: "vehicle_year",    label: "Vehicle year", half: true, kind: "year" },
   { key: "vehicle",         label: "Vehicle make / model", ref: "vehicle" },
   { key: "auto_carrier",    label: "Their auto carrier", ref: "auto_carrier" },
   { key: "health_ins",      label: "Health insurance", ref: "health_carrier" },
   { key: "other_carrier",   label: "Other driver's carrier", ref: "auto_carrier" },
-  { key: "media",           label: "Photos / video available?" },
-  { key: "dl_number",       label: "Driver's license number", sensitive: true },
-  { key: "dob",             label: "Date of birth", sensitive: true, kind: "date" },
-  { key: "ssn",             label: "SSN", sensitive: true },
+  { key: "media",           label: "Photos / video available?", half: true, options: [
+    { value: "yes", label: "Yes" },
+    { value: "no",  label: "No" },
+  ] },
+  { key: "dl_number",       label: "Driver's license number", sensitive: true, half: true },
+  { key: "dob",             label: "Date of birth", sensitive: true, kind: "date", half: true },
+  { key: "ssn",             label: "SSN (9 digits)", sensitive: true, half: true, verify: "ssn" },
   { key: "passenger",       label: "Passenger name + number (if any)" },
 ];
 

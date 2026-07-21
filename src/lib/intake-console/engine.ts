@@ -37,6 +37,9 @@ export function dateBucket(v: any): "le30" | "mid" | "old" | undefined {
 }
 
 const REPORT_ONLY = new Set(["police_agency", "police_report_number"]);
+// "How did you find us" values that have a name or company worth capturing. A
+// plain online/AI search or a return client has no referring source to ask for.
+const REFERRAL_SOURCES = new Set(["ref_attorney", "ref_friend", "ref_firm", "ref_marketing", "other"]);
 
 export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers): boolean {
   if (caseType === "mva") {
@@ -47,6 +50,20 @@ export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers):
     // Only worth asking once a course of care has ended.
     if (key === "willing_more") return a.injured === "yes" && (a.treatment === "finished" || a.treatment === "stopped");
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
+    // Follow-up care is only meaningful once they have actually been seen.
+    if (key === "treatment_followup") return a.injured === "yes" && !!a.treatment && a.treatment !== "never";
+    // Name/company of the referrer only when there is one to name.
+    if (key === "referral_source") return REFERRAL_SOURCES.has(a.how_found_us);
+    // Their own policy number only if they carry insurance.
+    if (key === "auto_policy_id") return a.ins_own === "yes";
+    // Passenger tree: names/injury only if there were passengers; contact and
+    // the "help them too" ask only if a passenger was actually hurt.
+    if (key === "others_names" || key === "others_injured") return a.others_in_vehicle === "yes";
+    if (key === "others_injured_contact" || key === "others_need_help") return a.others_injured === "yes";
+    // Insurance-forms tree: did-you-sign only if they were given forms; what did
+    // they say only once they actually signed.
+    if (key === "ins_forms_signed") return a.ins_forms === "yes";
+    if (key === "ins_forms_said") return a.ins_forms_signed === "yes";
     return true;
   }
   if (caseType === "prem") {
@@ -219,6 +236,8 @@ const LABEL: Record<string, Record<string, string>> = {
   bills: { none: "No bills yet", under_10k: "Bills under $10,000", "10k_50k": "Bills $10,000 to $50,000", over_50k: "Bills over $50,000", unknown: "Bills unknown" },
   presence: { yes: "Lawfully present", no: "No lawful right to be there" },
   represented: { no: "Not currently represented", yes_satisfied: "Represented and satisfied", yes_unsatisfied: "Represented but unsatisfied" },
+  collision_type: { rear_end: "Rear-end collision", head_on: "Head-on collision", side: "Side / T-bone collision", rollover: "Rollover", multi: "Multi-vehicle collision", hit_run: "Hit and run" },
+  how_found_us: { ref_attorney: "Source: attorney referral", online: "Source: online search", ai: "Source: AI search", ref_friend: "Source: friend referral", ref_firm: "Source: outside-firm referral", ref_marketing: "Source: marketing", return: "Source: return client", other: "Source: other" },
 };
 
 export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome, firstName?: string): string {
@@ -228,7 +247,7 @@ export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome
   parts.push(`${typeLabel}. ${who}.`);
 
   const push = (k: string) => { const v = a[k]; if (v && LABEL[k]?.[v]) parts.push(LABEL[k][v]); };
-  push("authority"); push("presence"); push("date"); push("commercial"); push("fault");
+  push("authority"); push("presence"); push("date"); push("commercial"); push("collision_type"); push("fault");
 
   if (a.injured === "no") parts.push("No injuries reported");
   else if (a.injured === "yes") {
@@ -236,6 +255,7 @@ export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome
     if (sel.length) parts.push(`Injuries: ${sel.join(", ")}`);
     if (a.surgery === "yes") parts.push("Surgery done or recommended");
     push("hosp"); push("treatment"); push("bills");
+    if (a.treatment_followup === "yes") parts.push("Doctor recommended follow-up care");
     if (a.treatment === "never") parts.push(a.willing === "yes" ? "Willing to be seen" : "Unwilling to be seen");
   }
   if (a.settled === "yes") parts.push("Already settled or signed a release");
@@ -243,6 +263,13 @@ export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome
   if (a.what_happened) parts.push(`Caller states: ${a.what_happened}`);
   if (a.incident_date) parts.push(`Incident date: ${a.incident_date}`);
   if (a.state) parts.push(`State: ${a.state}`);
+
+  // Marketing attribution and passenger / insurance-forms capture.
+  push("how_found_us");
+  if (a.referral_source && REFERRAL_SOURCES.has(a.how_found_us)) parts.push(`Referred by: ${a.referral_source}`);
+  if (a.others_injured === "yes") parts.push(`Passenger injured${a.others_injured_contact ? `: ${a.others_injured_contact}` : ""}`);
+  if (a.ins_forms === "yes") parts.push(a.ins_forms_signed === "yes" ? "SIGNED insurance forms — review" : "Given insurance forms, unsigned");
+  if (a.case_manager_notes) parts.push(`Agent notes: ${a.case_manager_notes}`);
 
   parts.push(`Outcome: ${outcome.disposition.replace("_", " ")} — ${outcome.reason}`);
   if (outcome.flags.length) parts.push(`Flags: ${outcome.flags.join(", ")}`);

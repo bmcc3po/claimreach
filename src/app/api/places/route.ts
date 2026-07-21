@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
   // Default to lodging (trafficking property lookup); allow other types.
   if (kind === "city") {
     body.includedType = "locality"; // cities/towns for the incident city-state lookup
+  } else if (kind === "address") {
+    // No includedType filter — street addresses match (paperwork address matching).
   } else if (kind === "facility") {
     // No includedType filter — hospitals, clinics, surgery centers, offices all match.
   } else {
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   const fieldMask =
     "places.id,places.displayName,places.formattedAddress,places.location,places.photos,places.businessStatus" +
-    (kind === "city" ? ",places.addressComponents" : "");
+    (kind === "city" || kind === "address" ? ",places.addressComponents" : "");
   const resp = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
     headers: {
@@ -64,6 +66,17 @@ export async function POST(req: NextRequest) {
     return city && st ? `${city}, ${st}` : (p.formattedAddress || p.displayName?.text || "");
   };
 
+  // Break Google's address components into the paperwork fields (address matching).
+  const addressFrom = (p: any): { addr1: string; city: string; state: string; zip: string } => {
+    const comps: any[] = p.addressComponents || [];
+    const find = (t: string) => comps.find((c) => (c.types || []).includes(t));
+    const addr1 = [find("street_number")?.longText, find("route")?.longText].filter(Boolean).join(" ").trim();
+    const city = find("locality")?.longText || find("postal_town")?.longText || find("sublocality")?.longText || "";
+    const state = find("administrative_area_level_1")?.shortText || "";
+    const zip = find("postal_code")?.longText || "";
+    return { addr1, city, state, zip };
+  };
+
   const data = await resp.json();
   const candidates = (data.places || []).map((p: any) => ({
     place_id: p.id,
@@ -74,6 +87,7 @@ export async function POST(req: NextRequest) {
     photo_ref: p.photos?.[0]?.name ?? null,
     status: p.businessStatus ?? null,
     ...(kind === "city" ? { city_state: cityStateFrom(p) } : {}),
+    ...(kind === "address" ? { parsed: addressFrom(p) } : {}),
   }));
 
   return NextResponse.json({ candidates });

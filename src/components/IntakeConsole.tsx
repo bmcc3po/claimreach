@@ -13,6 +13,14 @@ import {
 import GuidedStep, { Spoken, Note, Primary } from "@/components/guided/GuidedStep";
 import Typeahead from "@/components/Typeahead";
 import IncidentLocation from "@/components/IncidentLocation";
+import AddressLookup from "@/components/AddressLookup";
+import { isEmail, isPhone, isSsn } from "@/lib/validate";
+
+// Vehicle model years, next year down to 1985, for the post-sign dropdown.
+const VEHICLE_YEARS: string[] = (() => {
+  const top = new Date().getFullYear() + 1;
+  return Array.from({ length: top - 1984 }, (_, i) => String(top - i));
+})();
 
 // ============================================================================
 // Take a call. This is not a screening widget that gets promoted into a lead
@@ -245,6 +253,13 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     return () => { alive = false; clearInterval(i); };
   }, [signStage, file]);
 
+  // Autofill: the DOB taken on the paperwork identity screen carries into the
+  // post-signature block so the agent never keys the same date twice.
+  useEffect(() => {
+    if (signStage !== "signed" || !client.dob) return;
+    setPostSign((ps) => (ps.dob ? ps : { ...ps, dob: client.dob }));
+  }, [signStage, client.dob]);
+
   async function finishCall() {
     if (!file || !outcome) { setDone(true); return; }
     setBusy(true);
@@ -428,7 +443,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
       {stage === "casetype" && (
         <div className="ic-card-wrap">
-          <h2 className="ic-q">What is this about?</h2>
+          <h2 className="ic-q">How can we help you today?</h2>
           <Note>Picking opens the file. Every answer after this saves as you go, so a dropped call still leaves a working file you can pick back up.</Note>
           <div className="ic-grid">
             {CASE_TYPES.filter((c) => cfg.caseTypes.includes(c.key)).map((c) => (
@@ -442,7 +457,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
       {stage === "questions" && q && (
         <GuidedStep
-          step={{ key: q.key, kind: q.kind as any, multiline: q.multiline, script: q.script, label: q.label, note: q.note, options: q.options, lookup: q.lookup, incidentDate: typeof answers.date === "string" ? answers.date : undefined }}
+          step={{ key: q.key, kind: q.kind as any, multiline: q.multiline, script: q.script, label: q.label, note: q.note, options: q.options, lookup: q.lookup, incidentDate: typeof answers.date === "string" ? answers.date : undefined, incidentCityState: typeof answers.incident_city_state === "string" ? answers.incident_city_state : undefined }}
           value={answers[q.key]}
           index={history.length}
           remaining={remaining}
@@ -500,14 +515,31 @@ function OutcomeView(p: any) {
 
         {d === "SIGN" && signStage === "identity" && (
           <>
+            <Spoken>{fill(SIGN_SCRIPTS.nextStep)}</Spoken>
+            <Note tone="hard">{SIGN_SCRIPTS.nextStepNote}</Note>
             <h3 className="ic-h3">Details for the paperwork</h3>
             <div className="ic-idgrid">
-              {IDENTITY_FIELDS.map((f) => (
-                <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
-                  <span>{f.label}</span>
-                  <input type={f.type ?? "text"} value={client[f.key] ?? ""} onChange={(e) => setClient({ ...client, [f.key]: e.target.value })} />
-                </label>
-              ))}
+              {IDENTITY_FIELDS.map((f) => {
+                const invalid =
+                  (f.key === "email" && !isEmail(client.email)) ||
+                  (f.key === "phone" && !isPhone(client.phone));
+                return (
+                  <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
+                    <span>{f.label}{invalid && <em> · check format</em>}</span>
+                    {f.key === "addr1" ? (
+                      <AddressLookup
+                        value={client.addr1 ?? ""}
+                        near={[client.city, client.state].filter(Boolean).join(", ") || undefined}
+                        onText={(v) => setClient({ ...client, addr1: v })}
+                        onPick={(pp) => setClient({ ...client, addr1: pp.addr1, city: pp.city, state: pp.state, zip: pp.zip })}
+                      />
+                    ) : (
+                      <input className={invalid ? "bad" : ""} type={f.type ?? "text"} value={client[f.key] ?? ""}
+                        onChange={(e) => setClient({ ...client, [f.key]: e.target.value })} />
+                    )}
+                  </label>
+                );
+              })}
             </div>
             {retainerOptions.length > 1 && (
               <>
@@ -528,8 +560,6 @@ function OutcomeView(p: any) {
               <button className={`ic-toggle ${sendVia === "email" ? "on" : ""}`} onClick={() => setSendVia("email")} title="Email delivery is not configured yet">Email it</button>
             </div>
             {retainer.blocker && <Note tone="hard">{retainer.blocker} You can still finish and save the file, but nothing goes out to sign.</Note>}
-            <Spoken>{fill(SIGN_SCRIPTS.nextStep)}</Spoken>
-            <Note tone="hard">{SIGN_SCRIPTS.nextStepNote}</Note>
             <Primary disabled={!identityReady || busy || !retainer.can} onClick={onSend}>
               {busy ? "Sending…" : retainer.can ? `Send it by ${sendVia === "sms" ? "text" : "email"}` : "No document set up for this campaign"}
             </Primary>
@@ -577,12 +607,16 @@ function OutcomeView(p: any) {
             {actuallySigned
               ? <div className="ic-wait done"><span className="ic-tick">✓</span><b>Signed. Now finish the file.</b></div>
               : <Note tone="hard">Nothing was signed on this call. The file stays unsigned and will not move onto the signed track.</Note>}
+            <Spoken>{fill(SIGN_SCRIPTS.closing)}</Spoken>
+            <Note>{SIGN_SCRIPTS.closingNote}</Note>
             <h3 className="ic-h3">{actuallySigned ? "After the signature" : "Finish the file"}</h3>
             {actuallySigned && <Note tone="hard">Only collect this now that it is signed.</Note>}
             <div className="ic-idgrid">
-              {POST_SIGN_FIELDS.map((f) => (
+              {POST_SIGN_FIELDS.map((f) => {
+                const ssnBad = f.verify === "ssn" && !!postSign[f.key] && !isSsn(postSign[f.key]);
+                return (
                 <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
-                  <span>{f.label}{f.sensitive && <em> · sensitive</em>}</span>
+                  <span>{f.label}{f.sensitive && <em> · sensitive</em>}{ssnBad && <em> · need 9 digits</em>}</span>
                   {f.key === "incident_intersection" ? (
                     <IncidentLocation
                       value={postSign[f.key] ?? ""}
@@ -594,8 +628,23 @@ function OutcomeView(p: any) {
                         incident_agency: r.agency ?? "",
                       })}
                     />
+                  ) : f.options ? (
+                    <select value={postSign[f.key] ?? ""}
+                      onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })}>
+                      <option value="">Select…</option>
+                      {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  ) : f.kind === "year" ? (
+                    <select value={postSign[f.key] ?? ""}
+                      onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })}>
+                      <option value="">Select…</option>
+                      {VEHICLE_YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                    </select>
                   ) : f.kind === "date" ? (
                     <input type="date" value={postSign[f.key] ?? ""}
+                      onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })} />
+                  ) : f.verify === "ssn" ? (
+                    <input className={ssnBad ? "bad" : ""} inputMode="numeric" value={postSign[f.key] ?? ""}
                       onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })} />
                   ) : f.ref ? (
                     <Typeahead source={f.ref} className="ic-tain"
@@ -605,11 +654,10 @@ function OutcomeView(p: any) {
                     <input value={postSign[f.key] ?? ""} onChange={(e) => setPostSign({ ...postSign, [f.key]: e.target.value })} />
                   )}
                 </label>
-              ))}
+                );
+              })}
             </div>
             {postSign.passenger && <Spoken>{fill(SIGN_SCRIPTS.passengerAsk)}</Spoken>}
-            <Spoken>{fill(SIGN_SCRIPTS.closing)}</Spoken>
-            <Note>{SIGN_SCRIPTS.closingNote}</Note>
             <Spoken>{fill(SIGN_SCRIPTS.beforeHangup)}</Spoken>
           </>
         )}
@@ -772,7 +820,9 @@ const CSS = `
 .ic-postfield { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:650; color:var(--ink-soft); grid-column:span 2; }
 .ic-postfield.half { grid-column:span 1; }
 .ic-postfield em { color:#b91c1c; font-style:normal; font-weight:700; }
-.ic-postfield input, .ic-tain { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface-2); font:inherit; font-size:15px; color:var(--ink); }
+.ic-postfield input, .ic-tain, .ic-postfield select { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--surface-2); font:inherit; font-size:15px; color:var(--ink); }
+.ic-postfield select { cursor:pointer; }
+.ic-postfield input.bad, .ic-postfield select.bad { border-color:#dc2626; background:#fef2f2; }
 .ic-send { display:flex; gap:8px; }
 .ic-toggle { flex:1; padding:12px; border-radius:10px; border:1.5px solid var(--line); background:var(--surface); font:inherit; font-weight:650; cursor:pointer; color:var(--ink); }
 .ic-toggle.on { border-color:#2563eb; background:#eff5ff; }

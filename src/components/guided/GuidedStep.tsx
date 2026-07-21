@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import CityStateLookup from "@/components/CityStateLookup";
+import IncidentLocation from "@/components/IncidentLocation";
 
 // ============================================================================
 // One question, one screen. This is the shared intake surface: the console runs
@@ -21,8 +22,9 @@ export interface GuidedStepDef {
   options?: GuidedOption[];
   placeholder?: string;
   vital?: boolean;
-  lookup?: "city";          // render a Google city/state autocomplete for this text field
+  lookup?: "city" | "agency"; // "city" = Google city/state autocomplete; "agency" = incident-location + police-department picker
   incidentDate?: string;    // incident date (ISO), so the city lookup can show the SOL runway
+  incidentCityState?: string; // city/state already captured, to bias the agency lookup
 }
 
 export function Spoken({ children, small }: any) {
@@ -119,6 +121,16 @@ export default function GuidedStep({
         <>
           {step.lookup === "city"
             ? <CityStateLookup value={String(draft ?? "")} onChange={setDraft} incidentDate={step.incidentDate} />
+            : step.lookup === "agency"
+            ? <>
+                <IncidentLocation
+                  value={String(draft ?? "")}
+                  near={step.incidentCityState}
+                  onResolved={(r) => setDraft(r.agency || r.formatted || "")}
+                />
+                <input className="ic-input" style={{ marginTop: 10 }} placeholder="…or just type the department"
+                  value={draft} onChange={(e) => setDraft(e.target.value)} />
+              </>
             : isPara
             ? <textarea className="ic-input area" autoFocus rows={6} spellCheck value={draft} placeholder={step.placeholder} onChange={(e) => setDraft(e.target.value)} />
             : <input className="ic-input" autoFocus type={inputType} value={draft} placeholder={step.placeholder} onChange={(e) => setDraft(e.target.value)} />}

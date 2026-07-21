@@ -16,8 +16,12 @@ export interface Question {
   note?: string;
   kind: "single" | "multi" | "text" | "date" | "time";
   options?: QOption[];
-  /** Render this text field as a Google city/state autocomplete (standardized "City, ST"). */
-  lookup?: "city";
+  /**
+   * Render this text field with a Google-backed picker instead of a plain input:
+   * "city" = standardized "City, ST" autocomplete; "agency" = incident-location
+   * lookup that suggests the police department that likely holds the report.
+   */
+  lookup?: "city" | "agency";
 }
 
 const YN: QOption[] = [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }];
@@ -101,6 +105,18 @@ const billsQ = (): Question => ({
     { value: "unknown",   label: "Not sure" },
   ],
 });
+
+// Asked LAST on every intake, of every case type. Agent-only: a plain-language
+// handoff to the case manager. The empty script keeps it off the read-aloud
+// rail — the label is the heading and the note is the instruction.
+export const CASE_MANAGER_NOTES_Q: Question = {
+  key: "case_manager_notes",
+  label: "Agent — summarize the case and add notes for the case manager",
+  multiline: true,
+  script: "",
+  kind: "text",
+  note: "In your own words, summarize what happened and flag anything the case manager needs to know: injuries, urgency, tricky facts, follow-ups. This is not read to the caller.",
+};
 
 // ---------------------------------------------------------------- AUTO
 export const AUTO_QUESTIONS: Question[] = [
@@ -202,7 +218,8 @@ export const AUTO_QUESTIONS: Question[] = [
     key: "police_agency",
     script: "Do you know which department responded?",
     kind: "text",
-    note: "City police, county sheriff, or a state trooper. If they are unsure, leave it, the location lookup narrows it after the signature.",
+    lookup: "agency",
+    note: "City police, county sheriff, or a state trooper. Drop the crash location in the picker to narrow the likely department, or just type what they tell you.",
   },
   {
     key: "police_report_number",
@@ -297,6 +314,121 @@ export const AUTO_QUESTIONS: Question[] = [
     ],
   },
   billsQ(),
+  // -------------------------------------------------------------- added capture
+  // Data-capture and marketing questions. None of these feed the SIGN/REFER/DQ
+  // math in engine.ts — they are recorded on the file and flow to the paperwork.
+  {
+    key: "how_found_us",
+    script: "Before we dig in, can you tell me how you found us?",
+    note: "Marketing attribution. Tap what they say — do not read the list.",
+    kind: "single",
+    options: [
+      { value: "ref_attorney",  label: "Referral from an attorney" },
+      { value: "online",        label: "Online search engine" },
+      { value: "ai",            label: "AI search" },
+      { value: "ref_friend",    label: "Referral from a friend" },
+      { value: "ref_firm",      label: "Referral from an outside firm" },
+      { value: "ref_marketing", label: "Referral from a marketing source" },
+      { value: "return",        label: "Return client" },
+      { value: "other",         label: "Other" },
+    ],
+  },
+  {
+    key: "referral_source",
+    label: "Agent — name or company of the referring source (if known)",
+    script: "",
+    kind: "text",
+    note: "Capture who referred them — the attorney, friend, firm, or marketing source by name or company. If unknown, type unknown.",
+  },
+  {
+    key: "collision_type",
+    script: "What type of collision was it?",
+    note: "Tap the closest match to what they described. Do not read the list.",
+    kind: "single",
+    options: [
+      { value: "rear_end", label: "Rear-end" },
+      { value: "head_on",  label: "Head-on" },
+      { value: "side",     label: "Side / T-bone" },
+      { value: "rollover", label: "Rollover" },
+      { value: "multi",    label: "Multi-vehicle" },
+      { value: "hit_run",  label: "Hit and run" },
+    ],
+  },
+  {
+    key: "treatment_followup",
+    script: "Did the doctor suggest any follow-up treatment?",
+    note: "Only asked once they have actually been seen. A recommended course of care strengthens the file.",
+    kind: "single",
+    options: [
+      { value: "yes",    label: "Yes" },
+      { value: "no",     label: "No" },
+      { value: "unsure", label: "Not sure" },
+    ],
+  },
+  {
+    key: "auto_policy_id",
+    script: "Can you read me your auto policy ID number?",
+    kind: "text",
+    note: "Their own policy number. If they do not have it on hand, type unknown and we will get it later.",
+  },
+  {
+    key: "others_in_vehicle",
+    script: "Was there anyone else in the vehicle with you?",
+    kind: "single",
+    options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }],
+  },
+  {
+    key: "others_names",
+    script: "What are their names?",
+    kind: "text",
+    note: "List everyone else who was in the vehicle.",
+  },
+  {
+    key: "others_injured",
+    script: "Did anyone else in the vehicle get injured?",
+    kind: "single",
+    options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }],
+  },
+  {
+    key: "others_injured_contact",
+    script: "Can I get their name and a good phone number for them?",
+    kind: "text",
+    note: "Name and phone for each injured passenger. These are potential additional clients — capture them cleanly.",
+  },
+  {
+    key: "others_need_help",
+    script: "Do they need us to help them as well?",
+    kind: "single",
+    options: [
+      { value: "yes",    label: "Yes" },
+      { value: "no",     label: "No" },
+      { value: "unsure", label: "Not sure" },
+    ],
+  },
+  {
+    key: "ins_forms",
+    script: "Have you been given any forms to sign by any insurance company?",
+    kind: "single",
+    options: [
+      { value: "yes",    label: "Yes" },
+      { value: "no",     label: "No" },
+      { value: "unsure", label: "Not sure" },
+    ],
+  },
+  {
+    key: "ins_forms_signed",
+    script: "Did you sign them?",
+    kind: "single",
+    options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }],
+  },
+  {
+    key: "ins_forms_said",
+    script: "What did they tell you when they gave you those forms?",
+    multiline: true,
+    kind: "text",
+    note: "Capture what the insurer said. A signed release or recorded-statement authorization can affect the claim — flag it for the case manager.",
+  },
+  CASE_MANAGER_NOTES_Q,
 ];
 
 // ---------------------------------------------------------------- GENERAL PI
@@ -333,6 +465,7 @@ export const GPI_QUESTIONS: Question[] = [
   TREATMENT_Q,
   WILLING_Q,
   billsQ(),
+  CASE_MANAGER_NOTES_Q,
 ];
 
 // ---------------------------------------------------------------- EVERYTHING ELSE
@@ -386,6 +519,7 @@ export const CRIMINAL_QUESTIONS: Question[] = [
     ],
   },
   { key: "state", script: "And what state is this in?", kind: "text" },
+  CASE_MANAGER_NOTES_Q,
 ];
 
 // ---------------------------------------------------------------- FAMILY LAW
@@ -463,6 +597,7 @@ export const FAMILY_QUESTIONS: Question[] = [
       { value: "yes_unhappy",   label: "Yes, but looking to change" },
     ],
   },
+  CASE_MANAGER_NOTES_Q,
 ];
 
 export const BRIEF_QUESTIONS: Question[] = [
@@ -485,6 +620,7 @@ export const BRIEF_QUESTIONS: Question[] = [
       { value: "yes_unsatisfied", label: "Yes, but not happy" },
     ],
   },
+  CASE_MANAGER_NOTES_Q,
 ];
 
 export const CASE_TYPES: { key: CaseTypeKey; label: string; sub: string }[] = [
@@ -508,12 +644,16 @@ export const CASE_TYPES: { key: CaseTypeKey; label: string; sub: string }[] = [
 // Anything a question does not depend on gets asked later.
 const AUTO_ASK_ORDER = [
   "authority", "poa", "role", "attorney",
-  "what_happened", "agent_read",
+  "how_found_us", "referral_source",
+  "what_happened", "collision_type", "agent_read",
   "date", "incident_time", "incident_city_state",
-  "injured", "symptoms_ongoing", "treatment", "willing", "willing_more",
+  "injured", "symptoms_ongoing", "treatment", "treatment_followup", "willing", "willing_more",
   "injuries", "surgery", "hosp",
   "fault", "police_report", "police_agency", "police_report_number", "citations", "commercial", "settled", "bills",
-  "ins_other", "ins_own", "ins_uim",
+  "ins_other", "ins_own", "auto_policy_id", "ins_uim",
+  "others_in_vehicle", "others_names", "others_injured", "others_injured_contact", "others_need_help",
+  "ins_forms", "ins_forms_signed", "ins_forms_said",
+  "case_manager_notes",
 ];
 
 const GPI_ASK_ORDER = [
@@ -521,6 +661,7 @@ const GPI_ASK_ORDER = [
   "date", "incident_time", "incident_city_state",
   "injured", "symptoms_ongoing", "treatment", "willing", "willing_more",
   "injuries", "surgery", "bills",
+  "case_manager_notes",
 ];
 
 function inAskOrder(qs: Question[], order: string[]): Question[] {
