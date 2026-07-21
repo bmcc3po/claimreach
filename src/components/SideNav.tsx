@@ -61,9 +61,6 @@ export default function SideNav({
   variant?: "staff" | "firm";
 }) {
   const [min, setMin] = useState(false);
-  // Mobile: the sidebar is an off-canvas drawer, closed by default, so it never
-  // eats the screen. `open` controls it; on desktop the hamburger still minimizes.
-  const [open, setOpen] = useState(false);
   const GROUPS = variant === "firm" ? FIRM_GROUPS : STAFF_GROUPS;
   const homeHref = variant === "firm" ? "/portal" : "/dashboard";
   // Collapse labeled groups by default; auto-expand the group containing the
@@ -78,14 +75,9 @@ export default function SideNav({
     return init;
   });
   const toggleGroup = (id: string) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
-  // Hamburger: on mobile toggle the drawer; on desktop keep the minimize rail.
-  const onHamburger = () => {
-    if (typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches) setOpen((o) => !o);
-    else setMin((m) => !m);
-  };
 
   return (
-    <div className={`shell ${open ? "nav-open" : ""}`}>
+    <div className="shell">
       <aside className={`sidenav ${min ? "min" : ""}`}>
         <div className="brandrow">
           <a href={homeHref} aria-label="Home" style={{ lineHeight: 0 }}>
@@ -110,7 +102,7 @@ export default function SideNav({
                   </button>
                 )}
                 {!isCollapsed && items.map((n) => (
-                  <a key={n.href} href={n.href} className={`nl ${active === n.href ? "active" : ""}`} title={n.label} onClick={() => setOpen(false)}>
+                  <a key={n.href} href={n.href} className={`nl ${active === n.href ? "active" : ""}`} title={n.label}>
                     <span className="ico"><Icon name={n.icon} /></span>
                     <span className="nl-label">{n.label}</span>
                   </a>
@@ -127,11 +119,9 @@ export default function SideNav({
         </div>
       </aside>
 
-      {open && <div className="nav-backdrop" onClick={() => setOpen(false)} />}
-
       <div className="shell-main">
         <div className="topstrip">
-          <button className="minbtn" onClick={onHamburger} aria-label="Toggle menu" style={{ fontSize: 18 }}>☰</button>
+          <button className="minbtn" onClick={() => setMin(!min)} aria-label="Toggle menu" style={{ fontSize: 18 }}>☰</button>
           <div style={{ flex: 1 }} />
           <span className="muted" style={{ fontSize: 13 }}>{userName} · {role}</span>
           {topRight}

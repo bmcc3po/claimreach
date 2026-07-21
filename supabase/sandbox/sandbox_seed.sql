@@ -30,10 +30,9 @@ insert into campaigns (firm_id, name, case_type, active, allow_live_sign, retain
 select f.id, v.name, v.case_type, true, v.live, '[]'::jsonb
 from firms f
 join (values
-  ('TMP — Auto Accident',            'mva',               true),
-  ('TMP — Premises / Slip & Fall',   'prem',              true),
-  ('Motel 6',                        'motel_trafficking', false),
-  ('TMP — Referral Network',         'referral',          false)
+  ('TMP — Auto Accident',            'mva',      true),
+  ('TMP — Premises / Slip & Fall',   'prem',     true),
+  ('TMP — Referral Network',         'referral', false)
 ) as v(name, case_type, live) on true
 where f.slug = 'tmp'
   and not exists (
@@ -132,13 +131,7 @@ insert into _demo values
 -- PRELIT — premises, qualified
 ('TMP-9012','prem','qa_verified','TMP — Premises / Slip & Fall','Hector','Ramos','(702) 555-0112','hector.ramos@example.com',
  'approved','clear',null,'Premises. Hector. Stairwell fall, qualified.',
- '{"presence":"yes","what_happened":"Fell on a broken stair with no handrail at an apartment complex.","agent_read":"yes","date":"2026-06-25","incident_time":"20:30","incident_city_state":"Las Vegas, NV","injured":"yes","symptoms_ongoing":"yes","treatment":"still","injuries":["broken","head"],"surgery":"no","bills":"10k_50k","case_manager_notes":"Code violation angle — no handrail. Photos available."}'::jsonb),
-
--- Motel 6 trafficking intake — shows the case builder driving the new console:
--- picking "Motel 6" in Take-a-call opens this kind of file and runs the property intake.
-('TMP-9013','motel_trafficking','intake_in_progress','Motel 6','Renata','Vaughn','(702) 555-0113','renata.vaughn@example.com',
- 'new','pending',null,'Motel 6 trafficking intake. Renata. Just opened — run the full property intake.',
- '{}'::jsonb);
+ '{"presence":"yes","what_happened":"Fell on a broken stair with no handrail at an apartment complex.","agent_read":"yes","date":"2026-06-25","incident_time":"20:30","incident_city_state":"Las Vegas, NV","injured":"yes","symptoms_ongoing":"yes","treatment":"still","injuries":["broken","head"],"surgery":"no","bills":"10k_50k","case_manager_notes":"Code violation angle — no handrail. Photos available."}'::jsonb);
 
 -- Fan out: leads first (identity + stage + campaign link), then claims.
 insert into leads (firm_id, lead_no, case_type, stage, campaign_id, campaign,

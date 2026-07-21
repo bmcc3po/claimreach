@@ -6,7 +6,7 @@
 
 export type PermKey =
   | "leads.view" | "leads.edit" | "leads.delete" | "leads.bulk" | "leads.assign" | "leads.export"
-  | "intake.fill" | "intake.qa" | "intake.full"
+  | "intake.fill" | "intake.qa"
   | "tier.edit"
   | "claims.status"
   | "forms.build"
@@ -31,7 +31,6 @@ export const PERMISSIONS: PermDef[] = [
   { key: "leads.export", label: "Export leads", group: "Leads" },
   { key: "intake.fill", label: "Run intake", group: "Intake" },
   { key: "intake.qa", label: "QA / review intakes", group: "Intake" },
-  { key: "intake.full", label: "Leave guided view / do the full intake", group: "Intake" },
   { key: "tier.edit", label: "Set tiers", group: "Intake" },
   { key: "claims.status", label: "Change claim status/stage", group: "Intake" },
   { key: "forms.build", label: "Build intake forms", group: "Builder" },
@@ -76,7 +75,7 @@ export const ROLE_DEFAULTS: Record<Role, PermKey[]> = {
   // Alicia/Ahniyah pattern: full operations access, zero dollar visibility).
   manager: [
     "leads.view", "leads.edit", "leads.assign", "leads.bulk", "leads.export",
-    "intake.fill", "intake.qa", "intake.full", "tier.edit", "claims.status",
+    "intake.fill", "intake.qa", "tier.edit", "claims.status",
     "reports.view", "money.view",
     "payroll.view", "payroll.manage", "deals.clean", "hours.manage",
     "calls.log", "messages.send", "docs.upload", "drips.manage",

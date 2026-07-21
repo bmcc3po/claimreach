@@ -1,9 +1,10 @@
 "use client";
 import { useMemo, useRef, useState } from "react";
-import { fieldVisible, segmentsForType, segmentsFrom, type Field } from "@/lib/questionnaire";
+import { fieldVisible, segmentsForType, segmentsFrom, INTAKE, type Field } from "@/lib/questionnaire";
 import PropertyLookup from "@/components/PropertyLookup";
 import Typeahead from "@/components/Typeahead";
 import { dbRowToFormValues, dbRowToResolved } from "@/lib/claim-properties";
+import { buildPropertyPhase, nextTierOnG6More, ABBREV_PROPERTY_IDS, type PropTier } from "@/lib/motel-properties";
 
 // ============================================================================
 // GUIDED INTAKE
@@ -26,7 +27,10 @@ type Step =
   | { kind: "single"; field: Field; section: string }
   | { kind: "group"; name: string; fields: Field[]; section: string }
   | { kind: "propmanage"; section: string }
-  | { kind: "propfield"; field: Field; index: number; section: string };
+  | { kind: "propfield"; field: Field; index: number; section: string }
+  // Motel property spine (gated loop): choose a property, then question it.
+  | { kind: "propchooser"; index: number; tier: PropTier; section: string }
+  | { kind: "propgate"; gateId: "g6_more" | "g6_more_name" | "nong6_more"; label: string; section: string };
 
 export default function GuidedIntake({
   claimId, firmId, leadId, claimType, customFields,
@@ -77,11 +81,77 @@ export default function GuidedIntake({
   }, [customFields, claimType]);
   const allFields: Field[] = useMemo(() => segments.flatMap((s: any) => s.fields as Field[]), [segments]);
 
+  // A motel/trafficking file runs the gated PROPERTY SPINE. Detect it by the case
+  // type OR by the presence of the identify gate / property fields, so even a
+  // flattened custom form still gets the spine instead of silently skipping it.
+  const isMotel = useMemo(() => {
+    const t = (claimType ?? "").toLowerCase();
+    if (/motel|traffick|hotel/.test(t)) return true;
+    return allFields.some((f) => f.id === "g_can_identify" || f.id === "property_lookup" || f.id === "s_properties");
+  }, [claimType, allFields]);
+
+  // The FULL property battery: the form's property fields if it carries them, else
+  // the built-in motel set (so a flattened form still asks the whole thing).
+  const propFields: Field[] = useMemo(() => {
+    const fromForm = allFields.filter((f) => f.scope === "property" && f.kind !== "property_lookup");
+    if (fromForm.length) return fromForm;
+    return (INTAKE as Field[]).filter((f) => f.scope === "property" && f.kind !== "property_lookup");
+  }, [allFields]);
+  const propFieldById = useMemo(() => {
+    const m: Record<string, Field> = {};
+    for (const f of propFields) m[f.id] = f;
+    return m;
+  }, [propFields]);
+
+  const truthyYes = (v: any) => v === true || v === "yes" || v === "Yes";
+  const propLabel = (row: number, tier: PropTier) => {
+    const name = props[row]?.resolved?.name || props[row]?.values?.name_as_recalled;
+    const base = name || `Property ${row + 1}`;
+    return tier === "nong6" ? `${base} · non-Motel-6` : String(base);
+  };
+
   // Rebuilt after every answer so conditional questions appear and vanish live.
   const steps: Step[] = useMemo(() => {
     const out: Step[] = [];
     let section = "";
     const seenGroups = new Set<string>();
+
+    // ---- MOTEL: gated property spine injected right after the identify gate ----
+    if (isMotel) {
+      const tiers: PropTier[] = props.map((p) => (p.values?.tier as PropTier) || "g6");
+      const phase = truthyYes(answers["g_can_identify"])
+        ? buildPropertyPhase(tiers, propFields.map((f) => f.id), ABBREV_PROPERTY_IDS,
+            { g6_done: !!answers.__p_g6_done, nong6_done: !!answers.__p_nong6_done })
+        : [];
+      const phaseSteps: Step[] = [];
+      for (const it of phase) {
+        if (it.t === "chooser") phaseSteps.push({ kind: "propchooser", index: it.row, tier: it.tier, section: propLabel(it.row, it.tier) });
+        else if (it.t === "field") { const fld = propFieldById[it.fieldId]; if (fld) phaseSteps.push({ kind: "propfield", field: fld, index: it.row, section: propLabel(it.row, tiers[it.row] || "g6") }); }
+        else phaseSteps.push({ kind: "propgate", gateId: it.id, label: it.label, section: "Properties" });
+      }
+
+      for (const seg of segments as any[]) {
+        section = seg.title || section;
+        for (const f of seg.fields as Field[]) {
+          if (f.kind === "section") continue;
+          if (f.scope === "property" || f.kind === "property_lookup") continue; // handled by the phase
+          if (f.kind === "script") { out.push({ kind: "single", field: f, section }); }
+          else if (!fieldVisible(f as any, answers)) { /* hidden */ }
+          else if (f.group) {
+            if (!seenGroups.has(f.group)) {
+              seenGroups.add(f.group);
+              const members = (allFields as Field[]).filter((x) => x.group === f.group && fieldVisible(x as any, answers));
+              out.push({ kind: "group", name: f.group, fields: members, section });
+            }
+          } else { out.push({ kind: "single", field: f, section }); }
+          // The whole property spine fires immediately after "can you identify…".
+          if (f.id === "g_can_identify" && phaseSteps.length) out.push(...phaseSteps);
+        }
+      }
+      return out;
+    }
+
+    // ---- non-motel: the generic add-all-then-walk property manager ----
     let propEmitted = false;
     for (const seg of segments as any[]) {
       section = seg.title || section;
@@ -107,7 +177,7 @@ export default function GuidedIntake({
       }
     }
     return out;
-  }, [segments, allFields, answers, props.length]);
+  }, [segments, allFields, answers, props, isMotel, propFields, propFieldById]);
 
   const total = steps.length;
   const step = steps[Math.min(idx, Math.max(0, total - 1))];
@@ -121,6 +191,8 @@ export default function GuidedIntake({
       // the same thing as the one on the review screen.
       if (s.kind === "group") n += s.fields.filter((f) => blank(answers[f.id])).length;
       if (s.kind === "propfield" && blank(props[s.index]?.values?.[s.field.id])) n++;
+      if (s.kind === "propchooser" && !props[s.index]?.resolved && blank(props[s.index]?.values?.name_as_recalled)) n++;
+      if (s.kind === "propgate") n++;
     }
     return n;
   }, [steps, answers, props]);
@@ -163,11 +235,33 @@ export default function GuidedIntake({
 
   function setAnswer(id: string, v: any) {
     const next = { ...answers, [id]: v };
+    // Confirming they can identify a hotel opens the first Motel 6 property slot,
+    // so the property spine begins the moment they say yes.
+    if (id === "g_can_identify" && truthyYes(v) && props.length === 0) {
+      const np: PropRow[] = [{ values: { tier: "g6" } }];
+      setProps(np); setAnswers(next); persist(next, np); return;
+    }
     setAnswers(next); persist(next, props);
   }
   function setPropVal(i: number, id: string, v: any) {
     const next = props.map((p, n) => (n === i ? { ...p, values: { ...p.values, [id]: v } } : p));
     setProps(next); persist(answers, next);
+  }
+  // The between-property gates. "Yes" adds the next property (full G6 until the
+  // cap of 4, then name-only; abbreviated for non-G6). "No" closes that phase.
+  // Neither advances the index: the recomputed step at this position becomes the
+  // next chooser (yes) or the next decision/field (no).
+  function answerGate(gateId: "g6_more" | "g6_more_name" | "nong6_more", yes: boolean) {
+    if (gateId === "nong6_more") {
+      if (yes) { const n: PropRow[] = [...props, { values: { tier: "nong6" } }]; setProps(n); persist(answers, n); }
+      else { const a = { ...answers, __p_nong6_done: true }; setAnswers(a); persist(a, props); }
+    } else {
+      if (yes) {
+        const tier = nextTierOnG6More(props.map((p) => (p.values?.tier as PropTier) || "g6"));
+        const n: PropRow[] = [...props, { values: { tier } }]; setProps(n); persist(answers, n);
+      } else { const a = { ...answers, __p_g6_done: true }; setAnswers(a); persist(a, props); }
+    }
+    setDraft(null);
   }
 
   function advance() {
@@ -288,6 +382,53 @@ export default function GuidedIntake({
               onAnswer={(v: any) => { setPropVal(step.index, step.field.id, v); setTimeout(advance, 0); }}
               onSkipScript={advance}
             />
+          </>
+        )}
+
+        {step.kind === "propchooser" && (
+          <>
+            <div className="gx-crumb">{step.section}</div>
+            <div className="gx-q">
+              {step.tier === "nong6" ? "Which motel was this? (not a Motel 6 / Studio 6)"
+                : step.tier === "g6_name" ? "Which other Motel 6 / Studio 6? Just the name and location."
+                : "Which Motel 6 or Studio 6 property was this?"}
+              <span className="gx-vital">Vital</span>
+            </div>
+            <div className="gx-say"><div className="gx-cap">Say</div><div className="gx-txt">"Let's pin down this exact location — what was it, and roughly where?"</div></div>
+            <div className="gx-note">Pick the real property so the firm names the right defendant. Use the cross-streets and landmarks they recall.</div>
+            {(props[step.index]?.resolved?.name || props[step.index]?.values?.name_as_recalled) && (
+              <div className="gx-prop">
+                <div className="gx-prop-h"><b>{props[step.index]?.resolved?.name || props[step.index]?.values?.name_as_recalled}</b></div>
+                {props[step.index]?.resolved?.address && <div className="gx-prop-a">{props[step.index]?.resolved?.address}</div>}
+              </div>
+            )}
+            <div className="gx-lookup">
+              <PropertyLookup onResolved={(r: any) => {
+                const next = props.map((p, n) => n === step.index
+                  ? { ...p, resolved: r, values: { ...p.values, name_as_recalled: p.values?.name_as_recalled || r.name } }
+                  : p);
+                setProps(next); persist(answers, next);
+              }} />
+            </div>
+            <input className="gx-in" placeholder="Or type the name as the caller recalls it"
+              value={props[step.index]?.values?.name_as_recalled ?? ""}
+              onChange={(e) => setPropVal(step.index, "name_as_recalled", e.target.value)} />
+            <div className="gx-row">
+              <button className="gx-btn p wide"
+                disabled={!(props[step.index]?.resolved || String(props[step.index]?.values?.name_as_recalled ?? "").trim())}
+                onClick={advance}>Continue</button>
+            </div>
+          </>
+        )}
+
+        {step.kind === "propgate" && (
+          <>
+            <div className="gx-crumb">Properties</div>
+            <div className="gx-q">{step.label}</div>
+            <div className="gx-opts">
+              <button className="gx-opt" onClick={() => answerGate(step.gateId, true)}><span className="gx-k" /><span className="gx-lab">Yes</span></button>
+              <button className="gx-opt" onClick={() => answerGate(step.gateId, false)}><span className="gx-k" /><span className="gx-lab">No</span></button>
+            </div>
           </>
         )}
       </div>
