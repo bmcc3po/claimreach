@@ -30,6 +30,10 @@ const VEHICLE_YEARS: string[] = (() => {
 
 type Stage = "greeting" | "callerid" | "search" | "calltype" | "details" | "casetype" | "questions" | "outcome";
 type SignStage = "intro" | "identity" | "waiting" | "signed";
+// A pickable case type on the "How can we help you" screen. `native` = the
+// console screens it in-app (auto/premises + the brief captures); otherwise it
+// is a builder-template type that hands off to the guided builder intake.
+type PickerItem = { key: string; label: string; sub: string; native: boolean; lead: boolean };
 
 const CALL_TYPES: { value: CallType; label: string; sub: string; lead?: boolean }[] = [
   { value: "new_potential", label: "New Potential Client", sub: "Open a file and run the intake", lead: true },
@@ -55,6 +59,10 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   // silently mis-scopes the greeting, screening, and campaigns).
   const [firmSlug, setFirmSlug] = useState("");
   const cfg = useMemo(() => getFirmConfig(firmSlug), [firmSlug]);
+  // The picker is the firm's OWN active campaigns (data-driven), merged with the
+  // built-in screened/brief types. Add a campaign in Settings and it shows up
+  // here — that is how Motel 6 or any builder-template case type appears.
+  const [firmCampaigns, setFirmCampaigns] = useState<{ case_type: string; name: string }[]>([]);
 
   const [stage, setStage] = useState<Stage>("greeting");
   const [callerId, setCallerId] = useState("");
@@ -111,23 +119,33 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
   // The file opens here, not at caller details: this is the first moment we know
   // both who is on the line AND what the file is. No campaign means no file.
-  async function pickCaseType(t: CaseTypeKey) {
+  async function pickCaseType(item: PickerItem) {
     setBusy(true); setErr("");
     try {
       const d = await api({
         op: "open", firm_slug: firmSlug, caller_id: callerId,
         first_name: firstName.trim(), callback, call_type: callType,
-        case_type: t, registry_key: registryKeyFor(t),
+        // Native types keep their existing registry mapping (mva→mva, the brief
+        // types→referral). A builder-template type keys the campaign lookup on
+        // its own case_type (e.g. motel_trafficking).
+        case_type: item.key, registry_key: item.native ? registryKeyFor(item.key as CaseTypeKey) : item.key,
       });
       if (d.error === "no_campaign") { setErr(d.message); setBusy(false); return; }
+      // Builder-template case type (Motel 6 or anything you set up in the case
+      // builder): the file is open — drop the agent straight into the guided
+      // builder intake, which runs that type's questionnaire (with its property
+      // loops, etc.). The console's own screening engine only knows the native
+      // types, so we hand off rather than render nothing.
+      if (!item.native) { window.location.href = `/intake/${d.lead_id}`; return; }
       setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
       setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
       const opts = d.retainers ?? [];
       setRetainerOptions(opts);
       setRetainerId((opts.find((o: any) => o.is_default) ?? opts[0])?.id ?? null);
       setClient((c) => ({ ...c, first_name: firstName.trim(), phone: callback }));
-      setCaseType(t); setAnswers({}); setHistory([]);
-      setCurrentQ(nextQuestionKey(t, {})); setStage("questions");
+      const ct = item.key as CaseTypeKey;
+      setCaseType(ct); setAnswers({}); setHistory([]);
+      setCurrentQ(nextQuestionKey(ct, {})); setStage("questions");
     } catch (e: any) { setErr(e?.message || "could not open the file"); }
     setBusy(false);
   }
@@ -260,6 +278,21 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     setPostSign((ps) => (ps.dob ? ps : { ...ps, dob: client.dob }));
   }, [signStage, client.dob]);
 
+  // Pull the firm's active campaigns for the case-type picker when a firm is
+  // chosen. No firm → nothing to show.
+  useEffect(() => {
+    if (!firmSlug) { setFirmCampaigns([]); return; }
+    let alive = true;
+    fetch("/api/console", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "case_types", firm_slug: firmSlug }),
+    })
+      .then((r) => (r.ok ? r.json() : { case_types: [] }))
+      .then((d) => { if (alive) setFirmCampaigns(Array.isArray(d.case_types) ? d.case_types : []); })
+      .catch(() => { if (alive) setFirmCampaigns([]); });
+    return () => { alive = false; };
+  }, [firmSlug]);
+
   async function finishCall() {
     if (!file || !outcome) { setDone(true); return; }
     setBusy(true);
@@ -307,6 +340,22 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   const q: Question | undefined = currentQ && caseType ? questionByKey(caseType, currentQ) : undefined;
   const applicable = caseType ? questionsFor(caseType).filter((x) => questionApplies(caseType, x.key, answers)).length : 0;
   const remaining = Math.max(0, applicable - history.length - 1);
+
+  // The case-type picker: the firm's built-in screened/brief types, plus any
+  // extra campaign case types (builder templates like Motel 6) not already
+  // built in. Built-ins run in-console; the rest hand off to the builder intake.
+  const pickerItems: PickerItem[] = (() => {
+    const items: PickerItem[] = CASE_TYPES
+      .filter((c) => cfg.caseTypes.includes(c.key))
+      .map((c) => ({ key: c.key as string, label: c.label, sub: c.sub, native: true, lead: c.key === "mva" }));
+    const seen = new Set(items.map((i) => i.key));
+    for (const c of firmCampaigns) {
+      if (!c.case_type || seen.has(c.case_type)) continue;
+      seen.add(c.case_type);
+      items.push({ key: c.case_type, label: c.name, sub: "Guided intake", native: false, lead: false });
+    }
+    return items;
+  })();
 
   if (done) {
     return (
@@ -446,12 +495,15 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           <h2 className="ic-q">How can we help you today?</h2>
           <Note>Picking opens the file. Every answer after this saves as you go, so a dropped call still leaves a working file you can pick back up.</Note>
           <div className="ic-grid">
-            {CASE_TYPES.filter((c) => cfg.caseTypes.includes(c.key)).map((c) => (
-              <button key={c.key} disabled={busy} className={`ic-card ${c.key === "mva" ? "lead" : ""}`} onClick={() => pickCaseType(c.key)}>
+            {pickerItems.map((c) => (
+              <button key={c.key} disabled={busy} className={`ic-card ${c.lead ? "lead" : ""}`} onClick={() => pickCaseType(c)}>
                 <span className="ic-card-t">{c.label}</span><span className="ic-card-s">{c.sub}</span>
               </button>
             ))}
           </div>
+          {pickerItems.length === 0 && (
+            <Note tone="hard">No active case types for this firm yet. Add a campaign in Settings → Campaigns — set its case type and intake template — and it will appear here automatically.</Note>
+          )}
         </div>
       )}
 

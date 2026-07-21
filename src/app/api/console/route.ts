@@ -39,6 +39,26 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const admin = supabaseAdmin();
 
+  // ---------------------------------------------------------------- case_types
+  // The console's case-type picker is data-driven: it is the firm's own active
+  // campaigns. Add a campaign in Settings → a new case type appears in "Take a
+  // call" with zero code change (this is how Motel 6 or any builder-template
+  // case type shows up). Deduped by case_type.
+  if (b.op === "case_types") {
+    const firm = await resolveFirm(admin, b.firm_slug, g.firmId);
+    if (!firm.id) return NextResponse.json({ case_types: [] });
+    const { data } = await admin.from("campaigns")
+      .select("case_type, name").eq("firm_id", firm.id).eq("active", true).order("name");
+    const seen = new Set<string>();
+    const out: { case_type: string; name: string }[] = [];
+    for (const c of data ?? []) {
+      if (!c.case_type || seen.has(c.case_type)) continue;
+      seen.add(c.case_type);
+      out.push({ case_type: c.case_type, name: c.name });
+    }
+    return NextResponse.json({ case_types: out });
+  }
+
   // ---------------------------------------------------------------- open
   // A file is not allowed to exist without a case type AND a campaign. The
   // console therefore opens it at case-type selection, not at caller details:
@@ -275,7 +295,13 @@ export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
   const g = await gateUser(sb);
   if (!g) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const leadId = new URL(req.url).searchParams.get("lead_id");
+  const url = new URL(req.url);
+  // Lightweight self-permission check for the intake surface's "All sections"
+  // toggle. Kept auth-only (any signed-in internal user) and cheap.
+  if (url.searchParams.get("me")) {
+    return NextResponse.json({ can_full_intake: g.can("intake.full") });
+  }
+  const leadId = url.searchParams.get("lead_id");
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
   const admin = supabaseAdmin();
   const { data: docs } = await admin.from("signable_documents")
