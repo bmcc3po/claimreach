@@ -623,16 +623,10 @@ export const BRIEF_QUESTIONS: Question[] = [
   CASE_MANAGER_NOTES_Q,
 ];
 
-export const CASE_TYPES: { key: CaseTypeKey; label: string; sub: string }[] = [
-  { key: "motel_trafficking", label: "Motel 6 / trafficking", sub: "Full intake" },
-  { key: "mva",       label: "Auto accident",          sub: "Full screening" },
-  { key: "prem",        label: "Slip / fall / premises",  sub: "Full screening" },
-  { key: "employment", label: "Employment",              sub: "Brief capture" },
-  { key: "family",     label: "Family",                  sub: "Brief capture" },
-  { key: "criminal",   label: "Criminal",                sub: "Brief capture" },
-  { key: "contract",   label: "Contract / business",     sub: "Brief capture" },
-  { key: "other",      label: "Other",                   sub: "Brief capture" },
-];
+// CASE_TYPES used to live here: a hardcoded picker list shown identically to
+// every firm. It is why Motel 6 appeared for TMT, which has no motel campaign.
+// The picker is now derived from the firm's active campaigns via
+// /api/console/case-types. Do not reintroduce a list here.
 
 // ---------------------------------------------------------------- ASK ORDER
 // The order questions are ASKED is not the order they print. This sequence is

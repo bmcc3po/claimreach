@@ -9,7 +9,18 @@ export interface FirmConsoleConfig {
   firmName: string;              // spoken on the greeting, must be exact
   greeting: string;              // [agent] is substituted at render
   recordingDisclosure: string;   // mandatory, statement not a question
-  caseTypes: CaseTypeKey[];      // which pickers this firm screens
+  // caseTypes deliberately removed. Which case types a firm screens is decided
+  // by which campaigns it has, not by a list in code. Three firms carried
+  // identical hardcoded lists here, which is the direct cause of Motel 6
+  // appearing for TMT and of TMP's medmal campaign being unreachable.
+  // States the firm can actually file in. Null or empty means no restriction.
+  // A qualifying case outside this list is worked in FULL and referred, not
+  // disqualified: the intake still runs, it just bypasses the e-sign. Venue
+  // follows the incident, not where the client lives.
+  //
+  // The DB is the source of truth (firms.venue_states); this is the fallback
+  // for a firm that has no row yet, so adding WLL is a config change.
+  venueStates: string[] | null;
   autoBillsThreshold: number;    // auto retainer line, NEVER read aloud
   gpiBillsThreshold: number;     // general PI line, NEVER read aloud
   referTurnaround: string | null; // the [X] in "you will hear back within X"
@@ -48,11 +59,11 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
   tmt: {
     slug: "tmt",
     firmName: "The Money Team Law Firm",
+    venueStates: ["NM", "KY", "TN"],
     greeting:
       "Thank you for calling The Money Team Law Firm, this is [agent]. This call may be recorded for quality and training. Are you calling on behalf of yourself or a family member?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question — do not pause for permission and do not shorten it.",
-    caseTypes: ["motel_trafficking", "mva", "prem", "employment", "family", "criminal", "contract", "other"],
     autoBillsThreshold: 10000,
     gpiBillsThreshold: 50000,
     referTurnaround: "72 hours",
@@ -67,11 +78,11 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
   tmp: {
     slug: "tmp",
     firmName: "Turnbull, Moak & Pendergrass",
+    venueStates: null,
     greeting:
       "Thank you for calling Turnbull, Moak and Pendergrass, this is [agent]. This call may be recorded for quality and training. Is this about an injury to you, or to someone close to you?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question.",
-    caseTypes: ["motel_trafficking", "mva", "prem", "employment", "family", "criminal", "contract", "other"],
     autoBillsThreshold: 10000,
     gpiBillsThreshold: 50000,
     referTurnaround: "72 hours",
@@ -84,11 +95,11 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
   roth: {
     slug: "roth",
     firmName: "The Roth Law Firm",
+    venueStates: null,
     greeting:
       "Thank you for calling The Roth Law Firm, this is [agent]. This call may be recorded for quality and training. How can I help you today?",
     recordingDisclosure:
       "The recording line is mandatory. Read it as written. It is a statement, not a question.",
-    caseTypes: ["motel_trafficking", "mva", "prem", "employment", "family", "criminal", "contract", "other"],
     autoBillsThreshold: 10000,
     gpiBillsThreshold: 50000,
     referTurnaround: "72 hours",

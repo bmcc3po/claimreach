@@ -211,10 +211,82 @@ function briefOutcome(a: Answers): Outcome {
   return { disposition: "REFER", reason: "Outside the firm's retained case types, routed to the network", flags: [] };
 }
 
+
+// ---------------------------------------------------------------- venue
+// A firm can only take a case it can actually file. TMT works New Mexico,
+// Kentucky and Tennessee; anything outside that is worked in full and referred
+// to the network rather than signed.
+//
+// This runs AFTER the case-type outcome, and only ever downgrades a SIGN. A
+// disqualifier stays a disqualifier: venue does not rescue a file that failed on
+// its merits, and a file that already needs a human keeps needing one.
+//
+// Venue follows the INCIDENT, not where the client lives. Someone who lives in
+// Nevada and was hit in Tennessee is a Tennessee case.
+const STATE_ABBR: Record<string, string> = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
+  colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA",
+  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA",
+  kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD",
+  massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS",
+  missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV",
+  "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+  "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK",
+  oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC",
+  "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT",
+  virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI",
+  wyoming: "WY", "district of columbia": "DC",
+};
+
+// The agent captures "Las Vegas, NV" through the Google picker, but a typed
+// answer can be anything. Returns a 2-letter code, or null when we genuinely
+// cannot tell, which is a different situation from being out of venue.
+export function incidentState(a: Answers): string | null {
+  const raw = String(a.incident_city_state ?? a.state ?? "").trim();
+  if (!raw) return null;
+  const tail = raw.includes(",") ? raw.split(",").pop()!.trim() : raw;
+  const bare = tail.replace(/[^A-Za-z ]/g, "").trim();
+  if (/^[A-Za-z]{2}$/.test(bare)) {
+    const up = bare.toUpperCase();
+    return Object.values(STATE_ABBR).includes(up) ? up : null;
+  }
+  return STATE_ABBR[bare.toLowerCase()] ?? null;
+}
+
+export function applyVenue(o: Outcome, a: Answers, cfg: FirmConsoleConfig): Outcome {
+  const allowed = cfg.venueStates;
+  if (!allowed || allowed.length === 0) return o;   // firm works everywhere
+  if (o.disposition !== "SIGN") return o;           // only ever downgrades a sign
+
+  const st = incidentState(a);
+  if (!st) {
+    // Unreadable venue is not the same as out of venue. Signing it would be
+    // guessing, and disqualifying it would throw away a live case, so a human
+    // looks at it.
+    return {
+      ...o,
+      disposition: "SECONDARY_REVIEW",
+      reason: `${o.reason}, but the incident state could not be read`,
+      flags: [...o.flags, "venue unconfirmed"],
+      closeKey: "elevated",
+    };
+  }
+  if (allowed.includes(st)) return o;
+
+  return {
+    ...o,
+    disposition: "REFER",
+    reason: `Qualifies on the merits, but the incident was in ${st}, outside the firm's venue`,
+    flags: [...o.flags, `out of venue: ${st}`],
+    closeKey: "out_of_venue",
+  };
+}
+
 export function finalOutcome(caseType: CaseTypeKey, a: Answers, cfg: FirmConsoleConfig): Outcome {
-  if (caseType === "mva") return autoOutcome(a, cfg);
-  if (caseType === "prem") return gpiOutcome(a, cfg);
-  return briefOutcome(a);
+  const base = caseType === "mva" ? autoOutcome(a, cfg)
+             : caseType === "prem" ? gpiOutcome(a, cfg)
+             : briefOutcome(a);
+  return applyVenue(base, a, cfg);
 }
 
 // Terminal first, then the full tree once every applicable question is answered.
@@ -276,19 +348,11 @@ export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome
   return parts.join(". ").replace(/\.\./g, ".");
 }
 
-// ---------------------------------------------------------------- registry
-// The console picker is finer-grained than the case type registry: an agent
-// picks "Employment" or "Family", but those are all one retained-nothing
-// referral bucket as far as campaign and process go. The specific matter is
-// still recorded on the call.
-export function registryKeyFor(caseType: CaseTypeKey): string {
-  if (caseType === "mva") return "mva";
-  if (caseType === "prem") return "prem";
-  if (caseType === "motel_trafficking") return "motel_trafficking";
-  // Everything the firm refers out rather than screens shares one campaign, so
-  // there is a single place to change the network response and the billing.
-  return "referral";
-}
+// registryKeyFor used to live here. It mapped a hardcoded picker value onto a
+// real campaign key, which was only ever necessary because the picker was a
+// list in code rather than the firm's campaigns. The picker now returns the
+// campaign's own case_type, so there is nothing left to map.
+
 
 // Modifiers are what makes THIS file different inside its type. They are derived
 // from answers the agent already gave, never asked as extra questions, so the

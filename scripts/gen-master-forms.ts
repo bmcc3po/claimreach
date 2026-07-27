@@ -54,14 +54,22 @@ interface Seed { caseType: string; name: string; fields: Field[]; askOrder: stri
 const MVA = generateForm("mva", AUTO_QUESTIONS);
 const PREM = generateForm("prem", GPI_QUESTIONS);
 
+// Brett kept one thing from the beta_motel draft: a warm-welcome heading ahead
+// of the opening. It is the only field that form had which the canonical
+// questionnaire did not, so it is carried over rather than lost with the draft.
+const MOTEL: Field[] = [
+  { id: "s_warm_welcome", scope: "lead", kind: "section", label: "Warm welcome" },
+  ...INTAKE,
+];
+
 const SEEDS: Seed[] = [
   { caseType: "mva", name: "MVA intake", fields: lock(MVA.fields), askOrder: MVA.askOrder,
     source: "questions.ts AUTO_QUESTIONS, converted by to-form.ts, parity asserted" },
   { caseType: "prem", name: "Premises intake", fields: lock(PREM.fields), askOrder: PREM.askOrder,
     source: "questions.ts GPI_QUESTIONS, converted by to-form.ts, parity asserted" },
-  { caseType: "motel_trafficking", name: "Motel trafficking intake", fields: lock(INTAKE),
-    askOrder: INTAKE.map((f) => f.id),
-    source: "questionnaire.ts INTAKE, copied verbatim" },
+  { caseType: "motel_trafficking", name: "Motel trafficking intake", fields: lock(MOTEL),
+    askOrder: MOTEL.map((f) => f.id),
+    source: "questionnaire.ts INTAKE plus the warm welcome section from the beta draft" },
   { caseType: "medmal", name: "Medical malpractice intake", fields: lock(MEDMAL_INTAKE),
     askOrder: MEDMAL_INTAKE.map((f) => f.id),
     source: "medmal.ts MEDMAL_INTAKE, copied verbatim" },

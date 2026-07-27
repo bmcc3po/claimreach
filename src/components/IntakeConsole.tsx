@@ -1,9 +1,9 @@
 "use client";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { FIRM_CONFIGS, getFirmConfig, DEFAULT_FIRM_SLUG } from "@/lib/intake-console/config";
-import { CASE_TYPES, questionByKey, questionsFor, type Question } from "@/lib/intake-console/questions";
+import { questionByKey, questionsFor, type Question } from "@/lib/intake-console/questions";
 import {
-  evaluate, nextQuestionKey, buildSummary, questionApplies, registryKeyFor, modifiersFor,
+  evaluate, nextQuestionKey, buildSummary, questionApplies, modifiersFor,
   type Answers, type CaseTypeKey, type CallType, type Outcome,
 } from "@/lib/intake-console/engine";
 import {
@@ -54,7 +54,27 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   // No default firm — the agent must pick one before a call (a wrong default firm
   // silently mis-scopes the greeting, screening, and campaigns).
   const [firmSlug, setFirmSlug] = useState("");
-  const cfg = useMemo(() => getFirmConfig(firmSlug), [firmSlug]);
+  const [venueOverride, setVenueOverride] = useState<string[] | null | undefined>(undefined);
+  const cfg = useMemo(() => {
+    const base = getFirmConfig(firmSlug);
+    // firms.venue_states wins when the row exists. undefined means we have not
+    // loaded it yet, which is different from null (loaded, unrestricted).
+    return venueOverride === undefined ? base : { ...base, venueStates: venueOverride };
+  }, [firmSlug, venueOverride]);
+
+  useEffect(() => {
+    if (!firmSlug) { setOffered([]); setVenueOverride(undefined); return; }
+    let dead = false;
+    setOfferedBusy(true);
+    (async () => {
+      try {
+        const d = await (await fetch(`/api/console/case-types?firm=${encodeURIComponent(firmSlug)}`)).json();
+        if (!dead) { setOffered(d.types ?? []); setVenueOverride(d.venue_states ?? null); }
+      } catch { if (!dead) setOffered([]); }
+      finally { if (!dead) setOfferedBusy(false); }
+    })();
+    return () => { dead = true; };
+  }, [firmSlug]);
 
   const [stage, setStage] = useState<Stage>("greeting");
   const [callerId, setCallerId] = useState("");
@@ -67,6 +87,10 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   const [callback, setCallback] = useState("");
   const [callType, setCallType] = useState<CallType | null>(null);
   const [caseType, setCaseType] = useState<CaseTypeKey | null>(null);
+  // What this firm actually runs. Derived from its active campaigns, never from
+  // a list in code: assigning a campaign is what puts a case type on the picker.
+  const [offered, setOffered] = useState<{ key: string; campaign_id: string; label: string; unregistered?: boolean }[]>([]);
+  const [offeredBusy, setOfferedBusy] = useState(false);
   const [answers, setAnswers] = useState<Answers>({});
   const [history, setHistory] = useState<string[]>([]);
   const [currentQ, setCurrentQ] = useState<string | null>(null);
@@ -117,7 +141,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       const d = await api({
         op: "open", firm_slug: firmSlug, caller_id: callerId,
         first_name: firstName.trim(), callback, call_type: callType,
-        case_type: t, registry_key: registryKeyFor(t),
+        case_type: t, registry_key: t,
       });
       if (d.error === "no_campaign") { setErr(d.message); setBusy(false); return; }
       // Motel 6 / trafficking isn't screened in the console — it opens the file
@@ -194,7 +218,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       const ct = String(d.case_type ?? "");
       // The console only runs its guided questions for its own case types; for a
       // file of another type (e.g. trafficking), open the full file instead.
-      if (!CASE_TYPES.some((c) => c.key === ct)) { window.location.href = `/leads/${d.lead_id}`; return; }
+      if (!offered.some((c) => c.key === ct)) { window.location.href = `/leads/${d.lead_id}`; return; }
       setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
       setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
       const opts = d.retainers ?? [];
@@ -350,12 +374,12 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       {stage === "greeting" && !firmSlug && (
         <div className="ic-card-wrap">
           <h2 className="ic-q">Which firm are you taking calls for?</h2>
-          <Note>Pick the firm before the call. The greeting, screening, and case types are set per firm — there is no default, so the wrong firm can't be assumed.</Note>
+          <Note>Pick the firm before the call. The greeting, screening, and case types are set per firm. There is no default, so the wrong firm can't be assumed.</Note>
           <div className="ic-grid">
             {Object.values(FIRM_CONFIGS).map((f) => (
               <button key={f.slug} className="ic-card" onClick={() => setFirmSlug(f.slug)}>
                 <span className="ic-card-t">{f.firmName}</span>
-                <span className="ic-card-s">{f.caseTypes.length} case types</span>
+                <span className="ic-card-s">{f.slug.toUpperCase()}</span>
               </button>
             ))}
           </div>
@@ -448,10 +472,17 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         <div className="ic-card-wrap">
           <h2 className="ic-q">How can we help you today?</h2>
           <Note>Picking opens the file. Every answer after this saves as you go, so a dropped call still leaves a working file you can pick back up.</Note>
+          {offeredBusy && <p className="ic-muted">Loading this firm's case types...</p>}
+          {!offeredBusy && offered.length === 0 && (
+            <div className="ic-banner err">
+              {cfg.firmName} has no active campaigns, so there is nothing to open. Add one in Settings, Campaigns, then reload.
+            </div>
+          )}
           <div className="ic-grid">
-            {CASE_TYPES.filter((c) => cfg.caseTypes.includes(c.key)).map((c) => (
-              <button key={c.key} disabled={busy} className={`ic-card ${c.key === "mva" ? "lead" : ""}`} onClick={() => pickCaseType(c.key)}>
-                <span className="ic-card-t">{c.label}</span><span className="ic-card-s">{c.sub}</span>
+            {offered.map((c) => (
+              <button key={c.campaign_id} disabled={busy} className={`ic-card ${c.key === "mva" ? "lead" : ""}`} onClick={() => pickCaseType(c.key as CaseTypeKey)}>
+                <span className="ic-card-t">{c.label}</span>
+                <span className="ic-card-s">{c.unregistered ? "Not in the case type registry" : "Full intake"}</span>
               </button>
             ))}
           </div>

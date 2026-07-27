@@ -2,7 +2,7 @@
 // Decision-tree checks. These are the routing rules the firm approved, so they
 // get asserted rather than assumed. Run: npx tsx src/lib/intake-console/engine.test.ts
 // ============================================================================
-import { evaluate, nextQuestionKey, questionApplies, registryKeyFor, modifiersFor, type Answers } from "./engine";
+import { evaluate, nextQuestionKey, questionApplies, modifiersFor, type Answers } from "./engine";
 import { getFirmConfig } from "./config";
 
 const cfg = getFirmConfig("tmt");
@@ -13,7 +13,7 @@ function check(name: string, got: any, want: any) {
   if (ok) { pass++; console.log(`  ok   ${name}`); }
   else { fail++; console.log(`  FAIL ${name}\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`); }
 }
-const disp = (a: Answers, t: any = "mva") => evaluate(t, a, cfg)?.disposition ?? null;
+const disp = (a: Answers, t: any = "mva", c: any = cfg) => evaluate(t, a, c)?.disposition ?? null;
 
 // The date question captures a real date now, so tests express age in days and
 // let the engine bucket it. Legacy bucket strings still evaluate, which is what
@@ -26,7 +26,7 @@ const isoDaysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOStr
 // never reaches a terminal.
 const base: Answers = {
   authority: "self", role: "driver", attorney: "no", commercial: "no", injured: "yes",
-  what_happened: "Rear-ended at a light.", agent_read: "yes", incident_city_state: "Las Vegas, NV",
+  what_happened: "Rear-ended at a light.", agent_read: "yes", incident_city_state: "Nashville, TN",
   police_report: "yes", police_agency: "Metro PD", police_report_number: "25-11234",
   citations: "other", symptoms_ongoing: "yes", incident_time: "7:30 AM",
   injuries: ["neck_back"], surgery: "no", hosp: "no", fault: "other",
@@ -83,7 +83,7 @@ check("willing only asked when never treated", questionApplies("mva", "willing",
 check("first question is authority", nextQuestionKey("mva", {}), "authority");
 
 console.log("\nGENERAL PI");
-const g: Answers = { incident_time: "2:00 PM", presence: "yes", injured: "yes", symptoms_ongoing: "yes", what_happened: "Fell on a wet floor.", agent_read: "yes", incident_city_state: "Las Vegas, NV", injuries: ["neck_back"], surgery: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k", case_manager_notes: "Wet floor, no signage." };
+const g: Answers = { incident_time: "2:00 PM", presence: "yes", injured: "yes", symptoms_ongoing: "yes", what_happened: "Fell on a wet floor.", agent_read: "yes", incident_city_state: "Nashville, TN", injuries: ["neck_back"], surgery: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k", case_manager_notes: "Wet floor, no signage." };
 check("trespassing -> DQ", disp({ ...g, presence: "no" }, "prem"), "DISQUALIFY");
 check("within 30 days -> SIGN", disp(g, "prem"), "SIGN");
 check("still treating -> SIGN", disp({ ...g, date: isoDaysAgo(120) }, "prem"), "SIGN");
@@ -91,15 +91,31 @@ check("finished + under the GPI line -> REFER", disp({ ...g, date: isoDaysAgo(12
 check("finished + over the GPI line -> SIGN", disp({ ...g, date: isoDaysAgo(120), treatment: "finished", willing_more: "yes", bills: "over_50k" }, "prem"), "SIGN");
 check("no commercial flag on premises", evaluate("prem", { ...g, commercial: "yes" }, cfg)?.flags ?? [], []);
 
+console.log("\nVENUE (TMT works NM, KY, TN)");
+const venueBase = { ...base };
+check("in venue signs", disp(venueBase), "SIGN");
+check("Kentucky signs", disp({ ...venueBase, incident_city_state: "Louisville, KY" }), "SIGN");
+check("New Mexico signs", disp({ ...venueBase, incident_city_state: "Santa Fe, NM" }), "SIGN");
+check("Nevada is worked and referred, not disqualified", disp({ ...venueBase, incident_city_state: "Las Vegas, NV" }), "REFER");
+check("full state name resolves", disp({ ...venueBase, incident_city_state: "Miami, Florida" }), "REFER");
+check("out of venue is flagged", evaluate("mva", { ...venueBase, incident_city_state: "Las Vegas, NV" }, cfg)?.flags ?? [], ["out of venue: NV"]);
+check("unreadable venue goes to a human, not a signature",
+  disp({ ...venueBase, incident_city_state: "somewhere near the mall" }), "SECONDARY_REVIEW");
+check("venue never rescues a disqualifier",
+  disp({ ...venueBase, incident_city_state: "Louisville, KY", injured: "no" }), "DISQUALIFY");
+check("venue never downgrades an existing refer",
+  disp({ ...venueBase, incident_city_state: "Louisville, KY", ins_other: "no", ins_own: "no", ins_uim: "no" }), "REFER");
+check("a firm with no venue list is unrestricted",
+  disp({ ...venueBase, incident_city_state: "Las Vegas, NV" }, "mva", getFirmConfig("tmp")), "SIGN");
+check("premises respects venue too",
+  disp({ ...g, incident_city_state: "Las Vegas, NV" }, "prem"), "REFER");
+
 console.log("\nBRIEF CAPTURE");
 check("represented + satisfied -> DQ", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "yes_satisfied", case_manager_notes: "n" }, "other"), "DISQUALIFY");
 check("everything else -> REFER", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "no", case_manager_notes: "n" }, "other"), "REFER");
 
 
-console.log("\nREGISTRY KEYS + MODIFIERS");
-check("mva maps to itself", registryKeyFor("mva"), "mva");
-check("prem maps to itself", registryKeyFor("prem"), "prem");
-check("employment falls into the referral bucket", registryKeyFor("employment"), "referral");
+console.log("\nMODIFIERS");
 check("commercial vehicle becomes a CMV modifier", modifiersFor("mva", { commercial: "yes" }), ["cmv"]);
 check("no CMV modifier on premises", modifiersFor("prem", { commercial: "yes" }), []);
 check("head injury sets TBI and catastrophic", modifiersFor("mva", { injuries: ["head"] }), ["tbi", "catastrophic"]);
