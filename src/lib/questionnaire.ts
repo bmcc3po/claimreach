@@ -12,7 +12,7 @@
 export type FieldKind =
   | "text" | "longtext" | "bool" | "select" | "multiselect"
   | "int" | "monthyear" | "script" | "section" | "gate" | "property_lookup"
-  | "date" | "phone" | "email" | "facility_lookup";
+  | "date" | "time" | "phone" | "email" | "facility_lookup";
 
 export interface Condition {
   fieldId: string;                 // an earlier field's id
@@ -39,8 +39,16 @@ export interface Field {
   // same real-world thing is spelled one way every time. Free text still allowed.
   ref?: "vehicle" | "auto_carrier" | "health_carrier";
   // Stored-value -> spoken-label map for choice fields, so exports print the
-  // words the caller heard rather than the code we stored.
-  choices?: { value: string; label: string }[];
+  // words the caller heard rather than the code we stored. `note` is agent-only
+  // guidance attached to ONE option ("Not sure is not a no. Keep going") and is
+  // never read aloud. Dropping it silently removes coaching the agent relies on.
+  choices?: { value: string; label: string; note?: string }[];
+  // Google-backed pickers. "city" = standardized "City, ST" autocomplete that
+  // also surfaces the statute runway; "agency" = incident location plus the
+  // police department that likely holds the report.
+  lookup?: "city" | "agency";
+  // Render a text field as a paragraph box: Enter adds a line, it does not advance.
+  multiline?: boolean;
   script?: string;       // verbatim read-aloud text
   agentNote?: string;    // agent-only guidance, never read aloud
   placeholder?: string;  // input hint text
@@ -49,6 +57,17 @@ export interface Field {
   surface?: "intake" | "contact" | "both";  // where this field appears; default intake
   locField?: string;     // for facility_lookup: id of the paired city/state field to auto-fill
   showIf?: ShowIf;        // conditional visibility (AND/OR of rules on earlier answers)
+  // Locking metadata. Declared in migration 0024 and enforced from the spine
+  // rebuild onward. Questions are data; the disposition math (SIGN/REFER/DQ) is
+  // code that matches on field ids. A locked or routing-key field may be
+  // reworded and reordered. It may NEVER be deleted or re-keyed: renaming
+  // `injured` would make the engine stop matching and qualified files would DQ
+  // with nothing surfacing the break.
+  origin?: "spine" | "preset" | "custom" | "script";
+  locked?: boolean;
+  mandatoryGate?: boolean;
+  routingKey?: boolean;
+  addedBy?: string;
 }
 
 export const INTAKE: Field[] = [

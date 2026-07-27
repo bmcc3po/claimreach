@@ -32,6 +32,9 @@ const base: Answers = {
   injuries: ["neck_back"], surgery: "no", hosp: "no", fault: "other",
   settled: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k",
   ins_other: "yes", ins_own: "yes", ins_uim: "unsure",
+  how_found_us: "online", collision_type: "rear_end", treatment_followup: "yes",
+  auto_policy_id: "POL-123", others_in_vehicle: "no", ins_forms: "no",
+  case_manager_notes: "Standard rear-end, clean liability.",
 };
 
 console.log("\nAUTO — immediate terminals");
@@ -80,7 +83,7 @@ check("willing only asked when never treated", questionApplies("mva", "willing",
 check("first question is authority", nextQuestionKey("mva", {}), "authority");
 
 console.log("\nGENERAL PI");
-const g: Answers = { incident_time: "2:00 PM", presence: "yes", injured: "yes", symptoms_ongoing: "yes", what_happened: "Fell on a wet floor.", agent_read: "yes", incident_city_state: "Las Vegas, NV", injuries: ["neck_back"], surgery: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k" };
+const g: Answers = { incident_time: "2:00 PM", presence: "yes", injured: "yes", symptoms_ongoing: "yes", what_happened: "Fell on a wet floor.", agent_read: "yes", incident_city_state: "Las Vegas, NV", injuries: ["neck_back"], surgery: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k", case_manager_notes: "Wet floor, no signage." };
 check("trespassing -> DQ", disp({ ...g, presence: "no" }, "prem"), "DISQUALIFY");
 check("within 30 days -> SIGN", disp(g, "prem"), "SIGN");
 check("still treating -> SIGN", disp({ ...g, date: isoDaysAgo(120) }, "prem"), "SIGN");
@@ -89,8 +92,8 @@ check("finished + over the GPI line -> SIGN", disp({ ...g, date: isoDaysAgo(120)
 check("no commercial flag on premises", evaluate("prem", { ...g, commercial: "yes" }, cfg)?.flags ?? [], []);
 
 console.log("\nBRIEF CAPTURE");
-check("represented + satisfied -> DQ", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "yes_satisfied" }, "other"), "DISQUALIFY");
-check("everything else -> REFER", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "no" }, "other"), "REFER");
+check("represented + satisfied -> DQ", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "yes_satisfied", case_manager_notes: "n" }, "other"), "DISQUALIFY");
+check("everything else -> REFER", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "no", case_manager_notes: "n" }, "other"), "REFER");
 
 
 console.log("\nREGISTRY KEYS + MODIFIERS");
