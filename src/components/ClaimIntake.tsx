@@ -324,19 +324,19 @@ export default function ClaimIntake({
                   seg.fields.map((f) => {
                     if (!fieldVisible(f, answers)) return null;
                     if (f.kind === "script") {
-                      return <FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} feeds={autofillFeeds[f.id]} />;
+                      return <FieldRenderer key={f.id} field={f} answers={answers} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} feeds={autofillFeeds[f.id]} />;
                     }
                     if (f.kind === "gate") {
                       return (
                         <div key={f.id} className="qcard gate-wrap">
-                            <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
+                            <FieldRenderer field={f} answers={answers} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
                         </div>
                       );
                     }
                     const ans = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                     return (
                       <div key={f.id} className={`qcard ${ans ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                        <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
+                        <FieldRenderer field={f} answers={answers} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
                       </div>
                     );
                   })
@@ -390,7 +390,7 @@ export default function ClaimIntake({
                       const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                       return (
                         <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                            <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
+                            <FieldRenderer field={f} answers={answers} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
                         </div>
                       );
                     })}
@@ -401,10 +401,10 @@ export default function ClaimIntake({
               fields.forEach((f, i) => {
                 if (f.kind === "script") {
                   flush(`b${i}`);
-                  out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} feeds={autofillFeeds[f.id]} />);
+                  out.push(<FieldRenderer key={f.id} field={f} answers={answers} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} feeds={autofillFeeds[f.id]} />);
                 } else if (f.kind === "gate") {
                   flush(`b${i}`);
-                  out.push(<FieldRenderer key={f.id} field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />);
+                  out.push(<FieldRenderer key={f.id} field={f} answers={answers} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />);
                 } else if (SHORT.has(f.kind)) {
                   bucket.push(f);
                 } else {
@@ -412,7 +412,7 @@ export default function ClaimIntake({
                   const answered = answers[f.id] !== undefined && answers[f.id] !== null && answers[f.id] !== "";
                   out.push(
                     <div key={f.id} className={`qcard ${answered ? "answered" : ""} ${f.vital ? "vital-q" : ""}`}>
-                      <FieldRenderer field={f} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
+                      <FieldRenderer field={f} answers={answers} value={answers[f.id]} onChange={(v) => setVal(f.id, v)} onSetField={(id, v) => setVal(id, v)} qNum={qNum[f.id]} feeds={autofillFeeds[f.id]} />
                     </div>
                   );
                 }
@@ -471,7 +471,7 @@ function PropertyCard({ index, state, fields, onResolve, onChange, onRemove }: {
       </div>
       {!state.resolved && <PropertyLookup onResolved={onResolve} />}
       {state.resolved && fields.filter((f) => f.kind !== "property_lookup").map((f) => (
-        <FieldRenderer key={f.id} field={f} value={state.values[f.id]} onChange={(v) => onChange(f.id, v)} />
+        <FieldRenderer key={f.id} field={f} answers={state.values} value={state.values[f.id]} onChange={(v) => onChange(f.id, v)} />
       ))}
     </div>
   );

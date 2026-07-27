@@ -196,7 +196,7 @@ function PropertyCard({
           // collapse remembered_brand (already captured in lookup) but keep editable
           return (
             <FieldRenderer key={f.id} field={f}
-              value={state.values[f.id]} onChange={(v) => onChange(f.id, v)} />
+              answers={state.values} value={state.values[f.id]} onChange={(v) => onChange(f.id, v)} />
           );
         })}
     </div>

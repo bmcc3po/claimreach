@@ -165,5 +165,27 @@ check("per-option agent note survives",
   MVA.fields.find((f) => f.id === "ins_uim")?.choices?.find((c) => c.value === "unsure")?.note,
   "Not sure is not a no. Keep going");
 
+// ---------------------------------------------------------------- renderer
+// FieldRenderer stored the LABEL as the answer because it rendered
+// field.options (display strings) and ignored field.choices. The engine matches
+// on VALUES, so a form-driven MVA would have stored "Under $10,000" where the
+// routing math looks for "under_10k" and every bills-dependent decision would
+// have silently failed. These assert the generated data carries what the
+// renderer and the engine both need.
+console.log("\nRENDERER SAFETY");
+const choiceFields = allFields.filter((f) => f.kind === "select" || f.kind === "multiselect");
+check("every choice field carries value/label pairs", choiceFields.every((f) => (f.choices?.length ?? 0) > 0), true);
+check("no choice value is a display label",
+  choiceFields.every((f) => (f.choices ?? []).every((c) => c.value !== c.label || /^[a-z0-9_]+$/.test(c.value))), true);
+check("bills values are engine keys, not labels",
+  MVA.fields.find((f) => f.id === "bills")?.choices?.map((c) => c.value),
+  ["none", "under_10k", "10k_50k", "over_50k", "unknown"]);
+check("injury values are engine keys",
+  MVA.fields.find((f) => f.id === "injuries")?.choices?.slice(0, 3).map((c) => c.value),
+  ["neck_back", "strain", "whiplash"]);
+check("treatment values are engine keys",
+  MVA.fields.find((f) => f.id === "treatment")?.choices?.map((c) => c.value),
+  ["treated", "still", "finished", "stopped", "never"]);
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail > 0) process.exit(1);
