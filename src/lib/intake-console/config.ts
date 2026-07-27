@@ -35,6 +35,11 @@ export interface FirmConsoleConfig {
   // "I have everything I need" line moved to just before the retainer goes out,
   // because at this point we do not have everything yet.
   signTransition: string;
+  // False when no config exists for the selected firm. getFirmConfig used to
+  // fall back to the default firm silently, which meant picking West Loop Law
+  // loaded TMT's config and the agent greeted the caller with the wrong firm
+  // name on a recorded line. The console blocks on this instead.
+  configured?: boolean;
 }
 
 const TMT_ROUTING: FirmConsoleConfig["callTypeRouting"] = {
@@ -113,7 +118,18 @@ export const FIRM_CONFIGS: Record<string, FirmConsoleConfig> = {
 export const DEFAULT_FIRM_SLUG = "tmt";
 
 export function getFirmConfig(slug: string | null | undefined): FirmConsoleConfig {
-  return FIRM_CONFIGS[slug ?? ""] ?? FIRM_CONFIGS[DEFAULT_FIRM_SLUG];
+  const hit = FIRM_CONFIGS[slug ?? ""];
+  if (hit) return { ...hit, configured: true };
+  // Never impersonate another firm. The shape is borrowed so callers do not
+  // crash, but the identity is blanked and the flag tells the console to stop.
+  return {
+    ...FIRM_CONFIGS[DEFAULT_FIRM_SLUG],
+    slug: slug ?? "",
+    firmName: "",
+    greeting: "",
+    venueStates: null,
+    configured: false,
+  };
 }
 
 // Shallow-merge DB overrides (firms.intake_config) over the code defaults.

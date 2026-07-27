@@ -115,6 +115,13 @@ check("represented + satisfied -> DQ", disp({ what_happened: "x", incident_date:
 check("everything else -> REFER", disp({ what_happened: "x", incident_date: "x", state: "NV", represented: "no", case_manager_notes: "n" }, "other"), "REFER");
 
 
+console.log("\nFIRM CONFIG SAFETY");
+check("a known firm is marked configured", getFirmConfig("tmt").configured, true);
+check("an unknown firm is NOT marked configured", getFirmConfig("wll").configured, false);
+check("an unknown firm never borrows another firm's name", getFirmConfig("wll").firmName, "");
+check("an unknown firm never borrows another firm's greeting", getFirmConfig("wll").greeting, "");
+check("an unknown firm never borrows another firm's venue", getFirmConfig("wll").venueStates, null);
+
 console.log("\nMODIFIERS");
 check("commercial vehicle becomes a CMV modifier", modifiersFor("mva", { commercial: "yes" }), ["cmv"]);
 check("no CMV modifier on premises", modifiersFor("prem", { commercial: "yes" }), []);

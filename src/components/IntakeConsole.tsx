@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { FIRM_CONFIGS, getFirmConfig, DEFAULT_FIRM_SLUG } from "@/lib/intake-console/config";
+import { getFirmConfig, DEFAULT_FIRM_SLUG } from "@/lib/intake-console/config";
 import { questionByKey, questionsFor, type Question } from "@/lib/intake-console/questions";
 import {
   evaluate, nextQuestionKey, buildSummary, questionApplies, modifiersFor,
@@ -54,6 +54,12 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   // No default firm — the agent must pick one before a call (a wrong default firm
   // silently mis-scopes the greeting, screening, and campaigns).
   const [firmSlug, setFirmSlug] = useState("");
+  // Selectable firms come from the database. FIRM_CONFIGS still supplies the
+  // spoken greeting and thresholds per firm, but it no longer decides who
+  // exists: West Loop Law had a login and could not be picked because the
+  // picker read a code map.
+  const [firms, setFirms] = useState<{ id: string; slug: string; name: string; campaign_count: number }[]>([]);
+  const [firmsBusy, setFirmsBusy] = useState(true);
   const [venueOverride, setVenueOverride] = useState<string[] | null | undefined>(undefined);
   const cfg = useMemo(() => {
     const base = getFirmConfig(firmSlug);
@@ -61,6 +67,18 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     // loaded it yet, which is different from null (loaded, unrestricted).
     return venueOverride === undefined ? base : { ...base, venueStates: venueOverride };
   }, [firmSlug, venueOverride]);
+
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const d = await (await fetch("/api/console/firms")).json();
+        if (!dead) setFirms(d.firms ?? []);
+      } catch { if (!dead) setFirms([]); }
+      finally { if (!dead) setFirmsBusy(false); }
+    })();
+    return () => { dead = true; };
+  }, []);
 
   useEffect(() => {
     if (!firmSlug) { setOffered([]); setVenueOverride(undefined); return; }
@@ -360,7 +378,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           {stage === "greeting" ? (
             <select className="ic-firm" value={firmSlug} onChange={(e) => setFirmSlug(e.target.value)}>
               <option value="" disabled>Select a firm…</option>
-              {Object.values(FIRM_CONFIGS).map((f) => <option key={f.slug} value={f.slug}>{f.firmName}</option>)}
+              {firms.map((f) => <option key={f.id} value={f.slug}>{f.name}</option>)}
             </select>
           ) : (
             <span className="ic-caller">{file ? <b>{file.lead_no}</b> : callerId}</span>
@@ -375,11 +393,18 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         <div className="ic-card-wrap">
           <h2 className="ic-q">Which firm are you taking calls for?</h2>
           <Note>Pick the firm before the call. The greeting, screening, and case types are set per firm. There is no default, so the wrong firm can't be assumed.</Note>
+          {firmsBusy && <p className="ic-muted">Loading firms...</p>}
+          {!firmsBusy && firms.length === 0 && (
+            <div className="ic-banner err">No active client firms. Add one in Settings, Firms, then reload.</div>
+          )}
           <div className="ic-grid">
-            {Object.values(FIRM_CONFIGS).map((f) => (
-              <button key={f.slug} className="ic-card" onClick={() => setFirmSlug(f.slug)}>
-                <span className="ic-card-t">{f.firmName}</span>
-                <span className="ic-card-s">{f.slug.toUpperCase()}</span>
+            {firms.map((f) => (
+              <button key={f.id} className="ic-card" onClick={() => setFirmSlug(f.slug)}>
+                <span className="ic-card-t">{f.name}</span>
+                <span className="ic-card-s">
+                  {f.slug.toUpperCase()}
+                  {f.campaign_count === 0 ? " . no campaigns yet" : ""}
+                </span>
               </button>
             ))}
           </div>
@@ -472,6 +497,12 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         <div className="ic-card-wrap">
           <h2 className="ic-q">How can we help you today?</h2>
           <Note>Picking opens the file. Every answer after this saves as you go, so a dropped call still leaves a working file you can pick back up.</Note>
+          {!cfg.configured && (
+            <div className="ic-banner err">
+              This firm has no console script set up yet, so the greeting and screening lines are missing.
+              Do not take calls for it until that is configured.
+            </div>
+          )}
           {offeredBusy && <p className="ic-muted">Loading this firm's case types...</p>}
           {!offeredBusy && offered.length === 0 && (
             <div className="ic-banner err">
