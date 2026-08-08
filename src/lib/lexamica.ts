@@ -67,27 +67,29 @@ export interface SummaryField {
 export interface CaseSubtype { value: string; label: string }
 
 export const PI_SUBTYPES: CaseSubtype[] = [
+  { value: "mva",        label: "Motor Vehicle Accident" },
   { value: "general",    label: "Personal Injury" },
-  { value: "premises",   label: "Commercial Property Injuries" },
   { value: "dogbite",    label: "Dog Bite Injuries" },
-  { value: "pedestrian", label: "Pedestrian Injuries" },
   { value: "workplace",  label: "Workplace Injuries" },
   { value: "workcomp",   label: "Workers' Compensation" },
+  { value: "pedestrian", label: "Pedestrian Injuries" },
+  { value: "commprop",   label: "Commercial Property Injuries" },
   { value: "construct",  label: "Construction Accidents" },
   { value: "medmal",     label: "Medical Malpractice" },
   { value: "prodliab",   label: "Product Liability" },
   { value: "nursing",    label: "Nursing Home Injuries" },
+  { value: "referout",   label: "Personal Injury" },
 ];
 
-// Matters TMT does not handle at all. Captured on the referral intake.
+// Matters TMT does not handle at all, captured on the refer-out branch at R1.
 export const REFERRAL_SUBTYPES: CaseSubtype[] = [
-  { value: "family",     label: "Family Law" },
-  { value: "criminal",   label: "Criminal Law" },
-  { value: "bankruptcy", label: "Bankruptcy" },
-  { value: "landlord",   label: "Landlord-Tenant Disputes" },
-  { value: "wills",      label: "Wills and Trusts" },
-  { value: "civil",      label: "Civil Litigation" },
-  { value: "social",     label: "Social Injustice" },
+  { value: "family_law",                    label: "Family Law" },
+  { value: "social_injustice_or_civil_righ", label: "Social Injustice" },
+  { value: "criminal_law",                  label: "Criminal Law" },
+  { value: "bankruptcy",                    label: "Bankruptcy" },
+  { value: "landlord_tenant_dispute",       label: "Landlord-Tenant Disputes" },
+  { value: "wills_and_trusts",              label: "Wills and Trusts" },
+  { value: "civil_litigation",              label: "Civil Litigation" },
 ];
 
 // The two real case types. Everything else resolves through a subtype.
@@ -223,7 +225,9 @@ export function buildLexamicaPayload(input: BuildInput): BuildResult {
   const summary = buildSummary(input.fields ?? [], a);
   const state = toStateCode(a.incident_city_state ?? a.state ?? a.incident_state);
   const date = toIsoDate(a.date ?? a.incident_date);
-  const practice = practiceAreaFor(input.caseType, a.case_subtype ?? a.subtype ?? a.matter_type);
+    // The refer-out branch names the matter precisely at R1; otherwise the
+  // core screen's case_subtype is the answer.
+  const practice = practiceAreaFor(input.caseType, a.referout_not_read_aloud_select_what_t ?? a.case_subtype ?? a.subtype);
 
   const payload: LexamicaPayload = {
     FirstName: String(input.firstName ?? "").trim(),

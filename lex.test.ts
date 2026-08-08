@@ -96,7 +96,7 @@ check("no value has stray whitespace", emitted.filter((v) => v !== v.trim()), []
 
 const referred = buildLexamicaPayload({
   firstName: "A", lastName: "B", phone: "1", caseType: "prem",
-  answers: { case_subtype: "family", date: "2026-01-01", state: "TN", what_happened: "x" },
+  answers: { case_subtype: "referout", referout_not_read_aloud_select_what_t: "family_law", date: "2026-01-01", state: "TN", what_happened: "x" },
   fields: [{ id: "what_happened", script: "What happened?" }],
 });
 check("a family matter names itself, not the generic case type",
