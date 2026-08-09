@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
-import { buildLexamicaPayload, type SummaryField, type LexamicaPayload } from "@/lib/lexamica";
+import { buildLexamicaPayload, postToLexamica, extractLexamicaId, type SummaryField } from "@/lib/lexamica";
 export const runtime = "edge";
 
 // ============================================================================
@@ -23,32 +23,6 @@ export const runtime = "edge";
 
 const ENDPOINT = process.env.LEXAMICA_URL ?? "";
 const KEY = process.env.LEXAMICA_KEY ?? "";
-
-export async function postToLexamica(payload: LexamicaPayload) {
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Key ${KEY}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  const text = await res.text();
-  let parsed: any = null;
-  try { parsed = JSON.parse(text); } catch { /* not json, keep the raw text */ }
-  return { status: res.status, ok: res.ok, text, parsed };
-}
-
-/** Their id can come back under a few plausible names. Look, do not assume. */
-export function extractLexamicaId(body: any): string | null {
-  if (!body || typeof body !== "object") return null;
-  for (const k of ["LexamicaId", "lexamicaId", "id", "caseId", "CaseId", "_id"]) {
-    const v = body[k];
-    if (typeof v === "string" && v) return v;
-  }
-  if (body.data) return extractLexamicaId(body.data);
-  return null;
-}
 
 export async function POST(req: NextRequest) {
   if (!ENDPOINT || !KEY) {
@@ -119,7 +93,7 @@ export async function POST(req: NextRequest) {
     }, { status: 422 });
   }
 
-  const sent = await postToLexamica(payload);
+  const sent = await postToLexamica(payload, ENDPOINT, KEY);
   const lexId = sent.ok ? extractLexamicaId(sent.parsed) : null;
 
   await admin.from("lexamica_submissions").insert({

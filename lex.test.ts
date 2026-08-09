@@ -108,5 +108,15 @@ const nursing = buildLexamicaPayload({
 });
 check("a nursing home file rides the PI case type", nursing.payload.PracticeArea, "Nursing Home Injuries");
 
+// The build broke because these were exported from a route file. Assert they
+// are importable from the lib, so the same mistake fails a test not a deploy.
+import { postToLexamica, extractLexamicaId } from "./src/lib/lexamica";
+console.log("\nTRANSPORT LIVES IN THE LIB, NOT IN A ROUTE");
+check("postToLexamica is importable from the lib", typeof postToLexamica, "function");
+check("extractLexamicaId is importable from the lib", typeof extractLexamicaId, "function");
+check("finds their id under LexamicaId", extractLexamicaId({ LexamicaId: "abc" }), "abc");
+check("finds it nested under data", extractLexamicaId({ data: { id: "xyz" } }), "xyz");
+check("returns null rather than guessing", extractLexamicaId({ nope: 1 }), null);
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);

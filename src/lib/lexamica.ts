@@ -277,3 +277,43 @@ export function subtypeQuestion(kind: "pi" | "referral") {
     options: opts.map((o) => ({ value: o.value, label: o.label })),
   };
 }
+
+// ---------------------------------------------------------------- transport
+// These live here, not in the route file. A Next.js App Router route may only
+// export HTTP handlers plus a short list of config fields, so exporting helpers
+// from route.ts fails the build with "not a valid Route export field". tsc does
+// not check that rule, only next build does, which is why it passed locally and
+// broke on deploy. Both routes import them from here instead.
+
+export interface LexamicaResponse {
+  status: number;
+  ok: boolean;
+  text: string;
+  parsed: any;
+}
+
+export async function postToLexamica(payload: LexamicaPayload, url: string, key: string): Promise<LexamicaResponse> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Key ${key}` },
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let parsed: any = null;
+  try { parsed = JSON.parse(text); } catch { /* not json, keep the raw text */ }
+  return { status: res.status, ok: res.ok, text, parsed };
+}
+
+/**
+ * Their docs say to store the returned LexamicaId but never show a success
+ * body, so this looks across the plausible names rather than assuming one.
+ */
+export function extractLexamicaId(body: any): string | null {
+  if (!body || typeof body !== "object") return null;
+  for (const k of ["LexamicaId", "lexamicaId", "id", "caseId", "CaseId", "_id"]) {
+    const v = body[k];
+    if (typeof v === "string" && v) return v;
+  }
+  if (body.data) return extractLexamicaId(body.data);
+  return null;
+}

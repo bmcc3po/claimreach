@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
-import { buildLexamicaPayload, type SummaryField } from "@/lib/lexamica";
-import { postToLexamica, extractLexamicaId } from "../send/route";
+import { buildLexamicaPayload, postToLexamica, extractLexamicaId, type SummaryField } from "@/lib/lexamica";
 export const runtime = "edge";
 
 // ============================================================================
@@ -101,7 +100,7 @@ async function run(_req: NextRequest) {
     return NextResponse.json({ error: "sample is incomplete", missing }, { status: 500 });
   }
 
-  const sent = await postToLexamica(payload);
+  const sent = await postToLexamica(payload, url, key);
 
   return NextResponse.json({
     ok: sent.ok,
