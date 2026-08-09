@@ -1,81 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
+import { supabaseServer } from "@/lib/supabase-server";
 export const runtime = "edge";
 
 // ============================================================================
 // WHICH FIRMS AN AGENT CAN TAKE CALLS FOR
 //
-// Reads the database rather than a code map. The console previously rendered
-// Object.values(FIRM_CONFIGS), so a firm could exist with a login and still be
-// unselectable, and onboarding a client meant editing a source file.
+// The console rendered Object.values(FIRM_CONFIGS), a code map holding tmt, tmp
+// and roth. West Loop Law existed in the database with a login and could not be
+// selected, because the picker never asked the database. Onboarding a client
+// meant editing a source file and deploying, which is the same shape as the
+// case type problem one layer up.
 //
-// DEFENSIVE ON PURPOSE. The first version filtered in the query on `kind` and
-// `active`. If a migration adding those columns has not been run, PostgREST
-// fails the whole query and the console reports "no firms" while the firm is
-// plainly visible in settings, which sends whoever is troubleshooting looking
-// for a missing firm instead of a missing column.
+// A firm is selectable when it is an active client. Internal firms (us) are
+// excluded: Innovative Intake owns staff logins and form templates, so it has
+// to exist as a row, but it is not something an agent takes calls for.
 //
-// So: select *, filter in code, treat an absent column as permissive. A missing
-// `kind` means everything is a client, which is what was true before the column
-// existed. `diagnostics` in the response says what actually happened, so the
-// next person does not have to guess.
+// A firm with no active campaigns is still returned, flagged. Hiding it makes a
+// half-finished setup look like a missing firm, which sends whoever is
+// troubleshooting to the wrong place.
 // ============================================================================
 
 export async function GET(_req: NextRequest) {
   const sb = await supabaseServer();
   const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized", firms: [] }, { status: 401 });
+  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const admin = supabaseAdmin();
+  const { data: firms, error } = await sb.from("firms")
+    .select("id, slug, name, kind, active, venue_states")
+    .eq("kind", "client").eq("active", true).order("slug");
 
-  const { data: rows, error } = await admin.from("firms").select("*").order("slug");
-  if (error) {
-    return NextResponse.json({
-      error: error.message,
-      firms: [],
-      diagnostics: { stage: "select firms", hint: "the firms table itself could not be read" },
-    }, { status: 500 });
-  }
-  if (!rows?.length) {
-    return NextResponse.json({ firms: [], diagnostics: { stage: "select firms", found: 0 } });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!firms?.length) return NextResponse.json({ firms: [] });
 
-  const hasKind = Object.prototype.hasOwnProperty.call(rows[0], "kind");
-  const hasActive = Object.prototype.hasOwnProperty.call(rows[0], "active");
+  const { data: camps } = await sb.from("campaigns")
+    .select("firm_id").eq("active", true)
+    .in("firm_id", firms.map((f) => f.id));
 
-  const selectable = rows.filter((f: any) => {
-    // Absent column = no opinion = include it. Only an explicit false excludes.
-    if (hasActive && f.active === false) return false;
-    if (hasKind && f.kind && f.kind !== "client") return false;
-    return true;
-  });
-
-  // Campaign counts are advisory. If this fails the firm list still returns,
-  // because a firm you cannot select is a worse failure than a missing count.
   const counts = new Map<string, number>();
-  try {
-    const { data: camps } = await admin.from("campaigns")
-      .select("firm_id, active").in("firm_id", selectable.map((f: any) => f.id));
-    for (const c of camps ?? []) {
-      if (c.active === false) continue;
-      counts.set(c.firm_id, (counts.get(c.firm_id) ?? 0) + 1);
-    }
-  } catch { /* advisory only */ }
+  for (const c of camps ?? []) counts.set(c.firm_id, (counts.get(c.firm_id) ?? 0) + 1);
 
   return NextResponse.json({
-    firms: selectable.map((f: any) => ({
+    firms: firms.map((f) => ({
       id: f.id,
       slug: f.slug,
       name: f.name,
       venue_states: f.venue_states ?? null,
       campaign_count: counts.get(f.id) ?? 0,
     })),
-    diagnostics: {
-      total_firms: rows.length,
-      selectable: selectable.length,
-      has_kind_column: hasKind,
-      has_active_column: hasActive,
-      excluded: rows.length - selectable.length,
-    },
   });
 }
