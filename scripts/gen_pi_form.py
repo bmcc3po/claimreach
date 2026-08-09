@@ -22,6 +22,33 @@ Two things this has to get right or the platform breaks quietly.
 import json, sys, re
 import openpyxl
 
+# Caller-language routing options. Mirrors src/lib/intake-console/subtype.ts;
+# the derivation itself lives there and is unit tested.
+INCIDENT_TYPES = [
+    {"value": "vehicle",     "label": "I was in a vehicle that was hit, or I hit something"},
+    {"value": "struck_ped",  "label": "I was hit by a vehicle while walking, running, or on a bicycle"},
+    {"value": "dog",         "label": "A dog or other animal bit or attacked me"},
+    {"value": "fall",        "label": "I slipped, tripped, or fell"},
+    {"value": "falling_obj", "label": "Something fell on me, or I was struck by an object"},
+    {"value": "attacked",    "label": "I was attacked, robbed, or assaulted by a person"},
+    {"value": "drunk",       "label": "Someone who had been drinking caused this"},
+    {"value": "work",        "label": "I was hurt while working, on the job"},
+    {"value": "medical",     "label": "A doctor, hospital, or medical provider caused harm"},
+    {"value": "product",     "label": "A product broke, malfunctioned, or caused an injury"},
+    {"value": "facility",    "label": "Someone in a nursing home or care facility was harmed"},
+    {"value": "other",       "label": "None of these"},
+]
+INCIDENT_SETTINGS = [
+    {"value": "business",     "label": "At a store, restaurant, hotel, gas station, or other business"},
+    {"value": "apartment",    "label": "At an apartment complex or rental property"},
+    {"value": "residence",    "label": "At a private home or residence"},
+    {"value": "construction", "label": "On a construction site"},
+    {"value": "workplace",    "label": "At my own workplace, while working"},
+    {"value": "public",       "label": "On public or government property, including a sidewalk or park"},
+    {"value": "other",        "label": "Somewhere else"},
+]
+SETTING_APPLIES = ["fall", "falling_obj", "attacked", "drunk"]
+
 # Core Q5 option label -> internal value -> the EXACT string Lexamica expects.
 # Note the label drift: the script says "Dog Bite Injury", Lexamica wants
 # "Dog Bite Injuries". A mismatch there lands the case in Other and it is never
@@ -154,6 +181,47 @@ def main(path):
         fid = CORE_KEYS[num]
         kind = KIND.get(c[1], "text")
         if fid == "case_subtype":
+            # Q5 in the spreadsheet is a dropdown of legal categories the AGENT
+            # picks. That is the agent classifying a legal theory mid-call, and
+            # they will get it wrong both ways: a parking lot assault marked as
+            # a slip and fall, a store fall marked as general premises. A wrong
+            # bucket at Lexamica is never referred out.
+            #
+            # So it is replaced by two plain questions in the caller's own words,
+            # and case_subtype is COMPUTED from them. It stays in the form as a
+            # hidden field because every branch keys off it and Lexamica reads
+            # it, but no one types it.
+            fields.append({
+                "id": "what_happened_type", "scope": "lead", "kind": "select",
+                "label": "Which of these best describes what happened?",
+                "script": "Tell me what happened.",
+                "agentNote": "Do not read the list. Listen, then mark what they described. This decides which questions you are asked next, so mark it as they said it, not as you would classify it.",
+                "origin": "spine", "locked": True, "routingKey": True,
+                "choices": INCIDENT_TYPES,
+                "options": [o["label"] for o in INCIDENT_TYPES],
+            })
+            fields.append({
+                "id": "incident_setting", "scope": "lead", "kind": "select",
+                "label": "Where did this happen?",
+                "script": "And where did this happen?",
+                "agentNote": "Only the setting, not the street address. A fall in a store and a fall at an apartment are different cases.",
+                "origin": "spine", "locked": True, "routingKey": True,
+                "choices": INCIDENT_SETTINGS,
+                "options": [o["label"] for o in INCIDENT_SETTINGS],
+                "showIf": {"match":"any","rules":[
+                    {"fieldId":"what_happened_type","op":"any_of","values":SETTING_APPLIES}
+                ]},
+            })
+            fields.append({
+                "id": "case_subtype", "scope": "lead", "kind": "select",
+                "label": "Case type", "origin": "spine", "locked": True,
+                "routingKey": True, "derived": True,
+                "agentNote": "Computed from what happened and where. Not typed.",
+                "choices": [{"value": v, "label": lbl} for lbl, v, _lx, _t in SUBTYPES],
+                "options": [lbl for lbl, _v, _lx, _t in SUBTYPES],
+            })
+            continue
+        if False:
             ch = [{"value": v, "label": lbl} for lbl, v, _, _ in SUBTYPES]
             fields.append({
                 "id": "case_subtype", "scope": "lead", "kind": "select",
@@ -195,11 +263,18 @@ def main(path):
             fid = BRANCH_KEYS.get(num) or f"{val}_{slug(c[2])[:32]}"
             show = base
             if tab == "04 Personal Injury General" and block and num not in ("G1","G2","G3","G4","G5","G6","G7","G8"):
+                block_src = {"fall_or_hazard": ["fall", "falling_obj"],
+                             "assault": ["attacked"],
+                             "dram_shop": ["drunk"]}[block]
                 show = {"match":"all","rules":[
                     {"fieldId":"case_subtype","op":"is","value":val},
-                    {"fieldId":"general_incident_kind","op":"any_of","values":[block]},
+                    {"fieldId":"what_happened_type","op":"any_of","values":block_src},
                 ]}
-            if num == "G1": fid = "general_incident_kind"
+            if num == "G1":
+                # G1 is the same problem one level down: a dropdown of legal
+                # categories. The block is derived from what_happened_type
+                # instead, so it is dropped from the form entirely.
+                continue
             add(fid, KIND.get(c[1], "text"), c[2], c[3], c[4], show)
 
     return fields
