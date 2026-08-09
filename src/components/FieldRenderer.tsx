@@ -3,6 +3,7 @@ import type { Field } from "@/lib/questionnaire";
 import FacilityLookup from "./FacilityLookup";
 import CityStateLookup from "./CityStateLookup";
 import IncidentLocation from "./IncidentLocation";
+import AddressLookup from "./AddressLookup";
 
 // ============================================================================
 // FIELD RENDERER
@@ -182,6 +183,59 @@ export default function FieldRenderer({
           <input type="date" value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
         </div>
       );
+    // A real address, not three loose text boxes the agent has to spell the same
+    // way twice. Picking a match fills street, city, state and zip together, so
+    // the parts cannot disagree with each other.
+    case "address":
+      return (
+        <div className="field">{label}{spoken}{note}
+          <AddressLookup
+            value={String(value ?? "")}
+            near={answers?.incident_city_state}
+            onText={(a1) => onChange(a1)}
+            onPick={(a) => {
+              // Some addresses have sibling city/state/zip fields on the form
+              // (mail_addr1 -> mail_city, mail_state, mail_zip). Others are a
+              // single line with nowhere to put the parts. Deriving the sibling
+              // names from the field id looked clever and produced things like
+              // "ec_addresscity", so the pairs are stated instead of guessed.
+              const SIBLINGS: Record<string, { city: string; state: string; zip: string }> = {
+                mail_addr1: { city: "mail_city", state: "mail_state", zip: "mail_zip" },
+              };
+              const sib = SIBLINGS[field.id];
+              if (sib && onSetField) {
+                onChange(a.addr1);
+                if (a.city) onSetField(sib.city, a.city);
+                if (a.state) onSetField(sib.state, a.state);
+                if (a.zip) onSetField(sib.zip, a.zip);
+              } else {
+                // Nowhere to split it, so keep the whole address in one field
+                // rather than silently dropping the city and zip.
+                onChange([a.addr1, a.city, a.state, a.zip].filter(Boolean).join(", "));
+              }
+            }}
+          />
+        </div>
+      );
+    // Masked. An SSN typed into a plain text box ends up in exports, logs and
+    // screenshots in the clear, and it is the one field on the form where that
+    // actually matters.
+    case "ssn": {
+      const digits = String(value ?? "").replace(/\D/g, "").slice(0, 9);
+      const shown = digits.length > 5 ? `${digits.slice(0,3)}-${digits.slice(3,5)}-${digits.slice(5)}`
+                  : digits.length > 3 ? `${digits.slice(0,3)}-${digits.slice(3)}`
+                  : digits;
+      return (
+        <div className="field">{label}{spoken}{note}
+          <input type="text" inputMode="numeric" autoComplete="off" placeholder="###-##-####"
+            value={shown}
+            onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+          {digits.length > 0 && digits.length < 9 && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{9 - digits.length} digits to go</div>
+          )}
+        </div>
+      );
+    }
     case "time":
       return (
         <div className="field">{label}{spoken}{note}

@@ -12,7 +12,13 @@
 export type FieldKind =
   | "text" | "longtext" | "bool" | "select" | "multiselect"
   | "int" | "monthyear" | "script" | "section" | "gate" | "property_lookup"
-  | "date" | "time" | "phone" | "email" | "facility_lookup";
+  | "date" | "time" | "phone" | "email" | "facility_lookup"
+  // ssn      masked input, digits only, formatted ###-##-####. Never a plain
+  //          text box: an SSN typed into free text ends up in exports and logs
+  //          in the clear.
+  // address  a real street address with autocomplete, not three loose text
+  //          boxes the agent has to spell consistently.
+  | "ssn" | "address";
 
 export interface Condition {
   fieldId: string;                 // an earlier field's id
@@ -112,7 +118,7 @@ export const INTAKE: Field[] = [
   { id: "ip_first", surface: "contact", scope: "lead", kind: "text", label: "First name (Injured Party)", vital: true },
   { id: "ip_last", surface: "contact", scope: "lead", kind: "text", label: "Last name (Injured Party)", vital: true },
   { id: "ip_dob", surface: "contact", scope: "lead", kind: "date", label: "Date of birth (Injured Party)", vital: true },
-  { id: "ip_ssn", surface: "contact", scope: "lead", kind: "text", label: "SSN (Injured Party)" },
+  { id: "ip_ssn", surface: "contact", scope: "lead", kind: "ssn", label: "SSN (Injured Party)" },
   { id: "ip_phone", surface: "contact", scope: "lead", kind: "phone", label: "Phone number of injured" },
   { id: "ip_email", surface: "contact", scope: "lead", kind: "email", label: "Email of injured" },
   { id: "ip_deceased", surface: "contact", scope: "lead", kind: "bool", label: "Is the Injured Party deceased?", vital: true },
@@ -124,13 +130,13 @@ export const INTAKE: Field[] = [
   { id: "caller_phone", surface: "contact", scope: "lead", kind: "phone", label: "Phone number (Caller)", vital: true },
   { id: "caller_email", surface: "contact", scope: "lead", kind: "email", label: "Email (Caller)", vital: true },
   { id: "caller_dob", surface: "contact", scope: "lead", kind: "date", label: "DOB (Caller)", vital: true },
-  { id: "caller_ssn", surface: "contact", scope: "lead", kind: "text", label: "SSN (Caller)" },
+  { id: "caller_ssn", surface: "contact", scope: "lead", kind: "ssn", label: "SSN (Caller)" },
   { id: "is_legal_rep", surface: "contact", scope: "lead", kind: "bool", label: "Are you the Injured Party's legal representative?",
       agentNote: "If NO, stop and instruct the legal rep to call us directly." },
   { id: "caller_relation_ip", surface: "contact", scope: "lead", kind: "text", label: "If caller is NOT the injured, how related to injured?" },
   { id: "best_time", surface: "contact", scope: "lead", kind: "text", label: "Best time to contact" },
   { id: "s_mail", scope: "lead", kind: "section", label: "Mailing Address" },
-  { id: "mail_addr1", surface: "contact", scope: "lead", kind: "text", label: "Mailing address 1", vital: true },
+  { id: "mail_addr1", surface: "contact", scope: "lead", kind: "address", label: "Mailing address 1", vital: true },
   { id: "mail_addr2", surface: "contact", scope: "lead", kind: "text", label: "Apt, Bldg, Unit #" },
   { id: "mail_city", surface: "contact", scope: "lead", kind: "text", label: "City", vital: true },
   { id: "mail_state", surface: "contact", scope: "lead", kind: "select", label: "State", vital: true, options: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","DC","WV","WI","WY","PR"] },
@@ -141,11 +147,11 @@ export const INTAKE: Field[] = [
   { id: "ec_first", surface: "contact", scope: "lead", kind: "text", label: "First name (EC)", vital: true },
   { id: "ec_last", surface: "contact", scope: "lead", kind: "text", label: "Last name (EC)", vital: true },
   { id: "ec_phone", surface: "contact", scope: "lead", kind: "phone", label: "Phone (EC)", vital: true },
-  { id: "ec_address", surface: "contact", scope: "lead", kind: "text", label: "Address (EC)" },
+  { id: "ec_address", surface: "contact", scope: "lead", kind: "address", label: "Address (EC)" },
   { id: "ec_relationship", surface: "contact", scope: "lead", kind: "select", label: "Their relationship to you",
       options: ["PNC's Mother","PNC's Father","PNC's Son","PNC's Daughter","PNC's Spouse","PNC's Brother","PNC's Sister","PNC's Friend","PNC's Caregiver","Other"] },
   { id: "ec_permission", surface: "contact", scope: "lead", kind: "bool", label: "Permission to discuss case details with EC?", vital: true },
-  { id: "ec_email", scope: "lead", kind: "text", label: "Emergency contact email (if available)" },
+  { id: "ec_email", scope: "lead", kind: "email", label: "Emergency contact email (if available)" },
   { id: "ec_may_leave_msg", scope: "lead", kind: "bool", label: "Safe to leave them a message asking you to call us back?" },
   { id: "ec_message_script", scope: "lead", kind: "text", label: "If we can't reach you, what should we say?" },
   { id: "s_properties", scope: "lead", kind: "section", label: "Properties (add one per hotel/motel)" },
@@ -159,7 +165,7 @@ export const INTAKE: Field[] = [
   { id: "room_floor", scope: "property", kind: "text", label: "Room number, floor, and location within the hotel", placeholder: "e.g. Room 214, 2nd floor, back corner near the laundry / by the alley" },
   { id: "age_at_time", scope: "property", kind: "int", label: "How old were you at the time?" },
   { id: "under_18", scope: "property", kind: "bool", label: "Were you under 18 at any point during this time?" },
-  { id: "acts_count_here", scope: "property", kind: "text", label: "Approximately how many forced sex acts occurred at this hotel?" },
+  { id: "acts_count_here", scope: "property", kind: "int", label: "Approximately how many forced sex acts occurred at this hotel?" },
   { id: "hk_core", scope: "lead", kind: "section", label: "Hotel Knowledge — core" },
   { id: "who_booked_paid", scope: "property", kind: "text", label: "Who booked/paid for the rooms?" },
   { id: "payment_method", scope: "property", kind: "text", label: "How were rooms paid for? (cash / prepaid card)" },
@@ -202,7 +208,7 @@ export const INTAKE: Field[] = [
   { id: "had_phone_money_id", scope: "lead", kind: "bool", label: "Did you have access to your own phone, money, and ID during this time?" },
   { id: "s_recruit", scope: "lead", kind: "section", label: "How You Met" },
   { id: "met_how", scope: "lead", kind: "longtext", label: "How did you first meet the trafficker?" },
-  { id: "met_where", scope: "lead", kind: "text", label: "Where did you first meet them? (City/State)" },
+  { id: "met_where", scope: "lead", kind: "text", lookup: "city", label: "Where did you first meet them? (City/State)" },
   { id: "met_age", scope: "lead", kind: "int", label: "How old were you when you first met them?" },
   { id: "initial_relationship", scope: "lead", kind: "text", label: "What was your relationship to them at first?" },
   { id: "promises_made", scope: "lead", kind: "multiselect", label: "Did they promise you anything? (select all)",
@@ -215,7 +221,7 @@ export const INTAKE: Field[] = [
   { id: "s_recruit2", scope: "lead", kind: "section", label: "Early Control & Movement" },
   { id: "isolated_early", scope: "lead", kind: "bool", label: "Did they isolate you from friends or family early on?" },
   { id: "asked_to_travel", scope: "lead", kind: "bool", label: "Did they ask you to travel or relocate?" },
-  { id: "taken_where", scope: "lead", kind: "text", label: "Where did they take you? (City/State or N/A)" },
+  { id: "taken_where", scope: "lead", kind: "text", lookup: "city", label: "Where did they take you? (City/State or N/A)" },
   { id: "time_to_commercial", scope: "lead", kind: "text", label: "How soon after meeting did commercial sex begin?" },
   { id: "took_kept_items", scope: "lead", kind: "multiselect", label: "Did they take or keep any of the following? (select all)",
       options: ["ID/documents","Money","Phone","Bank cards","Personal belongings","None"] },

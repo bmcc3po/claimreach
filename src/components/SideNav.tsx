@@ -4,33 +4,53 @@ import { Logo } from "./Logo";
 import Icon from "./ui/Icon";
 const BUILD_STAMP = "2026.07.19.1611";
 
-type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean };
+// Maturity, marked in the nav so nobody has to remember which screens are real.
+//
+//   live     wired end to end and safe to use on a call
+//   partial  works, but a piece of it is not connected yet
+//   roadmap  the screen exists, the feature behind it does not
+//
+// Anything roadmap moves OUT of the working menus into its own section at the
+// bottom. The point is that a menu should not be able to imply something works.
+type Maturity = "live" | "partial" | "roadmap";
+type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean; maturity?: Maturity; why?: string };
 type NavGroup = { id: string; label: string | null; items: NavItem[] };
 
 const STAFF_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
-    { href: "/dashboard", icon: "home", label: "Home" },
-    { href: "/console", icon: "phone", label: "Take a call" },
-    { href: "/board", icon: "chart", label: "Delivery Board" },
-    { href: "/leads", icon: "files", label: "Leads" },
-    { href: "/intake", icon: "plus", label: "Add lead" },
-    { href: "/queue", icon: "phone", label: "My queue" },
-    { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true },
-    { href: "/reports", icon: "chart", label: "Reports" },
+    { href: "/dashboard", icon: "home", label: "Home", maturity: "live" },
+    { href: "/console", icon: "phone", label: "Take a call", maturity: "live" },
+    { href: "/leads", icon: "files", label: "Leads", maturity: "live" },
+    { href: "/intake", icon: "plus", label: "Add lead", maturity: "live" },
+    { href: "/queue", icon: "phone", label: "My queue", maturity: "live" },
+    { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true, maturity: "live" },
   ]},
   { id: "ai", label: "AI tools", items: [
-    { href: "/crissi", icon: "life", label: "Crissi" },
-    { href: "/maverick", icon: "spark", label: "Maverick" },
-    { href: "/grievous", icon: "shield", label: "Grievous" },
+    { href: "/crissi", icon: "life", label: "Crissi", maturity: "partial",
+      why: "The doctrine and SOP work offline. Live answers need the AI relay up." },
+    { href: "/maverick", icon: "spark", label: "Maverick", maturity: "partial",
+      why: "Coaching needs the AI relay. Blank when it is down." },
   ]},
   { id: "admin", label: "Settings", items: [
-    { href: "/team", icon: "people", label: "Team" },
-    { href: "/users", icon: "user", label: "Users", adminOnly: true },
-    { href: "/firms", icon: "building", label: "Firms", adminOnly: true },
-    { href: "/templates", icon: "layout", label: "Templates", adminOnly: true },
-    { href: "/integrations", icon: "plug", label: "Integrations", adminOnly: true },
-    { href: "/settings", icon: "gear", label: "Settings" },
-    { href: "/profile", icon: "user", label: "Profile" },
+    { href: "/team", icon: "people", label: "Team", maturity: "live" },
+    { href: "/users", icon: "user", label: "Users", adminOnly: true, maturity: "live" },
+    { href: "/firms", icon: "building", label: "Firms", adminOnly: true, maturity: "live" },
+    { href: "/templates", icon: "layout", label: "Templates", adminOnly: true, maturity: "live" },
+    { href: "/integrations", icon: "plug", label: "Integrations", adminOnly: true, maturity: "partial",
+      why: "API keys, JustCall and SignWell setup all work. Outbound webhooks queue through a cron that nothing triggers yet." },
+    { href: "/settings", icon: "gear", label: "Settings", maturity: "live" },
+    { href: "/profile", icon: "user", label: "Profile", maturity: "live" },
+  ]},
+  // Screens that exist but are not doing the job their label implies. Kept
+  // reachable on purpose, because hiding them makes them easy to forget, but
+  // out of the working menus so they cannot be mistaken for finished.
+  { id: "roadmap", label: "Roadmap", items: [
+    { href: "/reports", icon: "chart", label: "Reports", maturity: "roadmap",
+      why: "Reads live data but the saved views and scheduled sends are not built." },
+    { href: "/board", icon: "chart", label: "Delivery Board", maturity: "roadmap",
+      why: "Renders, but nothing feeds the SLA clocks yet." },
+    { href: "/grievous", icon: "shield", label: "Grievous", maturity: "roadmap",
+      why: "The QA pipeline runs outside the app. This screen does not drive it." },
   ]},
 ];
 
@@ -41,12 +61,17 @@ const FIRM_GROUPS: NavGroup[] = [
     { href: "/portal/reports", icon: "chart", label: "Reports" },
   ]},
   { id: "resources", label: "Resources", items: [
-    { href: "/portal/resources", icon: "toolbox", label: "Resources" },
-    { href: "/portal/sop", icon: "book", label: "SOP" },
-    { href: "/portal/crissi", icon: "life", label: "Crissi" },
+    { href: "/portal/resources", icon: "toolbox", label: "Resources", maturity: "live" },
+    { href: "/portal/sop", icon: "book", label: "SOP", maturity: "live" },
+    { href: "/portal/crissi", icon: "life", label: "Crissi", maturity: "partial",
+      why: "Doctrine works offline. Live answers need the AI relay up." },
   ]},
   { id: "account", label: "Account", items: [
-    { href: "/portal/profile", icon: "user", label: "Profile" },
+    { href: "/portal/profile", icon: "user", label: "Profile", maturity: "live" },
+  ]},
+  { id: "roadmap", label: "Roadmap", items: [
+    { href: "/portal/reports", icon: "chart", label: "Reports", maturity: "roadmap",
+      why: "Reads live data. Exports and scheduled sends are not built." },
   ]},
 ];
 
@@ -110,9 +135,14 @@ export default function SideNav({
                   </button>
                 )}
                 {!isCollapsed && items.map((n) => (
-                  <a key={n.href} href={n.href} className={`nl ${active === n.href ? "active" : ""}`} title={n.label} onClick={() => setOpen(false)}>
+                  <a key={n.href} href={n.href}
+                     className={`nl ${active === n.href ? "active" : ""} ${n.maturity && n.maturity !== "live" ? "nl-" + n.maturity : ""}`}
+                     title={n.why ? `${n.label}: ${n.why}` : n.label}
+                     onClick={() => setOpen(false)}>
                     <span className="ico"><Icon name={n.icon} /></span>
                     <span className="nl-label">{n.label}</span>
+                    {n.maturity === "partial" && <span className="nl-tag nl-tag-partial" title={n.why}>partial</span>}
+                    {n.maturity === "roadmap" && <span className="nl-tag nl-tag-roadmap" title={n.why}>not wired</span>}
                   </a>
                 ))}
               </div>
