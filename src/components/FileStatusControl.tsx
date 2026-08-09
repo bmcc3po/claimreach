@@ -11,6 +11,11 @@ export default function FileStatusControl({ leadId, current, role }: { leadId: s
   const [statuses, setStatuses] = useState<StatusDef[]>(DEFAULT_STATUSES);
   const [reasons, setReasons] = useState<DqReason[]>(DEFAULT_DQ_REASONS);
   const [picking, setPicking] = useState<StatusDef | null>(null); // disqualify status awaiting a reason
+  // Any other status awaiting a confirm. The badge looks like a label but is a
+  // button, so it gets clicked to READ the status, which opened a full menu
+  // where one more click committed instantly. That is how a signed file
+  // silently became "Signed: WIP" with nobody meaning to change anything.
+  const [confirming, setConfirming] = useState<StatusDef | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -41,9 +46,14 @@ export default function FileStatusControl({ leadId, current, role }: { leadId: s
   }
 
   function choose(s: StatusDef) {
-    if (s.qualify === "disqualify") { setPicking(s); return; } // require a reason
-    commit(s.key);
+    if (s.key === status) { setOpen(false); return; }          // already there
+    if (s.qualify === "disqualify") { setPicking(s); return; }  // require a reason
+    setConfirming(s);                                           // everything else confirms
   }
+
+  // Statuses the QA pipeline owns. Setting one by hand leaves the QA queue, the
+  // fix inbox and the file disagreeing about where the file actually is.
+  const isPipeline = (s: StatusDef) => s.phase === "in_qa";
 
   return (
     <div style={{ position: "relative" }}>
@@ -60,15 +70,49 @@ export default function FileStatusControl({ leadId, current, role }: { leadId: s
         <div className="status-menu" onMouseLeave={() => setOpen(false)}>
           <div className="status-menu-h">Set status</div>
           <div className="status-menu-list">
-            {statuses.map((s) => (
+            {statuses.filter((s) => !isPipeline(s)).map((s) => (
               <button key={s.key} className={`status-opt ${s.key === status ? "on" : ""}`} onClick={() => choose(s)}>
                 <span className={`sb-dot ${s.tone}`} />
                 <span>{s.label}</span>
                 {s.qualify === "disqualify" && <span className="status-opt-tag">reason</span>}
               </button>
             ))}
+            {statuses.some(isPipeline) && (
+              <>
+                <div className="status-menu-h" style={{ marginTop: 8 }}>Set by QA, not by hand</div>
+                {statuses.filter(isPipeline).map((s) => (
+                  <button key={s.key} className={`status-opt locked ${s.key === status ? "on" : ""}`}
+                          onClick={() => choose(s)} title="The QA pipeline normally sets this. Changing it here is an override.">
+                    <span className={`sb-dot ${s.tone}`} />
+                    <span>{s.label}</span>
+                    <span className="status-opt-tag">override</span>
+                  </button>
+                ))}
+              </>
+            )}
           </div>
           {msg && <div className="status-menu-msg">{msg}</div>}
+        </div>
+      )}
+
+      {confirming && (
+        <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) setConfirming(null); }}>
+          <div className="modal" style={{ maxWidth: 400, padding: "18px 20px" }}>
+            <h3 style={{ marginTop: 0 }}>Change status to {confirming.label}?</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              {isPipeline(confirming)
+                ? "The QA pipeline normally sets this one. Setting it by hand is an override, and it is recorded on the file."
+                : "This is recorded on the file and on the activity log."}
+            </p>
+            {msg && <div className="status-menu-msg">{msg}</div>}
+            <div className="row" style={{ justifyContent: "flex-end", marginTop: 14, gap: 8 }}>
+              <button className="btn ghost" disabled={busy} onClick={() => setConfirming(null)}>Cancel</button>
+              <button className="btn" disabled={busy}
+                onClick={() => { const k = confirming.key; setConfirming(null); commit(k); }}>
+                {busy ? "Saving" : `Set ${confirming.label}`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

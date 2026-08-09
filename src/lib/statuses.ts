@@ -99,3 +99,25 @@ export const DEFAULT_DQ_REASONS: DqReason[] = [
   { key: "no_contact",   label: "No Contact",   category: "Contact",       sort: 80 },
   { key: "other",        label: "Other",        category: "Other",         sort: 90 },
 ];
+
+
+// ============================================================================
+// LEADS vs CLIENTS
+//
+// A lead is someone we still need to chase. The moment they sign they are not a
+// lead any more, and leaving them on the Leads page turns a work queue into a
+// list of everyone who ever called.
+//
+// Defined once, here, because the Leads page and the Signed page both have to
+// answer the same question and must never answer it differently.
+//
+// Covers the whole post-signature track: the QA states a signed file passes
+// through, approval, delivery and retention. Deliberately includes
+// signed_dropped, because a file that signed and then fell apart is still not
+// something an agent should be calling back.
+export function isSignedStatus(key: string | null | undefined): boolean {
+  const k = String(key ?? "");
+  if (!k) return false;
+  if (k.startsWith("signed_")) return true;
+  return k === "delivered" || k === "retained";
+}

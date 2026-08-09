@@ -12,7 +12,7 @@ type Row = any;
 
 // Shared leads surface used by BOTH staff and firm. Three views:
 // Table (dense, default), Board (Monday lanes, group-by toggle), Gantt (stages over time).
-export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", agents = [], firms = [], canBulk = false, statuses = [], dqReasons = [] }: { leads: Row[]; basePath?: string; addPath?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[] }) {
+export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, statuses = [], dqReasons = [] }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[] }) {
   const statusList = statuses.length ? statuses : DEFAULT_STATUSES;
   const dqList = dqReasons.length ? dqReasons : DEFAULT_DQ_REASONS;
   const [q, setQ] = useState("");
@@ -28,6 +28,18 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const [bulkMsg, setBulkMsg] = useState("");
   const [bulkErr, setBulkErr] = useState(false);
 
+  // Extended filters sit behind a toggle so the default bar stays quiet. Each one
+  // answers a question people actually ask this list: which firm, which
+  // campaign, where, and when.
+  const [showMore, setShowMore] = useState(false);
+  const [fFirm, setFFirm] = useState("all");
+  const [fCampaign, setFCampaign] = useState("all");
+  const [fCity, setFCity] = useState("all");
+  const [fCreatedFrom, setFCreatedFrom] = useState("");
+  const [fCreatedTo, setFCreatedTo] = useState("");
+  const [fSignedFrom, setFSignedFrom] = useState("");
+  const [fSignedTo, setFSignedTo] = useState("");
+
   const rows = useMemo(() => {
     let r = leads.map((l) => {
       const c = (l.claims ?? [])[0] ?? {};
@@ -42,6 +54,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         id: l.id, lead_no: l.lead_no, firm_ref: l.firm_ref_no ?? "",
         name: l.claimant_name ?? "—", phone: l.phone ?? "—",
         loc: l.address ?? "—", state: l.mail_state ?? l.state ?? "",
+        city: l.mail_city ?? "", firm_id: l.firm_id ?? "", signed_at: l.signed_at ?? null,
         type: l.case_type ?? c.claim_type ?? "—", campaign: c.campaign ?? "—",
         status, stage: l.stage ?? "referral_received",
         tier: c.tier ?? "", tier_letter: c.tier_letter, tier_number: c.tier_number,
@@ -53,6 +66,16 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     if (fType !== "all") r = r.filter((x) => x.type === fType);
     if (fState !== "all") r = r.filter((x) => x.state === fState);
     if (fStatus !== "all") r = r.filter((x) => x.status === fStatus);
+    if (fFirm !== "all") r = r.filter((x) => x.firm_id === fFirm);
+    if (fCampaign !== "all") r = r.filter((x) => x.campaign === fCampaign);
+    if (fCity !== "all") r = r.filter((x) => x.city === fCity);
+    // Compare on the calendar day, so "from the 9th" includes the whole 9th
+    // rather than only what landed after midnight UTC.
+    const day = (v: any) => (v ? String(v).slice(0, 10) : "");
+    if (fCreatedFrom) r = r.filter((x) => day(x.created) >= fCreatedFrom);
+    if (fCreatedTo) r = r.filter((x) => day(x.created) <= fCreatedTo);
+    if (fSignedFrom) r = r.filter((x) => day(x.signed_at) && day(x.signed_at) >= fSignedFrom);
+    if (fSignedTo) r = r.filter((x) => day(x.signed_at) && day(x.signed_at) <= fSignedTo);
     if (q.trim()) {
       const t = q.toLowerCase();
       r = r.filter((x) => x.name.toLowerCase().includes(t) || x.phone.includes(t) ||
@@ -60,10 +83,27 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     }
     r.sort((a: any, b: any) => { const av = a[sort.k] ?? "", bv = b[sort.k] ?? ""; return (av > bv ? 1 : av < bv ? -1 : 0) * sort.dir; });
     return r;
-  }, [leads, q, fType, fState, fStatus, sort]);
+  }, [leads, q, fType, fState, fStatus, fFirm, fCampaign, fCity, fCreatedFrom, fCreatedTo, fSignedFrom, fSignedTo, sort]);
 
   const types = Array.from(new Set(leads.map((l) => l.case_type ?? l.claims?.[0]?.claim_type).filter(Boolean)));
-  const states = Array.from(new Set(rows.map((r) => r.state).filter(Boolean))).sort();
+  // Built from the UNFILTERED set, so choosing one filter never empties another.
+  const allRows = useMemo(() => leads.map((l: any) => ({
+    state: l.mail_state ?? l.state ?? "", city: l.mail_city ?? "",
+    firm_id: l.firm_id ?? "", campaign: (l.claims ?? [])[0]?.campaign ?? "",
+  })), [leads]);
+  const states = Array.from(new Set(allRows.map((r) => r.state).filter(Boolean))).sort();
+  const cities = Array.from(new Set(allRows.map((r) => r.city).filter(Boolean))).sort();
+  const campaignList = Array.from(new Set(allRows.map((r) => r.campaign).filter(Boolean))).sort();
+  const firmById = new Map((firms ?? []).map((f: any) => [f.id, f.name ?? f.slug]));
+  const firmIds = Array.from(new Set(allRows.map((r) => r.firm_id).filter(Boolean)));
+  const activeFilterCount =
+    [fType, fState, fStatus, fFirm, fCampaign, fCity].filter((v) => v !== "all").length +
+    [fCreatedFrom, fCreatedTo, fSignedFrom, fSignedTo].filter(Boolean).length;
+  function clearFilters() {
+    setFType("all"); setFState("all"); setFStatus("all"); setFFirm("all");
+    setFCampaign("all"); setFCity("all");
+    setFCreatedFrom(""); setFCreatedTo(""); setFSignedFrom(""); setFSignedTo(""); setQ("");
+  }
 
   // ---- Bulk selection ----
   const pageIds = rows.map((r) => r.id);
@@ -190,37 +230,91 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
           )}
         </div>
       )}
-      <div className="leads-bar">
-        <h1 style={{ margin: 0 }}>Leads</h1>
-        <span className="muted">{rows.length} of {leads.length}</span>
-        <input className="leads-search" placeholder="Search name, phone, id, campaign…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <div className="spacer" />
-        <select style={{ width: "auto" }} value={fType} onChange={(e) => setFType(e.target.value)}>
-          <option value="all">All types</option>
-          {types.map((t) => <option key={String(t)} value={String(t)}>{String(t)}</option>)}
-        </select>
-        <select style={{ width: "auto" }} value={fState} onChange={(e) => setFState(e.target.value)}>
-          <option value="all">All states</option>
-          {states.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select style={{ width: "auto" }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option value="all">All statuses</option>
-          {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-        </select>
-        {view === "board" && (
-          <select style={{ width: "auto" }} value={groupBy} onChange={(e) => setGroupBy(e.target.value as any)}>
-            <option value="status">Group: Status</option>
-            <option value="stage">Group: Stage</option>
-            <option value="tier">Group: Tier</option>
-          </select>
-        )}
-        <div className="seg-toggle">
-          <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Table</button>
-          <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>Board</button>
-          <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>
+      {/* Title and the actions that create or export. These are not filters, and
+          sitting them in the same row as the filters is what made the page feel
+          like loose controls hovering above a table. */}
+      <div className="leads-head">
+        <div className="leads-head-title">
+          <h1>{title}</h1>
+          <span className="leads-count">{rows.length}{rows.length !== leads.length ? ` of ${leads.length}` : ""}</span>
         </div>
-        <a className="btn ghost" href="/api/export?format=neos">⬇ Export</a>
-        <Link className="btn" href={addPath}>+ Add lead</Link>
+        <div className="leads-head-actions">
+          <div className="seg-toggle">
+            <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Table</button>
+            <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>Board</button>
+            <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>
+          </div>
+          <a className="btn ghost" href="/api/export?format=neos">Export</a>
+          <Link className="btn" href={addPath}>Add lead</Link>
+        </div>
+      </div>
+
+      {/* One contained panel for everything that narrows the list. */}
+      <div className="leads-filters">
+        <div className="leads-filters-row">
+          <input className="leads-search" placeholder="Search name, phone, lead id, campaign"
+            value={q} onChange={(e) => setQ(e.target.value)} />
+          <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+            <option value="all">Any status</option>
+            {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+          <select value={fType} onChange={(e) => setFType(e.target.value)}>
+            <option value="all">Any case type</option>
+            {types.map((t) => <option key={String(t)} value={String(t)}>{String(t)}</option>)}
+          </select>
+          <select value={fFirm} onChange={(e) => setFFirm(e.target.value)}>
+            <option value="all">Any firm</option>
+            {firmIds.map((id) => <option key={String(id)} value={String(id)}>{firmById.get(id) ?? String(id)}</option>)}
+          </select>
+          <button className={`btn ghost leads-more ${showMore ? "on" : ""}`} onClick={() => setShowMore((v) => !v)}>
+            More filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+          </button>
+          {(activeFilterCount > 0 || q) && (
+            <button className="btn ghost leads-clear" onClick={clearFilters}>Clear</button>
+          )}
+          {view === "board" && (
+            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as any)}>
+              <option value="status">Group: Status</option>
+              <option value="stage">Group: Stage</option>
+              <option value="tier">Group: Tier</option>
+            </select>
+          )}
+        </div>
+
+        {showMore && (
+          <div className="leads-filters-more">
+            <label>Campaign
+              <select value={fCampaign} onChange={(e) => setFCampaign(e.target.value)}>
+                <option value="all">Any campaign</option>
+                {campaignList.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            <label>State
+              <select value={fState} onChange={(e) => setFState(e.target.value)}>
+                <option value="all">Any state</option>
+                {states.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label>City
+              <select value={fCity} onChange={(e) => setFCity(e.target.value)}>
+                <option value="all">Any city</option>
+                {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            <label>Created from
+              <input type="date" value={fCreatedFrom} onChange={(e) => setFCreatedFrom(e.target.value)} />
+            </label>
+            <label>Created to
+              <input type="date" value={fCreatedTo} onChange={(e) => setFCreatedTo(e.target.value)} />
+            </label>
+            <label>Signed from
+              <input type="date" value={fSignedFrom} onChange={(e) => setFSignedFrom(e.target.value)} />
+            </label>
+            <label>Signed to
+              <input type="date" value={fSignedTo} onChange={(e) => setFSignedTo(e.target.value)} />
+            </label>
+          </div>
+        )}
       </div>
 
       {view === "table" && (

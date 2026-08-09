@@ -1624,3 +1624,60 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .campaign-menu-hint { font-size:11.5px; color:var(--ink-faint); padding:6px 8px 8px; line-height:1.4; }
 .campaign-menu-item { display:block; width:100%; text-align:left; padding:9px 10px; border:none; background:transparent; border-radius:8px; font-size:13.5px; color:var(--ink); cursor:pointer; }
 .campaign-menu-item:hover { background:var(--surface-2); }
+
+/* ============================================================
+   NAV MATURITY MARKERS
+   A menu should never be able to imply that something works. These make the
+   difference visible instead of something you have to remember.
+   ============================================================ */
+.nl-tag { margin-left: auto; font-size: 9.5px; font-weight: 800; letter-spacing: .04em;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 999px; line-height: 1.5; white-space: nowrap; }
+.nl-tag-partial { background: rgba(214,158,46,.18); color: #e0a94a; border: 1px solid rgba(214,158,46,.35); }
+.nl-tag-roadmap { background: rgba(255,255,255,.07); color: #8fa3b8; border: 1px solid rgba(255,255,255,.12); }
+.sidenav a.nl.nl-roadmap { opacity: .55; }
+.sidenav a.nl.nl-roadmap:hover { opacity: .85; }
+.sidenav.min .nl-tag { display: none; }
+
+/* QA-owned statuses in the file status picker: separated and tagged so setting
+   one by hand reads as the override it is. */
+.status-opt.locked { opacity: .72; }
+.status-opt.locked:hover { opacity: 1; }
+
+/* ============================================================
+   LEADS AND SIGNED: HEADER + FILTER PANEL
+
+   The old bar put the title, count, search, three filters, a view switcher,
+   Export and Add lead in ONE flex row with a spacer in the middle. Eleven
+   controls of five different kinds pushed to opposite edges reads as loose
+   parts hovering over a table. Split into two: what the page IS and what it
+   DOES on top, everything that NARROWS the list in one contained panel below.
+   ============================================================ */
+.leads-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.leads-head-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.leads-head-title h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+.leads-count { font-size: 12.5px; font-weight: 600; color: var(--ink-faint);
+  background: var(--surface-2); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.leads-head-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.leads-filters { background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px; margin-bottom: 16px; }
+.leads-filters-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.leads-filters-row .leads-search { flex: 1 1 260px; min-width: 200px; margin: 0; }
+.leads-filters-row select { width: auto; min-width: 132px; }
+.leads-more.on { background: var(--surface-2); }
+.leads-clear { color: var(--ink-faint); }
+
+/* The extended set is a labelled grid, not more pills in the same line. Two
+   bare date boxes next to "Any state" is not self-explanatory. */
+.leads-filters-more { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 10px 12px; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.leads-filters-more label { display: flex; flex-direction: column; gap: 4px; font-size: 11px;
+  font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-faint); }
+.leads-filters-more select, .leads-filters-more input { width: 100%; margin: 0; }
+
+@media (max-width: 760px) {
+  .leads-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .leads-head-actions { justify-content: space-between; }
+  .leads-filters-row .leads-search { flex-basis: 100%; }
+  .leads-filters-row select { flex: 1 1 45%; min-width: 0; }
+}

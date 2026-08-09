@@ -53,11 +53,11 @@ export default async function LeadsPage() {
   const { data: statuses } = await sb.from("statuses").select("*").eq("active", true).order("sort");
   const { data: dqReasons } = await sb.from("dq_reasons").select("*").eq("active", true).order("sort");
 
-  // Signed files are clients, not leads. They live on /signed so this list stays
-  // a work queue.
-  const openOnly = (withClaims as any[]).filter(
-    (l) => !isSignedStatus(l.claims?.[0]?.status ?? l.status)
+  // The mirror of /leads: only files that have signed. Same view, opposite side
+  // of the same one predicate, so a file is on exactly one of the two pages.
+  const signedOnly = (withClaims as any[]).filter(
+    (l) => isSignedStatus(l.claims?.[0]?.status ?? l.status)
   );
 
-  return <LeadsView leads={openOnly} basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} statuses={statuses ?? []} dqReasons={dqReasons ?? []} />;
+  return <LeadsView leads={signedOnly} title="Signed" basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} statuses={statuses ?? []} dqReasons={dqReasons ?? []} />;
 }
