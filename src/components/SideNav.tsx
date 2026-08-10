@@ -38,7 +38,7 @@ const STAFF_GROUPS: NavGroup[] = [
     { href: "/firms", icon: "building", label: "Firms", adminOnly: true, maturity: "live" },
     { href: "/templates", icon: "layout", label: "Templates", adminOnly: true, maturity: "live" },
     { href: "/integrations", icon: "plug", label: "Integrations", adminOnly: true, maturity: "partial",
-      why: "API keys, JustCall and SignWell setup all work. Outbound webhooks queue through a cron that nothing triggers yet." },
+      why: "API keys, inbound and outbound webhooks, JustCall and e-sign setup all work. Only the timed automations (drips, delayed steps) do not run, because nothing is scheduled to drain the queue." },
     { href: "/settings", icon: "gear", label: "Settings", maturity: "live" },
     { href: "/profile", icon: "user", label: "Profile", maturity: "live" },
   ]},

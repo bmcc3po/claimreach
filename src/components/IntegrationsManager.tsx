@@ -20,6 +20,46 @@ export default function IntegrationsManager() {
   const [kLabel, setKLabel] = useState(""); const [kScope, setKScope] = useState<"firm" | "master">("firm"); const [kFirm, setKFirm] = useState("");
   // create-endpoint form
   const [eUrl, setEUrl] = useState(""); const [eFirm, setEFirm] = useState(""); const [eEvents, setEEvents] = useState<string[]>([]);
+  const [eName, setEName] = useState(""); const [eCampaign, setECampaign] = useState("");
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  // Which endpoint's field map is open, and the map being edited.
+  const [mapFor, setMapFor] = useState<any>(null);
+  const [mapFields, setMapFields] = useState<{ lead_fields: any[]; questions: any[] }>({ lead_fields: [], questions: [] });
+  const [draftMap, setDraftMap] = useState<Record<string, string>>({});
+  const [mapBusy, setMapBusy] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await (await fetch("/api/campaigns")).json();
+        setCampaigns(d.campaigns ?? d ?? []);
+      } catch {}
+    })();
+  }, []);
+
+  async function openMap(ep: any) {
+    setMapFor(ep);
+    setDraftMap({ ...(ep.field_map ?? {}) });
+    setMapFields({ lead_fields: [], questions: [] });
+    try {
+      const q = ep.campaign_id ? `?campaign_id=${ep.campaign_id}` : "";
+      const d = await (await fetch(`/api/integrations/mappable${q}`)).json();
+      setMapFields({ lead_fields: d.lead_fields ?? [], questions: d.questions ?? [] });
+    } catch {}
+  }
+  async function saveMap() {
+    if (!mapFor) return;
+    setMapBusy(true);
+    // Blank targets mean "do not send this field", so they are stripped rather
+    // than saved as empty strings that would send empty keys.
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(draftMap)) if (v && v.trim()) clean[k] = v.trim();
+    await fetch("/api/integrations", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "update_endpoint", id: mapFor.id, field_map: clean }),
+    });
+    setMapBusy(false); setMapFor(null); load();
+  }
 
   async function load() {
     const r = await fetch("/api/integrations"); const d = await r.json();
@@ -37,9 +77,9 @@ export default function IntegrationsManager() {
   async function revokeKey(id: string) { if (!confirm("Revoke this key? Integrations using it will stop working.")) return; await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "revoke_key", id }) }); load(); }
   async function createEndpoint() {
     if (!eUrl) return;
-    const r = await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "create_endpoint", url: eUrl, firm_id: eFirm, events: eEvents }) });
+    const r = await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "create_endpoint", url: eUrl, firm_id: eFirm, events: eEvents, name: eName, campaign_id: eCampaign || null }) });
     const d = await r.json();
-    if (d.ok) { setEpSecret(d.secret); setEUrl(""); setEEvents([]); load(); } else alert(d.error || "Failed");
+    if (d.ok) { setEpSecret(d.secret); setEUrl(""); setEName(""); setECampaign(""); setEEvents([]); load(); } else alert(d.error || "Failed");
   }
   async function revokeEndpoint(id: string) { if (!confirm("Disable this webhook endpoint?")) return; await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "revoke_endpoint", id }) }); load(); }
 
@@ -121,10 +161,21 @@ export default function IntegrationsManager() {
           <div className="card" style={{ padding: 16, marginBottom: 16 }}>
             <div className="section-title">Add outbound webhook</div>
             <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <input placeholder="Name it, e.g. Lexamica" value={eName} onChange={(e) => setEName(e.target.value)} style={{ width: 160 }} />
               <input placeholder="https://their-system.com/hook" value={eUrl} onChange={(e) => setEUrl(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
               <select value={eFirm} onChange={(e) => setEFirm(e.target.value)} style={{ width: "auto" }}>{firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select>
+              <select value={eCampaign} onChange={(e) => setECampaign(e.target.value)} style={{ width: "auto" }}>
+                <option value="">All campaigns for this firm</option>
+                {campaigns.filter((c: any) => !eFirm || c.firm_id === eFirm).map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
               <button className="btn" onClick={createEndpoint}>Add</button>
             </div>
+            <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+              Pick a campaign when the receiver only wants that campaign's leads, or when it needs
+              its own field names. Different campaigns ask different questions, so they rarely map the same way.
+            </p>
             <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
               {EVENT_TYPES.map((ev) => (
                 <label key={ev} className={`chip ${eEvents.includes(ev) ? "on" : ""}`} style={{ cursor: "pointer" }}>
@@ -133,14 +184,71 @@ export default function IntegrationsManager() {
               ))}
             </div>
           </div>
-          <table className="data-table"><thead><tr><th>URL</th><th>Firm</th><th>Events</th><th></th></tr></thead><tbody>
-            {endpoints.map((ep) => (
-              <tr key={ep.id} style={{ opacity: ep.active ? 1 : 0.4 }}>
-                <td style={{ fontFamily: "monospace", fontSize: 12 }}>{ep.url}</td><td>{firmName(ep.firm_id)}</td><td className="muted" style={{ fontSize: 12 }}>{(ep.events || []).join(", ")}</td>
-                <td>{ep.active && <button className="btn ghost sm" onClick={() => revokeEndpoint(ep.id)}>Disable</button>}</td>
-              </tr>
-            ))}
+          <table className="data-table"><thead><tr><th>Name</th><th>URL</th><th>Firm</th><th>Campaign</th><th>Events</th><th>Fields</th><th></th></tr></thead><tbody>
+            {endpoints.map((ep) => {
+              const mapped = Object.keys(ep.field_map ?? {}).length;
+              return (
+                <tr key={ep.id} style={{ opacity: ep.active ? 1 : 0.4 }}>
+                  <td>{ep.name || "—"}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: 12 }}>{ep.url}</td>
+                  <td>{firmName(ep.firm_id)}</td>
+                  <td className="muted" style={{ fontSize: 12 }}>
+                    {ep.campaign_id ? (campaigns.find((c: any) => c.id === ep.campaign_id)?.name ?? "campaign") : "all"}
+                  </td>
+                  <td className="muted" style={{ fontSize: 12 }}>{(ep.events || []).join(", ")}</td>
+                  <td className="muted" style={{ fontSize: 12 }}>
+                    {mapped > 0 ? `${mapped} mapped` : "our field names"}
+                  </td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <button className="btn ghost sm" onClick={() => openMap(ep)}>Map fields</button>
+                    {ep.active && <button className="btn ghost sm" onClick={() => revokeEndpoint(ep.id)}>Disable</button>}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody></table>
+
+          {mapFor && (
+            <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) setMapFor(null); }}>
+              <div className="modal" style={{ maxWidth: 720, padding: "18px 20px", maxHeight: "82vh", overflow: "auto" }}>
+                <h3 style={{ marginTop: 0 }}>Field names for {mapFor.name || mapFor.url}</h3>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Type the name the receiver expects next to each field you want to send. Leave a row blank to leave it out.
+                  Map nothing and we send our own field names unchanged.
+                </p>
+                {!mapFor.campaign_id && (
+                  <p className="muted" style={{ fontSize: 12 }}>
+                    This endpoint is not bound to a campaign, so only the fields on every file are listed.
+                    Bind it to a campaign to map that campaign's questions.
+                  </p>
+                )}
+                <div className="section-title" style={{ marginTop: 12 }}>On every file</div>
+                {mapFields.lead_fields.map((f: any) => (
+                  <div className="row" key={f.id} style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ flex: 1, fontSize: 13 }}>{f.label} <span className="muted" style={{ fontFamily: "monospace", fontSize: 11 }}>{f.id}</span></span>
+                    <input placeholder="their field name" value={draftMap[f.id] ?? ""} style={{ width: 220 }}
+                      onChange={(e) => setDraftMap((m) => ({ ...m, [f.id]: e.target.value }))} />
+                  </div>
+                ))}
+                {mapFields.questions.length > 0 && (
+                  <>
+                    <div className="section-title" style={{ marginTop: 16 }}>Intake questions ({mapFields.questions.length})</div>
+                    {mapFields.questions.map((f: any) => (
+                      <div className="row" key={f.id} style={{ gap: 8, alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ flex: 1, fontSize: 13 }}>{String(f.label).slice(0, 70)} <span className="muted" style={{ fontFamily: "monospace", fontSize: 11 }}>{f.id}</span></span>
+                        <input placeholder="their field name" value={draftMap[f.id] ?? ""} style={{ width: 220 }}
+                          onChange={(e) => setDraftMap((m) => ({ ...m, [f.id]: e.target.value }))} />
+                      </div>
+                    ))}
+                  </>
+                )}
+                <div className="row" style={{ justifyContent: "flex-end", marginTop: 16, gap: 8 }}>
+                  <button className="btn ghost" onClick={() => setMapFor(null)}>Cancel</button>
+                  <button className="btn" disabled={mapBusy} onClick={saveMap}>{mapBusy ? "Saving" : "Save field names"}</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

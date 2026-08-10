@@ -121,10 +121,17 @@ export async function POST(req: NextRequest) {
     if (lead && lead.status) {
       try {
         const { fireEvent } = await import("@/lib/webhook-deliver");
-        const { data: row } = await sb.from("leads").select("firm_id, lead_no, external_id, status, first_name, last_name, phone, email, case_type").eq("id", lead_id).maybeSingle();
+        const { data: row } = await sb.from("leads").select("firm_id, campaign_id, lead_no, external_id, status, first_name, last_name, claimant_name, phone, email, dob, mail_address1, mail_city, mail_state, mail_zip, case_type, signed_at").eq("id", lead_id).maybeSingle();
         if (row?.firm_id) {
           const evt = lead.status === "signed" ? "lead.signed" : lead.status === "dq" ? "lead.dq" : lead.status === "qualified" ? "lead.qualified" : "lead.updated";
-          await fireEvent(row.firm_id, evt, { lead_id, ...row });
+          // The intake answers travel with the event so a receiver's field map
+          // can name individual questions, not just the contact record. Without
+          // this there is nothing per-question to map.
+          const { data: claim } = await sb.from("claims")
+            .select("answers, claim_type, campaign").eq("lead_id", lead_id)
+            .order("created_at", { ascending: true }).limit(1).maybeSingle();
+          await fireEvent(row.firm_id, evt, { lead_id, ...row, campaign: claim?.campaign ?? null },
+            { campaignId: row.campaign_id ?? null, answers: (claim?.answers ?? {}) as any });
         }
       } catch {}
     }

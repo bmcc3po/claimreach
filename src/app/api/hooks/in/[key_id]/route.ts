@@ -69,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ key
   // claim any orphaned calls/SMS that arrived before this file existed
   try { const { reconcileUnmatched } = await import("@/lib/comms"); await reconcileUnmatched(lead.id, insert.phone, firmId); } catch {}
 
-  await fireEvent(firmId, "lead.created", { lead_id: lead.id, lead_no: lead.lead_no, ...insert });
+  await fireEvent(firmId, "lead.created", { lead_id: lead.id, lead_no: lead.lead_no, ...insert }, { campaignId: null, answers: null });
 
   return NextResponse.json({ ok: true, lead_id: lead.id, lead_no: lead.lead_no });
 }

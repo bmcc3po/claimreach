@@ -47,9 +47,30 @@ export async function POST(req: NextRequest) {
     const secret = "whs_" + Array.from(crypto.getRandomValues(new Uint8Array(20))).map((x) => x.toString(16).padStart(2, "0")).join("");
     const { error } = await admin.from("webhook_endpoints").insert({
       firm_id: b.firm_id, url: b.url, secret, events: b.events ?? [], created_by: g.uid,
+      name: b.name ?? null,
+      // Null campaign = every campaign for this firm. Set = only that campaign,
+      // so an MVA feed and a trafficking feed can send different shapes.
+      campaign_id: b.campaign_id || null,
+      field_map: b.field_map ?? {},
+      include_answers: b.include_answers !== false,
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, secret });
+  }
+  // Editing the map is the whole point of having one, so it is savable without
+  // deleting and re-adding the endpoint (which would rotate the secret and
+  // silently break the receiver's signature check).
+  if (b.op === "update_endpoint") {
+    const patch: any = {};
+    if (b.field_map !== undefined) patch.field_map = b.field_map ?? {};
+    if (b.campaign_id !== undefined) patch.campaign_id = b.campaign_id || null;
+    if (b.include_answers !== undefined) patch.include_answers = b.include_answers !== false;
+    if (b.events !== undefined) patch.events = b.events ?? [];
+    if (b.name !== undefined) patch.name = b.name ?? null;
+    if (b.url !== undefined && b.url) patch.url = b.url;
+    const { error } = await admin.from("webhook_endpoints").update(patch).eq("id", b.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
   if (b.op === "revoke_endpoint") {
     await admin.from("webhook_endpoints").update({ active: false }).eq("id", b.id);
