@@ -13,8 +13,8 @@ const BUILD_STAMP = "2026.07.19.1611";
 // Anything roadmap moves OUT of the working menus into its own section at the
 // bottom. The point is that a menu should not be able to imply something works.
 type Maturity = "live" | "partial" | "roadmap";
-type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean; maturity?: Maturity; why?: string };
-type NavGroup = { id: string; label: string | null; items: NavItem[] };
+type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean; staffOnly?: boolean; maturity?: Maturity; why?: string };
+type NavGroup = { id: string; label: string | null; items: NavItem[]; staffOnly?: boolean };
 
 const STAFF_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
@@ -22,7 +22,7 @@ const STAFF_GROUPS: NavGroup[] = [
     { href: "/console", icon: "phone", label: "Take a call", maturity: "live" },
     { href: "/leads", icon: "files", label: "Leads", maturity: "live" },
     { href: "/signed", icon: "files", label: "Signed", maturity: "live" },
-    { href: "/intake", icon: "plus", label: "Add lead", maturity: "live" },
+    { href: "/intake", icon: "plus", label: "Add lead", staffOnly: true, maturity: "live" },
     { href: "/queue", icon: "phone", label: "My queue", maturity: "live" },
     { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true, maturity: "live" },
   ]},
@@ -33,19 +33,19 @@ const STAFF_GROUPS: NavGroup[] = [
       why: "Coaching needs the AI relay. Blank when it is down." },
   ]},
   { id: "admin", label: "Settings", items: [
-    { href: "/team", icon: "people", label: "Team", maturity: "live" },
+    { href: "/team", icon: "people", label: "Team", staffOnly: true, maturity: "live" },
     { href: "/users", icon: "user", label: "Users", adminOnly: true, maturity: "live" },
     { href: "/firms", icon: "building", label: "Firms", adminOnly: true, maturity: "live" },
     { href: "/templates", icon: "layout", label: "Templates", adminOnly: true, maturity: "live" },
     { href: "/integrations", icon: "plug", label: "Integrations", adminOnly: true, maturity: "partial",
       why: "API keys, inbound and outbound webhooks, JustCall and e-sign setup all work. Only the timed automations (drips, delayed steps) do not run, because nothing is scheduled to drain the queue." },
-    { href: "/settings", icon: "gear", label: "Settings", maturity: "live" },
+    { href: "/settings", icon: "gear", label: "Settings", staffOnly: true, maturity: "live" },
     { href: "/profile", icon: "user", label: "Profile", maturity: "live" },
   ]},
   // Screens that exist but are not doing the job their label implies. Kept
   // reachable on purpose, because hiding them makes them easy to forget, but
   // out of the working menus so they cannot be mistaken for finished.
-  { id: "roadmap", label: "Roadmap", items: [
+  { id: "roadmap", label: "Roadmap", staffOnly: true, items: [
     { href: "/reports", icon: "chart", label: "Reports", maturity: "roadmap",
       why: "Reads live data but the saved views and scheduled sends are not built." },
     { href: "/board", icon: "chart", label: "Delivery Board", maturity: "roadmap",
@@ -70,7 +70,7 @@ const FIRM_GROUPS: NavGroup[] = [
   { id: "account", label: "Account", items: [
     { href: "/portal/profile", icon: "user", label: "Profile", maturity: "live" },
   ]},
-  { id: "roadmap", label: "Roadmap", items: [
+  { id: "roadmap", label: "Roadmap", staffOnly: true, items: [
     { href: "/portal/reports", icon: "chart", label: "Reports", maturity: "roadmap",
       why: "Reads live data. Exports and scheduled sends are not built." },
   ]},
@@ -119,10 +119,11 @@ export default function SideNav({
           </a>
         </div>
         <nav className="navlinks">
-          {GROUPS.map((g) => {
+          {GROUPS.filter((g) => !g.staffOnly || role !== "agent").map((g) => {
             const items = g.items.filter((n) => {
               if (n.adminOnly && !["owner", "admin"].includes(role)) return false;
               if (n.qaOnly && !["owner", "admin", "qa"].includes(role)) return false;
+              if (n.staffOnly && role === "agent") return false;
               return true;
             });
             if (items.length === 0) return null;
