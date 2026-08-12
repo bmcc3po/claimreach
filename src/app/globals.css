@@ -1681,3 +1681,33 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   .leads-filters-row .leads-search { flex-basis: 100%; }
   .leads-filters-row select { flex: 1 1 45%; min-width: 0; }
 }
+
+/* ============================================================
+   END OF CALL: HOW DID THIS END
+
+   Six outcomes and a reason list, tapped not typed. The agent is finishing a
+   live call, often in a second language, so each choice states the outcome in
+   bold and what it means underneath. The old version was three buttons plus a
+   window.prompt that asked them to type one of nine english keys from memory.
+   ============================================================ */
+.outcome-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
+
+.outcome {
+  display: flex; flex-direction: column; gap: 2px;
+  text-align: left; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--ink);
+  cursor: pointer; transition: border-color .12s, background .12s;
+}
+.outcome b { font-size: 14px; font-weight: 700; }
+.outcome span { font-size: 12px; color: var(--ink-faint); line-height: 1.35; }
+.outcome:hover { background: var(--surface-2); }
+.outcome:disabled { opacity: .5; cursor: default; }
+
+/* A left edge of colour, so the shape of the choice is readable at a glance
+   without turning the whole panel into a traffic light. */
+.outcome.good    { border-left: 3px solid var(--good, #2e9e6b); }
+.outcome.warn    { border-left: 3px solid var(--warn, #d69e2e); }
+.outcome.info    { border-left: 3px solid var(--accent, #3b7dd8); }
+.outcome.bad     { border-left: 3px solid var(--bad, #c1503f); }
+.outcome.neutral { border-left: 3px solid var(--line); }

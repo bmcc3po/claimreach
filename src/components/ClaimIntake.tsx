@@ -185,15 +185,24 @@ export default function ClaimIntake({
     return inputs.every((f) => isFilled(answers[f.id]));
   }
 
-  async function finishWithStatus(status: string) {
-    // The status model requires a reason for any disqualifying status. Capture it
-    // here so the server-side gate accepts the change instead of silently failing.
-    let dqReasonKey: string | null = null;
-    if (status === "dq") {
-      const reason = window.prompt("Disqualification reason (required). Enter one of: sol, diagnosis, already_rep, criteria, prior_signup, location, duplicate, no_contact, other", "other");
-      if (!reason) return; // cancelled: do not change status
-      dqReasonKey = reason.trim().toLowerCase();
-    }
+  const [dqPick, setDqPick] = useState(false);
+  const [dqReasons, setDqReasons] = useState<any[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await (await fetch("/api/dq-reasons")).json();
+        setDqReasons(d.reasons ?? d ?? []);
+      } catch {}
+    })();
+  }, []);
+
+  async function finishWithStatus(status: string, dqReasonKey: string | null = null) {
+    // The status model requires a reason for any disqualifying status. It used to
+    // be a window.prompt asking the agent to TYPE one of nine english keys from
+    // memory, which is unusable on a live call and worse for an agent working in
+    // a second language: a typo silently became an invalid reason. It is a list
+    // now, and the list is the only way through.
+    if (status === "dq" && !dqReasonKey) return;
     setSaving(true);
     await save(false);
     try {
@@ -438,16 +447,49 @@ export default function ClaimIntake({
       </div>
 
       {finishing && (
-        <div className="modal-back" onClick={() => setFinishing(false)}>
+        <div className="modal-back" onClick={() => { setFinishing(false); setDqPick(false); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-h"><h3>Set claim status</h3><button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => setFinishing(false)}>Cancel</button></div>
+            <div className="modal-h"><h3>Set claim status</h3><button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => { setFinishing(false); setDqPick(false); }}>Cancel</button></div>
             <div className="modal-b">
-              <p className="muted" style={{ marginTop: 0 }}>Choose the disposition for this intake.</p>
-              <div style={{ display: "grid", gap: 8 }}>
-                <button className="btn" disabled={saving} onClick={() => finishWithStatus("approved")}>✅ Qualified — submit to firm</button>
-                <button className="btn secondary" disabled={saving} onClick={() => finishWithStatus("contacting")}>⏳ Incomplete — callback scheduled</button>
-                <button className="btn ghost" disabled={saving} onClick={() => finishWithStatus("dq")}>⛔ Disqualified</button>
-              </div>
+              <p className="muted" style={{ marginTop: 0 }}>How did this call end?</p>
+              {!dqPick ? (
+                <div className="outcome-grid">
+                  <button className="outcome good" disabled={saving} onClick={() => finishWithStatus("signed_grievous")}>
+                    <b>Signed the retainer</b><span>Client signed while on the call</span>
+                  </button>
+                  <button className="outcome good" disabled={saving} onClick={() => finishWithStatus("transferred")}>
+                    <b>Live transferred to the firm</b><span>Firm picked up and took the caller</span>
+                  </button>
+                  <button className="outcome warn" disabled={saving} onClick={() => finishWithStatus("transfer_no_answer")}>
+                    <b>Transfer, no answer</b><span>Qualified, firm did not pick up after 2 tries</span>
+                  </button>
+                  <button className="outcome warn" disabled={saving} onClick={() => finishWithStatus("esign_sent")}>
+                    <b>e-Sign sent, not signed yet</b><span>Retainer is out, waiting on the client</span>
+                  </button>
+                  <button className="outcome info" disabled={saving} onClick={() => finishWithStatus("network_referred")}>
+                    <b>Referred to the network</b><span>Outside this firm, sent to Lexamica</span>
+                  </button>
+                  <button className="outcome neutral" disabled={saving} onClick={() => finishWithStatus("contacting")}>
+                    <b>Incomplete, call back</b><span>Did not finish the intake</span>
+                  </button>
+                  <button className="outcome bad" disabled={saving} onClick={() => setDqPick(true)}>
+                    <b>Disqualified</b><span>Pick a reason on the next screen</span>
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div className="section-title" style={{ marginTop: 0 }}>Why is it disqualified?</div>
+                  <div className="outcome-grid">
+                    {dqReasons.map((r: any) => (
+                      <button key={r.key} className="outcome bad" disabled={saving}
+                        onClick={() => finishWithStatus("dq", r.key)}>
+                        <b>{r.label}</b><span>{r.category}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn ghost" style={{ marginTop: 10 }} onClick={() => setDqPick(false)}>Back</button>
+                </div>
+              )}
             </div>
           </div>
         </div>
