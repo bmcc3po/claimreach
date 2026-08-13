@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
 
   // Resolve the questionnaire (published custom form first, else preset).
   let fields: any[] = [];
-  try { const { resolveIntakeFields } = await import("@/lib/forms"); fields = await resolveIntakeFields(sb, caseType); } catch {}
+  try { const { resolveIntakeFields } = await import("@/lib/forms"); fields = await resolveIntakeFields(sb, caseType, lead?.campaign_id ?? null); } catch {}
   if (!fields || fields.length === 0) { try { const { intakeForType } = await import("@/lib/questionnaire"); fields = intakeForType(caseType) as any[]; } catch {} }
 
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");

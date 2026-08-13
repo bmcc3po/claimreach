@@ -44,7 +44,11 @@ export default async function IntakeEditor({ params }: { params: Promise<{ id: s
   // surfaces a "campaign not configured" message instead of a wrong form.
   const { resolveIntakeFields } = await import("@/lib/forms");
   const { intakeForType } = await import("@/lib/questionnaire");
-  const resolved = formKey ? await resolveIntakeFields(sb, formKey) : null;
+  // The campaign is passed so a campaign-owned fork wins over the shared master.
+  // Two firms running personal injury can then ask different questions without
+  // one editing the other's form.
+  const campaignId = claim.campaign_id ?? lead.campaign_id ?? null;
+  const resolved = formKey ? await resolveIntakeFields(sb, formKey, campaignId) : null;
   const builtIn = formKey ? intakeForType(formKey) : null;
   const customFields = resolved && resolved !== builtIn ? resolved : undefined;
   const unconfigured = !formKey;

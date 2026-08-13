@@ -67,7 +67,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const { intakeForType } = await import("@/lib/questionnaire");
   const formsByType: Record<string, any[]> = {};
   for (const ct of Array.from(new Set((claims ?? []).map((c: any) => c.claim_type)))) {
-    const resolved = await resolveIntakeFields(sb, ct);
+    // The campaign that owns this claim type on this file, so a campaign fork
+    // wins over the shared master and the workspace shows what the agent saw.
+    const ctCampaign = (claims ?? []).find((c: any) => c.claim_type === ct)?.campaign_id
+      ?? (lead as any)?.campaign_id ?? null;
+    const resolved = await resolveIntakeFields(sb, ct, ctCampaign);
     if (resolved !== intakeForType(ct)) formsByType[ct] = resolved;
   }
 

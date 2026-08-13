@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   // The questionnaire defines the columns.
   let fields: any[] = [];
-  try { const { resolveIntakeFields } = await import("@/lib/forms"); fields = await resolveIntakeFields(sb, caseType); } catch {}
+  try { const { resolveIntakeFields } = await import("@/lib/forms"); fields = await resolveIntakeFields(sb, caseType, campaignId); } catch {}
   if (!fields || fields.length === 0) { try { const { intakeForType } = await import("@/lib/questionnaire"); fields = intakeForType(caseType) as any[]; } catch {} }
   const cols = fields.filter((f) => !SKIP_KINDS.includes(f.kind));
 

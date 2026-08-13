@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const { resolveIntakeFields } = await import("@/lib/forms");
   const { intakeForType } = await import("@/lib/questionnaire");
   let fields: any[] = [];
-  try { fields = await resolveIntakeFields(sb, caseType); } catch { fields = []; }
+  try { fields = await resolveIntakeFields(sb, caseType, campaignId); } catch { fields = []; }
   if (!fields || fields.length === 0) { try { fields = intakeForType(caseType) as any[]; } catch { fields = []; } }
 
   const mappable = (fields || [])

@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   if (caseType) {
     try {
       const { resolveIntakeFields } = await import("@/lib/forms");
-      intake = await resolveIntakeFields(sb, caseType);
+      intake = await resolveIntakeFields(sb, caseType, campaignId);
     } catch { intake = []; }
     if (!intake || intake.length === 0) {
       try { const { intakeForType } = await import("@/lib/questionnaire"); intake = intakeForType(caseType) as any[]; } catch { intake = []; }

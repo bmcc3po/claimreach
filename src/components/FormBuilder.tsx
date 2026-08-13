@@ -6,13 +6,22 @@ import { TEMPLATES } from "@/lib/form-templates";
 import { canDeleteField, canHideField, canReorder, type TemplateField } from "@/lib/template-engine";
 import FieldRenderer from "./FieldRenderer";
 
+// Every kind the renderer can draw. If a kind is missing from this list, a
+// question using it cannot be created here AND cannot be set back after someone
+// changes its type, which is how the SSN and address fields would have quietly
+// degraded into plain text boxes the first time anyone edited them.
 const KINDS: { kind: FieldKind; label: string }[] = [
   { kind: "section", label: "Section" }, { kind: "script", label: "Script" },
   { kind: "text", label: "Short text" }, { kind: "longtext", label: "Long text" },
   { kind: "bool", label: "Yes / No" }, { kind: "select", label: "Dropdown" },
   { kind: "multiselect", label: "Checkboxes" }, { kind: "int", label: "Number" },
-  { kind: "date", label: "Date" }, { kind: "monthyear", label: "Month/Year" },
+  { kind: "date", label: "Date" }, { kind: "time", label: "Time" },
+  { kind: "monthyear", label: "Month/Year" },
   { kind: "phone", label: "Phone" }, { kind: "email", label: "Email" },
+  // Address is a Google-backed lookup, not three text boxes the agent has to
+  // spell the same way twice. SSN is masked, because an SSN in a plain text box
+  // ends up in exports, logs and screenshots in the clear.
+  { kind: "address", label: "Address (lookup)" }, { kind: "ssn", label: "SSN (masked)" },
   { kind: "facility_lookup", label: "Facility (verify)" }, { kind: "property_lookup", label: "Property (verify)" },
   { kind: "gate", label: "Gate (DQ)" },
 ];
@@ -41,6 +50,23 @@ export default function FormBuilder({ formId }: { formId?: string }) {
   const [msg, setMsg] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [claimTypes, setClaimTypes] = useState<any[]>([]);
+  // Which campaign owns this form. Blank means it is the shared master for the
+  // case type, which is what every existing form is.
+  const [campaignId, setCampaignId] = useState<string>("");
+  const [campaignList, setCampaignList] = useState<any[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const d = await (await fetch("/api/claim-types")).json();
+        setClaimTypes(d.types ?? []);
+      } catch {}
+      try {
+        const c = await (await fetch("/api/campaigns")).json();
+        setCampaignList(c.campaigns ?? c ?? []);
+      } catch {}
+    })();
+  }, []);
   const [aiDesc, setAiDesc] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [saved, setSaved] = useState<any[]>([]);
@@ -48,7 +74,7 @@ export default function FormBuilder({ formId }: { formId?: string }) {
   useEffect(() => { if (formId) (async () => {
     const r = await fetch("/api/forms"); const d = await r.json();
     const f = (d.forms ?? []).find((x: any) => x.id === formId);
-    if (f) { setName(f.name); setClaimType(f.claim_type); setDescription(f.description ?? ""); setFields(f.fields ?? []); setId(f.id); setStatus(f.status); }
+    if (f) { setName(f.name); setClaimType(f.claim_type); setDescription(f.description ?? ""); setFields(f.fields ?? []); setId(f.id); setStatus(f.status); setCampaignId(f.campaign_id ?? ""); }
   })(); }, [formId]);
 
   useEffect(() => { (async () => {
@@ -161,7 +187,7 @@ export default function FormBuilder({ formId }: { formId?: string }) {
     setSaving(true); setMsg("Saving…");
     try {
       const r = await fetch("/api/forms", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "save", id, claim_type: claimType.trim().toLowerCase(), name, description, fields }) });
+        body: JSON.stringify({ op: "save", id, claim_type: claimType.trim().toLowerCase(), name, description, fields, campaign_id: campaignId || null }) });
       const d = await r.json();
       if (!r.ok) { setMsg(`⚠ Save failed: ${d.error || r.status}. Your form is still here — nothing lost.`); setSaving(false); return; }
       setId(d.id);
@@ -204,16 +230,30 @@ export default function FormBuilder({ formId }: { formId?: string }) {
       <div className="row" style={{ flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
         <input placeholder="Form name (e.g. Bard PowerPort Intake)" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
         <input placeholder="Claim type key" list="claimtypes" value={claimType} onChange={(e) => setClaimType(e.target.value)} style={{ width: 180 }} />
+        {/* Read from the case type registry, not a list in this file. The
+            hardcoded version had gone stale: it offered pressure_cooker and
+            social_media, which have no campaigns, and omitted mva and prem,
+            which are the two actually being run. Typing a key that is not a real
+            case type creates a form nothing will ever resolve to. */}
         <datalist id="claimtypes">
-          <option value="motel_trafficking">Hospitality Trafficking</option>
-          <option value="pfas">PFAS</option>
-          <option value="bard_powerport">Bard PowerPort</option>
-          <option value="medmal">Medical Malpractice</option>
-          <option value="pressure_cooker">Pressure Cooker</option>
-          <option value="social_media">Social Media Addiction</option>
+          {claimTypes.map((t: any) => (
+            <option key={t.key} value={t.key}>{t.label ?? t.key}</option>
+          ))}
         </datalist>
+        <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={{ width: "auto" }}
+                title="Bind this form to one campaign, or leave it shared across every campaign of this case type.">
+          <option value="">Shared, every campaign of this type</option>
+          {campaignList
+            .filter((c: any) => !claimType || c.case_type === claimType.trim().toLowerCase())
+            .map((c: any) => <option key={c.id} value={c.id}>Only {c.name}</option>)}
+        </select>
         {status === "published" ? <span className="badge signed">Published</span> : <span className="badge count">Draft</span>}
       </div>
+      {campaignId && (
+        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+          This form is used only by that campaign. Every other campaign of the same case type keeps the shared version.
+        </p>
+      )}
       <input placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} style={{ marginBottom: 12 }} />
 
       {/* Top toolbar: AI + templates */}

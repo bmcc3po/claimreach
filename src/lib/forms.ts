@@ -3,15 +3,47 @@ import { intakeForType } from "@/lib/questionnaire";
 
 // Resolve the field set for a claim type: published DB form first, else built-in.
 // `sb` is a supabase server client (passed in from a server component/route).
-export async function resolveIntakeFields(sb: any, claimType: string): Promise<Field[]> {
+export async function resolveIntakeFields(
+  sb: any,
+  claimType: string,
+  campaignId?: string | null,
+): Promise<Field[]> {
+  const type = (claimType || "").toLowerCase();
+
+  // Resolution order, most specific first:
+  //
+  //   1. a form owned by THIS campaign
+  //   2. the master form for the case type
+  //   3. the built-in code definition
+  //
+  // Step 1 is what lets two firms run the same case type and ask different
+  // questions. Without it there is one 'prem' form shared by everybody, so
+  // editing TMT's personal injury questions silently rewrote TMP's too. That is
+  // fine while one firm is live and becomes a real problem the moment a second
+  // one is, which is exactly when nobody is looking for it.
+  if (campaignId) {
+    try {
+      const { data } = await sb.from("intake_forms")
+        .select("fields").eq("campaign_id", campaignId).eq("status", "published")
+        .order("version", { ascending: false }).limit(1).maybeSingle();
+      if (data?.fields && Array.isArray(data.fields) && data.fields.length > 0) {
+        return ensurePropertyLookup(data.fields as Field[], claimType);
+      }
+    } catch { /* fall through to the master */ }
+  }
+
   try {
+    // The master is the one with no campaign of its own. Older rows predate the
+    // column and have it null, so `is null` covers both.
     const { data } = await sb.from("intake_forms")
-      .select("fields").eq("claim_type", (claimType || "").toLowerCase()).eq("status", "published")
+      .select("fields").eq("claim_type", type).eq("status", "published")
+      .is("campaign_id", null)
       .order("version", { ascending: false }).limit(1).maybeSingle();
     if (data?.fields && Array.isArray(data.fields) && data.fields.length > 0) {
       return ensurePropertyLookup(data.fields as Field[], claimType);
     }
   } catch { /* fall through to built-in */ }
+
   return intakeForType(claimType);
 }
 

@@ -51,9 +51,9 @@ function answerText(field: any, leadRow: any, answers: Record<string, any>): str
 }
 
 // Resolve the questionnaire for a case type (published custom form first, else preset).
-async function resolveFields(sb: any, caseType: string): Promise<any[]> {
+async function resolveFields(sb: any, caseType: string, campaignId?: string | null): Promise<any[]> {
   let fields: any[] = [];
-  try { const { resolveIntakeFields } = await import("@/lib/forms"); fields = await resolveIntakeFields(sb, caseType); } catch {}
+  try { const { resolveIntakeFields } = await import("@/lib/forms"); fields = await resolveIntakeFields(sb, caseType, campaignId ?? null); } catch {}
   if (!fields || fields.length === 0) { try { const { intakeForType } = await import("@/lib/questionnaire"); fields = intakeForType(caseType) as any[]; } catch {} }
   return fields || [];
 }
@@ -74,7 +74,7 @@ export async function loadIntakeBundle(sb: any, leadId: string): Promise<IntakeB
   const { data: claim } = await admin.from("claims").select("answers, claim_type, campaign").eq("lead_id", leadId).limit(1).maybeSingle();
   const answers = claim?.answers ?? {};
   const caseType = (claim?.claim_type || lead.case_type || "").toLowerCase();
-  const fields = await resolveFields(sb, caseType);
+  const fields = await resolveFields(sb, caseType, lead?.campaign_id ?? null);
   return { lead, claim, answers, caseType, fields };
 }
 

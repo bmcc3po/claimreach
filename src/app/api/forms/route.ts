@@ -48,7 +48,23 @@ export async function POST(req: NextRequest) {
     const row: Record<string, any> = {
       firm_id: me.firm_id, claim_type: b.claim_type, name: b.name,
       description: b.description ?? null, fields: b.fields ?? [], status: "draft",
+      // A form bound to a campaign beats the shared master for that campaign
+      // only. This is what lets TMT and TMP both run personal injury and ask
+      // different questions without one editing the other's form.
+      campaign_id: b.campaign_id || null,
     };
+
+    // Version has to climb, because resolution takes the HIGHEST published
+    // version for a claim type. New rows default to 1, and the seeded masters
+    // are version 20, so a brand new form would have been created, published,
+    // and then silently ignored in favour of the seed. That is the worst kind
+    // of bug: the edit saves, the UI confirms, and nothing changes.
+    if (!b.id) {
+      const { data: top } = await sb.from("intake_forms")
+        .select("version").eq("claim_type", b.claim_type)
+        .order("version", { ascending: false }).limit(1).maybeSingle();
+      row.version = (top?.version ?? 0) + 1;
+    }
     if (b.id) {
       const { error } = await sb.from("intake_forms").update(row).eq("id", b.id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
