@@ -75,6 +75,17 @@ export const METHOD: MethodSection[] = [
       "Never thank her for the disclosure. Thank her at the end, for her time.",
       "Say the clinical word so she doesn't have to.",
     ],
+    say: [
+      "\"Okay. Got it.\" — the same receipt she got for her date of birth",
+      "\"That's what the attorney needs on that. Next one.\"",
+      "\"I have to ask this clinically. Did it include vaginal penetration, anal, oral, or masturbation?\"",
+      "\"Thanks for your time today.\" — at the end, for the time, not the telling",
+    ],
+    never: [
+      "\"That's a hard thing to say out loud.\"",
+      "\"You're so brave for telling me this.\"",
+      "\"Thank you for trusting me with that.\"",
+    ],
   },
   {
     id: "ceiling",
@@ -168,17 +179,27 @@ export const METHOD: MethodSection[] = [
 
 // ---------------------------------------------------------------- Fault codes
 
-export interface FaultCode { code: string; label: string; detail: string }
+export interface FaultCode { code: string; label: string; detail: string; instead: string }
 
 export const FAULT_CODES: FaultCode[] = [
-  { code: "SCAB", label: "Picks the scab", detail: "Characterizes her or the telling. Names difficulty, praises, or labels her." },
-  { code: "STALL", label: "Sympathy stall", detail: "Recognizes but never reasks. The call dies here." },
-  { code: "COLD", label: "Cold", detail: "Reasks with no recognize. She shuts down." },
-  { code: "DRIFT", label: "Lets it run", detail: "Recognize plus reframe with no reask. The spiral continues." },
-  { code: "PROBE", label: "Over-probes", detail: "Asks for detail the criteria do not require." },
-  { code: "PROMISE", label: "Promises", detail: "Outcome, money, timeline, or arrest language." },
-  { code: "MIRROR", label: "Mirror Rule", detail: "Puts the agent in the frame." },
-  { code: "HANDBACK", label: "Hands back the wheel", detail: "Ends on a permission question instead of a form question. Looks considerate, loses the call." },
-  { code: "VERDICT", label: "States a decision", detail: "Tells the caller whether she qualifies. Never the agent's call." },
-  { code: "ESCREASS", label: "Escalating reassurance", detail: "Answers a repeated challenge with more warmth instead of more steadiness. Proves her point." },
+  { code: "SCAB", label: "Picks the scab", detail: "Characterizes her or the telling. Names difficulty, praises, or labels her.",
+    instead: "Acknowledge in one breath and go straight to the next form question. \"Okay. Got it.\"" },
+  { code: "STALL", label: "Sympathy stall", detail: "Recognizes but never reasks. The call dies here.",
+    instead: "Finish the three Rs. Every recognize is followed by a reframe and a question off the form." },
+  { code: "COLD", label: "Cold", detail: "Reasks with no recognize. She shuts down.",
+    instead: "Give her the one-breath receipt first, then the reframe, then the question. All three, every time." },
+  { code: "DRIFT", label: "Lets it run", detail: "Recognize plus reframe with no reask. The spiral continues.",
+    instead: "Close the gap. Land the next form question immediately, with no pause for the story to resume." },
+  { code: "PROBE", label: "Over-probes", detail: "Asks for detail the criteria do not require.",
+    instead: "Ask the narrowest question that closes the criterion, then stop. Write what she volunteers, chase nothing." },
+  { code: "PROMISE", label: "Promises", detail: "Outcome, money, timeline, or arrest language.",
+    instead: "Give the honest no with a reason that respects her, hand it to the firm, and reask. \"I'd be guessing, and you deserve better than a made-up number.\"" },
+  { code: "MIRROR", label: "Mirror Rule", detail: "Puts the agent in the frame.",
+    instead: "Name the rule, hand her the message, reask. \"We don't share anything about ourselves, that's the rule. This time is yours.\"" },
+  { code: "HANDBACK", label: "Hands back the wheel", detail: "Ends on a permission question instead of a form question. Looks considerate, loses the call.",
+    instead: "State it, don't ask it, and land on a field you're filling in. Confidence lives in moving on." },
+  { code: "VERDICT", label: "States a decision", detail: "Tells the caller whether she qualifies. Never the agent's call.",
+    instead: "Take the answer down level, keep going, and finish the intake. The firm decides and she hears nothing either way." },
+  { code: "OVERSELL", label: "Escalating reassurance", detail: "She challenged your first answer and you came back with more warmth instead of the same steadiness. Trying harder is what someone does when the first thing wasn't true.",
+    instead: "Same tone, same volume, next form question. You demonstrate it instead of arguing it." },
 ];

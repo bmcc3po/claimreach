@@ -4,8 +4,14 @@ import { METHOD, FAULT_CODES } from "@/lib/method";
 import { REFRAMES } from "@/lib/reframes";
 import { itemsForCampaign, responseDrillModuleId, type ResponseItem, type DrillTurn } from "@/lib/response-drill";
 import { CAMPAIGNS } from "@/lib/campaigns";
+import { METHOD_READ_ID } from "@/lib/path";
 
 type Tab = "doctrine" | "reframes" | "drill" | "codes";
+
+function faultDetail(code: string): string {
+  const f = FAULT_CODES.find((x) => x.code === code);
+  return f ? `${f.label} — ${f.detail} Instead: ${f.instead}` : code;
+}
 
 export default function MethodPillar() {
   const [tab, setTab] = useState<Tab>("doctrine");
@@ -28,6 +34,27 @@ export default function MethodPillar() {
 /* ------------------------------------------------------------- The doctrine */
 
 function Doctrine() {
+  const [read, setRead] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { (async () => {
+    try {
+      const r = await fetch("/api/training");
+      const d = await r.json();
+      setRead((d.progress ?? []).some((x: any) => x.module_id === METHOD_READ_ID && x.status === "completed"));
+    } catch (e) { console.error("method read state failed", e); }
+  })(); }, []);
+
+  async function markRead() {
+    setSaving(true);
+    try {
+      await fetch("/api/training", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ module_id: METHOD_READ_ID, status: "completed" }) });
+      setRead(true);
+    } catch (e) { console.error("method read save failed", e); }
+    setSaving(false);
+  }
+
   return (
     <div>
       <div className="escalate-line" style={{ marginBottom: 14 }}>
@@ -46,6 +73,23 @@ function Doctrine() {
           {s.never && (<><div className="section-title" style={{ color: "var(--danger)" }}>Never</div><ul className="bible-list">{s.never.map((r, i) => <li key={i}>{r}</li>)}</ul></>)}
         </div>
       ))}
+
+      <div className="card" style={{ padding: 18, borderLeft: `4px solid var(--${read ? "ok" : "accent"})` }}>
+        {read ? (
+          <>
+            <strong style={{ color: "var(--ok)" }}>✓ Stage 1 complete</strong>
+            <p className="muted" style={{ fontSize: 13, margin: "4px 0 0" }}>Next up is the response drill. It's the tab beside this one.</p>
+          </>
+        ) : (
+          <>
+            <strong>Read all eight sections?</strong>
+            <p className="muted" style={{ fontSize: 13, margin: "4px 0 10px" }}>
+              This unlocks the response drill and the rest of your path. Don't mark it until you've actually read it — the drill assumes you have.
+            </p>
+            <button className="btn" onClick={markRead} disabled={saving}>{saving ? "Saving…" : "I've read The Method"}</button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -53,12 +97,8 @@ function Doctrine() {
 /* ------------------------------------------------------------ Reframe bank */
 
 function ReframeBank() {
-  const [used, setUsed] = useState<Record<string, boolean>>({});
   const [open, setOpen] = useState<string | null>(REFRAMES[0]?.id ?? null);
 
-  function toggleUsed(key: string) {
-    setUsed((u) => ({ ...u, [key]: !u[key] }));
-  }
 
   function download() {
     const w = window.open("", "_blank");
@@ -101,18 +141,19 @@ function ReframeBank() {
     <div>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
         <p className="muted" style={{ marginTop: 0, flex: 1 }}>
-          The middle R. Tap a line to mark it used on this call so you don't repeat yourself. Tap again to clear.
+          The middle R. Pick one, then reask on the form. Vary them — the same reframe twice in one call sounds scripted.
         </p>
         <button className="btn ghost sm" onClick={download}>Download PDF</button>
       </div>
 
-      <div className="hardlines" style={{ marginBottom: 14 }}>
-        <div className="section-title" style={{ color: "var(--danger)" }}>Hard rules</div>
+      <div className="card" style={{ padding: 18, marginBottom: 14, borderLeft: "4px solid var(--ok)" }}>
+        <div className="section-title" style={{ color: "var(--ok)", marginTop: 0 }}>Every reframe does this</div>
         <ul className="bible-list">
-          <li>Never promise. No money, timeline, arrest, or outcome.</li>
-          <li>Never characterize her or the telling. Point at the work.</li>
-          <li>Never put yourself in the frame. Mirror Rule.</li>
-          <li>The reask is always a question off the form, never a permission check.</li>
+          <li>Points at the work, never at her.</li>
+          <li>Keeps you out of the frame. The call is hers.</li>
+          <li>Hands the money, timeline, and arrest questions to the firm.</li>
+          <li>Lands on a question off the form, so the call keeps moving.</li>
+          <li>Changes every time. Recognize and reask can repeat; this one can't.</li>
         </ul>
       </div>
 
@@ -133,20 +174,9 @@ function ReframeBank() {
             {isOpen && (
               <div style={{ padding: "0 18px 16px" }}>
                 {g.note && <p style={{ fontSize: 12.5, color: "var(--danger)", marginTop: 0 }}>{g.note}</p>}
-                {g.lines.map((l, i) => {
-                  const key = `${g.id}-${i}`;
-                  const isUsed = !!used[key];
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => toggleUsed(key)}
-                      className="quiz-opt"
-                      style={{ opacity: isUsed ? 0.4 : 1, textDecoration: isUsed ? "line-through" : "none" }}
-                    >
-                      {l}
-                    </button>
-                  );
-                })}
+                <ul className="bible-list" style={{ marginTop: 0 }}>
+                  {g.lines.map((l, i) => <li key={i}>{l}</li>)}
+                </ul>
               </div>
             )}
           </div>
@@ -262,7 +292,7 @@ function ResponseDrill() {
               className={`quiz-opt ${picked === oi ? "chosen" : ""} ${isAnswer ? "right" : ""} ${isWrongPick ? "wrong" : ""}`}
               onClick={() => choose(oi)} disabled={picked !== null}>
               <span style={{ fontWeight: 700, marginRight: 8 }}>{"ABCD"[oi]}</span>{o}
-              {picked !== null && turn.faults[oi] && <span className="badge count" style={{ marginLeft: 8 }}>{turn.faults[oi]}</span>}
+              {picked !== null && turn.faults[oi] && <span className="badge dq" style={{ marginLeft: 8 }} title={faultDetail(turn.faults[oi]!)}>{turn.faults[oi]}</span>}
               {isAnswer ? "  ✓" : isWrongPick ? "  ✗" : ""}
             </button>
           );
@@ -296,10 +326,14 @@ function Codes() {
       {FAULT_CODES.map((f) => (
         <div key={f.code} className="card" style={{ padding: 14, marginBottom: 8 }}>
           <div className="row" style={{ gap: 10 }}>
-            <span className="badge count">{f.code}</span>
+            <span className="badge dq">{f.code}</span>
             <strong style={{ fontSize: 14 }}>{f.label}</strong>
           </div>
-          <p style={{ fontSize: 13.5, margin: "6px 0 0" }}>{f.detail}</p>
+          <p style={{ fontSize: 13.5, margin: "6px 0 4px" }}>{f.detail}</p>
+          <div style={{ borderLeft: "3px solid var(--ok)", paddingLeft: 12, marginTop: 8 }}>
+            <span className="badge signed">DO THIS</span>
+            <p style={{ fontSize: 13.5, margin: "4px 0 0" }}>{f.instead}</p>
+          </div>
         </div>
       ))}
     </div>

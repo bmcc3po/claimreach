@@ -30,7 +30,7 @@ export const COURSE: CourseModule[] = [
     quiz: [
       { q: "A caller is in acute distress. What is your primary job?", options: ["Help them process the trauma", "Stay calm, keep them safe in the moment, and connect them to professionals", "Diagnose what they're experiencing", "Solve the underlying problem"], answer: 1, explain: "You stabilize and connect. You are not a therapist." },
       { q: "Which statement crosses a line you must never cross?", options: ["\"I'm here with you.\"", "\"You sound like you have PTSD.\"", "\"Would it help to call 988 together?\"", "\"Take your time.\""], answer: 1, explain: "Never diagnose or label. That's clinical and outside your role." },
-      { q: "Empathy differs from sympathy because empathy…", options: ["Feels sorry for them", "Places you above them", "Says 'I'm with you in this' and steadies them", "Solves their problem"], answer: 2, explain: "Empathy is being with someone; sympathy can read as pity and distance." },
+      { q: "Empathy differs from sympathy because empathy…", options: ["Feels sorry for them", "Places you above them", "Says 'I'm with you in this' and steadies them", "Solves their problem"], answer: 2, explain: "Empathy is being with someone and steadying them. On an intake it is delivered through competence, not words: being organized, not flinching, not making her repeat herself. Sympathy reads as pity and puts distance between you." },
     ],
     drill: { setup: "Practice opening warmly with a guarded caller without slipping into therapist mode.", crissiRole: "You play a guarded trafficking survivor who isn't sure they should be talking to anyone. The agent should be warm, lower-pressure, and NOT try to counsel. Give brief feedback after." },
   },
@@ -80,14 +80,14 @@ export const COURSE: CourseModule[] = [
   },
   {
     id: "m6-silver-liners", order: 6, title: "Silver Liners: hope at the right moment",
-    goal: "Learn the hopeful one-liners and, more importantly, when and how to use them so they land.",
+    goal: "Learn the hopeful one-liners and, more importantly, the scope: they are for the close, the door, and check-in calls. Never mid-interview.",
     bibleIds: ["empathy-vs-sympathy", "what-not-to-promise"],
     linerGroup: "all",
     quiz: [
       { q: "A Silver Liner lands when…", options: ["You use it to end the call faster", "It's genuine and timed to the moment", "You say as many as possible", "It replaces listening"], answer: 1, explain: "Timing and sincerity. A slogan dropped wrong feels dismissive." },
       { q: "'HALT' reminds you to check if someone is…", options: ["Happy, Angry, Lucky, Tired", "Hungry, Angry, Lonely, Tired", "Hopeful, Afraid, Lost, Tense", "Healthy, Active, Loved, Trusting"], answer: 1, explain: "Hungry, Angry, Lonely, Tired — often the feeling is really one of those." },
     ],
-    drill: { setup: "Practice offering a Silver Liner at the right moment without sounding corny.", crissiRole: "You play a caller losing hope. Let the agent try to offer encouragement. Coach on timing and sincerity — flag it if a slogan lands as dismissive or rushed." },
+    drill: { setup: "Practice offering a Silver Liner at the right moment without sounding corny. Remember the scope: never mid-form.", crissiRole: "You play a caller losing hope AFTER the form is finished, or on a check-in call. Coach on timing and sincerity, flag it if a slogan lands as dismissive or rushed, and flag it hard if the agent tries to use a liner mid-interview or as an answer to a shame question, which is a Ceiling violation." },
   },
   {
     id: "m7-selfcare", order: 7, title: "Caring for yourself",

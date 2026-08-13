@@ -9,6 +9,7 @@ import { DISCLAIMER_SHORT, DISCLAIMER_FULL, HARD_LINES } from "@/lib/crissi-disc
 import CrissiAcademy from "./CrissiAcademy";
 import CampaignTraining from "./CampaignTraining";
 import MethodPillar from "./MethodPillar";
+import LearningPath from "./LearningPath";
 import SilverLiners from "./SilverLiners";
 import TrainingRecords from "./TrainingRecords";
 import BibleReader from "./BibleReader";
@@ -71,7 +72,7 @@ export default function CrissiHub({ isManager = false }: { isManager?: boolean }
           <GlobalResults hits={searchHits} onClear={() => setGlobalSearch("")} onOpenBible={() => { setGlobalSearch(""); setChapter("bible"); }} />
         ) : (
           <>
-            {chapter === "start" && <StartHere onGo={setChapter} />}
+            {chapter === "start" && <LearningPath onGo={setChapter} />}
             {chapter === "course" && <CrissiAcademy />}
             {chapter === "method" && (
               <div>
@@ -88,6 +89,12 @@ export default function CrissiHub({ isManager = false }: { isManager?: boolean }
             {chapter === "bible" && <BibleReader />}
             {chapter === "liners" && (
               <div>
+                <div className="card" style={{ padding: 16, marginBottom: 14, borderLeft: "4px solid var(--danger)" }}>
+                  <strong style={{ color: "var(--danger)" }}>Scope: these are not interview tools.</strong>
+                  <p style={{ fontSize: 13.5, margin: "6px 0 0" }}>
+                    Nothing in this bank goes into the middle of a form. Some of these lines name strength or courage, which is a Ceiling violation during an intake. Use them at the close once the form is done, at the door when you've stopped the form entirely, or on a check-in call. Inside an interview, a hope line is a comment on how she's doing, which characterizes her. Outside one, the same words are a kindness.
+                  </p>
+                </div>
                 <ChapterHead num="05" title="Silver Liners" blurb="Hopeful lines to get a caller through the call and the day. A bandage, not a fix. Search by the mood or moment." />
                 <SilverLiners />
               </div>
@@ -113,61 +120,6 @@ function ChapterHead({ num, title, blurb }: { num: string; title: string; blurb:
       <div>
         <h1 style={{ margin: 0 }}>{title}</h1>
         <p className="muted" style={{ margin: "2px 0 0" }}>{blurb}</p>
-      </div>
-    </div>
-  );
-}
-
-function StartHere({ onGo }: { onGo: (c: Chapter) => void }) {
-  return (
-    <div>
-      <div className="chapter-head">
-        <CrissiLogo height={40} />
-      </div>
-      <p style={{ fontSize: 15.5, maxWidth: 720 }}>
-        Crissi is your crisis-support companion and trauma-informed coach. She helps you handle hard calls with empathy and grace under fire,
-        steadies you when a call rattles you, and trains you to navigate the situations this work brings. She is here to help you
-        <strong> stabilize, connect, and escalate</strong> — never to replace you, and never to make you a therapist.
-      </p>
-
-      <div className="disclaimer-bar" style={{ maxWidth: 720, marginBottom: 18 }}>{DISCLAIMER_SHORT}</div>
-
-      <div className="start-grid">
-        <button className="start-card" onClick={() => onGo("course")}>
-          <span className="start-icon">🎓</span>
-          <strong>Start the Course</strong>
-          <span className="muted">9 guided chapters. Begin here if you're new — work through them in order.</span>
-        </button>
-        <button className="start-card" onClick={() => onGo("method")}>
-          <span className="start-icon">🧭</span>
-          <strong>The Method</strong>
-          <span className="muted">How we talk to a survivor without picking scabs. The doctrine, the reframe bank, and the response drill.</span>
-        </button>
-        <button className="start-card" onClick={() => onGo("campaigns")}>
-          <span className="start-icon">🎯</span>
-          <strong>Certify on a campaign</strong>
-          <span className="muted">The live cases: criteria, call order, and the test you pass before you take one.</span>
-        </button>
-        <button className="start-card" onClick={() => onGo("bible")}>
-          <span className="start-icon">📖</span>
-          <strong>Open the Bible</strong>
-          <span className="muted">Searchable reference for any moment. The 🚨 entries are break-glass walkthroughs.</span>
-        </button>
-        <button className="start-card" onClick={() => onGo("liners")}>
-          <span className="start-icon">✨</span>
-          <strong>Find a Silver Liner</strong>
-          <span className="muted">Hope lines to lift a caller's chin. Search by mood.</span>
-        </button>
-        <button className="start-card" onClick={() => onGo("sop")}>
-          <span className="start-icon">🆘</span>
-          <strong>Crisis SOP</strong>
-          <span className="muted">The protocol: support, connect, escalate.</span>
-        </button>
-      </div>
-
-      <div className="card" style={{ padding: 18, marginTop: 18, maxWidth: 720 }}>
-        <div className="section-title" style={{ color: "var(--danger)" }}>The lines you never cross</div>
-        <ul className="bible-list">{HARD_LINES.map((h, i) => <li key={i}>{h}</li>)}</ul>
       </div>
     </div>
   );

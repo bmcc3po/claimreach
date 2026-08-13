@@ -53,7 +53,7 @@ export const RESPONSE_ITEMS: ResponseItem[] = [
         "I promise you, I've heard so much worse than this.",
       ],
       answer: 1,
-      faults: ["ESCREASS", null, "PROBE", "MIRROR"],
+      faults: ["OVERSELL", null, "PROBE", "MIRROR"],
       why: "More reassurance proves her point. The answer is the same level tone plus the next form question, which demonstrates the thing words cannot. A escalates. C turns her challenge into a topic. D ranks her trauma downward.",
     },
   },

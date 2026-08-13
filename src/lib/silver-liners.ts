@@ -8,6 +8,26 @@
 // Shared with Maverick too.
 // ============================================================================
 
+// SCOPE — read before using any of these.
+// Silver Liners are NOT interview tools. Several of these lines name strength
+// or courage, which is a Ceiling violation during an intake (The Method, The
+// Ceiling). They are for: the close after the form is finished, the door, and
+// retention or check-in calls.
+export const LINER_SCOPE = {
+  useWhen: [
+    "The form is done and you're closing the call.",
+    "You've stopped the form entirely and you're holding someone steady. The door.",
+    "A retention, heartbeat, or check-in call with an existing client.",
+  ],
+  neverWhen: [
+    "Mid-interview. Ever. Not after a disclosure, not to smooth a hard question.",
+    "As a response to a shame question. That's the three Rs, not a liner.",
+    "To speed a call up or to fill a silence you find uncomfortable.",
+  ],
+  why:
+    "Inside an interview, a hope line is a comment on how she's doing, which characterizes her and picks the scab. Outside one, the same words are a kindness. The words don't change. The moment does.",
+};
+
 export interface SilverLiner {
   line: string;
   when: string;        // the moment it fits
