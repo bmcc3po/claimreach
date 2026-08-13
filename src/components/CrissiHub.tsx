@@ -7,18 +7,20 @@ import { COURSE } from "@/lib/course";
 import { CRISIS_SOP } from "@/lib/sop";
 import { DISCLAIMER_SHORT, DISCLAIMER_FULL, HARD_LINES } from "@/lib/crissi-disclaimers";
 import CrissiAcademy from "./CrissiAcademy";
+import CampaignTraining from "./CampaignTraining";
 import SilverLiners from "./SilverLiners";
 import TrainingRecords from "./TrainingRecords";
 import BibleReader from "./BibleReader";
 
-type Chapter = "start" | "course" | "bible" | "liners" | "sop" | "records";
+type Chapter = "start" | "course" | "campaigns" | "bible" | "liners" | "sop" | "records";
 
 const CHAPTERS: { id: Chapter; num: string; label: string; sub: string; icon: string }[] = [
   { id: "start", num: "00", label: "Start Here", sub: "What Crissi is & the boundaries", icon: "🧭" },
-  { id: "course", num: "01", label: "The Course", sub: "7 guided chapters · your training path", icon: "🎓" },
-  { id: "bible", num: "02", label: "The Bible", sub: "Searchable reference for any moment", icon: "📖" },
-  { id: "liners", num: "03", label: "Silver Liners", sub: "Hope lines to lift a chin", icon: "✨" },
-  { id: "sop", num: "04", label: "Crisis SOP", sub: "The protocol", icon: "🆘" },
+  { id: "course", num: "01", label: "The Course", sub: "9 guided chapters · your training path", icon: "🎓" },
+  { id: "campaigns", num: "02", label: "Campaigns", sub: "Case-specific criteria & certification", icon: "🎯" },
+  { id: "bible", num: "03", label: "The Bible", sub: "Searchable reference for any moment", icon: "📖" },
+  { id: "liners", num: "04", label: "Silver Liners", sub: "Hope lines to lift a chin", icon: "✨" },
+  { id: "sop", num: "05", label: "Crisis SOP", sub: "The protocol", icon: "🆘" },
 ];
 
 export default function CrissiHub({ isManager = false }: { isManager?: boolean }) {
@@ -36,7 +38,7 @@ export default function CrissiHub({ isManager = false }: { isManager?: boolean }
   }, [globalSearch]);
 
   const chapters = isManager
-    ? [...CHAPTERS, { id: "records" as Chapter, num: "05", label: "Records", sub: "Who completed training", icon: "📋" }]
+    ? [...CHAPTERS, { id: "records" as Chapter, num: "06", label: "Records", sub: "Who completed training", icon: "📋" }]
     : CHAPTERS;
 
   return (
@@ -69,17 +71,23 @@ export default function CrissiHub({ isManager = false }: { isManager?: boolean }
           <>
             {chapter === "start" && <StartHere onGo={setChapter} />}
             {chapter === "course" && <CrissiAcademy />}
+            {chapter === "campaigns" && (
+              <div>
+                <ChapterHead num="02" title="Campaigns" blurb="The case in front of you. Criteria, call order, technique, and a certification you pass before you take live calls on it." />
+                <CampaignTraining />
+              </div>
+            )}
             {chapter === "bible" && <BibleReader />}
             {chapter === "liners" && (
               <div>
-                <ChapterHead num="03" title="Silver Liners" blurb="Hopeful lines to get a caller through the call and the day. A bandage, not a fix. Search by the mood or moment." />
+                <ChapterHead num="04" title="Silver Liners" blurb="Hopeful lines to get a caller through the call and the day. A bandage, not a fix. Search by the mood or moment." />
                 <SilverLiners />
               </div>
             )}
             {chapter === "sop" && <SopChapter />}
             {chapter === "records" && isManager && (
               <div>
-                <ChapterHead num="05" title="Training Records" blurb="Who has completed which Crissi Academy chapter, with quiz scores and dates." />
+                <ChapterHead num="06" title="Training Records" blurb="Who has completed which Crissi Academy chapter, with quiz scores and dates." />
                 <TrainingRecords />
               </div>
             )}
@@ -120,7 +128,12 @@ function StartHere({ onGo }: { onGo: (c: Chapter) => void }) {
         <button className="start-card" onClick={() => onGo("course")}>
           <span className="start-icon">🎓</span>
           <strong>Start the Course</strong>
-          <span className="muted">7 guided chapters. Begin here if you're new — work through them in order.</span>
+          <span className="muted">9 guided chapters. Begin here if you're new — work through them in order.</span>
+        </button>
+        <button className="start-card" onClick={() => onGo("campaigns")}>
+          <span className="start-icon">🎯</span>
+          <strong>Certify on a campaign</strong>
+          <span className="muted">The live cases: criteria, call order, and the test you pass before you take one.</span>
         </button>
         <button className="start-card" onClick={() => onGo("bible")}>
           <span className="start-icon">📖</span>
@@ -150,7 +163,7 @@ function StartHere({ onGo }: { onGo: (c: Chapter) => void }) {
 function SopChapter() {
   return (
     <div>
-      <ChapterHead num="04" title={CRISIS_SOP.title} blurb={CRISIS_SOP.subtitle} />
+      <ChapterHead num="05" title={CRISIS_SOP.title} blurb={CRISIS_SOP.subtitle} />
       <div className="disclaimer-bar" style={{ marginBottom: 16, maxWidth: 760 }}>{DISCLAIMER_FULL[0]} {DISCLAIMER_FULL[2]}</div>
       <p style={{ fontSize: 14, maxWidth: 760 }}>{CRISIS_SOP.intro}</p>
       <div className="sop-grid">

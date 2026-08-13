@@ -7,6 +7,8 @@
 // Searchable. Doubles as Crissi's offline fallback.
 // ============================================================================
 
+import { DOCTRINE_ENTRIES } from "./doctrine";
+
 export interface BibleEntry {
   id: string;
   group: string;
@@ -34,10 +36,11 @@ export const BIBLE_GROUPS = [
   { id: "communication", label: "Communication craft" },
   { id: "pitfalls", label: "Pitfalls & deathtraps" },
   { id: "selfcare", label: "Caring for yourself" },
+  { id: "method", label: "The Method — extraction doctrine" },
   { id: "scenarios", label: "Scenario drills" },
 ];
 
-export const BIBLE: BibleEntry[] = [
+const CORE_BIBLE: BibleEntry[] = [
   // ===================== FOUNDATIONS =====================
   {
     id: "your-role", group: "foundations", title: "Your role in three words: Support, Connect, Escalate",
@@ -434,6 +437,11 @@ export const BIBLE: BibleEntry[] = [
     why: "The response to a first disclosure can be a turning point in someone's life — or a door that closes.",
   },
 ];
+
+// The Method entries live in doctrine.ts so the extraction doctrine can be
+// edited without touching the crisis playbook. They are searchable like any
+// other entry.
+export const BIBLE: BibleEntry[] = [...CORE_BIBLE, ...DOCTRINE_ENTRIES];
 
 // Simple search over titles, keywords, summary, and cues.
 export function searchBible(query: string): BibleEntry[] {

@@ -99,6 +99,30 @@ export const COURSE: CourseModule[] = [
     ],
     drill: { setup: "Debrief a hard call with Crissi and practice setting it down.", crissiRole: "You are Crissi supporting the AGENT after a hard call. Help them steady themselves, normalize the impact, and remind them they did right by staying and escalating." },
   },
+  {
+    id: "m8-the-method", order: 8, title: "The Method: least harm, best file",
+    goal: "Learn how Innovative runs a qualifying interview — get what the file needs, take nothing extra, and leave the caller in one piece.",
+    bibleIds: ["least-harm", "no-scab-picking", "how-much-is-enough", "clinical-language"],
+    quiz: [
+      { q: "You have a clear yes on the qualifying act. She starts describing more. You…", options: ["Ask follow-ups while she's open", "Note what she volunteers and move to the next question", "Ask her to start from the beginning", "Ask how it made her feel"], answer: 1, explain: "Volunteered detail is free. Requested detail is a cost. Bank it and move." },
+      { q: "'Enough detail' means…", options: ["As much as she'll give", "Enough that an attorney can check the box without calling her back", "A full chronological narrative", "Whatever fills the notes field"], answer: 1, explain: "Elements met, perpetrator identifiable, dates real. Not atmosphere." },
+      { q: "She says 'he messed with me.' The criterion needs an act category. Best move?", options: ["Write 'inappropriate touching'", "Ask her to describe exactly what he did", "Name the clinical categories and let her pick", "Skip it and let the firm ask"], answer: 2, explain: "Say the clinical word so she doesn't have to. A euphemism in the note gets the file declined." },
+      { q: "Which is a scab, not an element?", options: ["\"Was there penetration, yes or no?\"", "\"Once, or more than once?\"", "\"Walk me through exactly what he did each time.\"", "\"What month and year did it start?\""], answer: 2, explain: "Elements prove the case. Scabs only make the call heavier." },
+    ],
+    drill: { setup: "Practice closing each criterion in the fewest questions without going cold.", crissiRole: "You play a caller who answers vaguely and softens everything. Make the agent work for precise, clinical answers using narrow questions rather than open narrative prompts. Do not produce graphic detail. Coach if they either accept a euphemism or over-probe for story." },
+  },
+  {
+    id: "m9-control-the-call", order: 9, title: "Controlling the call without going cold",
+    goal: "Stay level after a disclosure, contain a rambler kindly, recover a caller who breaks, and close a non-qualifying call without doing damage.",
+    bibleIds: ["flinch-control", "containment", "breakdown-recovery", "dq-without-damage"],
+    quiz: [
+      { q: "She discloses something severe. The right reaction is…", options: ["\"Oh my God, I'm so sorry.\"", "A soft hush and a long pause", "The same level tone you've used all call", "Shocked silence"], answer: 2, explain: "Level is the kindest thing you can be. A visible flinch tells her you're now handling her." },
+      { q: "She's been talking for four minutes and hasn't answered the question. You…", options: ["Wait for her to finish", "Say 'let's stay on track'", "Acknowledge in four words, name what you need, ask the next question", "Talk over her"], answer: 2, explain: "Bridge, don't scold and don't drift. Containment is the kind option on a long form." },
+      { q: "She breaks down mid-answer. First move?", options: ["Reassure her immediately", "Stop talking for a few seconds, then offer a real choice", "Push through to finish", "End the call"], answer: 1, explain: "Give her the floor, offer break / skip / reschedule, then resume from exactly where you were." },
+      { q: "She hits a disqualifier. What do you tell her?", options: ["That she doesn't qualify", "Which criterion she missed", "Nothing about qualification — normal close, goes to the legal team for review", "That you'll try to get an exception"], answer: 2, explain: "You are not the decision maker, and explaining criteria invites a corrected story next call." },
+    ],
+    drill: { setup: "Practice a level response to a hard disclosure, a containment bridge, and a clean close on a file that won't qualify.", crissiRole: "You play a caller who discloses abruptly, then rambles, then hits a disqualifier late in the call. Keep disclosures brief and non-graphic. Coach the agent on flinch control, bridging, and whether their close leaked a qualification decision." },
+  },
 ];
 
 export function moduleById(id: string) { return COURSE.find((m) => m.id === id); }
