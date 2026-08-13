@@ -121,6 +121,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true, lead_id: lead.id, lead_no: lead.lead_no, claim_id: claim?.id ?? null, call_id: call?.id ?? null,
       campaign: campaign?.name ?? null,
+      // The console needs this to load the questionnaire that was actually
+      // published for this campaign, rather than the one compiled into the app.
+      campaign_id: campaign?.id ?? null,
       retainers: allowedRetainers ?? [],
       can_send_retainer: !!(campaign && hasPacket && campaign.allow_live_sign),
       retainer_blocker: !campaign

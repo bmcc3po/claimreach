@@ -30,6 +30,16 @@ export async function GET(req: NextRequest) {
   try { fields = await resolveIntakeFields(sb, caseType, campaignId); } catch { fields = []; }
   if (!fields || fields.length === 0) { try { fields = intakeForType(caseType) as any[]; } catch { fields = []; } }
 
+  // ?full=1 returns the whole field, script, choices, conditions and all.
+  // The call console needs that, because it has to ASK these questions rather
+  // than just list their names. Without it the console fell back to the
+  // questions compiled into the app, so the form an owner edited and published
+  // was not the form an agent was reading. That is the worst possible version
+  // of this bug: both look right on their own screen.
+  if (url.searchParams.get("full") === "1") {
+    return NextResponse.json({ case_type: caseType, fields: fields || [] });
+  }
+
   const mappable = (fields || [])
     .filter((f) => DATA_KINDS.includes(f.kind))
     .map((f) => ({ id: f.id, label: f.label || f.id, token: `intake.${f.id}` }));

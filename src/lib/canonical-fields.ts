@@ -214,27 +214,27 @@ export const CASE_PRESETS: CasePreset[] = [
     G("injury_from_malpractice", "Resulting injury", "longtext"), G("subsequent_treatment", "Subsequent treatment", "text"),
     G("expert_review_done", "Expert review done?", "bool"),
   ]},
-  { key: "birth_injury", label: "Birth Injury", family: "third_party", defaultGates: ["currently_represented", "prior_signup"], extras: [
+  { key: "birth", label: "Birth Injury", family: "third_party", defaultGates: ["currently_represented", "prior_signup"], extras: [
     G("child_name", "Child name", "text"), G("child_dob", "Child DOB", "date"),
     G("delivery_facility", "Delivery facility", "text"), G("delivery_type", "Delivery type", "select", ["Vaginal", "C-section"]),
     G("birth_injury_type", "Injury type", "select", ["HIE", "Cerebral palsy", "Erb's palsy", "Brachial plexus", "Other"]),
     G("apgar_score", "Apgar score", "text"), G("nicu_admission", "NICU admission?", "bool"),
     G("developmental_diagnosis", "Developmental diagnosis", "text"), G("mother_name", "Mother name", "text"),
   ]},
-  { key: "sex_abuse", label: "Sex Abuse Mass Tort", family: "third_party", defaultGates: ["currently_represented", "prior_signup"], extras: [
+  { key: "sa", label: "Sex Abuse Mass Tort", family: "third_party", defaultGates: ["currently_represented", "prior_signup"], extras: [
     G("institution_name", "Institution name", "text"), G("institution_type", "Institution type", "select", ["Religious", "Juvenile detention", "School", "Scouting", "Foster care", "Other"]),
     G("abuse_location", "Location", "text"), G("abuse_start_date", "Abuse start", "date"),
     G("abuse_end_date", "Abuse end", "date"), G("claimant_age_at_abuse", "Age at time", "int"),
     G("perpetrator_known", "Perpetrator known?", "bool"), G("reported_at_time", "Reported at the time?", "bool"),
     G("prior_disclosure", "Prior disclosure?", "bool"), G("lookback_window_eligible", "Lookback window eligible?", "bool"),
   ]},
-  { key: "premises", label: "Slip & Fall / Premises Liability", family: "third_party", defaultGates: ["currently_represented", "prior_signup"], extras: [
+  { key: "prem", label: "Slip & Fall / Premises Liability", family: "third_party", defaultGates: ["currently_represented", "prior_signup"], extras: [
     G("premises_type", "Premises type", "text"), G("premises_owner", "Premises owner", "text"),
     G("hazard_type", "Hazard type", "text"), G("incident_reported", "Incident reported?", "bool"),
     G("incident_report_no", "Incident report #", "text"), G("witnesses_present", "Witnesses present?", "bool"),
     G("surveillance_exists", "Surveillance exists?", "bool"), G("footwear", "Footwear", "text"),
   ]},
-  { key: "negligent_security", label: "Negligent Security (premises)", family: "third_party", defaultGates: ["currently_represented", "prior_signup"], extras: [
+  { key: "negsec", label: "Negligent Security (premises)", family: "third_party", defaultGates: ["currently_represented", "prior_signup"], extras: [
     G("premises_type", "Premises type", "select", ["Apartment", "Retail", "Casino", "Bar", "Parking", "Hotel", "Gas station"]),
     G("premises_name", "Premises name", "text"), G("premises_owner", "Premises owner", "text"),
     G("property_management_co", "Property management co.", "text"),

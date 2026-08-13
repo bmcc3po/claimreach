@@ -179,6 +179,38 @@ export default function FormBuilder({ formId }: { formId?: string }) {
     setFields((arr) => { const next = [...arr, f]; setSel(next.length - 1); return next; });
   }
 
+  // Copy this form and bind the copy to one campaign, leaving the original
+  // exactly where it was.
+  //
+  // Without this, the only way to give a second firm its own version was to
+  // change the campaign dropdown on the existing form and save, which UPDATES
+  // that row: the shared master would silently become one campaign's private
+  // form and every other campaign of that case type would fall back to the
+  // built-in code questions. Nothing would error. The other firm's agents would
+  // just start reading a different questionnaire.
+  async function copyToCampaign(targetCampaignId: string) {
+    const target = campaignList.find((c: any) => c.id === targetCampaignId);
+    if (!target) return;
+    setSaving(true); setMsg("");
+    try {
+      const r = await fetch("/api/forms", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          op: "save",                      // no id, so this inserts a new row
+          claim_type: claimType.trim().toLowerCase(),
+          name: `${target.name} intake`,
+          description: `Copy of ${name}, used only by ${target.name}.`,
+          fields, campaign_id: targetCampaignId,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setMsg(`Copy failed: ${d.error || r.status}`); setSaving(false); return; }
+      setMsg(`Copied to ${target.name}. It is a draft, publish it when the questions are right.`);
+      setTimeout(() => { window.location.href = `/forms/${d.id}`; }, 900);
+    } catch (e: any) { setMsg(`Copy failed: ${String(e?.message ?? e)}`); }
+    setSaving(false);
+  }
+
   async function save(publish = false) {
     // Don't silently bail — tell the user exactly what's missing, loudly.
     if (!name.trim()) { setMsg("⚠ Add a Form name (top-left box) before saving."); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
@@ -247,6 +279,15 @@ export default function FormBuilder({ formId }: { formId?: string }) {
             .filter((c: any) => !claimType || c.case_type === claimType.trim().toLowerCase())
             .map((c: any) => <option key={c.id} value={c.id}>Only {c.name}</option>)}
         </select>
+        {id && campaignList.filter((c: any) => c.case_type === claimType.trim().toLowerCase() && c.id !== campaignId).length > 0 && (
+          <select className="sm" style={{ width: "auto" }} defaultValue="" disabled={saving}
+                  onChange={(e) => { if (e.target.value) { copyToCampaign(e.target.value); e.target.value = ""; } }}>
+            <option value="">Copy for another campaign...</option>
+            {campaignList
+              .filter((c: any) => c.case_type === claimType.trim().toLowerCase() && c.id !== campaignId)
+              .map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
         {status === "published" ? <span className="badge signed">Published</span> : <span className="badge count">Draft</span>}
       </div>
       {campaignId && (

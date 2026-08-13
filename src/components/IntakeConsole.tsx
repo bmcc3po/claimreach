@@ -2,6 +2,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { getFirmConfig, DEFAULT_FIRM_SLUG } from "@/lib/intake-console/config";
 import { questionByKey, questionsFor, type Question } from "@/lib/intake-console/questions";
+import { fieldsToConsoleForm, storedQuestionApplies, nextStoredQuestion, type ConsoleForm } from "@/lib/intake-console/from-form";
 import {
   evaluate, nextQuestionKey, buildSummary, questionApplies, modifiersFor,
   type Answers, type CaseTypeKey, type CallType, type Outcome,
@@ -112,6 +113,39 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   const [answers, setAnswers] = useState<Answers>({});
   const [history, setHistory] = useState<string[]>([]);
   const [currentQ, setCurrentQ] = useState<string | null>(null);
+  // The questionnaire an owner actually published for this campaign. When it
+  // loads, it REPLACES the questions compiled into the app. Those stay only as a
+  // fallback for a campaign whose form has not been built yet, so the console
+  // never has nothing to ask.
+  const [form, setForm] = useState<ConsoleForm | null>(null);
+  const [askOrder, setAskOrder] = useState<string[] | null>(null);
+
+  async function loadForm(campaignId: string | null): Promise<ConsoleForm | null> {
+    if (!campaignId) return null;
+    try {
+      const d = await (await fetch(`/api/intake-fields?full=1&campaign_id=${encodeURIComponent(campaignId)}`)).json();
+      const fields = d.fields ?? [];
+      if (!Array.isArray(fields) || fields.length === 0) return null;
+      const built = fieldsToConsoleForm(fields);
+      setForm(built);
+      setAskOrder(Array.isArray(d.ask_order) && d.ask_order.length ? d.ask_order : null);
+      return built;
+    } catch { return null; }
+  }
+
+  // One place that answers "what do I ask next", so the runner cannot drift from
+  // the published form.
+  function nextKey(ct: CaseTypeKey, ans: Record<string, any>, f: ConsoleForm | null = form): string | null {
+    if (f) return nextStoredQuestion(f, ans, askOrder);
+    return nextQuestionKey(ct, ans);
+  }
+  // A single option is not a decision, it is a keystroke tax on a live call. If
+  // the firm runs exactly one case type, open it and go straight to questions.
+  useEffect(() => {
+    if (stage !== "casetype" || offeredBusy || busy) return;
+    if (offered.length === 1) pickCaseType(offered[0].key as CaseTypeKey);
+  }, [stage, offeredBusy, offered]);
+
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [outcomeSource, setOutcomeSource] = useState<"questions" | "calltype">("questions");
 
@@ -172,7 +206,8 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       setRetainerId((opts.find((o: any) => o.is_default) ?? opts[0])?.id ?? null);
       setClient((c) => ({ ...c, first_name: firstName.trim(), phone: callback }));
       setCaseType(t); setAnswers({}); setHistory([]);
-      setCurrentQ(nextQuestionKey(t, {})); setStage("questions");
+      const loaded = await loadForm(d.campaign_id ?? null);
+      setCurrentQ(nextKey(t, {}, loaded)); setStage("questions");
     } catch (e: any) { setErr(e?.message || "could not open the file"); }
     setBusy(false);
   }
@@ -343,13 +378,15 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     if (stage === "casetype") { setStage("details"); return; }
     if (stage === "details") { setStage("calltype"); return; }
     if (stage === "calltype") { setStage("search"); return; }
-    if (stage === "search") { setStage("callerid"); return; }
-    if (stage === "callerid") { setStage("greeting"); return; }
+    if (stage === "search") { setStage("greeting"); return; }
   }
 
   function reset() { window.location.reload(); }
 
-  const q: Question | undefined = currentQ && caseType ? questionByKey(caseType, currentQ) : undefined;
+  const q: Question | undefined = currentQ
+    ? (form ? form.questions.find((x) => x.key === currentQ)
+            : (caseType ? questionByKey(caseType, currentQ) : undefined))
+    : undefined;
   const applicable = caseType ? questionsFor(caseType).filter((x) => questionApplies(caseType, x.key, answers)).length : 0;
   const remaining = Math.max(0, applicable - history.length - 1);
 
@@ -415,26 +452,25 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         <div className="ic-card-wrap">
           <Spoken>{fill(cfg.greeting)}</Spoken>
           <Note tone="hard">{cfg.recordingDisclosure}</Note>
-          <Primary onClick={() => setStage("callerid")}>Disclosure read, continue</Primary>
+          <Primary onClick={() => setStage("search")}>Disclosure read, continue</Primary>
           <button className="ic-btn ghost wide" onClick={() => setFirmSlug("")}>Wrong firm? Pick again</button>
-        </div>
-      )}
-
-      {stage === "callerid" && (
-        <div className="ic-card-wrap">
-          <h2 className="ic-q">Paste the caller ID from JustCall</h2>
-          <Note>This has to match the call recording. Nothing unlocks until it is filled.</Note>
-          <input className="ic-input" autoFocus value={callerId} onChange={(e) => setCallerId(e.target.value)} placeholder="(702) 555-0134" />
-          <Primary disabled={!callerId.trim()} onClick={() => { setSearchQ(callerId); runSearch(callerId); setStage("search"); }}>Continue</Primary>
         </div>
       )}
 
       {stage === "search" && (
         <div className="ic-card-wrap">
-          <h2 className="ic-q">Who's on the line?</h2>
-          <Note>Search their number (or name) first. If we already have them, open their file — don't create a duplicate. If not, start a new caller.</Note>
+          {/* The caller ID and the lookup used to be two screens, so the agent
+              pasted a number in silence, hit continue, then typed the same
+              number again. Dead air at the exact moment a stranger decides
+              whether to trust you. One screen now, with something to say while
+              they type: the caller starts their story, the agent captures the
+              number, and the search runs off the same field. */}
+          <h2 className="ic-q">How can I help you today?</h2>
+          <Spoken>{"Thanks for calling. How can I help you today?"}</Spoken>
+          <Note>Let them start talking. Paste or type their number here while they do. It has to match the call recording, and it doubles as the lookup: if we already have them, open their file rather than making a duplicate.</Note>
           <input className="ic-input" autoFocus value={searchQ}
-            onChange={(e) => runSearch(e.target.value)} placeholder="Phone or name…" />
+            onChange={(e) => { setCallerId(e.target.value); runSearch(e.target.value); }}
+            placeholder="Their phone number, or a name" />
           {searchBusy && <p className="ic-muted" style={{ fontSize: 13, marginTop: 8 }}>Searching…</p>}
 
           {searchHits.length > 0 && (
@@ -462,8 +498,9 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
             <div className="ic-nohit">No existing file matches. Start a new caller below.</div>
           )}
 
-          <button className="ic-btn solid wide" disabled={busy} onClick={() => setStage("calltype")}>
-            Not in the system — new caller
+          <button className="ic-btn solid wide" disabled={busy || !searchQ.trim()}
+            onClick={() => setStage("calltype")}>
+            {searchQ.trim() ? "Not in the system, start a new file" : "Enter their number to continue"}
           </button>
         </div>
       )}
@@ -495,8 +532,8 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
       {stage === "casetype" && (
         <div className="ic-card-wrap">
-          <h2 className="ic-q">How can we help you today?</h2>
-          <Note>Picking opens the file. Every answer after this saves as you go, so a dropped call still leaves a working file you can pick back up.</Note>
+          <h2 className="ic-q">What kind of case is this?</h2>
+          <Note>Mark what the caller described. Picking opens the file, and every answer after this saves as you go, so a dropped call still leaves a working file you can pick back up.</Note>
           {!cfg.configured && (
             <div className="ic-banner err">
               This firm has no console script set up yet, so the greeting and screening lines are missing.

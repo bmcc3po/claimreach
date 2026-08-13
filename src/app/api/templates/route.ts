@@ -18,7 +18,24 @@ export async function GET() {
   if (!u) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { data: forms } = await sb.from("intake_forms").select("id, claim_type, name, status, is_template").eq("is_template", true);
   const existing = new Set((forms ?? []).map((f: any) => f.claim_type));
-  const types = CASE_PRESETS.map((p) => ({ key: p.key, label: p.label, family: p.family, hasTemplate: existing.has(p.key) }));
+  // Only offer templates for case types the registry still recognises. The
+  // preset catalog is a fixed list in code, so it went stale the moment the
+  // vocabulary was collapsed: it was still offering to build forms for
+  // big_trucking, tbi, premises and negligent_security, none of which are case
+  // types any more. Seeding one produced a form no campaign could ever resolve
+  // to, which looks like a working button and does nothing.
+  const { data: registry } = await sb.from("case_type_registry").select("key, label").eq("active", true);
+  const live = new Map((registry ?? []).map((r: any) => [r.key, r.label]));
+
+  const types = CASE_PRESETS
+    .filter((p) => live.has(p.key))
+    .map((p) => ({
+      key: p.key,
+      // The registry owns the label, so a rename there shows up here too.
+      label: live.get(p.key) ?? p.label,
+      family: p.family,
+      hasTemplate: existing.has(p.key),
+    }));
   return NextResponse.json({ types, forms: forms ?? [] });
 }
 
