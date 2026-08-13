@@ -38,7 +38,16 @@ export const INJURY_OPTIONS: { value: string; label: string; serious: boolean; c
   { value: "lig_tear",   label: "Shoulder / knee ligament TEAR",       serious: true,  catastrophic: false },
   { value: "internal",   label: "Internal bleeding / ruptured organ",  serious: true,  catastrophic: true  },
   { value: "scarring",   label: "Scarring / permanent marks",          serious: true,  catastrophic: true  },
+  // PTSD is serious, anxiety is not. The distinction is the firm's, not ours:
+  // a diagnosis carries a case past thirty days where general distress does
+  // not. Without this option a PTSD caller had nowhere to land except
+  // "anxiety", which is minor, so they disqualified at sixty days.
+  { value: "ptsd",       label: "PTSD",                                serious: true,  catastrophic: false },
   { value: "death",      label: "Death",                               serious: true,  catastrophic: true  },
+  // Somewhere to put an injury the list does not name. Without it the agent
+  // either leaves the question blank or picks something close but wrong, and
+  // both are worse than a plain "other" the case manager can read.
+  { value: "other",      label: "Other",                               serious: false, catastrophic: false },
 ];
 
 const INJURY_Q: Question = {
@@ -58,6 +67,21 @@ export const WILLING_MORE_Q: Question = {
     { value: "yes",    label: "Yes, willing to go back" },
     { value: "no",     label: "No, they are done", note: "Weakens the file. Flag it in your notes" },
     { value: "unsure", label: "Not sure" },
+  ],
+};
+
+// Asked only of someone injured, past the thirty day window, who has never seen
+// a doctor and says they are willing to. Willingness on its own is cheap: the
+// firm is going to book and pay for the appointment, so the question that
+// actually predicts whether the file survives is whether they will show up.
+export const COMMIT_APPT_Q: Question = {
+  key: "commit_appointment",
+  script: "Our attorney network will set up a doctor's appointment for you. Do you commit to making that appointment?",
+  note: "Ask it plainly and wait. A soft yes here is the single biggest source of files that die two weeks later, so mark what they actually said, not what you hope they meant.",
+  kind: "single",
+  options: [
+    { value: "yes", label: "Yes, they will go" },
+    { value: "no", label: "No, or would not commit", note: "Ends the file on an older accident" },
   ],
 };
 
@@ -282,6 +306,7 @@ export const AUTO_QUESTIONS: Question[] = [
   },
   TREATMENT_Q,
   WILLING_Q,
+  COMMIT_APPT_Q,
   {
     key: "ins_other",
     script: "Was there insurance on the other driver?",
@@ -464,6 +489,7 @@ export const GPI_QUESTIONS: Question[] = [
   },
   TREATMENT_Q,
   WILLING_Q,
+  COMMIT_APPT_Q,
   billsQ(),
   CASE_MANAGER_NOTES_Q,
 ];
@@ -638,23 +664,37 @@ export const BRIEF_QUESTIONS: Question[] = [
 // State rides with the date because it drives the statute of limitations.
 // Anything a question does not depend on gets asked later.
 const AUTO_ASK_ORDER = [
-  "authority", "poa", "role", "attorney",
-  "how_found_us", "referral_source",
-  "what_happened", "collision_type", "agent_read",
-  "date", "incident_time", "incident_city_state",
-  "injured", "symptoms_ongoing", "treatment", "treatment_followup", "willing", "willing_more",
+  // The caller has just told you what happened. Record it, then run the three
+  // gates before anything else.
+  "authority", "poa",
+  // The gates, in the order they kill fastest. Someone already represented or
+  // already settled is over in two questions. Someone who caused it is over in
+  // three. An accident past the window is over in four. Every one of those used
+  // to be found somewhere between question ten and question seventeen, after
+  // the agent had already spent five minutes on marketing attribution and
+  // collision type.
+  "attorney", "settled", "fault", "date", "incident_city_state",
+  "injured",
+  // Only now is it worth spending time on the file.
+  "what_happened", "collision_type", "role", "agent_read", "incident_time",
+  "symptoms_ongoing", "treatment", "treatment_followup", "willing", "commit_appointment", "willing_more",
   "injuries", "surgery", "hosp",
-  "fault", "police_report", "police_agency", "police_report_number", "citations", "commercial", "settled", "bills",
+  "police_report", "police_agency", "police_report_number", "citations", "commercial", "bills",
   "ins_other", "ins_own", "auto_policy_id", "ins_uim",
   "others_in_vehicle", "others_names", "others_injured", "others_injured_contact", "others_need_help",
   "ins_forms", "ins_forms_signed", "ins_forms_said",
+  // Marketing attribution. Real, but it never decided whether a file lives, so
+  // it belongs after the questions that do.
+  "how_found_us", "referral_source",
   "case_manager_notes",
 ];
 
 const GPI_ASK_ORDER = [
-  "presence", "what_happened", "agent_read",
-  "date", "incident_time", "incident_city_state",
-  "injured", "symptoms_ongoing", "treatment", "willing", "willing_more",
+  // Same shape as auto: record what they said, then gate, then work the file.
+  "presence", "attorney", "settled", "date", "incident_city_state",
+  "injured",
+  "what_happened", "agent_read", "incident_time",
+  "symptoms_ongoing", "treatment", "willing", "commit_appointment", "willing_more",
   "injuries", "surgery", "bills",
   "case_manager_notes",
 ];

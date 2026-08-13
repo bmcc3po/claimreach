@@ -32,11 +32,14 @@ const VEHICLE_YEARS: string[] = (() => {
 type Stage = "greeting" | "callerid" | "search" | "calltype" | "details" | "casetype" | "questions" | "outcome";
 type SignStage = "intro" | "identity" | "waiting" | "signed";
 
+// These numbers are on ads, so effectively every call is a new potential
+// client. The other two exist because the odd one still happens, not because
+// they are real branches, and collapsing four options to three keeps the
+// screen a glance instead of a decision.
 const CALL_TYPES: { value: CallType; label: string; sub: string; lead?: boolean }[] = [
-  { value: "new_potential", label: "New Potential Client", sub: "Open a file and run the intake", lead: true },
-  { value: "existing",      label: "Existing Client",      sub: "Route to their team" },
-  { value: "non_client",    label: "Non-Client Matter",    sub: "Route to the firm" },
-  { value: "not_legal",     label: "Not a Legal Matter",   sub: "Close politely" },
+  { value: "new_potential", label: "New potential client", sub: "Run the intake", lead: true },
+  { value: "existing",      label: "Existing client",      sub: "Take a message for their team" },
+  { value: "non_client",    label: "Something else",       sub: "Take a name and number, pass it on" },
 ];
 
 const IDENTITY_FIELDS: { key: string; label: string; type?: string; half?: boolean }[] = [
@@ -288,7 +291,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
   function pickCallType(t: CallType) {
     setCallType(t);
-    if (t === "new_potential") { setStage("details"); return; }
+    if (t === "new_potential") { setStage("casetype"); return; }
     const r = cfg.callTypeRouting[t];
     setOutcome({ disposition: r.disposition, reason: r.reason, flags: [], closeKey: t === "not_legal" ? "not_legal" : undefined });
     setOutcomeSource("calltype"); setStage("outcome");
@@ -375,8 +378,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       setAnswers(a); setCurrentQ(last);
       return;
     }
-    if (stage === "casetype") { setStage("details"); return; }
-    if (stage === "details") { setStage("calltype"); return; }
+    if (stage === "casetype") { setStage("calltype"); return; }
     if (stage === "calltype") { setStage("search"); return; }
     if (stage === "search") { setStage("greeting"); return; }
   }
@@ -452,56 +454,57 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         <div className="ic-card-wrap">
           <Spoken>{fill(cfg.greeting)}</Spoken>
           <Note tone="hard">{cfg.recordingDisclosure}</Note>
-          <Primary onClick={() => setStage("search")}>Disclosure read, continue</Primary>
+          <Primary onClick={() => setStage("search")}>Read it, continue</Primary>
           <button className="ic-btn ghost wide" onClick={() => setFirmSlug("")}>Wrong firm? Pick again</button>
         </div>
       )}
 
       {stage === "search" && (
         <div className="ic-card-wrap">
-          {/* The caller ID and the lookup used to be two screens, so the agent
-              pasted a number in silence, hit continue, then typed the same
-              number again. Dead air at the exact moment a stranger decides
-              whether to trust you. One screen now, with something to say while
-              they type: the caller starts their story, the agent captures the
-              number, and the search runs off the same field. */}
-          <h2 className="ic-q">How can I help you today?</h2>
-          <Spoken>{"Thanks for calling. How can I help you today?"}</Spoken>
-          <Note>Let them start talking. Paste or type their number here while they do. It has to match the call recording, and it doubles as the lookup: if we already have them, open their file rather than making a duplicate.</Note>
-          <input className="ic-input" autoFocus value={searchQ}
-            onChange={(e) => { setCallerId(e.target.value); runSearch(e.target.value); }}
-            placeholder="Their phone number, or a name" />
-          {searchBusy && <p className="ic-muted" style={{ fontSize: 13, marginTop: 8 }}>Searching…</p>}
+          {/* Name and number are asked together because that is how the sentence
+              works out loud, and because searching on one and then asking for
+              the other left the agent silent twice in the first thirty seconds.
+              Getting a callback number before anything else also means a
+              dropped call is recoverable, which is the single cheapest thing
+              this screen can do for the file. */}
+          <Spoken>{"May I ask who I'm speaking with? And the best callback number, in case we get disconnected?"}</Spoken>
+          <Note>Ask for both in one breath, then let them talk. The search runs as you type, so if we already have them their file shows below rather than making a duplicate.</Note>
+
+          <div className="ic-row">
+            <div className="ic-col">
+              <label className="ic-label">First name</label>
+              <input className="ic-input" autoFocus value={firstName}
+                onChange={(e) => { setFirstName(e.target.value); runSearch(e.target.value); }}
+                placeholder="First name only" />
+            </div>
+            <div className="ic-col">
+              <label className="ic-label">Best callback number</label>
+              <input className="ic-input" value={callback}
+                onChange={(e) => { setCallback(e.target.value); setCallerId(e.target.value); runSearch(e.target.value); }}
+                placeholder="(702) 555-0134" />
+            </div>
+          </div>
 
           {searchHits.length > 0 && (
-            <div className="ic-hits">
-              {searchHits.map((p) => (
-                <button key={p.id} className="ic-hit" disabled={busy} onClick={() => openExisting(p.id)}>
-                  <div className="ic-hit-top">
-                    <b>{p.claimant_name || "Unnamed"}</b>
-                    <span className="ic-hit-no">{p.lead_no}</span>
-                  </div>
-                  <div className="ic-hit-meta">{p.phone || "no phone"}{p.email ? ` · ${p.email}` : ""}</div>
-                  <div className="ic-hit-claims">
-                    {(p.claims ?? []).length === 0
-                      ? <span className="ic-hit-claim muted">no claims yet</span>
-                      : (p.claims ?? []).map((c: any) => (
-                          <span key={c.id} className="ic-hit-claim">{(c.campaign || c.claim_type)} · {c.status}</span>
-                        ))}
-                  </div>
-                </button>
-              ))}
-            </div>
+            <>
+              <Note>We already have someone matching. Open their file rather than starting a second one.</Note>
+              <div className="ic-list">
+                {searchHits.map((r: any) => (
+                  <button key={r.lead_id} className="ic-result" disabled={busy} onClick={() => openExisting(r.lead_id)}>
+                    <span className="ic-result-t">{r.claimant_name || "Unnamed"} <span className="ic-result-no">{r.lead_no}</span></span>
+                    <span className="ic-result-s">{r.phone} {r.email ? " . " + r.email : ""}</span>
+                    <span className="ic-result-tag">{r.campaign || r.case_type} . {r.status}</span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
-          {searchQ.trim().length >= 2 && !searchBusy && searchHits.length === 0 && (
-            <div className="ic-nohit">No existing file matches. Start a new caller below.</div>
-          )}
-
-          <button className="ic-btn solid wide" disabled={busy || !searchQ.trim()}
+          <Spoken>{"And how can I help you today?"}</Spoken>
+          <Primary disabled={!firstName.trim() || !callback.trim()}
             onClick={() => setStage("calltype")}>
-            {searchQ.trim() ? "Not in the system, start a new file" : "Enter their number to continue"}
-          </button>
+            {!firstName.trim() || !callback.trim() ? "Name and number first" : "Continue"}
+          </Primary>
         </div>
       )}
 
@@ -515,18 +518,6 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {stage === "details" && (
-        <div className="ic-card-wrap">
-          <Spoken>{CALLER_DETAIL_SCRIPTS.nameAsk}</Spoken>
-          <label className="ic-label">First name</label>
-          <input className="ic-input" autoFocus value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name only" />
-          {firstName && <Spoken small>{fill(CALLER_DETAIL_SCRIPTS.firstNamePermission)}</Spoken>}
-          <label className="ic-label">Best callback number</label>
-          <input className="ic-input" value={callback} onChange={(e) => setCallback(e.target.value)} placeholder="(702) 555-0134" />
-          <Primary disabled={!firstName.trim()} onClick={() => setStage("casetype")}>Continue</Primary>
         </div>
       )}
 

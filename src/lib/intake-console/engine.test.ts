@@ -122,6 +122,49 @@ check("an unknown firm never borrows another firm's name", getFirmConfig("wll").
 check("an unknown firm never borrows another firm's greeting", getFirmConfig("wll").greeting, "");
 check("an unknown firm never borrows another firm's venue", getFirmConfig("wll").venueStates, null);
 
+console.log("\nCOMMIT TO THE APPOINTMENT (TMT rule, 31 days to 9 months)");
+// Never treated means no bills and no records, so the file rests entirely on
+// whether they attend the appointment the firm books and pays for.
+const mid = { ...base, date: "2026-04-01", treatment: "never", willing: "yes", bills: "none",
+              injuries: ["head"], willing_more: undefined as any };
+check("serious injury plus a commitment signs", disp({ ...mid, commit_appointment: "yes" }), "SIGN");
+check("refusing to commit does not sign", disp({ ...mid, commit_appointment: "no" }), "REFER");
+check("a minor injury does not sign on a commitment alone",
+  disp({ ...mid, injuries: ["neck_back"], commit_appointment: "yes" }), "REFER");
+check("PTSD counts as serious", disp({ ...mid, injuries: ["ptsd"], commit_appointment: "yes" }), "SIGN");
+check("anxiety alone does not", disp({ ...mid, injuries: ["anxiety"], commit_appointment: "yes" }), "REFER");
+check("still treating never needs the commitment",
+  disp({ ...base, date: "2026-04-01", treatment: "still" }), "SIGN");
+check("within 30 days it is not even asked",
+  questionApplies("mva", "commit_appointment", { injured: "yes", treatment: "never", willing: "yes", date: base.date }), false);
+check("within 30 days a willing caller still signs", disp({ ...base, treatment: "never", willing: "yes" }), "SIGN");
+check("it is only asked of someone willing and never treated",
+  questionApplies("mva", "commit_appointment", { injured: "yes", treatment: "never", willing: "yes", date: "2026-04-01" }), true);
+check("not asked of someone already treating",
+  questionApplies("mva", "commit_appointment", { injured: "yes", treatment: "still", date: "2026-04-01" }), false);
+check("not asked of someone unwilling",
+  questionApplies("mva", "commit_appointment", { injured: "yes", treatment: "never", willing: "no", date: "2026-04-01" }), false);
+
+console.log("\nDOG BITE: SCARRING IS THE TEST, NOT TREATMENT OR BILLS");
+const bite = (extra: any = {}) => evaluate("prem", {
+  ...g, case_subtype: "dogbite", attorney: "no", settled: "no",
+  date: "2026-07-01", dogbite_are_there_visible_scars_or_marks: "yes_elsewhere",
+  ...extra,
+}, cfg)?.disposition ?? null;
+check("a permanent mark signs", bite(), "SIGN");
+check("a facial scar signs", bite({ dogbite_are_there_visible_scars_or_marks: "yes_on_the_face_or_neck" }), "SIGN");
+check("no permanent mark disqualifies", bite({ dogbite_are_there_visible_scars_or_marks: "no" }), "DISQUALIFY");
+check("too early to tell goes to a human, not to no",
+  bite({ dogbite_are_there_visible_scars_or_marks: "too_early_to_tell" }), "SECONDARY_REVIEW");
+check("no bills test: nothing spent still signs on a scar", bite({ bills: "none" }), "SIGN");
+check("no treatment test: never treated still signs on a scar", bite({ treatment: "never", willing: "no" }), "SIGN");
+check("an old bite on an adult is time barred", bite({ date: "2025-01-01" }), "DISQUALIFY");
+check("an old bite on a child survives, their clock has not started",
+  bite({ date: "2025-01-01", dogbite_was_a_child_bitten: "yes" }), "SIGN");
+check("already represented still ends it", bite({ attorney: "yes" }), "DISQUALIFY");
+check("a slip and fall is unaffected by the dog bite screen",
+  evaluate("prem", { ...g, case_subtype: "general" }, cfg)?.disposition, "SIGN");
+
 console.log("\nMODIFIERS");
 check("commercial vehicle becomes a CMV modifier", modifiersFor("mva", { commercial: "yes" }), ["cmv"]);
 check("no CMV modifier on premises", modifiersFor("prem", { commercial: "yes" }), []);

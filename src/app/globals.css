@@ -1711,3 +1711,9 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .outcome.info    { border-left: 3px solid var(--accent, #3b7dd8); }
 .outcome.bad     { border-left: 3px solid var(--bad, #c1503f); }
 .outcome.neutral { border-left: 3px solid var(--line); }
+
+/* Two fields on one line in the console. Name and number are asked in the same
+   breath, so stacking them made the agent scroll mid-sentence. */
+.ic-row { display: flex; gap: 12px; }
+.ic-col { flex: 1 1 0; min-width: 0; }
+@media (max-width: 620px) { .ic-row { flex-direction: column; gap: 0; } }

@@ -50,6 +50,13 @@ export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers):
     // Only worth asking once a course of care has ended.
     if (key === "willing_more") return a.injured === "yes" && (a.treatment === "finished" || a.treatment === "stopped");
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
+    // The commitment only matters for someone who has never been seen, says
+    // they will go, AND is past the thirty day window. Anyone already treating
+    // has proved it, and inside thirty days any real injury qualifies anyway,
+    // so asking there would be a question whose answer cannot change anything.
+    if (key === "commit_appointment")
+      return a.injured === "yes" && a.treatment === "never" && a.willing === "yes"
+        && dateBucket(a.date) === "mid";
     // Follow-up care is only meaningful once they have actually been seen.
     if (key === "treatment_followup") return a.injured === "yes" && !!a.treatment && a.treatment !== "never";
     // Name/company of the referrer only when there is one to name.
@@ -73,6 +80,13 @@ export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers):
     // Only worth asking once a course of care has ended.
     if (key === "willing_more") return a.injured === "yes" && (a.treatment === "finished" || a.treatment === "stopped");
     if (key === "willing") return a.injured === "yes" && a.treatment === "never";
+    // The commitment only matters for someone who has never been seen, says
+    // they will go, AND is past the thirty day window. Anyone already treating
+    // has proved it, and inside thirty days any real injury qualifies anyway,
+    // so asking there would be a question whose answer cannot change anything.
+    if (key === "commit_appointment")
+      return a.injured === "yes" && a.treatment === "never" && a.willing === "yes"
+        && dateBucket(a.date) === "mid";
     return true;
   }
   return true;
@@ -167,11 +181,67 @@ function autoOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
     if (a.treatment === "still") return { disposition: "SIGN", reason: "Over 30 days, still treating", flags };
     if (hasSeriousInjury(a) && a.treatment === "finished")
       return { disposition: "SIGN", reason: "Over 30 days, serious injury, finished treating", flags };
+    // Never treated but willing. Willingness alone is not a qualifier past the
+    // thirty day window: there are no bills and no records, so the whole file
+    // rests on whether they actually attend the appointment the firm books. A
+    // refusal to commit is the file telling you now instead of in three weeks.
+    if (a.treatment === "never" && a.willing === "yes") {
+      if (a.commit_appointment === "no")
+        return { disposition: "REFER", reason: "Over 30 days, never treated, would not commit to the appointment", flags };
+      if (a.commit_appointment === "yes" && hasSeriousInjury(a))
+        return { disposition: "SIGN", reason: "Over 30 days, serious injury, committed to the appointment", flags };
+    }
     if (billsAtLeast(a.bills, cfg.autoBillsThreshold))
       return { disposition: "SIGN", reason: "Over 30 days, medical bills over the retainer line", flags };
     return { disposition: "REFER", reason: "Over 30 days, does not meet a retainer line", flags };
   }
   return { disposition: "REFER", reason: "Accident is 9 months old or older", flags };
+}
+
+
+// ---------------------------------------------------------------- dog bite
+// A dog bite is not screened like the rest of personal injury and running it
+// through that screen gets the answer wrong in both directions. There is no
+// bills test and no treatment test: a bite that needed one urgent care visit
+// and left a facial scar is a better case than one with months of therapy and
+// no mark. The qualifier is permanent scarring, or corrective surgery in place
+// of it.
+//
+// The nine month window also works differently. A minor's time to file is
+// tolled until they turn eighteen, so an older bite on a child is still live
+// where the same bite on an adult is time barred. Our date bucket has no idea
+// how old the claimant is, which is why this has to be checked here.
+//
+// Reads the questions the dog bite branch already asks. Nothing new to capture.
+function dogBiteOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
+  const flags = computeFlags("prem", a);
+  const scars = String(a.dogbite_are_there_visible_scars_or_marks ?? "");
+  const childBitten = String(a.dogbite_was_a_child_bitten ?? "") === "yes"
+    || String(a.authority ?? "") === "alive" && String(a.ip_adult ?? "") === "no";
+
+  if (a.attorney === "yes")
+    return { disposition: "DISQUALIFY", reason: "Already represented", flags, closeKey: "represented" };
+  if (a.settled === "yes")
+    return { disposition: "DISQUALIFY", reason: "Claim already settled", flags, closeKey: "settled" };
+
+  // Past nine months, only a minor survives, because their clock has not
+  // started. An adult that far out is time barred and no amount of scarring
+  // changes it.
+  if (dateBucket(a.date) === "old" && !childBitten)
+    return { disposition: "DISQUALIFY", reason: "Bite is more than 9 months old and the victim is an adult", flags, closeKey: "sol" };
+
+  // Scarring is the whole test. Too early to tell is not a no: a bite two weeks
+  // old has not finished healing, and disqualifying it would throw away a case
+  // that has not happened yet.
+  if (scars === "too_early_to_tell" || scars === "")
+    return { disposition: "SECONDARY_REVIEW", reason: "Scarring not yet known, worth a look once it has healed", flags, closeKey: "elevated" };
+  if (scars === "no")
+    return { disposition: "DISQUALIFY", reason: "No permanent scarring or mark from the bite", flags, closeKey: "no_scarring" };
+
+  // A facial or neck scar is the strongest version of this case.
+  if (scars === "yes_on_the_face_or_neck")
+    return { disposition: "SIGN", reason: "Permanent scarring to the face or neck", flags: [...flags, "facial scarring"] };
+  return { disposition: "SIGN", reason: "Permanent scarring or mark from the bite", flags };
 }
 
 function gpiOutcome(a: Answers, cfg: FirmConsoleConfig): Outcome {
@@ -283,7 +353,13 @@ export function applyVenue(o: Outcome, a: Answers, cfg: FirmConsoleConfig): Outc
 }
 
 export function finalOutcome(caseType: CaseTypeKey, a: Answers, cfg: FirmConsoleConfig): Outcome {
-  const base = caseType === "mva" ? autoOutcome(a, cfg)
+  // The subtype decides the screen before the case type does. Everything under
+  // the personal injury door shares one form, but a dog bite does not qualify
+  // the way a slip and fall does, so one screen over both gets it wrong in
+  // both directions: it drops a facial scar that cost nothing to treat, and it
+  // signs months of therapy that left no mark.
+  const base = String(a.case_subtype ?? "") === "dogbite" ? dogBiteOutcome(a, cfg)
+             : caseType === "mva" ? autoOutcome(a, cfg)
              : caseType === "prem" ? gpiOutcome(a, cfg)
              : briefOutcome(a);
   return applyVenue(base, a, cfg);
