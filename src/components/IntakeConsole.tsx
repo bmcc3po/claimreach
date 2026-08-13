@@ -3,8 +3,9 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { getFirmConfig, DEFAULT_FIRM_SLUG } from "@/lib/intake-console/config";
 import { questionByKey, questionsFor, type Question } from "@/lib/intake-console/questions";
 import { fieldsToConsoleForm, storedQuestionApplies, nextStoredQuestion, type ConsoleForm } from "@/lib/intake-console/from-form";
+import { deriveSubtype } from "@/lib/intake-console/subtype";
 import {
-  evaluate, nextQuestionKey, buildSummary, questionApplies, modifiersFor,
+  evaluate, nextQuestionKey, buildSummary, questionApplies, modifiersFor, dateBucket,
   type Answers, type CaseTypeKey, type CallType, type Outcome,
 } from "@/lib/intake-console/engine";
 import {
@@ -227,13 +228,27 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 
   function answerQuestion(key: string, value: any) {
     const next = { ...answers, [key]: value };
+
+    // Derived answers. A stored form's conditions can only test values that are
+    // actually in the answer bag, so anything computed has to be written there
+    // the moment its input is answered. Otherwise a branch that depends on it
+    // silently never opens, and an agent just never sees those questions.
+    if (key === "date") {
+      const b = dateBucket(value);
+      if (b) next.date_bucket = b;
+    }
+    if (key === "what_happened_type" || key === "incident_setting") {
+      const sub = deriveSubtype(next);
+      if (sub) next.case_subtype = sub;
+    }
+
     setAnswers(next);
     setHistory((h) => [...h, key]);
     persist(next);
     const ct = caseType!;
     const o = evaluate(ct, next, cfg);
     if (o) { finishWith(o, next); return; }
-    setCurrentQ(nextQuestionKey(ct, next));
+    setCurrentQ(nextKey(ct, next));
   }
 
   async function finishWith(o: Outcome, ans: Answers) {
