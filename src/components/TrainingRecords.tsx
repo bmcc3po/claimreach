@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { COURSE } from "@/lib/course";
 import { CAMPAIGNS, campaignModuleId, drillModuleId } from "@/lib/campaigns";
+import { responseDrillModuleId } from "@/lib/response-drill";
 
 // Manager view — who has completed which training, course and campaign, with
 // scores and dates. Campaign certification is the column that decides whether
@@ -35,7 +36,7 @@ export default function TrainingRecords() {
     <div>
       <div className="section-title">Campaign clearance</div>
       <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
-        Cleared for live calls means both columns are green: the written certification and the qualifier drill. Both need 90%.
+        Cleared for live calls means all three columns are green: the written certification, the qualifier drill, and the response drill. All need 90%.
       </p>
       {loading && <p className="muted">Loading…</p>}
       {!loading && users.length === 0 && <p className="muted">No training activity yet.</p>}
@@ -45,12 +46,13 @@ export default function TrainingRecords() {
             <thead>
               <tr>
                 <th rowSpan={2}>Agent</th>
-                {CAMPAIGNS.map((c) => <th key={c.id} colSpan={2} style={{ textAlign: "center" }}>{c.name}</th>)}
+                {CAMPAIGNS.map((c) => <th key={c.id} colSpan={3} style={{ textAlign: "center" }}>{c.name}</th>)}
               </tr>
               <tr>
                 {CAMPAIGNS.map((c) => [
                   <th key={`${c.id}-c`} style={{ fontWeight: 500 }}>Cert</th>,
-                  <th key={`${c.id}-d`} style={{ fontWeight: 500 }}>Drill</th>,
+                  <th key={`${c.id}-d`} style={{ fontWeight: 500 }}>Verdict</th>,
+                  <th key={`${c.id}-r`} style={{ fontWeight: 500 }}>Response</th>,
                 ])}
               </tr>
             </thead>
@@ -61,6 +63,7 @@ export default function TrainingRecords() {
                   {CAMPAIGNS.map((c) => [
                     <Cell key={`${c.id}-c`} r={u.mods[campaignModuleId(c.id)]} />,
                     <Cell key={`${c.id}-d`} r={u.mods[drillModuleId(c.id)]} />,
+                    <Cell key={`${c.id}-r`} r={u.mods[responseDrillModuleId(c.id)]} />,
                   ])}
                 </tr>
               ))}
