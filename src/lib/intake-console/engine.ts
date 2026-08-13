@@ -146,6 +146,45 @@ export function terminalOutcome(caseType: CaseTypeKey, a: Answers): Outcome | nu
     if (a.attorney === "yes")
       return { disposition: "DISQUALIFY", reason: "Already has an attorney for this accident", flags: [], closeKey: "attorney" };
   }
+
+  // Gates that end the call the moment they are answered, on any case type.
+  //
+  // These were all checked at the END, after every remaining question had been
+  // asked, which made putting them first pointless: the agent worked the whole
+  // intake and only then found out the file was dead. A gate that does not stop
+  // the call is not a gate, it is a field.
+  //
+  // Two things they must NOT do, both learned from the tests:
+  //
+  // A flag does not lose its override. A catastrophic injury or a commercial
+  // vehicle sends a would-be disqualification to a human instead, and a gate
+  // firing earlier must not skip that. The wrong answer on fault is exactly the
+  // kind of thing a supervisor should see on a file with a serious injury.
+  //
+  // Old is a REFER, not a disqualification. A case past the window is still
+  // worth something to the network, and calling it dead throws that away.
+  {
+    const flags = computeFlags(caseType, a);
+    const end = (reason: string, closeKey: string): Outcome =>
+      flags.length > 0
+        ? { disposition: "SECONDARY_REVIEW", reason: `${reason}, but the file carries a flag`, flags, closeKey: "elevated" }
+        : { disposition: "DISQUALIFY", reason, flags, closeKey };
+
+    if (a.settled === "yes") return end("Already settled or signed a release with an insurer", "settled");
+    if (a.fault === "caused") return end("The caller caused the accident", "at_fault");
+    if (a.premises_fault === "no") return end("Not caused by an unsafe condition on someone else's property", "no_liability");
+    if (a.dog_owner === "own") return end("It was the caller's own dog", "own_dog");
+    if (a.injured === "no" || a.injured === "property_only") return end("No injuries, property damage only", "no_injury");
+    if (a.injured === "unwilling") return end("Injured but unwilling to be seen by a doctor", "wont_treat");
+
+    // Dog bite is exempt: a minor's time to file has not started, so an older
+    // bite on a child is still live. Checked on both keys because the door sets
+    // one and the derivation sets the other.
+    const isDogBite = String(a.what_happened_type ?? "") === "dog" || String(a.case_subtype ?? "") === "dogbite";
+    if (dateBucket(a.date) === "old" && !isDogBite)
+      return { disposition: "REFER", reason: "Incident is more than 9 months old", flags, closeKey: "sol" };
+  }
+
   return null;
 }
 
