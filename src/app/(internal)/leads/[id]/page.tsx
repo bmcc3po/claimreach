@@ -51,6 +51,9 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const { data: callLogs } = await sb.from("call_logs")
     .select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100);
 
+  // Lightweight my-day stats placeholder (wired to real metrics later).
+  const stats = { signed: 0, tierA: 0, weekPay: 0, wip: claims?.length ?? 0 };
+
   const { data: staff } = await sb.from("app_users").select("id, full_name").order("full_name");
 
   const { data: { user: cur } } = await sb.auth.getUser();
@@ -77,6 +80,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       lead={lead}
       claims={claims ?? []}
       activity={activity ?? []}
+      stats={stats}
       claimProperties={claimProperties}
       audit={audit ?? []}
       notes={notes ?? []}

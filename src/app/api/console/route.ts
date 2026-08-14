@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     const caseType = b.case_type;                       // granular picker value
     const registryKey = b.registry_key || b.case_type;   // what the campaign is keyed on
     const { data: campaign } = await admin.from("campaigns")
-      .select("id, name, retainer_template_id, retainer_packet, allow_live_sign")
+      .select("id, name, retainer_template_id, retainer_packet, allow_live_sign, path, transfer_label, transfer_number, network_label")
       .eq("firm_id", firmId).eq("case_type", registryKey).eq("active", true).limit(1).maybeSingle();
 
     if (!campaign) {
@@ -124,6 +124,12 @@ export async function POST(req: NextRequest) {
       // The console needs this to load the questionnaire that was actually
       // published for this campaign, rather than the one compiled into the app.
       campaign_id: campaign?.id ?? null,
+      // Where a qualified caller goes, so the agent is told rather than
+      // expected to remember it at the end of a call.
+      path: campaign?.path ?? null,
+      transfer_label: campaign?.transfer_label ?? null,
+      transfer_number: campaign?.transfer_number ?? null,
+      network_label: campaign?.network_label ?? null,
       retainers: allowedRetainers ?? [],
       can_send_retainer: !!(campaign && hasPacket && campaign.allow_live_sign),
       retainer_blocker: !campaign
@@ -227,7 +233,7 @@ export async function POST(req: NextRequest) {
     let campaign: any = null;
     if (lead.campaign_id) {
       const { data: c } = await admin.from("campaigns")
-        .select("id, name, retainer_template_id, retainer_packet, allow_live_sign")
+        .select("id, name, retainer_template_id, retainer_packet, allow_live_sign, path, transfer_label, transfer_number, network_label")
         .eq("id", lead.campaign_id).maybeSingle();
       campaign = c ?? null;
     }

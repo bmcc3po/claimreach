@@ -4,6 +4,7 @@ import { getFirmConfig, DEFAULT_FIRM_SLUG } from "@/lib/intake-console/config";
 import { questionByKey, questionsFor, type Question } from "@/lib/intake-console/questions";
 import { fieldsToConsoleForm, storedQuestionApplies, nextStoredQuestion, type ConsoleForm } from "@/lib/intake-console/from-form";
 import { deriveSubtype } from "@/lib/intake-console/subtype";
+import { routeCall, type CampaignRouting } from "@/lib/intake-console/routing";
 import {
   evaluate, nextQuestionKey, buildSummary, questionApplies, modifiersFor, dateBucket,
   type Answers, type CaseTypeKey, type CallType, type Outcome,
@@ -122,6 +123,8 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   // fallback for a campaign whose form has not been built yet, so the console
   // never has nothing to ask.
   const [form, setForm] = useState<ConsoleForm | null>(null);
+  // Where a qualified caller goes, read off the campaign rather than remembered.
+  const [routing, setRouting] = useState<CampaignRouting>({});
   const [askOrder, setAskOrder] = useState<string[] | null>(null);
 
   async function loadForm(campaignId: string | null): Promise<ConsoleForm | null> {
@@ -205,6 +208,12 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       if (t === "motel_trafficking") { window.location.href = `/intake/${d.lead_id}`; return; }
       setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
       setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
+      setRouting({
+        path: d.path ?? null,
+        transferLabel: d.transfer_label ?? null,
+        transferNumber: d.transfer_number ?? null,
+        networkLabel: d.network_label ?? null,
+      });
       const opts = d.retainers ?? [];
       setRetainerOptions(opts);
       setRetainerId((opts.find((o: any) => o.is_default) ?? opts[0])?.id ?? null);
@@ -292,6 +301,12 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
       if (!offered.some((c) => c.key === ct)) { window.location.href = `/leads/${d.lead_id}`; return; }
       setFile({ lead_id: d.lead_id, lead_no: d.lead_no, claim_id: d.claim_id, call_id: d.call_id });
       setRetainer({ can: !!d.can_send_retainer, blocker: d.retainer_blocker ?? null, campaign: d.campaign ?? null });
+      setRouting({
+        path: d.path ?? null,
+        transferLabel: d.transfer_label ?? null,
+        transferNumber: d.transfer_number ?? null,
+        networkLabel: d.network_label ?? null,
+      });
       const opts = d.retainers ?? [];
       setRetainerOptions(opts);
       setRetainerId((opts.find((o: any) => o.is_default) ?? opts[0])?.id ?? null);
@@ -357,6 +372,23 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     if (signStage !== "signed" || !client.dob) return;
     setPostSign((ps) => (ps.dob ? ps : { ...ps, dob: client.dob }));
   }, [signStage, client.dob]);
+
+  // Close the call on a status the agent picked from the routing step. Same
+  // write as finishCall, except the status is stated rather than inferred, which
+  // is the whole point: "transferred" and "transfer, no answer" are the same
+  // disposition and completely different next steps.
+  async function finishWithStatus(statusKey: string) {
+    if (!file || !outcome) { setDone(true); return; }
+    setBusy(true);
+    try {
+      await api({
+        op: "disposition", lead_id: file.lead_id, call_id: file.call_id,
+        disposition: outcome.disposition, reason: outcome.reason, close_key: outcome.closeKey,
+        flags: outcome.flags, status_key: statusKey,
+      });
+    } catch (e: any) { setErr(e?.message || "could not close the file"); }
+    setBusy(false); setDone(true);
+  }
 
   async function finishCall() {
     if (!file || !outcome) { setDone(true); return; }
@@ -583,6 +615,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           retainerOptions={retainerOptions} retainerId={retainerId} setRetainerId={setRetainerId}
           ladderDone={ladderDone} setLadderDone={setLadderDone} busy={busy}
           onSend={saveIdentityAndSend} onFinish={finishCall} onBack={back} answers={answers} file={file}
+          routing={routing} onStatus={finishWithStatus}
         />
       )}
 
@@ -596,8 +629,11 @@ function OutcomeView(p: any) {
   const { outcome, cfg, fill, signStage, setSignStage, client, setClient, sendVia, setSendVia,
           retainer, sigStatus, postSign, setPostSign, ladderDone, setLadderDone, busy,
           actuallySigned, setActuallySigned, retainerOptions, retainerId, setRetainerId,
-          onSend, onFinish, onBack, answers, file } = p;
+          onSend, onFinish, onBack, answers, file, routing, onStatus } = p;
   const d: string = outcome.disposition;
+  // What the agent does with the person still on the line. One place decides
+  // it, so the answer is the same on every call and cannot drift.
+  const step = routeCall(outcome, routing ?? {});
   const tone = d === "SIGN" ? "sign" : d === "REFER" ? "refer" : d === "DISQUALIFY" ? "dq" : d === "SECONDARY_REVIEW" ? "sr" : "neutral";
   const sr = SECONDARY_REVIEW_SCRIPTS[(outcome.closeKey as keyof typeof SECONDARY_REVIEW_SCRIPTS)] ?? SECONDARY_REVIEW_SCRIPTS.default;
   const identityReady = client.first_name && client.last_name && client.email;
@@ -612,8 +648,32 @@ function OutcomeView(p: any) {
         <div className="ic-flags">{outcome.flags.map((f: string) => <span key={f} className="ic-flag">{f}</span>)}</div>
       )}
 
+      {/* The instruction comes first, above everything else on the screen. The
+          agent is reading this with a stranger waiting, and the one thing they
+          need is where this call goes next. */}
+      <div className="ic-route">
+        <div className="ic-route-head">{step.headline}</div>
+        {step.destination && <div className="ic-route-dest">{step.destination}</div>}
+        {step.say && <Spoken>{step.say}</Spoken>}
+        <Note>{step.note}</Note>
+        {step.action !== "sign" && (
+          <>
+            <div className="ic-route-label">Then mark the call</div>
+            <div className="ic-route-status">
+              {step.statuses.map((st) => (
+                <button key={st.key} className="ic-btn wide" disabled={busy}
+                  onClick={() => onStatus?.(st.key)}>
+                  <b>{st.label}</b>
+                  {st.hint && <span>{st.hint}</span>}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="ic-out-body">
-        {d === "SIGN" && signStage === "intro" && (
+        {step.action === "sign" && d === "SIGN" && signStage === "intro" && (
           <>
             <Spoken>{fill(cfg.signTransition)}</Spoken>
             <Note>{SIGN_SCRIPTS.nextStepNote}</Note>
@@ -843,9 +903,9 @@ const CSS = `
 .ic-vital { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:2px 8px; border-radius:999px; letter-spacing:.02em; }
 .ic-q { font-size:22px; font-weight:750; margin:0 0 8px; letter-spacing:-.02em; }
 
-.ic-spoken { border-left:4px solid var(--accent); background:var(--script-bg); border-radius:0 12px 12px 0; padding:16px 18px; margin:14px 0; }
-.ic-spoken-tag { font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); }
-.ic-spoken p { margin:6px 0 0; font-size:19px; line-height:1.5; font-weight:600; color:var(--ink); }
+.ic-spoken { border-left:4px solid #2563eb; background:#eff5ff; border-radius:0 12px 12px 0; padding:16px 18px; margin:14px 0; }
+.ic-spoken-tag { font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#1d4ed8; }
+.ic-spoken p { margin:6px 0 0; font-size:19px; line-height:1.5; font-weight:600; color:#0d1420; }
 .ic-spoken.sm p { font-size:16px; font-weight:500; }
 
 .ic-note { border-left:4px solid #d9982a; background:#fff8ec; border-radius:0 10px 10px 0; padding:11px 14px; margin:12px 0; }
@@ -859,16 +919,16 @@ const CSS = `
 .ic-opts { display:flex; flex-direction:column; gap:9px; margin-top:18px; }
 .ic-opt { text-align:left; padding:16px 18px; font-size:16.5px; font-weight:600; border:1.5px solid var(--line);
   border-radius:12px; background:var(--surface); cursor:pointer; transition:all .08s; color:var(--ink); }
-.ic-opt:hover { border-color:var(--brand); background:var(--surface-2); transform:translateX(2px); }
-.ic-opt.on { border-color:var(--brand); background:var(--script-bg); }
-.ic-check { display:inline-block; width:20px; color:var(--brand); font-weight:800; }
+.ic-opt:hover { border-color:#2563eb; background:#f5f9ff; transform:translateX(2px); }
+.ic-opt.on { border-color:#2563eb; background:#eff5ff; }
+.ic-check { display:inline-block; width:20px; color:#2563eb; font-weight:800; }
 
 .ic-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
 @media (max-width:640px){ .ic-grid{ grid-template-columns:1fr; } }
 .ic-card { display:flex; flex-direction:column; gap:4px; text-align:left; padding:20px; border:1.5px solid var(--line);
   border-radius:14px; background:var(--surface); cursor:pointer; transition:all .08s; }
-.ic-card:hover { border-color:var(--brand); transform:translateY(-1px); }
-.ic-card.lead { border-color:var(--brand); background:var(--script-bg); }
+.ic-card:hover { border-color:#2563eb; transform:translateY(-1px); }
+.ic-card.lead { border-color:#2563eb; background:#eff5ff; }
 .ic-card-t { font-size:16.5px; font-weight:700; color:var(--ink); }
 .ic-card-s { font-size:12.5px; color:var(--ink-faint); }
 
@@ -880,14 +940,14 @@ const CSS = `
 .ic-btn { padding:11px 18px; border-radius:10px; border:1px solid var(--line); background:var(--surface);
   font:inherit; font-weight:650; cursor:pointer; color:var(--ink); }
 .ic-btn.ghost { background:transparent; }
-.ic-btn.solid { background:var(--brand-2); color:var(--brand-ink); border-color:var(--brand-2); }
+.ic-btn.solid { background:#0d1420; color:#fff; border-color:#0d1420; }
 .ic-btn.solid:disabled { opacity:.35; cursor:not-allowed; }
 .ic-btn.wide { width:100%; margin-top:12px; padding:15px; font-size:16px; }
 
 .ic-outcome { border-radius:18px; overflow:hidden; border:1px solid var(--line); background:var(--surface); }
 .ic-out-head { padding:20px 24px; color:#fff; }
 .ic-outcome.sign .ic-out-head { background:#15803d; }
-.ic-outcome.refer .ic-out-head { background:var(--brand); }
+.ic-outcome.refer .ic-out-head { background:#1d4ed8; }
 .ic-outcome.dq .ic-out-head { background:#4b5563; }
 .ic-outcome.sr .ic-out-head { background:#b91c1c; }
 .ic-outcome.neutral .ic-out-head { background:#334155; }
@@ -899,9 +959,9 @@ const CSS = `
 .ic-out-body { padding:16px 24px 6px; }
 .ic-h3 { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); margin:22px 0 8px; }
 
-.ic-wait { display:flex; align-items:center; gap:10px; padding:14px 16px; border-radius:12px; background:var(--script-bg); border:1px solid var(--script-bd); font-size:15px; margin-bottom:6px; }
+.ic-wait { display:flex; align-items:center; gap:10px; padding:14px 16px; border-radius:12px; background:#eff6ff; border:1px solid #bfdbfe; font-size:15px; margin-bottom:6px; }
 .ic-wait.done { background:#f0fdf4; border-color:#bbf7d0; }
-.ic-dot { width:10px; height:10px; border-radius:50%; background:var(--brand); animation:icp 1.2s infinite; }
+.ic-dot { width:10px; height:10px; border-radius:50%; background:#2563eb; animation:icp 1.2s infinite; }
 .ic-tick { color:#15803d; font-weight:900; }
 @keyframes icp { 0%,100%{opacity:1} 50%{opacity:.25} }
 
@@ -933,7 +993,7 @@ const CSS = `
 .ic-postfield input.bad, .ic-postfield select.bad { border-color:#dc2626; background:#fef2f2; }
 .ic-send { display:flex; gap:8px; }
 .ic-toggle { flex:1; padding:12px; border-radius:10px; border:1.5px solid var(--line); background:var(--surface); font:inherit; font-weight:650; cursor:pointer; color:var(--ink); }
-.ic-toggle.on { border-color:var(--brand); background:var(--script-bg); }
+.ic-toggle.on { border-color:#2563eb; background:#eff5ff; }
 
 .ic-out-foot { display:flex; align-items:center; gap:10px; padding:16px 24px; border-top:1px solid var(--line); background:var(--surface-2); }
 .ic-out-foot .spacer { flex:1; }
@@ -947,7 +1007,7 @@ const CSS = `
 
 .ic-hits { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
 .ic-hit { text-align:left; border:1.5px solid var(--line); border-radius:12px; padding:13px 15px; background:var(--surface); cursor:pointer; }
-.ic-hit:hover { border-color:var(--brand); background:var(--surface-2); }
+.ic-hit:hover { border-color:#2563eb; background:#f5f9ff; }
 .ic-hit:disabled { opacity:.5; cursor:default; }
 .ic-hit-top { display:flex; align-items:baseline; gap:8px; }
 .ic-hit-top b { font-size:16px; }

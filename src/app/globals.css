@@ -167,6 +167,17 @@ input:focus, textarea:focus, select:focus {
 .gate .tag { font-size: 11px; font-weight: 700; text-transform: uppercase;
   color: var(--danger); display: block; margin-bottom: 4px; }
 
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  cursor: pointer; padding: 11px 18px; border-radius: 10px;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink);
+  font: inherit; font-weight: 600; letter-spacing: 0.01em; min-height: 44px; }
+.btn:hover { filter: brightness(1.06); }
+.btn.secondary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.btn.ghost { background: transparent; border-color: var(--line); color: var(--ink-soft); }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn.ghost:disabled { color:var(--ink-soft); border-color:var(--line); opacity:0.7; }
+
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
 .choice { display: inline-flex; gap: 7px; align-items: center; margin: 4px 12px 4px 0;
@@ -205,13 +216,6 @@ table.docket.statuses-table .col-flag { text-align: center; width: 62px; white-s
 
 .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .login-card { width: 380px; max-width: 100%; }
-.login-err { color: var(--ink-soft); font-size: 13px; margin: 0 0 12px; }
-.pw-wrap { position: relative; }
-.pw-wrap input { padding-right: 64px; }
-.pw-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  background: none; border: 0; color: var(--ink-soft); font: inherit; font-size: 12.5px;
-  font-weight: 600; cursor: pointer; padding: 6px 8px; }
-.pw-toggle:hover { color: var(--ink); }
 .muted { color: var(--ink-soft); font-size: 13px; }
 
 @media (max-width: 640px) {
@@ -305,8 +309,7 @@ table.docket.statuses-table .col-flag { text-align: center; width: 62px; white-s
 @media(max-width:1040px){ .lead-grid{grid-template-columns:1fr} }
 
 .tabs { display:flex; gap:2px; padding:0 8px; border-bottom:1px solid var(--line);
-  background:var(--surface-2); border-radius:var(--radius) var(--radius) 0 0; flex-wrap:nowrap;
-  overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  background:var(--surface-2); border-radius:var(--radius) var(--radius) 0 0; flex-wrap:wrap; }
 .tabs button { background:transparent; border:0; padding:15px 20px; font-size:14.5px; font-weight:600;
   color:var(--ink-soft); border-bottom:2.5px solid transparent; margin-bottom:-1px; cursor:pointer; }
 .tabs button.active { color:var(--ink); border-bottom-color:var(--accent); }
@@ -527,7 +530,6 @@ table.docket.leads tbody a:hover { text-decoration: underline; }
 /* ============================================================
    PREMIUM COMPONENT LAYER v2 — Close/Attio-grade polish
    ============================================================ */
-h1, h2 { font-family: 'Plus Jakarta Sans', Inter, system-ui, sans-serif; }
 h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.025em; }
 h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
 h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
@@ -551,9 +553,6 @@ h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
 .btn.ghost:hover { background: var(--surface-2); color: var(--ink); border-color: var(--line); }
 .btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
 .btn.sm { padding: 6px 11px; font-size: 12.5px; }
-.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-.btn.danger:hover { background: var(--danger); filter: brightness(1.06); }
-.btn.ghost.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
 
 /* Inputs — quiet until focused */
 input, textarea, select {
@@ -1718,3 +1717,41 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .ic-row { display: flex; gap: 12px; }
 .ic-col { flex: 1 1 0; min-width: 0; }
 @media (max-width: 620px) { .ic-row { flex-direction: column; gap: 0; } }
+
+/* ============================================================
+   WHERE THIS CALL GOES NEXT
+
+   Sits above the outcome detail because it is the only thing the agent needs
+   in the first second: a stranger is waiting while they read it.
+   ============================================================ */
+.ic-route {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent, #3b7dd8);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: var(--surface);
+}
+.ic-route-head { font-size: 16px; font-weight: 700; line-height: 1.3; }
+.ic-route-dest {
+  font-size: 15px; font-weight: 700; margin-top: 4px;
+  font-variant-numeric: tabular-nums; letter-spacing: .01em;
+}
+.ic-route-label {
+  font-size: 11px; font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--ink-faint); margin: 14px 0 6px;
+}
+.ic-route-status { display: grid; gap: 8px; }
+.ic-route-status .ic-btn {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 2px; text-align: left; padding: 11px 14px;
+}
+.ic-route-status .ic-btn b { font-size: 14px; }
+.ic-route-status .ic-btn span { font-size: 12px; color: var(--ink-faint); }
+
+/* Outcome colour carries through, so a disqualification does not read the same
+   as a transfer at a glance. */
+.ic-outcome.dq .ic-route     { border-left-color: var(--bad, #c1503f); }
+.ic-outcome.refer .ic-route  { border-left-color: var(--warn, #d69e2e); }
+.ic-outcome.sign .ic-route   { border-left-color: var(--good, #2e9e6b); }
+.ic-outcome.sr .ic-route     { border-left-color: var(--warn, #d69e2e); }
