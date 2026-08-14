@@ -1,6 +1,7 @@
 export const runtime = "edge";
 import { isSignedStatus } from "@/lib/statuses";
 import { supabaseServer } from "@/lib/supabase-server";
+import { isInternalRole } from "@/lib/permissions";
 import LeadsView from "@/components/LeadsView";
 
 export default async function LeadsPage() {
@@ -45,8 +46,8 @@ export default async function LeadsPage() {
   // Who am I + the option lists for bulk actions.
   const { data: { user } } = await sb.auth.getUser();
   const { data: me } = await sb.from("app_users").select("role, perm_overrides").eq("id", user!.id).maybeSingle();
-  const canBulk = !!me && ["owner", "admin", "agent", "qa"].includes(me.role);
-  const { data: agents } = await sb.from("app_users").select("id, full_name").in("role", ["agent", "admin", "owner"]).order("full_name");
+  const canBulk = isInternalRole(me?.role);
+  const { data: agents } = await sb.from("app_users").select("id, full_name").in("role", ["agent", "admin", "owner", "manager"]).order("full_name");
   const { data: firms } = await sb.from("firms").select("id, name").order("name");
 
   // Live, owner-editable status set drives badges, filters, and bulk actions.

@@ -1,16 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-// Refresh the Supabase session on every request and guard route groups.
+function isAuthPage(path: string) {
+  return path === "/login" || path === "/firm-login" || path.startsWith("/auth");
+}
+
+function isPublicAsset(path: string) {
+  if (path === "/manifest.json" || path === "/favicon.ico" || path === "/robots.txt") return true;
+  return /\.(?:png|jpe?g|gif|svg|webp|ico|txt|xml|woff2?|css|js|map)$/i.test(path);
+}
+
+function isPublicPath(path: string) {
+  if (isAuthPage(path)) return true;
+  if (path.startsWith("/sign")) return true; // claimant e-sign stays public
+  if (isPublicAsset(path)) return true;
+  return false;
+}
+
+// Refresh the Supabase session on every gated request and guard route groups.
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  const isAuthPage = path === "/login" || path === "/firm-login" || path.startsWith("/auth");
-  const isProtected =
-    path.startsWith("/leads") || path.startsWith("/intake") || path.startsWith("/portal");
-  // Only the auth-gated routes use the session in this middleware. Skip the
-  // Supabase round-trip on every other route so a cold edge instance isn't
-  // paying for wasted work — it lowers per-request cost and cold-start time.
-  if (!isProtected && !isAuthPage) return NextResponse.next({ request: req });
+  const authPage = isAuthPage(path);
+  const isProtected = !isPublicPath(path);
+  // Skip the Supabase round-trip on public assets and /sign so a cold edge
+  // instance isn't paying for wasted work.
+  if (!isProtected && !authPage) return NextResponse.next({ request: req });
 
   let res = NextResponse.next({ request: req });
 
@@ -36,9 +50,10 @@ export async function middleware(req: NextRequest) {
     url.pathname = path.startsWith("/portal") ? "/firm-login" : "/login";
     return NextResponse.redirect(url);
   }
-  if (user && isAuthPage && !path.startsWith("/auth")) {
+  if (user && authPage && !path.startsWith("/auth")) {
+    const { data: me } = await supabase.from("app_users").select("role").eq("id", user.id).maybeSingle();
     const url = req.nextUrl.clone();
-    url.pathname = "/leads";
+    url.pathname = me?.role === "firm" ? "/portal" : "/dashboard";
     return NextResponse.redirect(url);
   }
   return res;
