@@ -16,7 +16,6 @@ export default async function InternalLayout({ children }: { children: React.Rea
 
   return (
     <SideNav
-      active=""
       userName={me.full_name ?? "Staff"}
       role={me.role}
       topRight={<><NotifyBell /><ThemeToggle /><SignOut /></>}

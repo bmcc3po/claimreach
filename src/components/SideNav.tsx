@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import Icon from "./ui/Icon";
-const BUILD_STAMP = "2026.07.19.1611";
 
 // Maturity, marked in the nav so nobody has to remember which screens are real.
 //
@@ -76,29 +76,43 @@ const FIRM_GROUPS: NavGroup[] = [
   ]},
 ];
 
+function navMatch(pathname: string, href: string) {
+  if (pathname === href) return true;
+  if (href !== "/" && pathname.startsWith(href + "/")) return true;
+  return false;
+}
+
+function bestHref(pathname: string, hrefs: string[]) {
+  const matches = hrefs.filter((h) => navMatch(pathname, h));
+  matches.sort((a, b) => b.length - a.length);
+  return matches[0] ?? "";
+}
+
 export default function SideNav({
-  active, userName, role, topRight, children, variant = "staff",
+  userName, role, topRight, children, variant = "staff",
 }: {
-  active: string;
   userName: string;
   role: string;
   topRight?: React.ReactNode;
   children?: React.ReactNode;
   variant?: "staff" | "firm";
 }) {
+  const pathname = usePathname() || "";
   const [min, setMin] = useState(false);
   // Mobile: the sidebar is an off-canvas drawer, closed by default, so it never
   // eats the screen. `open` controls it; on desktop the hamburger still minimizes.
   const [open, setOpen] = useState(false);
   const GROUPS = variant === "firm" ? FIRM_GROUPS : STAFF_GROUPS;
   const homeHref = variant === "firm" ? "/portal" : "/dashboard";
+  const allHrefs = GROUPS.flatMap((g) => g.items.map((n) => n.href));
+  const current = bestHref(pathname, allHrefs);
   // Collapse labeled groups by default; auto-expand the group containing the
   // active page so you always see where you are.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
     for (const g of GROUPS) {
       if (!g.label) continue; // unlabeled main group stays open
-      const hasActive = g.items.some((n) => n.href === active);
+      const hasActive = g.items.some((n) => n.href === current);
       init[g.id] = !hasActive; // collapsed unless it holds the active page
     }
     return init;
@@ -122,7 +136,7 @@ export default function SideNav({
           {GROUPS.filter((g) => !g.staffOnly || role !== "agent").map((g) => {
             const items = g.items.filter((n) => {
               if (n.adminOnly && !["owner", "admin"].includes(role)) return false;
-              if (n.qaOnly && !["owner", "admin", "qa"].includes(role)) return false;
+              if (n.qaOnly && !["owner", "admin", "manager", "qa"].includes(role)) return false;
               if (n.staffOnly && role === "agent") return false;
               return true;
             });
@@ -138,7 +152,7 @@ export default function SideNav({
                 )}
                 {!isCollapsed && items.map((n) => (
                   <a key={n.href} href={n.href}
-                     className={`nl ${active === n.href ? "active" : ""} ${n.maturity && n.maturity !== "live" ? "nl-" + n.maturity : ""}`}
+                     className={`nl ${current === n.href ? "active" : ""} ${n.maturity && n.maturity !== "live" ? "nl-" + n.maturity : ""}`}
                      title={n.why ? `${n.label}: ${n.why}` : n.label}
                      onClick={() => setOpen(false)}>
                     <span className="ico"><Icon name={n.icon} /></span>
@@ -155,7 +169,6 @@ export default function SideNav({
           <button className="minbtn" onClick={() => setMin(!min)} aria-label="Toggle menu">
             {min ? "»" : "« Minimize"}
           </button>
-          {!min && <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", padding: "6px 14px 0", letterSpacing: ".04em" }}>build {BUILD_STAMP}</div>}
         </div>
       </aside>
 

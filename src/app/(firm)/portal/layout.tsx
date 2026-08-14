@@ -20,7 +20,6 @@ export default async function FirmLayout({ children }: { children: React.ReactNo
 
   return (
     <SideNav
-      active=""
       variant="firm"
       userName={me.full_name ?? "Firm"}
       role={firm?.name ?? "Firm"}
