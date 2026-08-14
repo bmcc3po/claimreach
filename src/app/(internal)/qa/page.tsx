@@ -8,7 +8,7 @@ export default async function QaQueuePage() {
   const sb = await supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   const { data: me } = await sb.from("app_users").select("role").eq("id", user!.id).maybeSingle();
-  if (!me || !["owner", "admin", "qa"].includes(me.role)) redirect("/dashboard");
+  if (!me || !["owner", "admin", "manager", "qa"].includes(me.role)) redirect("/dashboard");
 
   // Read by STATUS (the source of truth), not just the qa_pending flag, so a
   // file in a QA-phase status can never be missing from the queue if the flag

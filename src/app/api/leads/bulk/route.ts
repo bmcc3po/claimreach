@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { isInternalRole } from "@/lib/permissions";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 export const runtime = "edge";
 
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { data: me } = await sb.from("app_users").select("id, role, perm_overrides").eq("id", auth.user.id).maybeSingle();
-  const isStaff = me && ["owner", "admin", "agent", "qa"].includes(me.role);
+  const isStaff = isInternalRole(me?.role);
   if (!isStaff) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const canDelete = me && (["owner", "admin"].includes(me.role) || me.perm_overrides?.["leads.delete"]);
 

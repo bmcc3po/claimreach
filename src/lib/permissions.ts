@@ -57,6 +57,11 @@ export const PERM_GROUPS = Array.from(new Set(PERMISSIONS.map((p) => p.group)));
 
 export type Role = "owner" | "admin" | "manager" | "agent" | "qa" | "firm";
 
+export const INTERNAL_ROLES: Role[] = ["owner", "admin", "manager", "agent", "qa"];
+export function isInternalRole(role: string | null | undefined): boolean {
+  return !!role && INTERNAL_ROLES.includes(role as Role);
+}
+
 export const ROLES: { role: Role; label: string; desc: string }[] = [
   { role: "owner", label: "Owner", desc: "Full access to everything." },
   { role: "admin", label: "Admin", desc: "Manage users, forms, settings, reports." },

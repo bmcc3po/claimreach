@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 export const runtime = "edge";
 
-// Scheduled drip processor. Protect with CRON_SECRET (header x-cron-secret or ?key=).
+// Scheduled drip processor. Requires CRON_SECRET via x-cron-secret header.
 // Point a Cloudflare Cron Trigger / external scheduler at this daily.
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const secret = process.env.CRON_SECRET;
-  const provided = req.headers.get("x-cron-secret") || url.searchParams.get("key");
+  const provided = req.headers.get("x-cron-secret");
   if (!secret || provided !== secret) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const admin = supabaseAdmin();

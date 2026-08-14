@@ -3,14 +3,17 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 export const runtime = "edge";
 
 // TEMP diagnostic: /api/debug/qa?lead_no=TMP-00008
-// Shows the real claim statuses + lead flags so we can see why a file is or
-// isn't in the QA queue. Owner/admin only.
+// Disabled in production. Owner-only in other environments.
 export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
   const sb = await supabaseServer();
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { data: me } = await sb.from("app_users").select("role").eq("id", auth.user.id).maybeSingle();
-  if (!me || !["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!me || me.role !== "owner") return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const admin = supabaseAdmin();
   const leadNo = new URL(req.url).searchParams.get("lead_no");
@@ -25,7 +28,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // What the QA queue query actually returns right now.
   const QA_STATUSES = ["grievous", "qa", "signed_grievous", "signed_qa"];
   const { data: byStatus } = await admin.from("claims").select("lead_id, status").in("status", QA_STATUSES).limit(50);
   out.qa_by_status_count = byStatus?.length ?? 0;
@@ -34,7 +36,6 @@ export async function GET(req: NextRequest) {
   out.qa_by_flag_count = byFlag?.length ?? 0;
   out.qa_by_flag = byFlag;
 
-  // Distinct statuses present across all claims (so we see the real vocabulary).
   const { data: allClaims } = await admin.from("claims").select("status").limit(1000);
   const counts: Record<string, number> = {};
   for (const c of allClaims ?? []) counts[c.status || "null"] = (counts[c.status || "null"] || 0) + 1;
