@@ -12,7 +12,9 @@ type Row = any;
 
 // Shared leads surface used by BOTH staff and firm. Three views:
 // Table (dense, default), Board (Monday lanes, group-by toggle), Gantt (stages over time).
-export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, statuses = [], dqReasons = [] }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[] }) {
+export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, statuses = [], dqReasons = [], variant = "staff" }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[]; variant?: "staff" | "firm" }) {
+  const isFirm = variant === "firm";
+  const showBulk = canBulk && !isFirm;
   const statusList = statuses.length ? statuses : DEFAULT_STATUSES;
   const dqList = dqReasons.length ? dqReasons : DEFAULT_DQ_REASONS;
   const [q, setQ] = useState("");
@@ -189,7 +191,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
 
   return (
     <div>
-      {canBulk && selCount > 0 && (
+      {showBulk && selCount > 0 && (
         <div className="bulk-bar">
           <span className="bulk-count">{selCount} selected</span>
           {!allMatching && allPageSelected && rows.length > sel.size && (
@@ -239,13 +241,15 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
           <span className="leads-count">{rows.length}{rows.length !== leads.length ? ` of ${leads.length}` : ""}</span>
         </div>
         <div className="leads-head-actions">
-          <div className="seg-toggle">
-            <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Table</button>
-            <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>Board</button>
-            <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>
-          </div>
-          <a className="btn ghost" href="/api/export?format=neos">Export</a>
-          <Link className="btn" href={addPath}>Add lead</Link>
+          {!isFirm && (
+            <div className="seg-toggle">
+              <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Table</button>
+              <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>Board</button>
+              <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>
+            </div>
+          )}
+          {!isFirm && <a className="btn ghost" href="/api/export?format=neos">Export</a>}
+          {!isFirm && addPath && addPath !== basePath && <Link className="btn" href={addPath}>Add lead</Link>}
         </div>
       </div>
 
@@ -272,7 +276,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
           {(activeFilterCount > 0 || q) && (
             <button className="btn ghost leads-clear" onClick={clearFilters}>Clear</button>
           )}
-          {view === "board" && (
+          {!isFirm && view === "board" && (
             <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as any)}>
               <option value="status">Group: Status</option>
               <option value="stage">Group: Stage</option>
@@ -317,14 +321,14 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         )}
       </div>
 
-      {view === "table" && (
+      {(isFirm || view === "table") && (
         <div className="table-scroll">
           <table className="docket leads">
-            <thead><tr>{canBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("campaign", "Campaign")}{th("type", "Case type")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}<th style={{ width: 40 }}></th></tr></thead>
+            <thead><tr>{showBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("campaign", "Campaign")}{th("type", "Case type")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}<th style={{ width: 40 }}></th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={`${r.needsAction ? "needs-action" : ""} ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
-                  {canBulk && <td><input type="checkbox" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} /></td>}
+                  {showBulk && <td><input type="checkbox" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} /></td>}
                   <td>{r.needsAction && <span className="dot" title="Needs action" />}</td>
                   <td><Link href={`${basePath}/${r.id}`}>{r.lead_no}</Link></td>
                   <td style={{ fontWeight: 600 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name}{r.clock && <ClockChip clock={r.clock} />}</span></td>
@@ -352,13 +356,13 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={canBulk ? 14 : 13} className="muted">No leads match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={showBulk ? 14 : 13} className="muted">No leads match.</td></tr>}
             </tbody>
           </table>
         </div>
       )}
 
-      {view === "board" && (
+      {!isFirm && view === "board" && (
         <div className="kanban">
           {laneDefs.map((lane) => {
             const laneRows = rows.filter((r) => laneOf(r) === lane.key);
@@ -369,7 +373,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                 <div className="kcol-body">
                   {laneRows.map((r) => (
                     <div key={r.id} className={`kcard-wrap ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
-                      {canBulk && <input type="checkbox" className="kcard-check" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />}
+                      {showBulk && <input type="checkbox" className="kcard-check" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />}
                       <Link href={`${basePath}/${r.id}`} className={`kcard ${r.needsAction ? "needs-action" : ""}`}>
                       <div className="row" style={{ justifyContent: "space-between" }}>
                         <strong style={{ fontSize: 13 }}>{r.lead_no}</strong>
@@ -392,7 +396,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         </div>
       )}
 
-      {view === "gantt" && (
+      {!isFirm && view === "gantt" && (
         <div className="gantt">
           <div className="gantt-head">
             <div className="gantt-name-col">Case</div>

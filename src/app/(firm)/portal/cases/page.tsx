@@ -1,7 +1,5 @@
 export const runtime = "edge";
-import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
-import { STAGE_LABELS } from "@/lib/questionnaire";
 import LeadsView from "@/components/LeadsView";
 
 export default async function FirmCases() {
@@ -16,5 +14,5 @@ export default async function FirmCases() {
     for (const c of claims ?? []) (byLead[c.lead_id] ||= []).push(c);
   }
   const rows = (leads ?? []).map((l) => ({ ...l, claims: byLead[l.id] ?? [] }));
-  return <LeadsView leads={rows} basePath="/portal/cases" addPath="/portal/cases" />;
+  return <LeadsView leads={rows} basePath="/portal/cases" title="Cases" variant="firm" />;
 }
