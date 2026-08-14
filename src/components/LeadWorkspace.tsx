@@ -36,7 +36,7 @@ export default function LeadWorkspace({
   lead: any;
   claims: Claim[];
   activity: any[];
-  stats: { signed: number; tierA: number; weekPay: number; wip: number };
+  stats?: { signed: number; tierA: number; weekPay: number; wip: number };
   claimProperties: Record<string, any[]>;
   audit: any[];
   notes: any[];
@@ -51,7 +51,7 @@ export default function LeadWorkspace({
   const [editMode, setEditMode] = useState(false);
   const activeClaim = claims.find((c) => c.id === activeClaimId);
   const [showAddClaim, setShowAddClaim] = useState(false);
-  const canQa = ["owner", "admin", "qa"].includes(lead.current_user_role || "");
+  const canQa = ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "");
   // QA tab sits right after Case Details for the people who run QA.
   const TABS = canQa
     ? ["Overview", "Case Questions", "Contact Info", "Case Details", "QA", "Retainer", "Messages", "Calls", "Notes", "Timeline", "Activity Log"]
@@ -77,10 +77,14 @@ export default function LeadWorkspace({
         <span className="leadhead-dot">·</span>
         <span className="muted lh-date">{new Date(lead.created_at).toLocaleDateString()}</span>
         <span className="lh-spacer" />
-        <span className="lh-stat"><b>{stats.signed}</b> signed</span>
-        <span className="lh-stat"><b>{stats.wip}</b> WIP</span>
+        {stats ? (
+          <>
+            <span className="lh-stat"><b>{stats.signed}</b> signed</span>
+            <span className="lh-stat"><b>{stats.wip}</b> WIP</span>
+          </>
+        ) : null}
         <a className="btn ghost sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
-        {["owner", "admin", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
+        {["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
         <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
         <LockFileButton lead={lead} />
       </div>

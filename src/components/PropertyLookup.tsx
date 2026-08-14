@@ -162,9 +162,9 @@ function ConfirmBrand({
   defaultBrand: string;
   onConfirm: (remembered: string) => void;
 }) {
-  const [remembered, setRemembered] = useState("Motel 6");
+  const [remembered, setRemembered] = useState("");
   return (
-    <div className="card" style={{ marginTop: 10, background: "#fbfcfe" }}>
+    <div className="card" style={{ marginTop: 10, background: "var(--surface-2)" }}>
       <div className="field">
         <label>Brand the claimant remembers it as</label>
         <input type="text" value={remembered} onChange={(e) => setRemembered(e.target.value)} />

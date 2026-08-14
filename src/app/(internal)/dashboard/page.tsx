@@ -62,13 +62,11 @@ export default async function Dashboard() {
     { n: (awaitingFirm ?? []).length, label: "Qualified, awaiting firm", tone: "danger", items: awaitingFirm ?? [] },
   ];
 
+  // Live counts only. Fake rates/times (call length, success %, pickup %) stay hidden
+  // until they are wired to real data.
   const kpis = [
     { v: newLeads ?? 0, l: "New leads", sub: "in pipeline" },
     { v: openClaims ?? 0, l: "Waiting to complete", sub: "active claims" },
-    { v: "4:12", l: "Avg call time", sub: "this week" },
-    { v: "31%", l: "Success rate", sub: "signed / reached" },
-    { v: 0, l: "Upcoming callbacks", sub: "scheduled" },
-    { v: "8.4%", l: "Pickup rate", sub: "human answers" },
   ];
 
   return (
@@ -94,7 +92,7 @@ export default async function Dashboard() {
         </div>
       )}
 
-      <div className="dash-grid six">
+      <div className="dash-grid">
         {kpis.map((k) => (
           <div key={k.l} className="kpi"><div className="kv">{k.v}</div><div className="kl">{k.l}</div><div className="ksub">{k.sub}</div></div>
         ))}
@@ -153,7 +151,7 @@ export default async function Dashboard() {
             <div className="board-body">
               <div className="post"><a href="/leads">View all leads →</a></div>
               <div className="post"><a href="/intake">Add a new lead →</a></div>
-              <div className="post"><a href="/maverick">Open Grievous →</a></div>
+              <div className="post"><a href="/grievous">Open Grievous →</a></div>
             </div>
           </div>
         </div>

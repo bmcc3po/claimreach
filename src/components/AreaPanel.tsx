@@ -88,7 +88,7 @@ export default function AreaPanel({
   useEffect(() => { init(); }, [init]);
 
   return (
-    <div className="card" style={{ background: "#fbfcfe" }}>
+    <div className="card" style={{ background: "var(--surface-2)" }}>
       <strong>Confirm the area with the claimant</strong>
       <div className="agent-note" style={{ marginTop: 8 }}>
         <span className="tag">Agent:</span>
