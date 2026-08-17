@@ -320,7 +320,14 @@ async function upsertPoints(
     if (!v) return;
     rows.push({
       firm_id: firmId, lead_id: leadId, kind, value: v, label,
-      source_system: "lawruler", ...extra,
+      source_system: "lawruler",
+      // Every column named by ANY row in a multi-row insert is sent for EVERY
+      // row. A key omitted here arrives as an explicit null rather than
+      // falling back to the column default, and is_primary is not-null, so one
+      // unflagged row rejects the whole batch. Always name it.
+      is_primary: false,
+      status: "good",
+      ...extra,
     });
   };
 
