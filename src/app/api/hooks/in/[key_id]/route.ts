@@ -35,7 +35,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ key
     phone: cols.phone,
     email: cols.email,
     dob: cols.dob,
-    mail_address1: cols.mail_address1,
+    mail_addr1: cols.mail_addr1,
+    mail_addr2: cols.mail_addr2,
     mail_city: cols.mail_city,
     mail_state: cols.mail_state,
     mail_zip: cols.mail_zip,
@@ -45,7 +46,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ key
     campaign: cols.campaign,
     source_key: key_id,
     external_id: cols.external_id,
-    status: "new",
+    // leads has no `status` column. The pipeline lives in `stage`
+    // (pipeline_stage enum), which already defaults to 'referral_received'.
+    // Naming a phantom column made Postgres reject the whole insert.
   };
   // never write the generated full_name column
   delete (insert as any).full_name;
