@@ -163,7 +163,8 @@ export async function POST(req: NextRequest) {
     phone: clean(cols.phone),
     email: clean(cols.email),
     dob: clean(cols.dob),
-    mail_address1: clean(cols.mail_address1),
+    mail_addr1: clean(cols.mail_addr1),
+    mail_addr2: clean(cols.mail_addr2),
     mail_city: clean(cols.mail_city),
     mail_state: clean(cols.mail_state),
     mail_zip: clean(cols.mail_zip),
@@ -209,7 +210,10 @@ export async function POST(req: NextRequest) {
     const { data: lead, error } = await admin.from("leads").insert({
       firm_id: firmId,
       external_id: vendorId,
-      status: "new",
+      lawruler_ref_no: vendorId,
+      // leads has no `status` column. `stage` is the pipeline and it already
+      // defaults to 'referral_received'. Naming a phantom column made Postgres
+      // reject the entire insert, which is why every fire failed.
       retention_started_at: new Date().toISOString(),
       ...base,
     }).select("id, lead_no").single();
@@ -302,7 +306,7 @@ async function upsertPoints(
   push("mobile", fields.phone_alt, "second number");
   push("email", base.email, "primary email", { is_primary: true });
 
-  const addr = [clean(base.mail_address1), clean(base.mail_city), clean(base.mail_state), clean(base.mail_zip)]
+  const addr = [clean(base.mail_addr1), clean(base.mail_city), clean(base.mail_state), clean(base.mail_zip)]
     .filter(Boolean).join(", ");
   if (addr) push("address", addr, "mailing address", { is_primary: true });
 
