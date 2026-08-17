@@ -91,6 +91,11 @@ function clean(v: any): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+  // LawRuler's Test button posts the mapping tokens themselves
+  // ("{{default23}}-Date of Birth"), not sample data. Treat any unresolved
+  // placeholder as empty so a Test exercises the real path instead of dying
+  // on its own scaffolding.
+  if (s.includes("{{") && s.includes("}}")) return null;
   return s;
 }
 function toBool(v: any): boolean | null {
@@ -103,6 +108,23 @@ function toDate(v: any): string | null {
   if (!s) return null;
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d.toISOString();
+}
+// Date-only column (leads.dob). An unparseable value becomes null rather than
+// aborting the insert: Postgres rejects the WHOLE row over one bad field, so a
+// typo in an optional date would otherwise cost us the entire case.
+function toDateOnly(v: any): string | null {
+  const s = clean(v);
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const us = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (us) {
+    const mm = us[1].padStart(2, "0");
+    const dd = us[2].padStart(2, "0");
+    return `${us[3]}-${mm}-${dd}`;
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 // Drop keys whose value is null/undefined so an update never blanks a field
 // that LawRuler happened not to send on this particular fire.
@@ -162,7 +184,7 @@ export async function POST(req: NextRequest) {
     claimant_name: clean(cols.claimant_name),
     phone: clean(cols.phone),
     email: clean(cols.email),
-    dob: clean(cols.dob),
+    dob: toDateOnly(cols.dob),
     mail_addr1: clean(cols.mail_addr1),
     mail_addr2: clean(cols.mail_addr2),
     mail_city: clean(cols.mail_city),
