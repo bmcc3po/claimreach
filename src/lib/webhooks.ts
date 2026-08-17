@@ -97,7 +97,12 @@ export function canonicalToLeadColumns(c: Record<string, any>) {
     case_type: c.case_type ?? null,
     campaign: c.campaign_name ?? null,
     external_id: c.external_id ?? c.vendor_lead_id ?? null,
-    mail_address1: c.mail_address1 ?? null,
+    // leads has mail_addr1 / mail_addr2 (0061). `mail_address1` was a phantom:
+    // every insert naming it was rejected whole by Postgres, which is why the
+    // LawRuler hook failed on every fire. Canonical id stays mail_address1;
+    // only the COLUMN name is corrected here.
+    mail_addr1: c.mail_address1 ?? null,
+    mail_addr2: c.mail_address2 ?? null,
     mail_city: c.mail_city ?? null,
     mail_state: c.mail_state ?? null,
     mail_zip: c.mail_zip ?? null,
