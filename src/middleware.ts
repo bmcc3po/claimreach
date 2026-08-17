@@ -47,7 +47,10 @@ export async function middleware(req: NextRequest) {
 
   if (!user && isProtected) {
     const url = req.nextUrl.clone();
-    url.pathname = path.startsWith("/portal") ? "/firm-login" : "/login";
+    // /m6 is worked by BOTH sides, so it cannot assume a staff login. Send
+    // people to the firm login, which the Turnbull team already uses; staff
+    // accounts sign in there too.
+    url.pathname = (path.startsWith("/portal") || path.startsWith("/m6")) ? "/firm-login" : "/login";
     return NextResponse.redirect(url);
   }
   if (user && authPage && !path.startsWith("/auth")) {
