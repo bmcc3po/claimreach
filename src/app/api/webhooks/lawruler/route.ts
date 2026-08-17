@@ -213,17 +213,25 @@ export async function POST(req: NextRequest) {
 
   // ---- upsert by vendor lead id -------------------------------------------
   const { data: existing } = await admin
-    .from("leads").select("id, lead_no")
+    .from("leads").select("id, lead_no, case_description")
     .eq("firm_id", firmId).eq("external_id", vendorId).maybeSingle();
 
   let leadId: string;
   let leadNo: string | null = null;
   let created = false;
 
+  const narrative = clean(fields.description);
+
   if (existing) {
     leadId = existing.id;
     leadNo = existing.lead_no;
-    const { error } = await admin.from("leads").update(base).eq("id", leadId);
+    // The narrative belongs in leads.case_description: that is what the Case
+    // Details panel renders and what retainer autofill reads. On a REFIRE we
+    // only fill it when it is still empty, so a human edit made in ClaimReach
+    // is never clobbered by LawRuler resending the original intake text.
+    const upd: any = { ...base };
+    if (narrative && !clean(existing.case_description)) upd.case_description = narrative;
+    const { error } = await admin.from("leads").update(upd).eq("id", leadId);
     if (error) {
       await log(admin, firmId, "failed", 500, envelope, `update: ${error.message}`);
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -233,6 +241,7 @@ export async function POST(req: NextRequest) {
       firm_id: firmId,
       external_id: vendorId,
       lawruler_ref_no: vendorId,
+      case_description: narrative,
       // leads has no `status` column. `stage` is the pipeline and it already
       // defaults to 'referral_received'. Naming a phantom column made Postgres
       // reject the entire insert, which is why every fire failed.
@@ -255,10 +264,9 @@ export async function POST(req: NextRequest) {
       status: "new",
     });
 
-    const desc = clean(fields.description);
-    if (desc) {
+    if (narrative) {
       await admin.from("lead_notes").insert({
-        firm_id: firmId, lead_id: leadId, body: desc, source: "lawruler",
+        firm_id: firmId, lead_id: leadId, body: narrative, source: "lawruler",
       });
     }
   }
