@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { assertM6Write } from "@/lib/m6-scope";
+import { normPhone } from "@/lib/comms";
 export const runtime = "edge";
 
 const OUTCOMES = ["two_way", "no_answer", "voicemail", "bad_number"];
@@ -30,11 +31,15 @@ export async function POST(req: NextRequest) {
 
   const { data: me } = await sb.from("app_users").select("email").eq("id", gate.user.id).maybeSingle();
 
+  const raw = gate.lead.phone ?? null;
   const { error } = await sb.from("communications").insert({
     lead_id, firm_id: gate.lead.firm_id,
     channel: channel === "sms" ? "sms" : "call",
     direction: purpose === "inbound" ? "inbound" : "outbound",
-    phone: gate.lead.phone ?? null,
+    // 0023: phone_raw / phone_norm. There is no communications.phone —
+    // naming it makes PostgREST reject the entire insert.
+    phone_raw: raw,
+    phone_norm: normPhone(raw),
     body: body ?? null,
     agent_name: gate.user.name ?? null,
     agent_email: me?.email ?? null,
