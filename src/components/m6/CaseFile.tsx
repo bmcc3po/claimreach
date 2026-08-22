@@ -16,10 +16,10 @@ type Point = {
 };
 
 export default function CaseFile({
-  lead, status, points, notes, comms, schedule, docs, users,
+  lead, status, points, notes, comms, schedule, docs,
 }: {
   lead: any; status: any; points: Point[];
-  notes: any[]; comms: any[]; schedule: any[]; docs: any[]; users: any[];
+  notes: any[]; comms: any[]; schedule: any[]; docs: any[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
@@ -208,14 +208,14 @@ export default function CaseFile({
         </div>
 
         <div className="m6-col">
-          {/* ---- notes ---------------------------------------------------- */}
+          {/* ---- messages (lead_notes source=m6; not a second table) ------ */}
           <section className="m6-card">
-            <h2>Notes</h2>
-            <p className="m6-hint">Both Innovative and Turnbull see everything here.</p>
+            <h2>Messages</h2>
+            <p className="m6-hint">Both Innovative and Turnbull see this thread.</p>
             <textarea
               className="m6-textarea"
               rows={3}
-              placeholder="What happened, what she needs, when to call back"
+              placeholder="Write a message"
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
             />
@@ -227,8 +227,27 @@ export default function CaseFile({
                 if (ok) setNoteText("");
               }}
             >
-              {busy === "note" ? "Saving" : "Add note"}
+              {busy === "note" ? "Sending" : "Send"}
             </button>
+
+            {notes.length === 0 ? (
+              <p className="m6-empty">No messages yet.</p>
+            ) : (
+              <ul className="m6-notes">
+                {notes.map((n) => (
+                  <li key={n.id} className={n.author_side === "staff" ? "from-staff" : "from-firm"}>
+                    <div className="m6-note-meta">
+                      <strong>{n.author_name ?? "Someone"}</strong>
+                      {" · "}
+                      {n.author_side === "staff" ? "Innovative" : "Turnbull"}
+                      {" · "}
+                      {new Date(n.created_at).toLocaleString()}
+                    </div>
+                    <p>{n.body}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             {lead.case_description && (
               <div className="m6-narrative">
@@ -236,17 +255,6 @@ export default function CaseFile({
                 <p>{lead.case_description}</p>
               </div>
             )}
-
-            <ul className="m6-notes">
-              {notes.map((n) => (
-                <li key={n.id}>
-                  <div className="m6-note-meta">
-                    {n.author_name ?? "System"} · {new Date(n.created_at).toLocaleString()}
-                  </div>
-                  <p>{n.body}</p>
-                </li>
-              ))}
-            </ul>
           </section>
 
           {/* ---- history -------------------------------------------------- */}

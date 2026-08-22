@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
   const gate = await assertM6Write(sb, lead_id, "id, firm_id, campaign, case_type, archived_at");
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
+  // Same table, same source. Relabeled "Messages" in the UI. author_name is
+  // not a column — the case page resolves it. Do not invent a second thread.
   const { error } = await sb.from("lead_notes").insert({
     firm_id: gate.lead.firm_id, lead_id, author: gate.user.id,
     body: String(body).trim(), source: "m6",
