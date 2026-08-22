@@ -205,3 +205,46 @@ export function mergeLorIngest(
     : (incoming.flagged_today ?? existing?.flagged_today ?? status === "ready");
   return { status, flagged_today };
 }
+
+// ---------------------------------------------------------------------------
+// Firm login landing. Adding an m6 firm user = inserting their lowercase
+// email into retention_alert_recipients (campaign = 'motel6', active).
+// firm_access still provisions the account; that table is NOT the landing flag.
+// ---------------------------------------------------------------------------
+
+export function isSafeFirmNext(next: string | null | undefined): string | null {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("://")) return null;
+  if (next.startsWith("/m6/") || next === "/m6") return next;
+  if (next.startsWith("/portal/")) return next;
+  return null;
+}
+
+export function firmLandingPath(opts: {
+  role: string | null | undefined;
+  isM6Recipient: boolean;
+  requestedNext?: string | null;
+}): string {
+  const deep = isSafeFirmNext(opts.requestedNext);
+  if (deep) return deep;
+  if (isInternalRole(opts.role)) return "/dashboard";
+  if (opts.role === "firm" && opts.isM6Recipient) return "/m6";
+  if (opts.role === "firm") return "/portal";
+  return "/dashboard";
+}
+
+// 0087: firm INSERT on communications. Mirrors the WITH CHECK. Staff still
+// use comm_internal. No firm UPDATE/DELETE.
+export function canFirmInsertM6Comm(opts: {
+  actor: M6Actor;
+  actorFirmId: string | null;
+  lead: M6LeadRow | null;
+  tmpFirmId: string;
+  logged_manually: boolean;
+}): boolean {
+  if (opts.actor.role !== "firm") return false;
+  if (opts.actor.firmSlug !== TMP_SLUG) return false;
+  if (!opts.logged_manually) return false;
+  if (!opts.actorFirmId || opts.actorFirmId !== opts.tmpFirmId) return false;
+  if (!opts.lead) return false;
+  return isM6PortalLead(opts.lead, opts.tmpFirmId);
+}

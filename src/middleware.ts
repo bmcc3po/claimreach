@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { resolveFirmHome } from "@/lib/firm-home";
+import { isSafeFirmNext } from "@/lib/m6";
 
 function isAuthPage(path: string) {
   return path === "/login" || path === "/firm-login" || path.startsWith("/auth");
@@ -50,13 +52,25 @@ export async function middleware(req: NextRequest) {
     // /m6 is worked by BOTH sides, so it cannot assume a staff login. Send
     // people to the firm login, which the Turnbull team already uses; staff
     // accounts sign in there too.
-    url.pathname = (path.startsWith("/portal") || path.startsWith("/m6")) ? "/firm-login" : "/login";
+    const firmApp = path.startsWith("/portal") || path.startsWith("/m6");
+    url.pathname = firmApp ? "/firm-login" : "/login";
+    url.search = "";
+    if (firmApp) {
+      const keep = isSafeFirmNext(path);
+      if (keep) url.searchParams.set("next", keep);
+    }
     return NextResponse.redirect(url);
   }
   if (user && authPage && !path.startsWith("/auth")) {
     const { data: me } = await supabase.from("app_users").select("role").eq("id", user.id).maybeSingle();
+    const dest = await resolveFirmHome(supabase, {
+      role: me?.role,
+      email: user.email,
+      requestedNext: req.nextUrl.searchParams.get("next"),
+    });
     const url = req.nextUrl.clone();
-    url.pathname = me?.role === "firm" ? "/portal" : "/dashboard";
+    url.pathname = dest;
+    url.search = "";
     return NextResponse.redirect(url);
   }
   return res;
