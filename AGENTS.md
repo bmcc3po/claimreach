@@ -53,6 +53,10 @@ Every query, route, and view is firm-scoped. No cross-firm reads, ever.
 One firm's case types, campaigns, forms, or files must NEVER be visible inside another
 firm's account. (Real incident: a cross join created Motel 6 campaigns under every firm.
 Motel work belongs to TMP only. `beta_motel` is a FORM key, not a case type.)
+m6 firm landing: `retention_alert_recipients` where campaign = 'motel6' and
+active. Adding an m6 firm user means adding their lowercase email there
+(plus `firm_access` to provision the account). Do not send every TMP firm
+login to /m6 — other TMP users stay on /portal.
 No Supabase `service_role` key in any client-side file. Server-side only.
 Any change touching auth, RLS, roles, or permissions (`gate.ts`) gets flagged to Brett
 in the plan before implementation — always.

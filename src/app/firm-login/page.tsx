@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { Logo } from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
+import { isSafeFirmNext } from "@/lib/m6";
 
 function quietLinkError(raw: string) {
   const m = (raw || "").toLowerCase();
@@ -21,9 +22,11 @@ export default function FirmLogin() {
   async function sendLink() {
     setBusy(true); setErr(null);
     const sb = supabaseBrowser();
+    const params = new URLSearchParams(window.location.search);
+    const next = isSafeFirmNext(params.get("next")) ?? "/portal";
     const { error } = await sb.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/portal` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
     });
     setBusy(false);
     if (error) { setErr(quietLinkError(error.message)); return; }

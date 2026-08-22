@@ -4,6 +4,7 @@ import {
   TMP_SLUG, M6_CAMPAIGN, M6_CASE_TYPE,
   canEnterM6App, m6LayoutDestination, isM6Lead, isM6PortalLead,
   m6CaseAccess, m6WriteAccess, filterM6StatusRows,
+  firmLandingPath, isSafeFirmNext, canFirmInsertM6Comm,
   type M6Actor, type M6LeadRow,
 } from "./m6";
 import { isInternalRole } from "./permissions";
@@ -147,6 +148,38 @@ check("TMP firm may see own lead's status_event", canSeeStatusEvent(tmpFirm, TMP
 check("TMT firm must NOT see TMP lead's status_event", canSeeStatusEvent(tmtFirm, TMT, TMP), false);
 check("TMP firm must NOT see TMT lead's status_event", canSeeStatusEvent(tmpFirm, TMP, TMT), false);
 check("unsigned must NOT see status_events", canSeeStatusEvent({ role: null }, null, TMP), false);
+
+console.log("\n0087 RLS — firm INSERT communications (manual m6 only)");
+const tmpMotelLead = tmpMotel;
+const tmpMvaLead = tmpMva;
+const tmtMotelLead = tmtMotelShaped;
+check("TMP firm may insert a manual touch on own motel file", canFirmInsertM6Comm({
+  actor: tmpFirm, actorFirmId: TMP, lead: tmpMotelLead, tmpFirmId: TMP, logged_manually: true,
+}), true);
+check("TMT firm cannot insert", canFirmInsertM6Comm({
+  actor: tmtFirm, actorFirmId: TMT, lead: tmpMotelLead, tmpFirmId: TMP, logged_manually: true,
+}), false);
+check("TMT firm cannot insert on TMT motel-shaped residue", canFirmInsertM6Comm({
+  actor: tmtFirm, actorFirmId: TMT, lead: tmtMotelLead, tmpFirmId: TMP, logged_manually: true,
+}), false);
+check("TMP firm cannot insert on a non-m6 lead", canFirmInsertM6Comm({
+  actor: tmpFirm, actorFirmId: TMP, lead: tmpMvaLead, tmpFirmId: TMP, logged_manually: true,
+}), false);
+check("TMP firm cannot insert a system-comm row", canFirmInsertM6Comm({
+  actor: tmpFirm, actorFirmId: TMP, lead: tmpMotelLead, tmpFirmId: TMP, logged_manually: false,
+}), false);
+check("staff do not use the firm-insert policy (comm_internal covers them)", canFirmInsertM6Comm({
+  actor: staff, actorFirmId: INNO, lead: tmpMotelLead, tmpFirmId: TMP, logged_manually: true,
+}), false);
+
+console.log("\nFIRM LOGIN LANDING");
+check("/portal default is not a deep link", isSafeFirmNext("/portal"), null);
+check("/m6 is a safe next", isSafeFirmNext("/m6"), "/m6");
+check("protocol-relative is rejected", isSafeFirmNext("//evil"), null);
+check("TMP m6 recipient lands on /m6", firmLandingPath({ role: "firm", isM6Recipient: true, requestedNext: "/portal" }), "/m6");
+check("TMP portal user stays on /portal", firmLandingPath({ role: "firm", isM6Recipient: false, requestedNext: "/portal" }), "/portal");
+check("staff land on /dashboard", firmLandingPath({ role: "agent", isM6Recipient: false, requestedNext: "/portal" }), "/dashboard");
+check("deep /m6 path is honored", firmLandingPath({ role: "firm", isM6Recipient: true, requestedNext: "/m6/cases/abc" }), "/m6/cases/abc");
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);
