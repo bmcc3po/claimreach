@@ -1,7 +1,7 @@
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
-import { HEALTH_LABEL, daysAgo, filterM6StatusRows, type Health } from "@/lib/m6";
+import { HEALTH_LABEL, daysAgo, filterM6StatusRows, lorShowsOnToday, type Health } from "@/lib/m6";
 import { applyM6LeadFilters, getTmpFirmId, M6_STATUS_COLUMNS } from "@/lib/m6-scope";
 
 // The home screen, and the reason anyone opens this app. If it is right, nobody
@@ -84,6 +84,14 @@ export default async function TodayPage() {
   const lost         = rows.filter((r) => r.health === "lost" && r.last_two_way_at);
   const unclaimed    = rows.filter((r) => !r.retention_owner && r.health !== "paused" && r.days_overdue > 0);
 
+  const { data: lorRows } = tmpFirmId
+    ? await sb.from("lead_lor").select("lead_id, status, flagged_today").eq("firm_id", tmpFirmId)
+    : { data: [] as { lead_id: string; status: string; flagged_today: boolean }[] };
+  const lorTodayIds = new Set(
+    (lorRows ?? []).filter((r) => lorShowsOnToday(r)).map((r) => r.lead_id),
+  );
+  const lorToday = rows.filter((r) => lorTodayIds.has(r.lead_id));
+
   return (
     <div className="m6-page">
       <div className="m6-head">
@@ -100,6 +108,12 @@ export default async function TodayPage() {
       )}
 
       <div className="m6-stacks">
+        <Stack
+          title="LOR"
+          note="Needs a letter of representation, or someone pinned it here."
+          rows={lorToday}
+          empty="No LOR work today."
+        />
         <Stack
           title="Never reached"
           note="Signed, but nobody has confirmed two-way contact yet. Highest risk on the board."

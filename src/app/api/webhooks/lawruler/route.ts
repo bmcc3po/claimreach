@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { mapInbound, canonicalToLeadColumns } from "@/lib/webhooks";
+import { isLorReadyStatus, isLorStatus, mergeLorIngest, type LorStatus } from "@/lib/m6";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -203,6 +204,14 @@ export async function POST(req: NextRequest) {
     ec_phone: clean(fields.ec_phone),
     ec_email: clean(fields.ec_email),
     ec_message_script: clean(fields.ec_message_script),
+    gender: clean(fields.gender),
+    incident_start: toDateOnly(fields.incident_start),
+    incident_end: toDateOnly(fields.incident_end),
+    property_name: clean(fields.property_name),
+    property_street: clean(fields.property_street) || clean(fields.property_address),
+    property_city: clean(fields.property_city),
+    property_state: clean(fields.property_state),
+    property_zip: clean(fields.property_zip),
   });
   const ecPerm = toBool(fields.ec_permission_to_discuss);
   if (ecPerm !== null) (base as any).ec_permission_to_discuss = ecPerm;
@@ -273,6 +282,9 @@ export async function POST(req: NextRequest) {
 
   // ---- contact web --------------------------------------------------------
   await upsertPoints(admin, firmId, leadId, fields, base);
+
+  // ---- LOR (ingest-ready; webhook stays off until Phase C) ----------------
+  await upsertLor(admin, firmId, leadId, fields);
 
   // ---- attachments --------------------------------------------------------
   const stored: string[] = [];
@@ -368,6 +380,47 @@ async function upsertPoints(
     .upsert(rows, { onConflict: "lead_id,kind,value", ignoreDuplicates: false });
   if (error) {
     await log(admin, firmId, "failed", 500, { rows: rows.length }, `contact_points: ${error.message}`);
+  }
+}
+
+async function upsertLor(
+  admin: any, firmId: string, leadId: string,
+  fields: Record<string, any>,
+) {
+  const { data: existing } = await admin
+    .from("lead_lor")
+    .select("status, flagged_today")
+    .eq("lead_id", leadId)
+    .maybeSingle();
+
+  const explicit = clean(fields.lor_status);
+  const fromStatus = isLorReadyStatus(clean(fields.status));
+  const incomingStatus: LorStatus | null = isLorStatus(explicit)
+    ? explicit
+    : (fromStatus ? "ready" : null);
+  const incomingFlag = toBool(fields.lor_today) ?? toBool(fields.lor_flagged_today);
+
+  if (!incomingStatus && incomingFlag == null && !clean(fields.lor_sent_on) && !clean(fields.lor_sent_to)) {
+    return;
+  }
+
+  const merged = mergeLorIngest(existing, {
+    status: incomingStatus,
+    flagged_today: incomingFlag ?? (incomingStatus === "ready" ? true : null),
+  });
+
+  const { error } = await admin.from("lead_lor").upsert({
+    lead_id: leadId,
+    firm_id: firmId,
+    status: merged.status,
+    flagged_today: merged.flagged_today,
+    ...compact({
+      sent_on: toDateOnly(fields.lor_sent_on) || toDateOnly(fields.lor_sent_date),
+      sent_to: clean(fields.lor_sent_to),
+    }),
+  }, { onConflict: "lead_id" });
+  if (error) {
+    await log(admin, firmId, "failed", 500, { lead_id: leadId }, `lead_lor: ${error.message}`);
   }
 }
 
