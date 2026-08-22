@@ -6,6 +6,7 @@ import {
   m6CaseAccess, m6WriteAccess, filterM6StatusRows,
   type M6Actor, type M6LeadRow,
 } from "./m6";
+import { isInternalRole } from "./permissions";
 
 const TMP = "firm-tmp";
 const TMT = "firm-tmt";
@@ -113,6 +114,39 @@ const kept = filterM6StatusRows(mixed, TMP);
 check("only the live TMP motel row survives", kept.map((r) => r.lead_id), ["a"]);
 check("TMT firm actor would still not receive TMT rows from this filter",
   filterM6StatusRows(mixed, TMP).some((r) => r.firm_id === TMT), false);
+
+// ---------------------------------------------------------------------------
+// 0085 RLS people predicates. Mirrors supabase/migrations/0085_rls_hardening.sql.
+// contacts/claimants have no firm_id — internal-only. status_events firm read
+// is EXISTS (leads.id = lead_id AND leads.firm_id = my_firm_id()).
+// ---------------------------------------------------------------------------
+function canSeeContactsOrClaimants(actor: M6Actor | { role: string | null }): boolean {
+  return isInternalRole(actor.role);
+}
+function canSeeStatusEvent(
+  actor: M6Actor | { role: string | null },
+  actorFirmId: string | null,
+  eventLeadFirmId: string,
+): boolean {
+  if (isInternalRole(actor.role)) return true;
+  if (actor.role !== "firm") return false;
+  return actorFirmId !== null && actorFirmId === eventLeadFirmId;
+}
+
+console.log("\n0085 RLS — contacts / claimants (internal-only, no firm_id)");
+check("staff may see contacts/claimants", canSeeContactsOrClaimants(staff), true);
+check("owner may see contacts/claimants", canSeeContactsOrClaimants(owner), true);
+check("TMP firm must NOT see contacts/claimants", canSeeContactsOrClaimants(tmpFirm), false);
+check("TMT firm must NOT see contacts/claimants", canSeeContactsOrClaimants(tmtFirm), false);
+check("Roth firm must NOT see contacts/claimants", canSeeContactsOrClaimants(rothFirm), false);
+check("unsigned must NOT see contacts/claimants", canSeeContactsOrClaimants({ role: null }), false);
+
+console.log("\n0085 RLS — status_events (internal-all; firm read only own leads)");
+check("staff may see another firm's status_event", canSeeStatusEvent(staff, INNO, TMT), true);
+check("TMP firm may see own lead's status_event", canSeeStatusEvent(tmpFirm, TMP, TMP), true);
+check("TMT firm must NOT see TMP lead's status_event", canSeeStatusEvent(tmtFirm, TMT, TMP), false);
+check("TMP firm must NOT see TMT lead's status_event", canSeeStatusEvent(tmpFirm, TMP, TMT), false);
+check("unsigned must NOT see status_events", canSeeStatusEvent({ role: null }, null, TMP), false);
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);
