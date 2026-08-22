@@ -1,6 +1,8 @@
 // Shared vocabulary for the retention app. Defined once so a health colour
 // never means one thing on the Today screen and something else on the file.
 
+import { isInternalRole } from "@/lib/permissions";
+
 export type Health = "green" | "yellow" | "red" | "lost" | "paused";
 
 export const HEALTH_LABEL: Record<Health, string> = {
@@ -64,3 +66,85 @@ export const POINT_KINDS = [
   { value: "social",   label: "Social handle" },
   { value: "address",  label: "Address" },
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Tenant fence. Defined once so Today, Cases, the file, and /api/m6/* cannot
+// disagree about what an m6 row is. Verified against production firms.slug:
+// TMP is 'tmp'. Staff and firm users are both TMP-only in this portal.
+// ---------------------------------------------------------------------------
+
+export const M6_CAMPAIGN = "motel6";
+export const M6_CASE_TYPE = "motel_trafficking";
+export const TMP_SLUG = "tmp";
+
+export type M6Actor = {
+  role: string;
+  firmSlug: string | null;
+};
+
+export type M6LeadRow = {
+  id: string;
+  firm_id: string;
+  campaign?: string | null;
+  case_type?: string | null;
+  archived_at?: string | null;
+};
+
+export function canEnterM6App(actor: M6Actor): boolean {
+  if (isInternalRole(actor.role)) return true;
+  return actor.role === "firm" && actor.firmSlug === TMP_SLUG;
+}
+
+export function m6LayoutDestination(actor: M6Actor | null): "allow" | "firm-login" | "portal" | "dashboard" {
+  if (!actor) return "firm-login";
+  if (canEnterM6App(actor)) return "allow";
+  return actor.role === "firm" ? "portal" : "dashboard";
+}
+
+export function isM6Lead(row: Pick<M6LeadRow, "campaign" | "case_type" | "archived_at">): boolean {
+  if (row.archived_at) return false;
+  return row.campaign === M6_CAMPAIGN || row.case_type === M6_CASE_TYPE;
+}
+
+export function isM6PortalLead(row: M6LeadRow, tmpFirmId: string): boolean {
+  return row.firm_id === tmpFirmId && isM6Lead(row);
+}
+
+// /m6/cases/<uuid> never renders a non-m6 file. Wrong uuid, wrong type, wrong
+// firm, archived, or an actor who should not be in this app: notFound. No
+// empty shell, no "you don't have access" that confirms the file exists.
+export function m6CaseAccess(
+  actor: M6Actor,
+  lead: M6LeadRow | null,
+  tmpFirmId: string,
+): "ok" | "notFound" {
+  if (!canEnterM6App(actor)) return "notFound";
+  if (!lead) return "notFound";
+  if (!isM6PortalLead(lead, tmpFirmId)) return "notFound";
+  return "ok";
+}
+
+export function m6WriteAccess(
+  actor: M6Actor,
+  lead: M6LeadRow | null,
+  tmpFirmId: string,
+): "ok" | "forbidden" | "notFound" {
+  if (!canEnterM6App(actor)) return "forbidden";
+  if (!lead || !isM6PortalLead(lead, tmpFirmId)) return "notFound";
+  return "ok";
+}
+
+export function filterM6StatusRows<T extends {
+  firm_id: string;
+  campaign?: string | null;
+  case_type?: string | null;
+  archived_at?: string | null;
+}>(rows: T[], tmpFirmId: string): T[] {
+  return rows.filter((r) => isM6PortalLead({
+    id: "row",
+    firm_id: r.firm_id,
+    campaign: r.campaign ?? null,
+    case_type: r.case_type ?? null,
+    archived_at: r.archived_at ?? null,
+  }, tmpFirmId));
+}

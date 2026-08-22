@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { assertM6Write } from "@/lib/m6-scope";
 export const runtime = "edge";
 
 // One shared thread. Both firms read and write it, which is the whole point:
@@ -7,8 +8,6 @@ export const runtime = "edge";
 // twice and the reachability number lies.
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Sign in again to save this." }, { status: 401 });
 
   let b: any;
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Bad request." }, { status: 400 }); }
@@ -17,11 +16,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Write something first." }, { status: 400 });
   }
 
-  const { data: lead } = await sb.from("leads").select("id, firm_id").eq("id", lead_id).maybeSingle();
-  if (!lead) return NextResponse.json({ error: "That file is not available to you." }, { status: 404 });
+  const gate = await assertM6Write(sb, lead_id, "id, firm_id, campaign, case_type, archived_at");
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
   const { error } = await sb.from("lead_notes").insert({
-    firm_id: lead.firm_id, lead_id, author: user.id,
+    firm_id: gate.lead.firm_id, lead_id, author: gate.user.id,
     body: String(body).trim(), source: "m6",
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

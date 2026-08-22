@@ -1,7 +1,8 @@
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
-import { HEALTH_LABEL, daysAgo, type Health } from "@/lib/m6";
+import { HEALTH_LABEL, daysAgo, filterM6StatusRows, type Health } from "@/lib/m6";
+import { applyM6LeadFilters, getTmpFirmId, M6_STATUS_COLUMNS } from "@/lib/m6-scope";
 
 // The home screen, and the reason anyone opens this app. If it is right, nobody
 // has to decide what to do next. Four stacks, in the order a caller works them.
@@ -57,15 +58,23 @@ function Stack({ title, note, rows, empty }: {
 
 export default async function TodayPage() {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const tmpFirmId = await getTmpFirmId(sb);
 
-  const { data, error } = await sb
-    .from("lead_contact_status")
-    .select("lead_id, lead_no, claimant_name, health, days_overdue, days_since_contact, last_two_way_at, next_touch_due, ladder_step, retention_owner, live_contact_points")
-    .order("days_overdue", { ascending: false })
-    .limit(400);
+  const { data, error } = tmpFirmId
+    ? await applyM6LeadFilters(
+        sb.from("lead_contact_status").select(M6_STATUS_COLUMNS),
+        tmpFirmId,
+      ).order("days_overdue", { ascending: false }).limit(400)
+    : { data: [] as Row[], error: { message: "This app is not available." } };
 
-  const rows = (data ?? []) as Row[];
+  const rows = tmpFirmId
+    ? filterM6StatusRows((data ?? []) as (Row & {
+        firm_id: string;
+        campaign?: string | null;
+        case_type?: string | null;
+        archived_at?: string | null;
+      })[], tmpFirmId)
+    : [];
 
   // Never contacted comes first on purpose: a file nobody has ever reached is
   // more fragile than one that has gone quiet, because there is no contact web

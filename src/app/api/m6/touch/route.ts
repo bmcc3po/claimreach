@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { assertM6Write } from "@/lib/m6-scope";
 export const runtime = "edge";
 
 const OUTCOMES = ["two_way", "no_answer", "voicemail", "bad_number"];
@@ -14,8 +15,6 @@ const OUTCOMES = ["two_way", "no_answer", "voicemail", "bad_number"];
 // in by hand.
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Sign in again to save this." }, { status: 401 });
 
   let b: any;
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Bad request." }, { status: 400 }); }
@@ -26,26 +25,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Pick how the contact ended." }, { status: 400 });
   }
 
-  // RLS decides whether this user may see the file at all.
-  const { data: lead } = await sb.from("leads").select("id, firm_id, phone").eq("id", lead_id).maybeSingle();
-  if (!lead) return NextResponse.json({ error: "That file is not available to you." }, { status: 404 });
+  const gate = await assertM6Write(sb, lead_id);
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
-  const { data: me } = await sb.from("app_users").select("full_name, email").eq("id", user.id).maybeSingle();
+  const { data: me } = await sb.from("app_users").select("email").eq("id", gate.user.id).maybeSingle();
 
   const { error } = await sb.from("communications").insert({
-    lead_id, firm_id: lead.firm_id,
+    lead_id, firm_id: gate.lead.firm_id,
     channel: channel === "sms" ? "sms" : "call",
     direction: purpose === "inbound" ? "inbound" : "outbound",
-    phone: lead.phone ?? null,
+    phone: gate.lead.phone ?? null,
     body: body ?? null,
-    agent_name: me?.full_name ?? null,
+    agent_name: gate.user.name ?? null,
     agent_email: me?.email ?? null,
     occurred_at: new Date().toISOString(),
     purpose: purpose ?? "ad_hoc",
     outcome,
     contact_point_id: contact_point_id ?? null,
     logged_manually: true,
-    dispositioned_by: user.id,
+    dispositioned_by: gate.user.id,
     dispositioned_at: new Date().toISOString(),
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
