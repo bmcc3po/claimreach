@@ -19,7 +19,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
   );
   if (m6CaseAccess(actor, lead, tmpFirmId) !== "ok") notFound();
 
-  const [{ data: status }, { data: points }, { data: notes }, { data: comms }, { data: sched }, { data: docs }] =
+  const [{ data: status }, { data: points }, { data: notes }, { data: comms }, { data: sched }, { data: docs }, { data: lor }] =
     await Promise.all([
       applyM6LeadFilters(sb.from("lead_contact_status").select("*").eq("lead_id", id), tmpFirmId).maybeSingle(),
       sb.from("contact_points").select("*").eq("lead_id", id).eq("firm_id", tmpFirmId).is("retired_at", null).order("kind"),
@@ -27,6 +27,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       sb.from("communications").select("id, channel, direction, outcome, purpose, body, duration_sec, agent_name, occurred_at, ladder_step").eq("lead_id", id).eq("firm_id", tmpFirmId).order("occurred_at", { ascending: false }).limit(50),
       sb.from("call_schedule").select("id, due_at, kind, note, status, assigned_to, ladder_step").eq("lead_id", id).eq("firm_id", tmpFirmId).eq("status", "open").order("due_at"),
       sb.from("case_documents").select("id, file_name, doc_type, created_at").eq("lead_id", id).eq("firm_id", tmpFirmId).order("created_at", { ascending: false }),
+      sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to").eq("lead_id", id).eq("firm_id", tmpFirmId).maybeSingle(),
     ]);
 
   // Firm JWTs can only read their own app_users row. Resolve names server-side
@@ -61,6 +62,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       comms={(comms ?? []) as any}
       schedule={(sched ?? []).map((s: any) => ({ ...s, assigned_name: nameOf.get(s.assigned_to) ?? null }))}
       docs={(docs ?? []) as any}
+      lor={lor ?? null}
     />
   );
 }

@@ -2031,6 +2031,16 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .m6-outcome.bad_number { background: var(--danger-bg); border-color: var(--danger); }
 .m6-outcome.bad_number strong { color: var(--danger); }
 
+.m6-lor { margin-bottom: 26px; }
+.m6-lor-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+.m6-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13.5px; color: var(--ink); margin: 4px 0 14px;
+}
+.m6-check input { width: 16px; height: 16px; }
+
 @media (max-width: 860px) {
   .m6-cols { grid-template-columns: 1fr; }
   .m6-top-in { padding: 0 16px; gap: 18px; }
@@ -2038,5 +2048,6 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   .m6-who { display: none; }
   .m6-health-facts { gap: 22px; }
   .m6-outcomes { grid-template-columns: 1fr; }
+  .m6-lor-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

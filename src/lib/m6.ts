@@ -148,3 +148,60 @@ export function filterM6StatusRows<T extends {
     archived_at: r.archived_at ?? null,
   }, tmpFirmId));
 }
+
+// ---------------------------------------------------------------------------
+// LOR (Phase G, launch week). Sidecar on the file — not a pipeline status,
+// not current_status, not the later PostGrid lor_sends table.
+// ---------------------------------------------------------------------------
+
+export const LOR_STATUSES = [
+  { value: "not_sent", label: "Not sent" },
+  { value: "ready",    label: "Needs LOR" },
+  { value: "sent",     label: "Sent" },
+  { value: "received", label: "Received" },
+] as const;
+
+export type LorStatus = typeof LOR_STATUSES[number]["value"];
+
+export const LOR_SENT_TO = [
+  { value: "g6",        label: "G6 Hospitality" },
+  { value: "motel6",    label: "Motel 6" },
+  { value: "sedgwick",  label: "Sedgwick" },
+  { value: "other",     label: "Other" },
+] as const;
+
+export const LOR_READY_STATUS = "secondary intake ok sent to firm";
+
+export function isLorStatus(v: unknown): v is LorStatus {
+  return LOR_STATUSES.some((s) => s.value === v);
+}
+
+export function isLorReadyStatus(raw: string | null | undefined): boolean {
+  return (raw ?? "").trim().toLowerCase() === LOR_READY_STATUS;
+}
+
+export type LorRow = {
+  status?: string | null;
+  flagged_today?: boolean | null;
+};
+
+export function lorShowsOnToday(row: LorRow | null | undefined): boolean {
+  if (!row) return false;
+  if (row.status === "sent" || row.status === "received") return false;
+  return !!row.flagged_today || row.status === "ready";
+}
+
+// Webhook replay must not pull a sent file back to ready.
+export function mergeLorIngest(
+  existing: LorRow | null,
+  incoming: { status?: LorStatus | null; flagged_today?: boolean | null },
+): { status: LorStatus; flagged_today: boolean } {
+  const alreadySent = existing?.status === "sent" || existing?.status === "received";
+  const status: LorStatus = alreadySent
+    ? (existing!.status as LorStatus)
+    : (incoming.status ?? (existing?.status as LorStatus) ?? "not_sent");
+  const flagged_today = alreadySent
+    ? false
+    : (incoming.flagged_today ?? existing?.flagged_today ?? status === "ready");
+  return { status, flagged_today };
+}

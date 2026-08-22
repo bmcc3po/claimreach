@@ -4,6 +4,7 @@ import {
   TMP_SLUG, M6_CAMPAIGN, M6_CASE_TYPE,
   canEnterM6App, m6LayoutDestination, isM6Lead, isM6PortalLead,
   m6CaseAccess, m6WriteAccess, filterM6StatusRows,
+  lorShowsOnToday, isLorReadyStatus, mergeLorIngest,
   type M6Actor, type M6LeadRow,
 } from "./m6";
 import { isInternalRole } from "./permissions";
@@ -147,6 +148,19 @@ check("TMP firm may see own lead's status_event", canSeeStatusEvent(tmpFirm, TMP
 check("TMT firm must NOT see TMP lead's status_event", canSeeStatusEvent(tmtFirm, TMT, TMP), false);
 check("TMP firm must NOT see TMT lead's status_event", canSeeStatusEvent(tmpFirm, TMP, TMT), false);
 check("unsigned must NOT see status_events", canSeeStatusEvent({ role: null }, null, TMP), false);
+
+console.log("\nLOR (Phase G)");
+check("empty row stays off Today", lorShowsOnToday(null), false);
+check("ready shows on Today", lorShowsOnToday({ status: "ready", flagged_today: false }), true);
+check("flag alone shows on Today", lorShowsOnToday({ status: "not_sent", flagged_today: true }), true);
+check("sent never shows on Today even if flagged", lorShowsOnToday({ status: "sent", flagged_today: true }), false);
+check("LawRuler status string matches", isLorReadyStatus("Secondary intake OK sent to firm"), true);
+check("other LawRuler status does not", isLorReadyStatus("Signed"), false);
+check("ingest does not downgrade sent to ready", mergeLorIngest(
+  { status: "sent", flagged_today: false },
+  { status: "ready", flagged_today: true },
+), { status: "sent", flagged_today: false });
+check("ingest marks ready on first fire", mergeLorIngest(null, { status: "ready" }), { status: "ready", flagged_today: true });
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);
