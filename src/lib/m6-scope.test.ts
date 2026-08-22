@@ -1,0 +1,118 @@
+// Tenant isolation for the m6 portal. Acceptance gate for launch.
+// Run: npx tsx src/lib/m6-scope.test.ts
+import {
+  TMP_SLUG, M6_CAMPAIGN, M6_CASE_TYPE,
+  canEnterM6App, m6LayoutDestination, isM6Lead, isM6PortalLead,
+  m6CaseAccess, m6WriteAccess, filterM6StatusRows,
+  type M6Actor, type M6LeadRow,
+} from "./m6";
+
+const TMP = "firm-tmp";
+const TMT = "firm-tmt";
+const INNO = "firm-inno";
+
+const staff: M6Actor = { role: "agent", firmSlug: "inno" };
+const owner: M6Actor = { role: "owner", firmSlug: "inno" };
+const tmpFirm: M6Actor = { role: "firm", firmSlug: TMP_SLUG };
+const tmtFirm: M6Actor = { role: "firm", firmSlug: "tmt" };
+const rothFirm: M6Actor = { role: "firm", firmSlug: "roth" };
+
+function lead(partial: Partial<M6LeadRow> & Pick<M6LeadRow, "id" | "firm_id">): M6LeadRow {
+  return { campaign: null, case_type: "mva", archived_at: null, ...partial };
+}
+
+const tmpMotel: M6LeadRow = lead({
+  id: "uuid-tmp-motel", firm_id: TMP,
+  campaign: M6_CAMPAIGN, case_type: M6_CASE_TYPE,
+});
+const tmpMotelCaseTypeOnly: M6LeadRow = lead({
+  id: "uuid-tmp-old", firm_id: TMP,
+  campaign: "TMP MOTEL_TRAFFICKING", case_type: M6_CASE_TYPE,
+});
+const tmpMva: M6LeadRow = lead({
+  id: "uuid-tmp-mva", firm_id: TMP,
+  campaign: "tmp-auto", case_type: "mva",
+});
+const tmtAuto: M6LeadRow = lead({
+  id: "uuid-tmt-auto", firm_id: TMT,
+  campaign: null, case_type: "mva",
+});
+const tmtMotelShaped: M6LeadRow = lead({
+  id: "uuid-tmt-motel-residue", firm_id: TMT,
+  campaign: M6_CAMPAIGN, case_type: M6_CASE_TYPE,
+});
+const otherFirmMotel: M6LeadRow = lead({
+  id: "uuid-roth-motel", firm_id: INNO,
+  campaign: M6_CAMPAIGN, case_type: M6_CASE_TYPE,
+});
+const archivedTmpMotel: M6LeadRow = lead({
+  id: "uuid-archived", firm_id: TMP,
+  campaign: M6_CAMPAIGN, case_type: M6_CASE_TYPE,
+  archived_at: "2026-01-01T00:00:00Z",
+});
+
+let pass = 0, fail = 0;
+function check(name: string, got: any, want: any) {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (ok) { pass++; console.log(`  ok   ${name}`); }
+  else { fail++; console.log(`  FAIL ${name}\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`); }
+}
+
+console.log("\nSLUG");
+check("TMP slug is tmp, verified in production", TMP_SLUG, "tmp");
+
+console.log("\nLAYOUT GATE");
+check("unsigned → firm-login", m6LayoutDestination(null), "firm-login");
+check("staff may enter", canEnterM6App(staff), true);
+check("owner may enter", canEnterM6App(owner), true);
+check("TMP firm may enter", canEnterM6App(tmpFirm), true);
+check("TMT firm is redirected to portal, not an empty page", m6LayoutDestination(tmtFirm), "portal");
+check("Roth firm is redirected to portal", m6LayoutDestination(rothFirm), "portal");
+check("TMT firm cannot enter", canEnterM6App(tmtFirm), false);
+
+console.log("\nWHAT COUNTS AS AN M6 FILE");
+check("campaign motel6 is m6", isM6Lead(tmpMotel), true);
+check("OR: case_type only (older intake) is m6", isM6Lead(tmpMotelCaseTypeOnly), true);
+check("TMP MVA is not m6", isM6Lead(tmpMva), false);
+check("archived motel is not live m6", isM6Lead(archivedTmpMotel), false);
+check("TMP motel is a portal file", isM6PortalLead(tmpMotel, TMP), true);
+check("motel-shaped row at TMT is NOT a portal file", isM6PortalLead(tmtMotelShaped, TMP), false);
+
+console.log("\nCASE PAGE — /m6/cases/<uuid> is notFound for every non-m6, including staff");
+check("staff + TMT auto uuid → notFound (the shell leak)", m6CaseAccess(staff, tmtAuto, TMP), "notFound");
+check("owner + TMT auto uuid → notFound", m6CaseAccess(owner, tmtAuto, TMP), "notFound");
+check("staff + missing uuid → notFound", m6CaseAccess(staff, null, TMP), "notFound");
+check("staff + TMP MVA uuid → notFound", m6CaseAccess(staff, tmpMva, TMP), "notFound");
+check("staff + archived TMP motel → notFound", m6CaseAccess(staff, archivedTmpMotel, TMP), "notFound");
+check("staff + motel-shaped at another firm → notFound", m6CaseAccess(staff, tmtMotelShaped, TMP), "notFound");
+check("staff + residue at inno → notFound", m6CaseAccess(staff, otherFirmMotel, TMP), "notFound");
+check("TMP firm + TMT auto uuid → notFound", m6CaseAccess(tmpFirm, tmtAuto, TMP), "notFound");
+check("TMP firm + own MVA uuid → notFound", m6CaseAccess(tmpFirm, tmpMva, TMP), "notFound");
+check("TMT firm + anything → notFound (never render the shell)", m6CaseAccess(tmtFirm, tmtAuto, TMP), "notFound");
+check("TMT firm + TMP motel uuid → notFound", m6CaseAccess(tmtFirm, tmpMotel, TMP), "notFound");
+check("staff + TMP motel → ok", m6CaseAccess(staff, tmpMotel, TMP), "ok");
+check("staff + older TMP motel (case_type only) → ok", m6CaseAccess(staff, tmpMotelCaseTypeOnly, TMP), "ok");
+check("TMP firm + TMP motel → ok", m6CaseAccess(tmpFirm, tmpMotel, TMP), "ok");
+
+console.log("\nWRITES");
+check("TMT firm cannot write", m6WriteAccess(tmtFirm, tmpMotel, TMP), "forbidden");
+check("staff cannot write a TMT auto file", m6WriteAccess(staff, tmtAuto, TMP), "notFound");
+check("TMP firm cannot write own MVA through m6", m6WriteAccess(tmpFirm, tmpMva, TMP), "notFound");
+check("TMP firm can write own motel file", m6WriteAccess(tmpFirm, tmpMotel, TMP), "ok");
+check("staff can write TMP motel", m6WriteAccess(staff, tmpMotel, TMP), "ok");
+
+console.log("\nLIST FILTER — mixed board never leaks a non-motel6 row");
+const mixed = [
+  { firm_id: TMP, campaign: M6_CAMPAIGN, case_type: M6_CASE_TYPE, archived_at: null, lead_id: "a" },
+  { firm_id: TMP, campaign: "auto", case_type: "mva", archived_at: null, lead_id: "b" },
+  { firm_id: TMT, campaign: M6_CAMPAIGN, case_type: M6_CASE_TYPE, archived_at: null, lead_id: "c" },
+  { firm_id: TMT, campaign: null, case_type: "mva", archived_at: null, lead_id: "d" },
+  { firm_id: TMP, campaign: M6_CAMPAIGN, case_type: M6_CASE_TYPE, archived_at: "2026-01-01", lead_id: "e" },
+];
+const kept = filterM6StatusRows(mixed, TMP);
+check("only the live TMP motel row survives", kept.map((r) => r.lead_id), ["a"]);
+check("TMT firm actor would still not receive TMT rows from this filter",
+  filterM6StatusRows(mixed, TMP).some((r) => r.firm_id === TMT), false);
+
+console.log(`\n${pass} passed, ${fail} failed\n`);
+if (fail) process.exit(1);

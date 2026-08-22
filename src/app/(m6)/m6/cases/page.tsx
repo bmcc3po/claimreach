@@ -1,20 +1,32 @@
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
 import CaseList from "@/components/m6/CaseList";
-import type { Health } from "@/lib/m6";
+import { filterM6StatusRows, type Health } from "@/lib/m6";
+import { applyM6LeadFilters, getTmpFirmId, M6_STATUS_COLUMNS } from "@/lib/m6-scope";
 
 export default async function CasesPage() {
   const sb = await supabaseServer();
+  const tmpFirmId = await getTmpFirmId(sb);
+  if (!tmpFirmId) {
+    return (
+      <div className="m6-page">
+        <div className="m6-head">
+          <h1>Cases</h1>
+          <p className="m6-sub">This app is not available.</p>
+        </div>
+      </div>
+    );
+  }
 
-  const { data: status } = await sb
-    .from("lead_contact_status")
-    .select("lead_id, lead_no, claimant_name, health, days_overdue, last_two_way_at, next_touch_due, ladder_step, retention_owner, live_contact_points")
-    .order("days_overdue", { ascending: false })
-    .limit(1000);
+  const { data: status } = await applyM6LeadFilters(
+    sb.from("lead_contact_status").select(M6_STATUS_COLUMNS),
+    tmpFirmId,
+  ).order("days_overdue", { ascending: false }).limit(1000);
 
-  const ids = (status ?? []).map((s: any) => s.lead_id);
+  const scoped = filterM6StatusRows((status ?? []) as any[], tmpFirmId);
+  const ids = scoped.map((s: any) => s.lead_id);
   const { data: leads } = ids.length
-    ? await sb.from("leads").select("id, phone, first_name, last_name, full_name").in("id", ids)
+    ? await sb.from("leads").select("id, phone, first_name, last_name, full_name").eq("firm_id", tmpFirmId).in("id", ids)
     : { data: [] as any[] };
 
   const { data: users } = await sb.from("app_users").select("id, full_name");
@@ -22,7 +34,7 @@ export default async function CasesPage() {
   const byLead = new Map((leads ?? []).map((l: any) => [l.id, l]));
   const byUser = new Map((users ?? []).map((u: any) => [u.id, u.full_name]));
 
-  const rows = (status ?? []).map((s: any) => {
+  const rows = scoped.map((s: any) => {
     const l = byLead.get(s.lead_id) ?? {};
     return {
       id: s.lead_id,
