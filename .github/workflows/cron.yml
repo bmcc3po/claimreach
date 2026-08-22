@@ -9,8 +9,12 @@
 # Cloudflare Pages has no native cron, so the schedule lives here. GitHub runs
 # this every 5 minutes and pings the drain endpoints.
 #
-# SETUP (one time): repo Settings > Secrets and variables > Actions, add
-#   CRON_SECRET  — must match the CRON_SECRET set in Cloudflare Pages env vars.
+# SETUP (one time) — the SAME value on both sides:
+#   GitHub:  Settings → Secrets and variables → Actions → CRON_SECRET
+#   Cloudflare Pages (production): Settings → Environment variables → CRON_SECRET
+#   Then redeploy production. A new env var is not live until the next deploy.
+#
+# Routes validate the x-cron-secret HEADER (not a query param).
 #
 # Note: GitHub's scheduler can drift by a few minutes under load. That is fine
 # for a 10-minute undo window; it is not a hard real-time guarantee.
@@ -26,20 +30,27 @@ jobs:
   drain:
     runs-on: ubuntu-latest
     steps:
-      - name: Drain the automation queue
+      - name: Require CRON_SECRET
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          code=$(curl -s -o /tmp/out.txt -w "%{http_code}" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            https://claimreach.com/api/cron/automations)
-          echo "automations -> HTTP $code"
-          cat /tmp/out.txt
-          if [ "$code" != "200" ]; then echo "::error::automation drain failed"; exit 1; fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET is empty. Set it in GitHub (Settings → Secrets and variables → Actions) AND in Cloudflare Pages production env, then redeploy. Values must match."
+            exit 1
+          fi
+
+      - name: Drain the automation queue
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body -sS \
+            -H "x-cron-secret: $CRON_SECRET" \
+            https://claimreach.com/api/cron/automations
 
       - name: Run due drips
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          code=$(curl -s -o /tmp/drips.txt -w "%{http_code}" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            https://claimreach.com/api/cron/drips)
-          echo "drips -> HTTP $code"
-          cat /tmp/drips.txt
-          if [ "$code" != "200" ]; then echo "::error::drip run failed"; exit 1; fi
+          curl --fail-with-body -sS \
+            -H "x-cron-secret: $CRON_SECRET" \
+            https://claimreach.com/api/cron/drips
