@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
-import { resolveFirmHome } from "@/lib/firm-home";
+import { ensureAppUser, resolveFirmHome } from "@/lib/firm-home";
 
 export const runtime = "edge";
 
 // Exchanges the magic-link / OAuth code for a session, then sends the user
-// home. TMP m6 firm users (retention_alert_recipients, campaign motel6) land
-// on /m6. Other firm users stay on /portal. Staff go to /dashboard.
+// home. Firm provisioning is HERE: if app_users is missing, call
+// provision_self_from_firm_access then land. RPC failure is returned as
+// 500 — never swallowed. TMP m6 firm users land on /m6. Other firm users
+// stay on /portal. Staff go to /dashboard.
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url);
   const code = searchParams.get("code");
@@ -16,9 +18,16 @@ export async function GET(req: NextRequest) {
     await sb.auth.exchangeCodeForSession(code);
   }
   const { data: { user } } = await sb.auth.getUser();
-  const { data: me } = user
-    ? await sb.from("app_users").select("role").eq("id", user.id).maybeSingle()
-    : { data: null };
+  let me: { role: string } | null = null;
+  try {
+    me = await ensureAppUser(sb, user);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Could not set up your account.";
+    return new NextResponse(msg, {
+      status: 500,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
   const dest = (await resolveFirmHome(sb, {
     role: me?.role,
     email: user?.email,
