@@ -70,6 +70,14 @@ export const M6_CRISSI_GUIDANCE = {
   ],
 } as const;
 
+export const M6_CRISSI_CHIPS = [
+  "They're spiraling. What do I say?",
+  "Are they in a safe place to speak?",
+  "They asked what the case is worth.",
+  "No answer. What's the next move?",
+  "Comms may be monitored. Can I leave a voicemail?",
+] as const;
+
 const AGENT = "[Agent]";
 const FIRST = "[First]";
 const NUMBER = "[number]";

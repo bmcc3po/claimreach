@@ -12,7 +12,7 @@ import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 import LorCard from "./LorCard";
 import { LogTouch, ModalShell } from "./M6Modals";
 import ComposePanel from "./ComposePanel";
-import CrissiRail from "./CrissiRail";
+import FileActions from "./FileActions";
 
 type Point = {
   id: string; kind: string; value: string; label: string | null;
@@ -118,6 +118,10 @@ export default function CaseFile({
           </p>
         </div>
         <div className="m6-file-acts">
+          <FileActions
+            file={{ id: lead.id, name, phone: lead.phone || live.find((p) => p.kind === "mobile" || p.kind === "landline")?.value }}
+            onDone={() => router.refresh()}
+          />
           {interview && (
             <button
               type="button"
@@ -286,8 +290,6 @@ export default function CaseFile({
               </ul>
             </section>
           )}
-
-          <CrissiRail showFullLink />
 
           {/* ---- documents ------------------------------------------------ */}
           <section className="m6-card">

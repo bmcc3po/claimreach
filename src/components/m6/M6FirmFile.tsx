@@ -3,7 +3,7 @@ import LeadWorkspace from "@/components/LeadWorkspace";
 import LorCard from "./LorCard";
 import LogTouchButton from "./LogTouchButton";
 import ComposePanel from "./ComposePanel";
-import CrissiRail from "./CrissiRail";
+import FileActions from "./FileActions";
 import Link from "next/link";
 import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 import type { FileFence } from "@/lib/file-fence";
@@ -28,6 +28,7 @@ export default function M6FirmFile({
   points: { id: string; kind: string; value: string; label: string | null; status: string }[];
 }) {
   const live = points.filter((p) => p.status !== "dead" && p.status !== "opted_out");
+  const phone = lead.phone || live.find((p) => p.kind === "mobile" || p.kind === "landline")?.value || null;
 
   return (
     <div className="m6-page m6-file">
@@ -37,16 +38,16 @@ export default function M6FirmFile({
           text, and follow the approved script with anyone else who answers.
         </p>
       )}
+      <div className="m6-file-acts m6-file-acts-top">
+        <FileActions file={{ id: lead.id, name: lead.claimant_name || lead.full_name, phone }} />
+      </div>
       <LorCard leadId={lead.id} lor={lor} />
       <ComposePanel leadId={lead.id} isStaff={false} />
       <p className="m6-hint">
         <Link href={`/m6/property?leadid=${encodeURIComponent(lead.external_id || lead.lawruler_ref_no || "")}`}>
           Look up a property
         </Link>
-        {" · "}
-        <Link href="/m6/guidance">Guidance</Link>
       </p>
-      <CrissiRail />
       {!!identified.length && (
         <section className="m6-card m6-identified">
           <h2>Identified properties</h2>

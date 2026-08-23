@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { HEALTH_LABEL, daysAgo, dueWording, type Health } from "@/lib/m6";
+import FileActions from "./FileActions";
 
 type Row = {
   id: string; lead_no: string; name: string; phone: string | null;
@@ -74,7 +75,7 @@ export default function CaseList({ rows }: { rows: Row[] }) {
       ) : (
         <ul className="m6-rows m6-rows-lg">
           {shown.map((r) => (
-            <li key={r.id}>
+            <li key={r.id} className="m6-row-wrap">
               <Link href={`/m6/cases/${r.id}`} className="m6-row">
                 <span className={`m6-dot ${r.health}`} aria-hidden="true" />
                 <span className="m6-row-main">
@@ -94,6 +95,7 @@ export default function CaseList({ rows }: { rows: Row[] }) {
                   <span className="m6-row-due">{dueWording(r.next_touch_due)}</span>
                 </span>
               </Link>
+              <FileActions file={{ id: r.id, name: r.name, phone: r.phone }} />
             </li>
           ))}
         </ul>
