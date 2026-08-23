@@ -20,12 +20,14 @@ export default function M6Nav({
       <header className="m6-top">
         <div className="m6-top-in">
           <Link href="/m6" className="m6-lockup" aria-label="Motel 6 client care — Innovative Intake, ClaimReach, Turnbull Moak & Pendergrass">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/brand/innovative-intake-on-dark.png"
-              alt="Innovative Intake"
-              className="m6-logo m6-logo-inno"
-            />
+            <span className="m6-logo-pad m6-logo-pad-inno">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/brand/innovative-intake.png"
+                alt="Innovative Intake"
+                className="m6-logo m6-logo-inno"
+              />
+            </span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/brand/innovative-mark-on-dark.png"
@@ -34,20 +36,22 @@ export default function M6Nav({
               className="m6-logo m6-logo-inno-mark"
             />
             <span className="m6-lockup-rule" aria-hidden="true" />
-            <span className="m6-logo-cr-chip">
+            <span className="m6-logo-pad m6-logo-cr-chip">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/cr-mark.png" alt="ClaimReach" className="m6-logo m6-logo-cr" />
             </span>
             <span className="m6-lockup-rule" aria-hidden="true" />
+            <span className="m6-logo-pad m6-logo-pad-tmp">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/brand/tmp-wordmark-ink.png"
+                alt="Turnbull Moak & Pendergrass"
+                className="m6-logo m6-logo-tmp"
+              />
+            </span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/brand/tmp-wordmark.svg"
-              alt="Turnbull Moak & Pendergrass"
-              className="m6-logo m6-logo-tmp"
-            />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/brand/tmp-mark-white.svg"
+              src="/brand/tmp-mark-on-dark.png"
               alt=""
               aria-hidden="true"
               className="m6-logo m6-logo-tmp-mark"
