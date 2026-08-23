@@ -19,10 +19,10 @@ export async function GET(req: NextRequest) {
   const { data: me } = user
     ? await sb.from("app_users").select("role").eq("id", user.id).maybeSingle()
     : { data: null };
-  const dest = await resolveFirmHome(sb, {
+  const dest = (await resolveFirmHome(sb, {
     role: me?.role,
     email: user?.email,
     requestedNext: next,
-  });
+  })) ?? "/firm-login";
   return NextResponse.redirect(`${origin}${dest}`);
 }

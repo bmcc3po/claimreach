@@ -8,7 +8,7 @@ import { firmLandingPath } from "@/lib/m6";
 export async function resolveFirmHome(
   sb: any,
   opts: { role: string | null | undefined; email: string | null | undefined; requestedNext?: string | null },
-): Promise<string> {
+): Promise<string | null> {
   let isM6Recipient = false;
   if (opts.role === "firm" && opts.email) {
     try {
