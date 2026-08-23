@@ -56,7 +56,7 @@ export default async function CasesPage() {
     <div className="m6-page">
       <div className="m6-head">
         <h1>Cases</h1>
-        <p className="m6-sub">Every Motel 6 file and how reachable it is right now.</p>
+        <p className="m6-sub">Every file, and the last time someone actually reached them.</p>
       </div>
       <CaseList rows={rows} />
     </div>

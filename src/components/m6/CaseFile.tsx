@@ -11,6 +11,8 @@ import {
 import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 import LorCard from "./LorCard";
 import { LogTouch, ModalShell } from "./M6Modals";
+import ComposePanel from "./ComposePanel";
+import CrissiRail from "./CrissiRail";
 
 type Point = {
   id: string; kind: string; value: string; label: string | null;
@@ -94,8 +96,9 @@ export default function CaseFile({
     }
   }
 
-  const live = points.filter((p) => p.status !== "dead");
+  const live = points.filter((p) => p.status !== "dead" && p.status !== "opted_out");
   const dead = points.filter((p) => p.status === "dead");
+  const opted = points.filter((p) => p.status === "opted_out");
   const pageErr = err && !modal;
 
   return (
@@ -125,6 +128,9 @@ export default function CaseFile({
               {busy === "interview" ? "Opening" : "View secondary interview"}
             </button>
           )}
+          <Link href={`/m6/property?leadid=${encodeURIComponent(lead.external_id || lead.lawruler_ref_no || "")}`} className="m6-btn">
+            Property lookup
+          </Link>
           <button type="button" className="m6-btn primary" onClick={() => openModal("touch")}>
             Log a touch
           </button>
@@ -140,6 +146,7 @@ export default function CaseFile({
       {pageErr && <p className="m6-error">{err}</p>}
 
       <LorCard leadId={lead.id} lor={lor} />
+      <ComposePanel leadId={lead.id} isStaff />
 
       {!!identified?.length && (
         <section className="m6-card m6-identified">
@@ -214,8 +221,7 @@ export default function CaseFile({
             </div>
             {live.length === 0 ? (
               <p className="m6-empty">
-                No way to reach this person is on file. Add a number, an email, or
-                someone who can get a message to them.
+                No number on the desk. Add one, or someone who can get a message to them.
               </p>
             ) : (
               <ul className="m6-points">
@@ -238,9 +244,23 @@ export default function CaseFile({
                     >
                       Mark dead
                     </button>
+                    <button
+                      type="button"
+                      className="m6-linkbtn"
+                      onClick={() => post("/api/m6/contact-point", { id: p.id, status: "opted_out" }, "opt")}
+                    >
+                      Opted out
+                    </button>
                   </li>
                 ))}
               </ul>
+            )}
+            {opted.length > 0 && (
+              <details className="m6-dead">
+                <summary>{opted.length} opted out</summary>
+                <ul>{opted.map((p) => <li key={p.id}>{p.value} · {p.label || p.kind}</li>)}</ul>
+                <p className="m6-hint">Hard gate. Do not send. The number stays on the file.</p>
+              </details>
             )}
             {dead.length > 0 && (
               <details className="m6-dead">
@@ -267,11 +287,13 @@ export default function CaseFile({
             </section>
           )}
 
+          <CrissiRail showFullLink />
+
           {/* ---- documents ------------------------------------------------ */}
           <section className="m6-card">
             <h2>Documents</h2>
             {docs.length === 0 ? (
-              <p className="m6-empty">Nothing has come over from LawRuler yet.</p>
+              <p className="m6-empty">The folder is empty.</p>
             ) : (
               <ul className="m6-docs">
                 {docs.map((d) => (
@@ -310,7 +332,7 @@ export default function CaseFile({
             </button>
 
             {notes.length === 0 ? (
-              <p className="m6-empty">No messages yet.</p>
+              <p className="m6-empty">Thread is blank. Write the first line.</p>
             ) : (
               <ul className="m6-notes">
                 {notes.map((n) => (
@@ -340,7 +362,7 @@ export default function CaseFile({
           <section className="m6-card">
             <h2>Contact history</h2>
             {comms.length === 0 ? (
-              <p className="m6-empty">No calls or texts logged yet.</p>
+              <p className="m6-empty">Nothing logged. The last touch starts here.</p>
             ) : (
               <ul className="m6-comms">
                 {comms.map((c) => (

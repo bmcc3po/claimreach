@@ -1,41 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cleanLeadid, propertyToolKeyOk } from "@/lib/property-tool";
+import { supabaseServer } from "@/lib/supabase-server";
+import { requireM6Session } from "@/lib/m6-scope";
+import { cleanLeadid } from "@/lib/property-tool";
 import {
   listPropertiesForLead, savePropertyIdentification, searchProperties, tmpPropertyFirmId,
 } from "@/lib/property-ops";
-
 export const runtime = "edge";
 
-function deny() {
-  return new NextResponse(null, { status: 404 });
-}
-
-function keyFrom(req: NextRequest, body?: Record<string, unknown>): string | null {
-  const q = new URL(req.url).searchParams.get("k");
-  if (q) return q;
-  const header = req.headers.get("x-property-tool-key");
-  if (header) return header;
-  const fromBody = body?.k;
-  return typeof fromBody === "string" ? fromBody : null;
-}
+// Session-gated property lookup for /m6. Reuses the same search/save as
+// /tools/property. No token key. TMP motel actors only.
 
 export async function GET(req: NextRequest) {
-  if (!propertyToolKeyOk(keyFrom(req))) return deny();
-  const leadid = cleanLeadid(new URL(req.url).searchParams.get("leadid"));
-  if (!leadid) return NextResponse.json({ error: "File # is missing." }, { status: 400 });
+  const sb = await supabaseServer();
+  const session = await requireM6Session(sb);
+  if (!session.ok) return NextResponse.json({ error: session.error }, { status: session.status });
   const firmId = await tmpPropertyFirmId();
   if (!firmId) return NextResponse.json({ error: "This tool is not available." }, { status: 503 });
+  const leadid = cleanLeadid(new URL(req.url).searchParams.get("leadid"));
+  if (!leadid) return NextResponse.json({ error: "File # is missing." }, { status: 400 });
   const { error, rows } = await listPropertiesForLead(firmId, leadid);
   if (error) return NextResponse.json({ error }, { status: 500 });
   return NextResponse.json({ properties: rows });
 }
 
 export async function POST(req: NextRequest) {
-  const b = await req.json().catch(() => ({} as Record<string, unknown>));
-  if (!propertyToolKeyOk(keyFrom(req, b))) return deny();
+  const sb = await supabaseServer();
+  const session = await requireM6Session(sb);
+  if (!session.ok) return NextResponse.json({ error: session.error }, { status: session.status });
   const firmId = await tmpPropertyFirmId();
   if (!firmId) return NextResponse.json({ error: "This tool is not available." }, { status: 503 });
 
+  const b = await req.json().catch(() => ({} as Record<string, unknown>));
   const op = b.op === "save" ? "save" : "search";
   if (op === "search") {
     const found = await searchProperties(b);
