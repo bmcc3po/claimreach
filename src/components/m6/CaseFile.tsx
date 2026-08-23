@@ -1,11 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import PhoneInput from "@/components/PhoneInput";
 import {
-  HEALTH_LABEL, OUTCOMES, PURPOSES, POINT_KINDS,
+  HEALTH_LABEL, OUTCOMES, PURPOSES, POINT_KINDS, SOCIAL_PLATFORMS,
   LOR_STATUSES, LOR_SENT_TO, lorShowsOnToday,
-  daysAgo, dueWording, displayName, type Health,
+  daysAgo, dueWording, displayName, formatLocalDateTime, formatLocalDate,
+  dueAtFromDateInput, SECONDARY_INTERVIEW_DOC_TYPE, type Health,
 } from "@/lib/m6";
 
 type Point = {
@@ -15,6 +17,8 @@ type Point = {
   contact_script: string | null; platform: string | null;
   verified_at: string | null; last_success_at: string | null;
 };
+
+type Modal = "touch" | "sched" | "point" | null;
 
 export default function CaseFile({
   lead, status, points, notes, comms, schedule, docs, lor,
@@ -26,7 +30,7 @@ export default function CaseFile({
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
-  const [logOpen, setLogOpen] = useState(false);
+  const [modal, setModal] = useState<Modal>(null);
   const [noteText, setNoteText] = useState("");
   const [lorStatus, setLorStatus] = useState(lor?.status ?? "not_sent");
   const [lorToday, setLorToday] = useState(!!lorShowsOnToday(lor));
@@ -36,6 +40,13 @@ export default function CaseFile({
   const health: Health = (status?.health ?? "green") as Health;
   const name = displayName(lead);
   const addr = [lead.mail_addr1, lead.mail_city, lead.mail_state, lead.mail_zip].filter(Boolean).join(", ");
+  const interview = docs.find((d) => d.doc_type === SECONDARY_INTERVIEW_DOC_TYPE);
+
+  useEffect(() => {
+    setErr("");
+    setModal(null);
+    setBusy("");
+  }, [lead.id]);
 
   async function post(url: string, body: any, label: string) {
     setBusy(label); setErr("");
@@ -45,7 +56,7 @@ export default function CaseFile({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lead_id: lead.id, ...body }),
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) { setErr(d.error || "That did not save. Try again."); return false; }
       router.refresh();
       return true;
@@ -57,8 +68,37 @@ export default function CaseFile({
     }
   }
 
+  function openModal(kind: Modal) {
+    setErr("");
+    setModal(kind);
+  }
+  function closeModal() {
+    setModal(null);
+  }
+
+  async function viewInterview(docId: string) {
+    setBusy("interview");
+    setErr("");
+    try {
+      const r = await fetch(
+        `/api/m6/document?lead_id=${encodeURIComponent(lead.id)}&id=${encodeURIComponent(docId)}`,
+      );
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.url) {
+        setErr(d.error || "Could not open the interview.");
+        return;
+      }
+      window.open(d.url, "_blank", "noopener,noreferrer");
+    } catch {
+      setErr("Could not open the interview.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   const live = points.filter((p) => p.status !== "dead");
   const dead = points.filter((p) => p.status === "dead");
+  const pageErr = err && !modal;
 
   return (
     <div className="m6-page m6-file">
@@ -70,14 +110,27 @@ export default function CaseFile({
           <p className="m6-sub">
             {lead.lead_no}
             {lead.dob && ` · born ${lead.dob}`}
+            {addr && ` · ${addr}`}
             {lead.lawruler_url && (
               <> · <a href={lead.lawruler_url} target="_blank" rel="noreferrer">Open in LawRuler</a></>
             )}
           </p>
         </div>
-        <button className="m6-btn primary" onClick={() => setLogOpen(true)}>
-          Log a touch
-        </button>
+        <div className="m6-file-acts">
+          {interview && (
+            <button
+              type="button"
+              className="m6-btn"
+              disabled={!!busy}
+              onClick={() => viewInterview(interview.id)}
+            >
+              {busy === "interview" ? "Opening" : "View secondary interview"}
+            </button>
+          )}
+          <button type="button" className="m6-btn primary" onClick={() => openModal("touch")}>
+            Log a touch
+          </button>
+        </div>
       </div>
 
       {lead.comms_monitored && (
@@ -86,7 +139,7 @@ export default function CaseFile({
           text, and follow the approved script with anyone else who answers.
         </p>
       )}
-      {err && <p className="m6-error">{err}</p>}
+      {pageErr && <p className="m6-error">{err}</p>}
 
       {/* ---- LOR -------------------------------------------------------- */}
       <section className="m6-card m6-lor">
@@ -128,6 +181,7 @@ export default function CaseFile({
           Show on Today
         </label>
         <button
+          type="button"
           className="m6-btn"
           disabled={!!busy}
           onClick={() => post("/api/m6/lor", {
@@ -155,6 +209,7 @@ export default function CaseFile({
         </dl>
         <div className="m6-health-acts">
           <button
+            type="button"
             className="m6-btn"
             disabled={!!busy}
             onClick={() => post("/api/m6/touch", { outcome: "two_way", purpose: "ad_hoc", channel: "call" }, "verify")}
@@ -162,12 +217,10 @@ export default function CaseFile({
             {busy === "verify" ? "Saving" : "I reached them just now"}
           </button>
           <button
+            type="button"
             className="m6-btn"
             disabled={!!busy}
-            onClick={() => {
-              const d = prompt("Schedule the next call for which date? (YYYY-MM-DD)");
-              if (d) post("/api/m6/schedule", { due_at: d, kind: "callback" }, "sched");
-            }}
+            onClick={() => openModal("sched")}
           >
             Schedule a call
           </button>
@@ -180,17 +233,7 @@ export default function CaseFile({
           <section className="m6-card">
             <div className="m6-card-head">
               <h2>How to reach them</h2>
-              <button
-                className="m6-btn sm"
-                onClick={() => {
-                  const kind = prompt(`Kind? ${POINT_KINDS.map((k) => k.value).join(", ")}`);
-                  if (!kind) return;
-                  const value = prompt("Number, email, handle, or address");
-                  if (!value) return;
-                  const label = prompt("Label it (mom, second number, work)") || "";
-                  post("/api/m6/contact-point", { kind, value, label }, "point");
-                }}
-              >
+              <button type="button" className="m6-btn sm" onClick={() => openModal("point")}>
                 Add
               </button>
             </div>
@@ -214,6 +257,7 @@ export default function CaseFile({
                       {p.contact_script && <p className="m6-script">{p.contact_script}</p>}
                     </div>
                     <button
+                      type="button"
                       className="m6-linkbtn"
                       onClick={() => post("/api/m6/contact-point", { id: p.id, status: "dead" }, "kill")}
                     >
@@ -239,7 +283,7 @@ export default function CaseFile({
               <ul className="m6-sched">
                 {schedule.map((s) => (
                   <li key={s.id}>
-                    <strong>{new Date(s.due_at).toLocaleDateString()}</strong>
+                    <strong>{formatLocalDate(s.due_at)}</strong>
                     <span>{s.kind}{s.assigned_name ? ` · ${s.assigned_name}` : " · unclaimed"}</span>
                     {s.note && <em>{s.note}</em>}
                   </li>
@@ -279,6 +323,7 @@ export default function CaseFile({
               onChange={(e) => setNoteText(e.target.value)}
             />
             <button
+              type="button"
               className="m6-btn"
               disabled={!noteText.trim() || !!busy}
               onClick={async () => {
@@ -300,7 +345,7 @@ export default function CaseFile({
                       {" · "}
                       {n.author_side === "staff" ? "Innovative" : "Turnbull"}
                       {" · "}
-                      {new Date(n.created_at).toLocaleString()}
+                      {formatLocalDateTime(n.created_at)}
                     </div>
                     <p>{n.body}</p>
                   </li>
@@ -326,7 +371,7 @@ export default function CaseFile({
                 {comms.map((c) => (
                   <li key={c.id} className={c.outcome === "two_way" ? "hit" : ""}>
                     <span className="m6-comm-when">
-                      {c.occurred_at ? new Date(c.occurred_at).toLocaleDateString() : "—"}
+                      {formatLocalDateTime(c.occurred_at)}
                     </span>
                     <span className="m6-comm-what">
                       {c.channel === "sms" ? "Text" : "Call"}
@@ -343,30 +388,71 @@ export default function CaseFile({
         </div>
       </div>
 
-      {logOpen && (
+      {modal === "touch" && (
         <LogTouch
-          onClose={() => setLogOpen(false)}
+          err={err}
+          onClose={closeModal}
           points={live}
           onSave={async (body) => {
             const ok = await post("/api/m6/touch", body, "touch");
-            if (ok) setLogOpen(false);
+            if (ok) closeModal();
           }}
           busy={busy === "touch"}
+        />
+      )}
+      {modal === "sched" && (
+        <ScheduleCall
+          err={err}
+          onClose={closeModal}
+          onSave={async (body) => {
+            const ok = await post("/api/m6/schedule", body, "sched");
+            if (ok) closeModal();
+          }}
+          busy={busy === "sched"}
+        />
+      )}
+      {modal === "point" && (
+        <AddContact
+          err={err}
+          onClose={closeModal}
+          onSave={async (body) => {
+            const ok = await post("/api/m6/contact-point", body, "point");
+            if (ok) closeModal();
+          }}
+          busy={busy === "point"}
         />
       )}
     </div>
   );
 }
 
-// Two taps and out. Anything longer and people stop logging, and the moment
-// logging slips the health number becomes a lie nobody trusts.
+function ModalShell({
+  title, onClose, err, children,
+}: {
+  title: string; onClose: () => void; err: string; children: ReactNode;
+}) {
+  return (
+    <div className="m6-modal-wrap" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="m6-modal">
+        <div className="m6-modal-head">
+          <h2>{title}</h2>
+          <button type="button" className="m6-linkbtn" onClick={onClose}>Close</button>
+        </div>
+        {err && <p className="m6-error">{err}</p>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function LogTouch({
-  onClose, onSave, points, busy,
+  onClose, onSave, points, busy, err,
 }: {
   onClose: () => void;
   onSave: (b: any) => void;
   points: Point[];
   busy: boolean;
+  err: string;
 }) {
   const [purpose, setPurpose] = useState("heartbeat");
   const [channel, setChannel] = useState("call");
@@ -374,64 +460,244 @@ function LogTouch({
   const [note, setNote] = useState("");
 
   return (
-    <div className="m6-modal-wrap" role="dialog" aria-modal="true" aria-label="Log a touch">
-      <div className="m6-modal">
-        <div className="m6-modal-head">
-          <h2>Log a touch</h2>
-          <button className="m6-linkbtn" onClick={onClose}>Close</button>
-        </div>
+    <ModalShell title="Log a touch" onClose={onClose} err={err}>
+      <label className="m6-field">
+        <span>Why</span>
+        <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
+          {PURPOSES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+      </label>
 
+      <label className="m6-field">
+        <span>How</span>
+        <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+          <option value="call">Call</option>
+          <option value="sms">Text</option>
+        </select>
+      </label>
+
+      {points.length > 0 && (
         <label className="m6-field">
-          <span>Why</span>
-          <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
-            {PURPOSES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          <span>Which contact point</span>
+          <select value={pointId} onChange={(e) => setPointId(e.target.value)}>
+            <option value="">Not sure</option>
+            {points.map((p) => (
+              <option key={p.id} value={p.id}>{p.value} · {p.label || p.kind}</option>
+            ))}
           </select>
         </label>
+      )}
 
+      <label className="m6-field">
+        <span>Note (optional)</span>
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Call after 6" />
+      </label>
+
+      <p className="m6-hint">How did it end? This is what moves the clock.</p>
+      <div className="m6-outcomes">
+        {OUTCOMES.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            className={`m6-outcome ${o.value}`}
+            disabled={busy}
+            onClick={() => onSave({
+              outcome: o.value, purpose, channel,
+              contact_point_id: pointId || null,
+              body: note || null,
+            })}
+          >
+            <strong>{o.label}</strong>
+            <span>{o.hint}</span>
+          </button>
+        ))}
+      </div>
+    </ModalShell>
+  );
+}
+
+function ScheduleCall({
+  onClose, onSave, busy, err,
+}: {
+  onClose: () => void;
+  onSave: (b: any) => void;
+  busy: boolean;
+  err: string;
+}) {
+  const [date, setDate] = useState("");
+  const [note, setNote] = useState("");
+  const [localErr, setLocalErr] = useState("");
+
+  function submit() {
+    const due = dueAtFromDateInput(date);
+    if (!due) { setLocalErr("Pick a day on the calendar."); return; }
+    setLocalErr("");
+    onSave({ due_at: due, kind: "callback", note: note.trim() || null });
+  }
+
+  return (
+    <ModalShell title="Schedule a call" onClose={onClose} err={err || localErr}>
+      <label className="m6-field">
+        <span>When</span>
+        <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setLocalErr(""); }} />
+      </label>
+      <label className="m6-field">
+        <span>Note (optional)</span>
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="She said after 6" />
+      </label>
+      <div className="m6-modal-acts">
+        <button type="button" className="m6-btn" onClick={onClose}>Cancel</button>
+        <button type="button" className="m6-btn primary" disabled={busy} onClick={submit}>
+          {busy ? "Saving" : "Schedule"}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function AddContact({
+  onClose, onSave, busy, err,
+}: {
+  onClose: () => void;
+  onSave: (b: any) => void;
+  busy: boolean;
+  err: string;
+}) {
+  const [kind, setKind] = useState<(typeof POINT_KINDS)[number]["value"]>("mobile");
+  const [label, setLabel] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [handle, setHandle] = useState("");
+  const [platform, setPlatform] = useState("facebook");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zip, setZip] = useState("");
+  const [personName, setPersonName] = useState("");
+  const [relationship, setRelationship] = useState("");
+  const [permission, setPermission] = useState(true);
+  const [script, setScript] = useState("");
+  const [localErr, setLocalErr] = useState("");
+
+  function submit() {
+    let value = "";
+    const extra: Record<string, unknown> = {};
+    if (kind === "mobile" || kind === "landline") {
+      if (!phone) { setLocalErr("Enter the full 10-digit number."); return; }
+      value = phone;
+    } else if (kind === "email") {
+      value = email.trim();
+      if (!value || !value.includes("@")) { setLocalErr("Enter an email address."); return; }
+    } else if (kind === "social") {
+      value = handle.trim();
+      if (!value) { setLocalErr("Enter the handle."); return; }
+      extra.platform = platform;
+    } else if (kind === "address") {
+      value = [street.trim(), city.trim(), state.trim().toUpperCase(), zip.trim()].filter(Boolean).join(", ");
+      if (!street.trim() || !city.trim() || !state.trim()) {
+        setLocalErr("Street, city, and state are required."); return;
+      }
+    } else if (kind === "person") {
+      if (!personName.trim()) { setLocalErr("Who is this person?"); return; }
+      value = phone || personName.trim();
+      extra.person_name = personName.trim();
+      extra.relationship = relationship.trim() || null;
+      extra.permission_to_discuss = permission;
+      extra.contact_script = script.trim() || null;
+    }
+    setLocalErr("");
+    onSave({ kind, value, label: label.trim() || null, ...extra });
+  }
+
+  return (
+    <ModalShell title="Add a way to reach them" onClose={onClose} err={err || localErr}>
+      <label className="m6-field">
+        <span>Kind</span>
+        <select value={kind} onChange={(e) => { setKind(e.target.value as typeof kind); setLocalErr(""); }}>
+          {POINT_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+        </select>
+      </label>
+
+      {(kind === "mobile" || kind === "landline" || kind === "person") && (
         <label className="m6-field">
-          <span>How</span>
-          <select value={channel} onChange={(e) => setChannel(e.target.value)}>
-            <option value="call">Call</option>
-            <option value="sms">Text</option>
-          </select>
+          <span>{kind === "person" ? "Their number (optional)" : "Number"}</span>
+          <PhoneInput value={phone} onChange={setPhone} />
         </label>
-
-        {points.length > 0 && (
+      )}
+      {kind === "email" && (
+        <label className="m6-field">
+          <span>Email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+        </label>
+      )}
+      {kind === "social" && (
+        <>
           <label className="m6-field">
-            <span>Which contact point</span>
-            <select value={pointId} onChange={(e) => setPointId(e.target.value)}>
-              <option value="">Not sure</option>
-              {points.map((p) => (
-                <option key={p.id} value={p.id}>{p.value} · {p.label || p.kind}</option>
-              ))}
+            <span>Platform</span>
+            <select value={platform} onChange={(e) => setPlatform(e.target.value)}>
+              {SOCIAL_PLATFORMS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </label>
-        )}
+          <label className="m6-field">
+            <span>Handle</span>
+            <input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@name" />
+          </label>
+        </>
+      )}
+      {kind === "address" && (
+        <>
+          <label className="m6-field">
+            <span>Street</span>
+            <input value={street} onChange={(e) => setStreet(e.target.value)} />
+          </label>
+          <div className="m6-lor-grid">
+            <label className="m6-field">
+              <span>City</span>
+              <input value={city} onChange={(e) => setCity(e.target.value)} />
+            </label>
+            <label className="m6-field">
+              <span>State</span>
+              <input value={state} onChange={(e) => setState(e.target.value.toUpperCase())} maxLength={2} placeholder="NV" />
+            </label>
+            <label className="m6-field">
+              <span>ZIP</span>
+              <input value={zip} onChange={(e) => setZip(e.target.value)} inputMode="numeric" />
+            </label>
+          </div>
+        </>
+      )}
+      {kind === "person" && (
+        <>
+          <label className="m6-field">
+            <span>Name</span>
+            <input value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Mom, case manager…" />
+          </label>
+          <label className="m6-field">
+            <span>Relationship</span>
+            <input value={relationship} onChange={(e) => setRelationship(e.target.value)} placeholder="mother, sponsor" />
+          </label>
+          <label className="m6-check">
+            <input type="checkbox" checked={permission} onChange={(e) => setPermission(e.target.checked)} />
+            Allowed to discuss the case
+          </label>
+          <label className="m6-field">
+            <span>What we may say</span>
+            <input value={script} onChange={(e) => setScript(e.target.value)} placeholder="Please have her call us" />
+          </label>
+        </>
+      )}
 
-        <label className="m6-field">
-          <span>Note (optional)</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Call after 6" />
-        </label>
+      <label className="m6-field">
+        <span>Label (optional)</span>
+        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="mom, second number, work" />
+      </label>
 
-        <p className="m6-hint">How did it end? This is what moves the clock.</p>
-        <div className="m6-outcomes">
-          {OUTCOMES.map((o) => (
-            <button
-              key={o.value}
-              className={`m6-outcome ${o.value}`}
-              disabled={busy}
-              onClick={() => onSave({
-                outcome: o.value, purpose, channel,
-                contact_point_id: pointId || null,
-                body: note || null,
-              })}
-            >
-              <strong>{o.label}</strong>
-              <span>{o.hint}</span>
-            </button>
-          ))}
-        </div>
+      <div className="m6-modal-acts">
+        <button type="button" className="m6-btn" onClick={onClose}>Cancel</button>
+        <button type="button" className="m6-btn primary" disabled={busy} onClick={submit}>
+          {busy ? "Saving" : "Add"}
+        </button>
       </div>
-    </div>
+    </ModalShell>
   );
 }

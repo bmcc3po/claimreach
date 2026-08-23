@@ -1437,3 +1437,122 @@ select id, lead_no, claimant_name, firm_id, archived_at,
 from leads
 where archived_at is not null
   and archived_at < now() - interval '90 days';
+
+-- ============================================================================
+-- 0089 M6 FIRM REACHED TOUCH (apply after 0088a)
+-- Nested retention_stage carve-out + m6_log_touch RPC.
+-- Full file: supabase/migrations/0089_m6_log_touch.sql
+-- ============================================================================
+
+create or replace function firm_stage_only_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if role_is_firm() then
+    if pg_trigger_depth() > 1 then
+      if (to_jsonb(new) - 'updated_at' - 'retention_stage')
+         is distinct from (to_jsonb(old) - 'updated_at' - 'retention_stage') then
+        raise exception 'firm users may modify only the pipeline stage';
+      end if;
+    else
+      if (to_jsonb(new) - 'stage' - 'updated_at')
+         is distinct from (to_jsonb(old) - 'stage' - 'updated_at') then
+        raise exception 'firm users may modify only the pipeline stage';
+      end if;
+    end if;
+  end if;
+  return new;
+end $$;
+
+create or replace function m6_log_touch(
+  p_lead_id uuid,
+  p_outcome text,
+  p_purpose text default 'ad_hoc',
+  p_channel text default 'call',
+  p_contact_point_id uuid default null,
+  p_body text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  tmp_id uuid;
+  lead_row leads%rowtype;
+  point_lead uuid;
+  comm_id uuid;
+  agent_nm text;
+  agent_em text;
+  ch text;
+  purp text;
+begin
+  if uid is null then
+    raise exception 'Sign in again.';
+  end if;
+  if p_lead_id is null then
+    raise exception 'Missing the file.';
+  end if;
+  if p_outcome is null or p_outcome not in ('two_way', 'no_answer', 'voicemail', 'bad_number') then
+    raise exception 'Pick how the contact ended.';
+  end if;
+
+  ch := case when p_channel = 'sms' then 'sms' else 'call' end;
+  purp := coalesce(nullif(trim(p_purpose), ''), 'ad_hoc');
+
+  select id into tmp_id from firms where slug = 'tmp';
+  if tmp_id is null then
+    raise exception 'This app is not available.';
+  end if;
+
+  select * into lead_row from leads where id = p_lead_id;
+  if not found then
+    raise exception 'That file is not available to you.';
+  end if;
+  if lead_row.firm_id is distinct from tmp_id
+     or lead_row.archived_at is not null
+     or not (lead_row.campaign = 'motel6' or lead_row.case_type = 'motel_trafficking') then
+    raise exception 'That file is not available to you.';
+  end if;
+
+  if is_internal() then
+    null;
+  elsif role_is_firm() and my_firm_id() = tmp_id then
+    null;
+  else
+    raise exception 'This app is for TMP Motel 6 files only.';
+  end if;
+
+  if p_contact_point_id is not null then
+    select lead_id into point_lead
+      from contact_points
+     where id = p_contact_point_id and firm_id = tmp_id;
+    if point_lead is distinct from p_lead_id then
+      raise exception 'That file is not available to you.';
+    end if;
+  end if;
+
+  select full_name, email into agent_nm, agent_em from app_users where id = uid;
+
+  insert into communications (
+    lead_id, firm_id, channel, direction,
+    phone_raw, phone_norm, body,
+    agent_name, agent_email, occurred_at,
+    purpose, outcome, contact_point_id,
+    logged_manually, dispositioned_by, dispositioned_at
+  ) values (
+    p_lead_id, lead_row.firm_id, ch,
+    case when purp = 'inbound' then 'inbound' else 'outbound' end,
+    lead_row.phone, public.norm_phone(lead_row.phone), nullif(trim(p_body), ''),
+    agent_nm, agent_em, now(),
+    purp, p_outcome, p_contact_point_id,
+    true, uid, now()
+  ) returning id into comm_id;
+
+  return comm_id;
+end;
+$$;
+
+revoke all on function m6_log_touch(uuid, text, text, text, uuid, text) from public;
+grant execute on function m6_log_touch(uuid, text, text, text, uuid, text) to authenticated;
+

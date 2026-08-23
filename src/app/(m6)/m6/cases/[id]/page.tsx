@@ -51,6 +51,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
 
   return (
     <CaseFile
+      key={id}
       lead={lead as any}
       status={status as any}
       points={(points ?? []) as any}

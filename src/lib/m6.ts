@@ -2,6 +2,16 @@
 // never means one thing on the Today screen and something else on the file.
 
 import { isInternalRole } from "@/lib/permissions";
+import { TMP_SLUG, isM6LeadShape } from "./lawruler-email";
+
+export {
+  M6_CAMPAIGN, M6_CASE_TYPE, TMP_SLUG,
+  SECONDARY_INTERVIEW_DOC_TYPE, SECONDARY_INTERVIEW_TITLE,
+  parseLrFilenameLeadId, classifyLrAttachment, lrAttachmentPlan,
+  pickSecondaryInterviewPdf, authenticateIntakeEmail,
+  parseM6IntakeSubject, senderDomainAllowed, tokenAccepted,
+} from "./lawruler-email";
+export type { LrAttachmentKind, LrAttachmentPlan } from "./lawruler-email";
 
 export type Health = "green" | "yellow" | "red" | "lost" | "paused";
 
@@ -34,6 +44,31 @@ export function dueWording(iso: string | null | undefined): string {
   return `due in ${d} days`;
 }
 
+// Viewer locale + timezone. Messages, touches, and contact history always
+// show date AND time. Relative wording (daysAgo) stays on the lists.
+export function formatLocalDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+export function formatLocalDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+// Date-only input → timestamptz at local noon so YYYY-MM-DD is not parsed
+// as UTC midnight (which shows as the previous evening in US timezones).
+export function dueAtFromDateInput(yyyyMmDd: string): string | null {
+  const m = String(yyyyMmDd ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export function displayName(l: {
   claimant_name?: string | null; full_name?: string | null;
   first_name?: string | null; last_name?: string | null;
@@ -61,10 +96,17 @@ export const PURPOSES = [
 
 export const POINT_KINDS = [
   { value: "mobile",   label: "Phone" },
+  { value: "landline", label: "Landline" },
   { value: "email",    label: "Email" },
   { value: "person",   label: "Person who can reach them" },
   { value: "social",   label: "Social handle" },
   { value: "address",  label: "Address" },
+] as const;
+
+export const SOCIAL_PLATFORMS = [
+  { value: "facebook",  label: "Facebook" },
+  { value: "instagram", label: "Instagram" },
+  { value: "other",     label: "Other" },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -72,10 +114,6 @@ export const POINT_KINDS = [
 // disagree about what an m6 row is. Verified against production firms.slug:
 // TMP is 'tmp'. Staff and firm users are both TMP-only in this portal.
 // ---------------------------------------------------------------------------
-
-export const M6_CAMPAIGN = "motel6";
-export const M6_CASE_TYPE = "motel_trafficking";
-export const TMP_SLUG = "tmp";
 
 export type M6Actor = {
   role: string;
@@ -109,8 +147,7 @@ export function m6LayoutDestination(actor: M6Actor | null): "allow" | "firm-logi
 }
 
 export function isM6Lead(row: Pick<M6LeadRow, "campaign" | "case_type" | "archived_at">): boolean {
-  if (row.archived_at) return false;
-  return row.campaign === M6_CAMPAIGN || row.case_type === M6_CASE_TYPE;
+  return isM6LeadShape(row);
 }
 
 export function isM6PortalLead(row: M6LeadRow, tmpFirmId: string): boolean {
@@ -328,4 +365,36 @@ export function canFirmInsertM6Comm(opts: {
   if (!opts.actorFirmId || opts.actorFirmId !== opts.tmpFirmId) return false;
   if (!opts.lead) return false;
   return isM6PortalLead(opts.lead, opts.tmpFirmId);
+}
+
+// 0089: m6_log_touch RPC fence. Staff or TMP firm, live motel file only.
+export function canCallM6LogTouch(opts: {
+  actor: M6Actor;
+  actorFirmId: string | null;
+  lead: M6LeadRow | null;
+  tmpFirmId: string;
+}): boolean {
+  if (!opts.lead || !isM6PortalLead(opts.lead, opts.tmpFirmId)) return false;
+  if (isInternalRole(opts.actor.role)) return true;
+  return canFirmInsertM6Comm({ ...opts, logged_manually: true });
+}
+
+// Mirrors firm_stage_only_guard (0089). last_two_way_at / next_touch_due /
+// health are view-derived — they are not lead columns, so a firm JWT cannot
+// UPDATE them. Nested two_way may move retention_stage only. Direct firm
+// UPDATE still allows pipeline `stage` + updated_at, never current_status.
+export const FIRM_DIRECT_LEAD_ALLOW = ["stage", "updated_at"] as const;
+export const FIRM_NESTED_TOUCH_LEAD_ALLOW = ["retention_stage", "updated_at"] as const;
+export const FIRM_TOUCH_CLOCK_LEAD_COLS = [
+  "retention_stage", "last_two_way_at", "next_touch_due", "health", "current_status", "current_stage",
+] as const;
+
+export function firmMayUpdateLeadColumns(opts: {
+  changed: string[];
+  nestedTrigger: boolean;
+}): boolean {
+  const allow = new Set<string>(
+    opts.nestedTrigger ? FIRM_NESTED_TOUCH_LEAD_ALLOW : FIRM_DIRECT_LEAD_ALLOW,
+  );
+  return opts.changed.every((c) => allow.has(c));
 }

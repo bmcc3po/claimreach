@@ -51,6 +51,7 @@ const DEFAULT_INBOUND: Record<string, string> = {
   lastname: "claimant_last_name", last_name: "claimant_last_name",
   dob: "claimant_dob", email: "claimant_email", phone: "claimant_phone",
   address1: "mail_address1", city: "mail_city", state: "mail_state", zip: "mail_zip",
+  postal: "mail_zip", postal_code: "mail_zip", zipcode: "mail_zip", mail_zip: "mail_zip",
   assignee: "handling_attorney", source: "marketing_source", case_type: "case_type",
   status: "lead_status", description: "injury_description",
   signeddate: "esign_signed_date", signedconfirm: "signed_contract_received", leadlink: "source_lead_link",
@@ -68,6 +69,27 @@ function applyTransform(field: string, value: any, transforms: Record<string, an
   if (typeof t === "object" && value != null) return t[String(value)] ?? value; // value map
   return value;
 }
+// LawRuler Test posts "{{token}}" placeholders; treat those as empty.
+export function inboundClean(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+  if (s.includes("{{") && s.includes("}}")) return null;
+  return s;
+}
+
+export function firstNonEmpty(...vals: unknown[]): string | null {
+  for (const v of vals) {
+    const s = inboundClean(v);
+    if (s) return s;
+  }
+  return null;
+}
+
+export function inboundCanonicalId(externalKey: string): string | undefined {
+  return DEFAULT_INBOUND[externalKey];
+}
+
 export function mapInbound(body: Record<string, any>, mapping?: { map?: Record<string, string>; transforms?: Record<string, any> }) {
   const map = { ...DEFAULT_INBOUND, ...(mapping?.map ?? {}) };
   const transforms = mapping?.transforms ?? {};

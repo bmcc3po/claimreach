@@ -6,8 +6,13 @@ import {
   m6CaseAccess, m6WriteAccess, filterM6StatusRows,
   lorShowsOnToday, isLorReadyStatus, mergeLorIngest,
   firmLandingPath, isSafeFirmNext, canFirmInsertM6Comm, bouncePath,
+  canCallM6LogTouch, firmMayUpdateLeadColumns, dueAtFromDateInput,
+  formatLocalDateTime,
+  classifyLrAttachment, lrAttachmentPlan, SECONDARY_INTERVIEW_DOC_TYPE, SECONDARY_INTERVIEW_TITLE,
+  authenticateIntakeEmail, pickSecondaryInterviewPdf, parseM6IntakeSubject, senderDomainAllowed,
   type M6Actor, type M6LeadRow, type RedirectActor,
 } from "./m6";
+import { firstNonEmpty, inboundCanonicalId, mapInbound, canonicalToLeadColumns } from "./webhooks";
 import { isInternalRole } from "./permissions";
 import { firmAccessEmailMatch, needsFirmProvision, wouldProvisionFromAllowlist, provisionRpcFailed } from "./firm-home";
 
@@ -187,6 +192,65 @@ check("staff do not use the firm-insert policy (comm_internal covers them)", can
   actor: staff, actorFirmId: INNO, lead: tmpMotelLead, tmpFirmId: TMP, logged_manually: true,
 }), false);
 
+console.log("\n0089 RPC + GUARD — firm JWT cannot PATCH clock fields outside the RPC");
+check("TMP firm may call m6_log_touch on own motel file", canCallM6LogTouch({
+  actor: tmpFirm, actorFirmId: TMP, lead: tmpMotelLead, tmpFirmId: TMP,
+}), true);
+check("staff may call m6_log_touch on a TMP motel file", canCallM6LogTouch({
+  actor: staff, actorFirmId: INNO, lead: tmpMotelLead, tmpFirmId: TMP,
+}), true);
+check("TMT firm cannot call m6_log_touch", canCallM6LogTouch({
+  actor: tmtFirm, actorFirmId: TMT, lead: tmpMotelLead, tmpFirmId: TMP,
+}), false);
+check("direct firm UPDATE of stage is still allowed", firmMayUpdateLeadColumns({
+  changed: ["stage"], nestedTrigger: false,
+}), true);
+check("direct firm UPDATE of retention_stage is blocked", firmMayUpdateLeadColumns({
+  changed: ["retention_stage"], nestedTrigger: false,
+}), false);
+check("direct firm UPDATE of current_status is blocked", firmMayUpdateLeadColumns({
+  changed: ["current_status"], nestedTrigger: false,
+}), false);
+check("direct firm UPDATE of last_two_way_at is blocked", firmMayUpdateLeadColumns({
+  changed: ["last_two_way_at"], nestedTrigger: false,
+}), false);
+check("nested two_way may move retention_stage", firmMayUpdateLeadColumns({
+  changed: ["retention_stage"], nestedTrigger: true,
+}), true);
+check("nested two_way may not move stage", firmMayUpdateLeadColumns({
+  changed: ["stage"], nestedTrigger: true,
+}), false);
+check("nested two_way may not move current_status", firmMayUpdateLeadColumns({
+  changed: ["current_status"], nestedTrigger: true,
+}), false);
+check("nested two_way may not write last_two_way_at (view-derived)", firmMayUpdateLeadColumns({
+  changed: ["last_two_way_at"], nestedTrigger: true,
+}), false);
+check("nested two_way may not write next_touch_due (view-derived)", firmMayUpdateLeadColumns({
+  changed: ["next_touch_due"], nestedTrigger: true,
+}), false);
+
+console.log("\nLAWRULER INGEST — lastname + zip aliases, one map");
+check("lastname (no underscore) maps", inboundCanonicalId("lastname"), "claimant_last_name");
+check("last_name also maps", inboundCanonicalId("last_name"), "claimant_last_name");
+check("first_name maps", inboundCanonicalId("first_name"), "claimant_first_name");
+check("firstname (no underscore) also maps", inboundCanonicalId("firstname"), "claimant_first_name");
+check("zip maps to mail_zip", inboundCanonicalId("zip"), "mail_zip");
+check("postal alias maps to mail_zip", inboundCanonicalId("postal"), "mail_zip");
+check("live LR shape: first_name + lastname", canonicalToLeadColumns(mapInbound({
+  first_name: "Ada", lastname: "Lovelace", zip: "89101",
+})), {
+  first_name: "Ada", last_name: "Lovelace", claimant_name: null,
+  phone: null, email: null, case_type: null, campaign: null, external_id: null,
+  mail_addr1: null, mail_addr2: null, mail_city: null, mail_state: null, mail_zip: "89101",
+  dob: null, handling_attorney: null, marketing_source: null,
+});
+check("firstNonEmpty prefers first real value", firstNonEmpty("", "{{token}}", "Smith", "Other"), "Smith");
+check("firstNonEmpty strips LR test placeholders", firstNonEmpty("{{default23}}-Last Name"), null);
+check("date input becomes an ISO timestamp", !!dueAtFromDateInput("2026-08-24"), true);
+check("bad date input is null", dueAtFromDateInput("soon"), null);
+check("local datetime includes a time", /[0-9].*:|\d\s?[AP]M/i.test(formatLocalDateTime("2026-08-23T19:05:00Z")), true);
+
 console.log("\nFIRM LOGIN LANDING");
 check("/portal default is not a deep link", isSafeFirmNext("/portal"), null);
 check("/m6 is a safe next", isSafeFirmNext("/m6"), "/m6");
@@ -234,6 +298,53 @@ check("staff /firm-login → /dashboard", bouncePath("/firm-login", staffActor),
 check("staff stays on /dashboard", bouncePath("/dashboard", staffActor), null);
 check("no profile /dashboard → /firm-login (not /portal)", bouncePath("/dashboard", noProfile), "/firm-login");
 check("no profile stays on /firm-login", bouncePath("/firm-login", noProfile), null);
+
+console.log("\nLAWRULER INTERVIEW ATTACHMENTS");
+const SAMPLE_PDF = "264972-Bob_T_Builder-IntakeForm.pdf";
+const SAMPLE_CSV = "264972-Bob_T_Builder-Intake.csv";
+check("PDF is secondary interview", classifyLrAttachment(SAMPLE_PDF).kind, "secondary_interview");
+check("leadid is digits before first hyphen", classifyLrAttachment(SAMPLE_PDF).vendorLeadId, "264972");
+check("CSV is thin intake", classifyLrAttachment(SAMPLE_CSV).kind, "intake_csv");
+check("matching PDF is stored as Secondary interview", lrAttachmentPlan(SAMPLE_PDF, "264972"), {
+  action: "store", kind: "secondary_interview", vendorLeadId: "264972",
+  docType: SECONDARY_INTERVIEW_DOC_TYPE, fileName: SECONDARY_INTERVIEW_TITLE,
+});
+check("CSV is skipped", lrAttachmentPlan(SAMPLE_CSV, "264972").action, "skip");
+check("CSV skip reason is csv_thin", (lrAttachmentPlan(SAMPLE_CSV, "264972") as any).reason, "csv_thin");
+check("mismatched PDF is not stored on the wrong file", lrAttachmentPlan(SAMPLE_PDF, "999").action, "skip");
+check("mismatch reason is leadid_mismatch", (lrAttachmentPlan(SAMPLE_PDF, "999") as any).reason, "leadid_mismatch");
+check("IntakeForm without a numeric leadid prefix is skipped", lrAttachmentPlan("Bob_T_Builder-IntakeForm.pdf", "264972").action, "skip");
+
+console.log("\nLAWRULER EMAIL INTAKE");
+const TOKEN = "test-token-aabbcc";
+const INTAKE = "m6-intake@inbound.claimreach.com";
+const PDF = "264972-Bob_T_Builder-IntakeForm.pdf";
+const CSV = "264972-Bob_T_Builder-Intake.csv";
+check("subject token only, no leadid", parseM6IntakeSubject("M6INTAKE " + TOKEN), TOKEN);
+check("junk around the subject is rejected", parseM6IntakeSubject("FW: M6INTAKE " + TOKEN), null);
+check("via law.lawruler.net is allowed", senderDomainAllowed("Michael Perlman via law.lawruler.net"), true);
+check("law.lawruler.net envelope is allowed", senderDomainAllowed("noreply@law.lawruler.net"), true);
+check("gmail is not allowed", senderDomainAllowed("person@gmail.com"), false);
+check("picks the IntakeForm PDF and skips the CSV", pickSecondaryInterviewPdf([CSV, PDF]), {
+  filename: PDF, vendorLeadId: "264972",
+});
+check("CSV-only fire has no interview PDF", pickSecondaryInterviewPdf([CSV]), null);
+check("auth ok: LawRuler from + token subject + intake to", authenticateIntakeEmail({
+  from: "Michael Perlman via law.lawruler.net",
+  to: INTAKE, subject: "M6INTAKE " + TOKEN, tokenCsv: TOKEN, intakeTo: INTAKE,
+}).ok, true);
+check("auth fails closed on a wrong token", authenticateIntakeEmail({
+  from: "noreply@law.lawruler.net",
+  to: INTAKE, subject: "M6INTAKE no-match", tokenCsv: TOKEN, intakeTo: INTAKE,
+}).ok, false);
+check("auth fails closed when no token is configured", authenticateIntakeEmail({
+  from: "noreply@law.lawruler.net",
+  to: INTAKE, subject: "M6INTAKE " + TOKEN, tokenCsv: "", intakeTo: INTAKE,
+}).ok, false);
+check("auth fails closed on the wrong recipient", authenticateIntakeEmail({
+  from: "noreply@law.lawruler.net",
+  to: "other@inbound.claimreach.com", subject: "M6INTAKE " + TOKEN, tokenCsv: TOKEN, intakeTo: INTAKE,
+}).ok, false);
 
 console.log("\n0088a PROVISION (callback is the primary path)");
 check("callback provisions when app_users is missing", needsFirmProvision("uuid-1", null), true);

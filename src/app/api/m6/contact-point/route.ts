@@ -17,7 +17,10 @@ export async function POST(req: NextRequest) {
 
   let b: any;
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Bad request." }, { status: 400 }); }
-  const { lead_id, id, status, kind, value, label, person_name, relationship } = b ?? {};
+  const {
+    lead_id, id, status, kind, value, label, person_name, relationship,
+    platform, permission_to_discuss, contact_script,
+  } = b ?? {};
 
   async function gateLead(targetId: string) {
     const lead = await loadM6Lead(sb, targetId, tmpFirmId, "id, firm_id, campaign, case_type, archived_at");
@@ -66,6 +69,9 @@ export async function POST(req: NextRequest) {
     label: label || null,
     person_name: person_name || null,
     relationship: relationship || null,
+    platform: platform || null,
+    permission_to_discuss: typeof permission_to_discuss === "boolean" ? permission_to_discuss : null,
+    contact_script: contact_script || null,
     is_primary: false,
     status: "good",
     source_system: "manual",

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { mapInbound, canonicalToLeadColumns } from "@/lib/webhooks";
-import { isLorReadyStatus, isLorStatus, mergeLorIngest, type LorStatus } from "@/lib/m6";
+import { mapInbound, canonicalToLeadColumns, firstNonEmpty } from "@/lib/webhooks";
+import { isLorReadyStatus, isLorStatus, lrAttachmentPlan, mergeLorIngest, type LorStatus } from "@/lib/m6";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -180,8 +180,8 @@ export async function POST(req: NextRequest) {
   const cols = canonicalToLeadColumns(mapInbound(fields, fm ?? undefined));
 
   const base = compact({
-    first_name: clean(cols.first_name),
-    last_name: clean(cols.last_name),
+    first_name: firstNonEmpty(cols.first_name, fields.first_name, fields.firstname),
+    last_name: firstNonEmpty(cols.last_name, fields.last_name, fields.lastname),
     claimant_name: clean(cols.claimant_name),
     phone: clean(cols.phone),
     email: clean(cols.email),
@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
     mail_addr2: clean(cols.mail_addr2),
     mail_city: clean(cols.mail_city),
     mail_state: clean(cols.mail_state),
-    mail_zip: clean(cols.mail_zip),
+    mail_zip: firstNonEmpty(cols.mail_zip, fields.zip, fields.postal, fields.postal_code, fields.zipcode, fields.mail_zip),
     handling_attorney: clean(cols.handling_attorney),
     marketing_source: clean(cols.marketing_source),
     case_type: clean(cols.case_type),
@@ -204,14 +204,14 @@ export async function POST(req: NextRequest) {
     ec_phone: clean(fields.ec_phone),
     ec_email: clean(fields.ec_email),
     ec_message_script: clean(fields.ec_message_script),
-    gender: clean(fields.gender),
-    incident_start: toDateOnly(fields.incident_start),
-    incident_end: toDateOnly(fields.incident_end),
-    property_name: clean(fields.property_name),
-    property_street: clean(fields.property_street) || clean(fields.property_address),
-    property_city: clean(fields.property_city),
-    property_state: clean(fields.property_state),
-    property_zip: clean(fields.property_zip),
+    gender: firstNonEmpty(fields.gender, fields.claimant_gender),
+    incident_start: toDateOnly(firstNonEmpty(fields.incident_start, fields.incidentstart)),
+    incident_end: toDateOnly(firstNonEmpty(fields.incident_end, fields.incidentend)),
+    property_name: firstNonEmpty(fields.property_name, fields.propertyname),
+    property_street: firstNonEmpty(fields.property_street, fields.property_address, fields.propertystreet),
+    property_city: firstNonEmpty(fields.property_city, fields.propertycity),
+    property_state: firstNonEmpty(fields.property_state, fields.propertystate),
+    property_zip: firstNonEmpty(fields.property_zip, fields.propertyzip),
   });
   const ecPerm = toBool(fields.ec_permission_to_discuss);
   if (ecPerm !== null) (base as any).ec_permission_to_discuss = ecPerm;
@@ -287,21 +287,40 @@ export async function POST(req: NextRequest) {
   await upsertLor(admin, firmId, leadId, fields);
 
   // ---- attachments --------------------------------------------------------
+  // PDF = Secondary interview (SSN/DOB). CSV = thin contact summary — skip.
+  // Filename leadid must match this fire's vendor id or we skip (never park
+  // a file on the wrong lead). Accept + log; never echo file bytes back.
   const stored: string[] = [];
-  for (const f of files) {
-    const safe = f.name.replace(/[^\w.\-]/g, "_").slice(0, 120);
-    const path = `${firmId}/${leadId}/${Date.now()}_${safe}`;
+  const skipped: { name: string; reason: string }[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const plan = lrAttachmentPlan(f.name, vendorId);
+    if (plan.action === "skip") {
+      skipped.push({ name: f.name, reason: plan.reason });
+      await log(admin, firmId, "received", 200, {
+        file: f.name, reason: plan.reason,
+        filename_leadid: plan.vendorLeadId, vendor_lead_id: vendorId,
+      }, `attachment skipped: ${plan.reason}`);
+      continue;
+    }
+    const safe = plan.kind === "secondary_interview"
+      ? "secondary_interview.pdf"
+      : f.name.replace(/[^\w.\-]/g, "_").slice(0, 120);
+    const path = `${firmId}/${leadId}/${Date.now()}_${i}_${safe}`;
     const up = await admin.storage.from("case-docs").upload(path, f.bytes, {
-      contentType: f.contentType, upsert: false,
+      contentType: plan.kind === "secondary_interview"
+        ? "application/pdf"
+        : (f.contentType || "application/octet-stream"),
+      upsert: false,
     });
     if (!up.error) {
       await admin.from("case_documents").insert({
         firm_id: firmId, lead_id: leadId,
-        doc_type: /retain/i.test(f.name) ? "retainer" : "intake",
-        file_name: f.name, storage_path: path,
+        doc_type: plan.docType,
+        file_name: plan.fileName, storage_path: path,
         uploaded_by_name: "LawRuler",
       });
-      stored.push(f.name);
+      stored.push(plan.fileName);
     } else {
       await log(admin, firmId, "failed", 500, { file: f.name }, `storage: ${up.error.message}`);
     }
@@ -319,11 +338,13 @@ export async function POST(req: NextRequest) {
   }
 
   await log(admin, firmId, created ? "received" : "received", 200,
-    { vendor_lead_id: vendorId, lead_no: leadNo, created, attachments: stored }, null);
+    { vendor_lead_id: vendorId, lead_no: leadNo, created, attachments: stored, skipped }, null);
 
   return NextResponse.json({
     ok: true, lead_id: leadId, lead_no: leadNo,
-    created, updated: !created, attachments_stored: stored.length,
+    created, updated: !created,
+    attachments_stored: stored.length,
+    attachments_skipped: skipped.length,
     log_id: logId,
   });
 }
