@@ -9,7 +9,7 @@ import {
   type M6Actor, type M6LeadRow, type RedirectActor,
 } from "./m6";
 import { isInternalRole } from "./permissions";
-import { firmAccessEmailMatch, needsFirmProvision, wouldProvisionFromAllowlist } from "./firm-home";
+import { firmAccessEmailMatch, needsFirmProvision, wouldProvisionFromAllowlist, provisionRpcFailed } from "./firm-home";
 
 const TMP = "firm-tmp";
 const TMT = "firm-tmt";
@@ -235,10 +235,10 @@ check("staff stays on /dashboard", bouncePath("/dashboard", staffActor), null);
 check("no profile /dashboard → /firm-login (not /portal)", bouncePath("/dashboard", noProfile), "/firm-login");
 check("no profile stays on /firm-login", bouncePath("/firm-login", noProfile), null);
 
-console.log("\n0088 PROVISION (callback self-heal + allowlist match)");
-check("callback RPCs only when app_users is missing", needsFirmProvision("uuid-1", null), true);
-check("callback does not RPC when the row exists", needsFirmProvision("uuid-1", { role: "firm" }), false);
-check("unsigned does not RPC", needsFirmProvision(null, null), false);
+console.log("\n0088a PROVISION (callback is the primary path)");
+check("callback provisions when app_users is missing", needsFirmProvision("uuid-1", null), true);
+check("callback does not provision when the row exists", needsFirmProvision("uuid-1", { role: "firm" }), false);
+check("unsigned does not provision", needsFirmProvision(null, null), false);
 check("email match is lower(trim)", firmAccessEmailMatch("  BMC+M6Test@InnovativeIntake.com ", "bmc+m6test@innovativeintake.com"), true);
 check("allowlist miss does not provision", wouldProvisionFromAllowlist({
   userId: "uuid-1", email: "bmc+m6test@innovativeintake.com", allowlist: null,
@@ -251,6 +251,8 @@ check("allowlist hit provisions", wouldProvisionFromAllowlist({
 check("staff email not in firm_access is not provisioned as firm", wouldProvisionFromAllowlist({
   userId: "uuid-staff", email: "brett@claimreach.com", allowlist: null,
 }), false);
+check("RPC error is surfaced, not swallowed", provisionRpcFailed({ message: "permission denied" }), "permission denied");
+check("no RPC error means continue to landing", provisionRpcFailed(null), null);
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);
