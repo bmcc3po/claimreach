@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveFirmHome } from "@/lib/firm-home";
-import { isSafeFirmNext } from "@/lib/m6";
+import { bouncePath, isSafeFirmNext } from "@/lib/m6";
 
 function isAuthPage(path: string) {
   return path === "/login" || path === "/firm-login" || path.startsWith("/auth");
@@ -61,17 +61,31 @@ export async function middleware(req: NextRequest) {
     }
     return NextResponse.redirect(url);
   }
-  if (user && authPage && !path.startsWith("/auth")) {
-    const { data: me } = await supabase.from("app_users").select("role").eq("id", user.id).maybeSingle();
-    const dest = await resolveFirmHome(supabase, {
-      role: me?.role,
-      email: user.email,
-      requestedNext: req.nextUrl.searchParams.get("next"),
-    });
-    const url = req.nextUrl.clone();
-    url.pathname = dest;
-    url.search = "";
-    return NextResponse.redirect(url);
+
+  if (user) {
+    const onLogin = authPage && !path.startsWith("/auth");
+    const onWrongHub = path === "/dashboard" || path === "/";
+    if (onLogin || onWrongHub) {
+      const { data: me } = await supabase.from("app_users").select("role").eq("id", user.id).maybeSingle();
+      const home = await resolveFirmHome(supabase, {
+        role: me?.role,
+        email: user.email,
+        requestedNext: onLogin ? req.nextUrl.searchParams.get("next") : null,
+      });
+      const dest = onLogin
+        ? home
+        : bouncePath(path, {
+            signedIn: true,
+            role: me?.role ?? null,
+            isM6Recipient: home === "/m6" || !!home?.startsWith("/m6/"),
+          });
+      if (dest && dest !== path) {
+        const url = req.nextUrl.clone();
+        url.pathname = dest;
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+    }
   }
   return res;
 }

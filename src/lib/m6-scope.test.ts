@@ -5,8 +5,8 @@ import {
   canEnterM6App, m6LayoutDestination, isM6Lead, isM6PortalLead,
   m6CaseAccess, m6WriteAccess, filterM6StatusRows,
   lorShowsOnToday, isLorReadyStatus, mergeLorIngest,
-  firmLandingPath, isSafeFirmNext, canFirmInsertM6Comm,
-  type M6Actor, type M6LeadRow,
+  firmLandingPath, isSafeFirmNext, canFirmInsertM6Comm, bouncePath,
+  type M6Actor, type M6LeadRow, type RedirectActor,
 } from "./m6";
 import { isInternalRole } from "./permissions";
 
@@ -194,6 +194,45 @@ check("TMP m6 recipient lands on /m6", firmLandingPath({ role: "firm", isM6Recip
 check("TMP portal user stays on /portal", firmLandingPath({ role: "firm", isM6Recipient: false, requestedNext: "/portal" }), "/portal");
 check("staff land on /dashboard", firmLandingPath({ role: "agent", isM6Recipient: false, requestedNext: "/portal" }), "/dashboard");
 check("deep /m6 path is honored", firmLandingPath({ role: "firm", isM6Recipient: true, requestedNext: "/m6/cases/abc" }), "/m6/cases/abc");
+check("unknown role does not guess /dashboard", firmLandingPath({ role: null, isM6Recipient: true }), null);
+
+const hubs = ["/login", "/firm-login", "/dashboard", "/m6", "/portal", "/leads", "/"];
+const graphActors: { name: string; actor: RedirectActor }[] = [
+  { name: "unsigned", actor: { signedIn: false, role: null, isM6Recipient: false, firmSlug: null } },
+  { name: "signed, no profile", actor: { signedIn: true, role: null, isM6Recipient: false, firmSlug: null } },
+  { name: "signed, no profile, m6 email", actor: { signedIn: true, role: null, isM6Recipient: true, firmSlug: null } },
+  { name: "firm+m6", actor: { signedIn: true, role: "firm", isM6Recipient: true, firmSlug: TMP_SLUG } },
+  { name: "firm non-m6 TMP", actor: { signedIn: true, role: "firm", isM6Recipient: false, firmSlug: TMP_SLUG } },
+  { name: "TMT firm", actor: { signedIn: true, role: "firm", isM6Recipient: false, firmSlug: "tmt" } },
+  { name: "agent", actor: { signedIn: true, role: "agent", isM6Recipient: false, firmSlug: "inno" } },
+  { name: "owner", actor: { signedIn: true, role: "owner", isM6Recipient: false, firmSlug: "inno" } },
+];
+
+console.log("\nREDIRECT GRAPH — no route bounces to a route that bounces back");
+for (const { name, actor } of graphActors) {
+  for (const from of hubs) {
+    const to = bouncePath(from, actor);
+    if (!to || to === from) continue;
+    const back = bouncePath(to, actor);
+    check(`${name}: ${from} → ${to} does not return to ${from}`, back === from, false);
+  }
+}
+
+const firmM6: RedirectActor = { signedIn: true, role: "firm", isM6Recipient: true, firmSlug: TMP_SLUG };
+const firmPortal: RedirectActor = { signedIn: true, role: "firm", isM6Recipient: false, firmSlug: TMP_SLUG };
+const staffActor: RedirectActor = { signedIn: true, role: "agent", isM6Recipient: false, firmSlug: "inno" };
+const noProfile: RedirectActor = { signedIn: true, role: null, isM6Recipient: true, firmSlug: null };
+
+console.log("\nLOGIN CHAIN — each home exactly once");
+check("firm+m6 /dashboard → /m6", bouncePath("/dashboard", firmM6), "/m6");
+check("firm+m6 stays on /m6", bouncePath("/m6", firmM6), null);
+check("firm+m6 /firm-login → /m6", bouncePath("/firm-login", firmM6), "/m6");
+check("firm non-m6 /dashboard → /portal", bouncePath("/dashboard", firmPortal), "/portal");
+check("firm non-m6 stays on /portal", bouncePath("/portal", firmPortal), null);
+check("staff /firm-login → /dashboard", bouncePath("/firm-login", staffActor), "/dashboard");
+check("staff stays on /dashboard", bouncePath("/dashboard", staffActor), null);
+check("no profile /dashboard → /firm-login (not /portal)", bouncePath("/dashboard", noProfile), "/firm-login");
+check("no profile stays on /firm-login", bouncePath("/firm-login", noProfile), null);
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);

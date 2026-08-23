@@ -96,9 +96,16 @@ export function canEnterM6App(actor: M6Actor): boolean {
 }
 
 export function m6LayoutDestination(actor: M6Actor | null): "allow" | "firm-login" | "portal" | "dashboard" {
-  if (!actor) return "firm-login";
-  if (canEnterM6App(actor)) return "allow";
-  return actor.role === "firm" ? "portal" : "dashboard";
+  const dest = bouncePath("/m6", {
+    signedIn: !!actor,
+    role: actor?.role ?? null,
+    isM6Recipient: false,
+    firmSlug: actor?.firmSlug ?? null,
+  });
+  if (!dest) return "allow";
+  if (dest === "/firm-login") return "firm-login";
+  if (dest === "/dashboard") return "dashboard";
+  return "portal";
 }
 
 export function isM6Lead(row: Pick<M6LeadRow, "campaign" | "case_type" | "archived_at">): boolean {
@@ -223,13 +230,87 @@ export function firmLandingPath(opts: {
   role: string | null | undefined;
   isM6Recipient: boolean;
   requestedNext?: string | null;
-}): string {
+}): string | null {
   const deep = isSafeFirmNext(opts.requestedNext);
   if (deep) return deep;
   if (isInternalRole(opts.role)) return "/dashboard";
   if (opts.role === "firm" && opts.isM6Recipient) return "/m6";
   if (opts.role === "firm") return "/portal";
-  return "/dashboard";
+  // Unknown role: do not guess /dashboard. That fights (internal)/layout,
+  // which kicks missing profiles and firm users off /dashboard.
+  return null;
+}
+
+export type RedirectActor = {
+  signedIn: boolean;
+  role: string | null | undefined;
+  isM6Recipient: boolean;
+  firmSlug?: string | null;
+};
+
+function pathZone(path: string):
+  | "auth" | "login" | "firm-login" | "m6" | "portal"
+  | "internal" | "root" | "other" {
+  if (path.startsWith("/auth")) return "auth";
+  if (path === "/login") return "login";
+  if (path === "/firm-login") return "firm-login";
+  if (path === "/m6" || path.startsWith("/m6/")) return "m6";
+  if (path === "/portal" || path.startsWith("/portal/")) return "portal";
+  if (path === "/dashboard" || path.startsWith("/dashboard/")) return "internal";
+  if (path === "/leads" || path.startsWith("/leads/")) return "internal";
+  if (path === "/") return "root";
+  return "other";
+}
+
+// Single redirect map for callback, middleware, and layouts. Returns null
+// when this actor may stay. A route must never bounce to a route that
+// bounces back here.
+export function bouncePath(path: string, actor: RedirectActor): string | null {
+  const zone = pathZone(path);
+
+  if (!actor.signedIn) {
+    if (zone === "login" || zone === "firm-login" || zone === "auth") return null;
+    if (zone === "m6" || zone === "portal") return "/firm-login";
+    return "/login";
+  }
+
+  const home = firmLandingPath({
+    role: actor.role,
+    isM6Recipient: actor.isM6Recipient,
+  });
+
+  if (zone === "login" || zone === "firm-login") {
+    if (!home || home === path) return null;
+    return home;
+  }
+
+  if (zone === "auth") return null;
+
+  if (zone === "internal" || zone === "root") {
+    if (isInternalRole(actor.role)) {
+      if (zone === "root") return "/dashboard";
+      return null;
+    }
+    if (home) return home === path ? null : home;
+    return "/firm-login";
+  }
+
+  if (zone === "m6") {
+    if (actor.role && canEnterM6App({ role: actor.role, firmSlug: actor.firmSlug ?? null })) {
+      return null;
+    }
+    if (actor.role === "firm") return "/portal";
+    if (isInternalRole(actor.role)) return "/dashboard";
+    return "/firm-login";
+  }
+
+  if (zone === "portal") {
+    if (actor.role === "firm") return null;
+    if (!actor.role) return "/firm-login";
+    return "/leads";
+  }
+
+  return null;
 }
 
 // 0087: firm INSERT on communications. Mirrors the WITH CHECK. Staff still

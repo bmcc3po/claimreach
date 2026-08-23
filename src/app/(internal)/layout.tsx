@@ -4,6 +4,7 @@ import SignOut from "@/components/SignOut";
 import ThemeToggle from "@/components/ThemeToggle";
 import SideNav from "@/components/SideNav";
 import NotifyBell from "@/components/NotifyBell";
+import { resolveFirmHome } from "@/lib/firm-home";
 
 export default async function InternalLayout({ children }: { children: React.ReactNode }) {
   const sb = await supabaseServer();
@@ -12,7 +13,10 @@ export default async function InternalLayout({ children }: { children: React.Rea
 
   const { data: me } = await sb.from("app_users")
     .select("role, full_name, firm_id").eq("id", user.id).maybeSingle();
-  if (!me || me.role === "firm") redirect("/portal");
+  if (!me) redirect("/firm-login");
+  if (me.role === "firm") {
+    redirect((await resolveFirmHome(sb, { role: me.role, email: user.email })) ?? "/portal");
+  }
 
   return (
     <SideNav
