@@ -1,0 +1,10 @@
+{
+  "name": "m6-intake-email",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "vars": {
+    "INTAKE_TO": "m6-intake@inbound.claimreach.com"
+  }
+}
