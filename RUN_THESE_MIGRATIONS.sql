@@ -1556,3 +1556,69 @@ $$;
 revoke all on function m6_log_touch(uuid, text, text, text, uuid, text) from public;
 grant execute on function m6_log_touch(uuid, text, text, text, uuid, text) to authenticated;
 
+-- ============================================================================
+-- 0091 FIRM GUARD IGNORES GENERATED COLS (apply after 0090)
+-- 0090 is property_identifications (already applied).
+-- BEFORE UPDATE sees uncomputed full_name/phone_norm, so 0089's jsonb
+-- carve-out never matched. Skip no-op retention_stage writes.
+-- Full file: supabase/migrations/0091_firm_guard_generated_cols.sql
+-- ============================================================================
+
+create or replace function firm_stage_only_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  generated_cols text[] := ARRAY['full_name', 'phone_norm'];
+  new_j jsonb;
+  old_j jsonb;
+begin
+  if role_is_firm() then
+    new_j := to_jsonb(new) - generated_cols;
+    old_j := to_jsonb(old) - generated_cols;
+    if pg_trigger_depth() > 1 then
+      if (new_j - 'updated_at' - 'retention_stage')
+         is distinct from (old_j - 'updated_at' - 'retention_stage') then
+        raise exception 'firm users may modify only the pipeline stage';
+      end if;
+    else
+      if (new_j - 'stage' - 'updated_at')
+         is distinct from (old_j - 'stage' - 'updated_at') then
+        raise exception 'firm users may modify only the pipeline stage';
+      end if;
+    end if;
+  end if;
+  return new;
+end $$;
+
+create or replace function on_two_way_contact()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.outcome = 'two_way' and (old is null or old.outcome is distinct from 'two_way') then
+    update call_schedule
+       set status = 'done', completed_at = now(), outcome = 'two_way'
+     where lead_id = new.lead_id and status = 'open' and due_at <= now();
+
+    if new.contact_point_id is not null then
+      update contact_points
+         set last_success_at = coalesce(new.occurred_at, now()),
+             verified_at     = coalesce(new.occurred_at, now()),
+             status          = 'good',
+             fail_count      = 0
+       where id = new.contact_point_id;
+    end if;
+
+    update leads
+       set retention_stage = 'heartbeat'
+     where id = new.lead_id
+       and retention_stage in ('escalation','at_risk','lost_contact');
+  end if;
+
+  if new.outcome = 'bad_number' and new.contact_point_id is not null then
+    update contact_points
+       set status = 'dead', fail_count = fail_count + 1, last_attempt_at = now()
+     where id = new.contact_point_id;
+  end if;
+
+  return new;
+end $$;
+
+

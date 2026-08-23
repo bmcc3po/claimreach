@@ -208,11 +208,12 @@ export default function CaseFile({
           <div><dt>Ways to reach them</dt><dd>{live.length}</dd></div>
         </dl>
         <div className="m6-health-acts">
+          {pageErr && <p className="m6-error">{err}</p>}
           <button
             type="button"
             className="m6-btn"
             disabled={!!busy}
-            onClick={() => post("/api/m6/touch", { outcome: "two_way", purpose: "ad_hoc", channel: "call" }, "verify")}
+            onClick={() => post("/api/m6/touch", { outcome: "two_way", purpose: "heartbeat", channel: "call" }, "verify")}
           >
             {busy === "verify" ? "Saving" : "I reached them just now"}
           </button>

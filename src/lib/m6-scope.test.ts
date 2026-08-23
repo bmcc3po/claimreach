@@ -229,6 +229,15 @@ check("nested two_way may not write last_two_way_at (view-derived)", firmMayUpda
 check("nested two_way may not write next_touch_due (view-derived)", firmMayUpdateLeadColumns({
   changed: ["next_touch_due"], nestedTrigger: true,
 }), false);
+check("nested two_way ignores generated full_name/phone_norm", firmMayUpdateLeadColumns({
+  changed: ["retention_stage", "updated_at", "full_name", "phone_norm"], nestedTrigger: true,
+}), true);
+check("direct stage update ignores generated cols too", firmMayUpdateLeadColumns({
+  changed: ["stage", "updated_at", "full_name", "phone_norm"], nestedTrigger: false,
+}), true);
+check("generated cols do not open PII", firmMayUpdateLeadColumns({
+  changed: ["full_name", "phone"], nestedTrigger: true,
+}), false);
 
 console.log("\nLAWRULER INGEST — lastname + zip aliases, one map");
 check("lastname (no underscore) maps", inboundCanonicalId("lastname"), "claimant_last_name");

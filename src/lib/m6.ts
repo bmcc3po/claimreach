@@ -379,10 +379,13 @@ export function canCallM6LogTouch(opts: {
   return canFirmInsertM6Comm({ ...opts, logged_manually: true });
 }
 
-// Mirrors firm_stage_only_guard (0089). last_two_way_at / next_touch_due /
+// Mirrors firm_stage_only_guard (0089 + 0091). last_two_way_at / next_touch_due /
 // health are view-derived — they are not lead columns, so a firm JWT cannot
 // UPDATE them. Nested two_way may move retention_stage only. Direct firm
 // UPDATE still allows pipeline `stage` + updated_at, never current_status.
+// full_name / phone_norm are STORED generated columns. BEFORE UPDATE sees
+// uncomputed NEW values, so the SQL guard strips them from the jsonb diff.
+export const LEADS_GENERATED_COLS = ["full_name", "phone_norm"] as const;
 export const FIRM_DIRECT_LEAD_ALLOW = ["stage", "updated_at"] as const;
 export const FIRM_NESTED_TOUCH_LEAD_ALLOW = ["retention_stage", "updated_at"] as const;
 export const FIRM_TOUCH_CLOCK_LEAD_COLS = [
@@ -393,8 +396,9 @@ export function firmMayUpdateLeadColumns(opts: {
   changed: string[];
   nestedTrigger: boolean;
 }): boolean {
-  const allow = new Set<string>(
-    opts.nestedTrigger ? FIRM_NESTED_TOUCH_LEAD_ALLOW : FIRM_DIRECT_LEAD_ALLOW,
-  );
+  const allow = new Set<string>([
+    ...LEADS_GENERATED_COLS,
+    ...(opts.nestedTrigger ? FIRM_NESTED_TOUCH_LEAD_ALLOW : FIRM_DIRECT_LEAD_ALLOW),
+  ]);
   return opts.changed.every((c) => allow.has(c));
 }
