@@ -1,0 +1,9 @@
+{
+  "name": "m6-intake-email",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "postal-mime": "^2.4.3"
+  }
+}
