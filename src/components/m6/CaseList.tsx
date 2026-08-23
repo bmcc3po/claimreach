@@ -69,7 +69,7 @@ export default function CaseList({ rows }: { rows: Row[] }) {
 
       {shown.length === 0 ? (
         <p className="m6-empty">
-          Nothing matches. Clear the search or pick a different filter.
+          Nothing on the desk matches that. Clear the search or pick another filter.
         </p>
       ) : (
         <ul className="m6-rows m6-rows-lg">

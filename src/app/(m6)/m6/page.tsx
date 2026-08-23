@@ -24,11 +24,13 @@ function lastTouchLabel(r: Row): string {
   return "never reached";
 }
 
-function Stack({ title, note, rows, empty }: {
+function Stack({ title, note, rows, empty, tone = "default" }: {
   title: string; note: string; rows: Row[]; empty: string;
+  tone?: "default" | "shout" | "quiet";
 }) {
+  const shout = tone === "shout" && rows.length > 0;
   return (
-    <section className="m6-stack">
+    <section className={`m6-stack${shout ? " shout" : tone === "quiet" ? " quiet" : ""}`}>
       <div className="m6-stack-head">
         <h2>{title}</h2>
         <span className="m6-count">{rows.length}</span>
@@ -45,9 +47,9 @@ function Stack({ title, note, rows, empty }: {
                 <span className="m6-row-main">
                   <span className="m6-row-name">{r.claimant_name || "Unnamed file"}</span>
                   <span className="m6-row-sub">
-                    {r.lead_no}
-                    {" · "}
                     {lastTouchLabel(r)}
+                    {" · "}
+                    {r.lead_no}
                     {r.live_contact_points === 0 && " · no way to reach them"}
                     {r.opted_out && " · opted out"}
                     {r.comms_monitored && " · safe-contact"}
@@ -55,6 +57,7 @@ function Stack({ title, note, rows, empty }: {
                 </span>
                 <span className="m6-row-tag">
                   {r.health === "paused" ? "Paused"
+                    : shout && r.days_overdue > 0 ? `${r.days_overdue}d overdue`
                     : r.ladder_step ? `Step ${r.ladder_step}`
                     : HEALTH_LABEL[r.health]}
                 </span>
@@ -107,7 +110,7 @@ export default async function TodayPage() {
       <div className="m6-head">
         <h1>Today</h1>
         <p className="m6-sub">
-          Last touch, replies waiting, and files that have gone quiet. Work top down.
+          Last touch first. Silence is what loses them, not slow news.
         </p>
       </div>
 
@@ -122,49 +125,54 @@ export default async function TodayPage() {
           title="Replies waiting"
           note="They wrote or called. A reply with a callback time is contact."
           rows={buckets.repliesWaiting as Row[]}
-          empty="No inbound waiting on a disposition."
+          empty="Nothing in the tray. When they write back, it lands here."
         />
         <Stack
           title="Heartbeat overdue"
           note="Past the 14-day (then 30-day) check-in. Any two-way contact resets the clock."
           rows={buckets.heartbeatOverdue as Row[]}
-          empty="Every heartbeat is current."
+          empty="Every check-in is current. Come back tomorrow."
+          tone="shout"
         />
         <Stack
           title="Never reached"
           note="Signed, but nobody has confirmed two-way contact. Highest risk on the board."
           rows={buckets.neverReached as Row[]}
-          empty="Every file has been reached at least once."
+          empty="No file is still waiting on a first conversation."
+          tone="shout"
         />
         <Stack
           title="Failed / quiet"
           note="A send failed, or we have gone quiet past the window."
           rows={buckets.failedQuiet as Row[]}
-          empty="No failed sends and nobody has gone quiet."
+          empty="Nothing bounced overnight. Nobody has gone silent."
+          tone="shout"
         />
         <Stack
           title="Ladder paused"
           note="Incarceration, treatment, or a client request. The clock is held, not lost."
           rows={buckets.ladderPaused as Row[]}
-          empty="No ladders are paused."
+          empty="No clocks on hold."
+          tone="quiet"
         />
         <Stack
           title="Opted out"
           note="STOP or an opt-out on the number. Hard gate — do not send."
           rows={buckets.optedOut as Row[]}
-          empty="Nobody has opted out."
+          empty="No STOP on the board."
+          tone="quiet"
         />
         <Stack
           title="Safe-contact conflicts"
           note="Monitored comms and the next move would violate the safe-channel rule."
           rows={buckets.safeContactConflicts as Row[]}
-          empty="No safe-contact conflicts."
+          empty="No monitored-comms conflicts."
         />
         <Stack
           title="LOR"
           note="Needs a letter of representation, or someone pinned it here."
           rows={lorToday}
-          empty="No LOR work today."
+          empty="No letters waiting."
         />
       </div>
 
