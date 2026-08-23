@@ -123,27 +123,27 @@ export default async function TodayPage() {
       <div className="m6-stacks">
         <Stack
           title="Replies waiting"
-          note="They wrote or called. A reply with a callback time is contact."
+          note="A reply with a callback time counts as contact and routes straight to the queue."
           rows={buckets.repliesWaiting as Row[]}
           empty="Nothing in the tray. When they write back, it lands here."
         />
         <Stack
           title="Heartbeat overdue"
-          note="Past the 14-day (then 30-day) check-in. Any two-way contact resets the clock."
+          note="Every fourteen days for the first ninety, then every thirty. Any two-way contact resets the clock."
           rows={buckets.heartbeatOverdue as Row[]}
           empty="Every check-in is current. Come back tomorrow."
           tone="shout"
         />
         <Stack
           title="Never reached"
-          note="Signed, but nobody has confirmed two-way contact. Highest risk on the board."
+          note="An uninterviewed file is the most fragile thing we hold. There is no contact web on it yet."
           rows={buckets.neverReached as Row[]}
           empty="No file is still waiting on a first conversation."
           tone="shout"
         />
         <Stack
           title="Failed / quiet"
-          note="A send failed, or we have gone quiet past the window."
+          note="Silence is what loses them, not slow news."
           rows={buckets.failedQuiet as Row[]}
           empty="Nothing bounced overnight. Nobody has gone silent."
           tone="shout"

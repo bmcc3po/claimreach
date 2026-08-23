@@ -221,8 +221,7 @@ export default function CaseFile({
             </div>
             {live.length === 0 ? (
               <p className="m6-empty">
-                No way to reach this person is on file. Add a number, an email, or
-                someone who can get a message to them.
+                No number on the desk. Add one, or someone who can get a message to them.
               </p>
             ) : (
               <ul className="m6-points">
@@ -294,7 +293,7 @@ export default function CaseFile({
           <section className="m6-card">
             <h2>Documents</h2>
             {docs.length === 0 ? (
-              <p className="m6-empty">Nothing has come over from LawRuler yet.</p>
+              <p className="m6-empty">The folder is empty.</p>
             ) : (
               <ul className="m6-docs">
                 {docs.map((d) => (
@@ -333,7 +332,7 @@ export default function CaseFile({
             </button>
 
             {notes.length === 0 ? (
-              <p className="m6-empty">No messages yet.</p>
+              <p className="m6-empty">Thread is blank. Write the first line.</p>
             ) : (
               <ul className="m6-notes">
                 {notes.map((n) => (
@@ -363,7 +362,7 @@ export default function CaseFile({
           <section className="m6-card">
             <h2>Contact history</h2>
             {comms.length === 0 ? (
-              <p className="m6-empty">No calls or texts logged yet.</p>
+              <p className="m6-empty">Nothing logged. The last touch starts here.</p>
             ) : (
               <ul className="m6-comms">
                 {comms.map((c) => (

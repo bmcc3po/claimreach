@@ -1790,7 +1790,7 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .m6-logo { display: block; width: auto; }
 .m6-logo-pad {
   display: inline-flex; align-items: center; justify-content: center;
-  background: #F1F1F1; border-radius: 8px; padding: 6px 9px; line-height: 0;
+  background: #fff; border-radius: 6px; padding: 5px 8px; line-height: 0;
 }
 .m6-logo-inno { height: 36px; }
 .m6-logo-inno-mark, .m6-logo-tmp-mark { display: none; height: 32px; }

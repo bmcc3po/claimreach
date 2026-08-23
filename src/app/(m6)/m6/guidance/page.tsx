@@ -17,7 +17,7 @@ export default async function GuidancePage() {
         <h1>Guidance</h1>
         <p className="m6-sub">
           The always-rules from the run sheet, and Crissi’s Motel 6 SOP.
-          {isStaff ? " Full Crissi stays on /crissi." : " Firm copy only."}
+          {isStaff ? " Full Crissi stays on /crissi." : ""}
         </p>
       </div>
       <CrissiRail showFullLink={isStaff} />

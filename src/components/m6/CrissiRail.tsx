@@ -15,8 +15,8 @@ export default function CrissiRail({
         )}
       </div>
       <p className="m6-hint">
-        Read-only for this campaign. Not sales coaching. If someone is in crisis,
-        stay on the line and connect them.
+        Read-only for this campaign. If someone is in crisis, stay on the line
+        and connect them.
       </p>
       <h3>Your role</h3>
       <ul className="m6-guide">{M6_CRISSI_GUIDANCE.role.map((x) => <li key={x}>{x}</li>)}</ul>
