@@ -76,7 +76,7 @@ Never run destructive SQL against production. Migrations are written, not execut
 Never delete or rewrite config files (.env*, wrangler/deploy config, package.json)
 without explicit confirmation.
 Never commit secrets. Known env vars live in Cloudflare: RESEND_API_KEY, EMAIL_FROM,
-CRON_SECRET, GOOGLE_MAPS_API_KEY.
+CRON_SECRET, GOOGLE_MAPS_API_KEY, PROPERTY_TOOL_KEY.
 If you find a security problem (exposed key, RLS gap, cross-tenant leak), STOP and
 report it before doing anything else.
 If a file path referenced in this document doesn't match the repo, say so — do not
