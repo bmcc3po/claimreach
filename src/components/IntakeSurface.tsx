@@ -2,7 +2,9 @@
 import { useState, useEffect } from "react";
 import GuidedIntake from "@/components/GuidedIntake";
 import ClaimIntake from "@/components/ClaimIntake";
+import IntakeReview from "@/components/IntakeReview";
 import type { Field } from "@/lib/questionnaire";
+import { intakeForType } from "@/lib/questionnaire";
 
 // ============================================================================
 // Guided is the default surface for EVERY case type: one bold question at a
@@ -16,6 +18,29 @@ import type { Field } from "@/lib/questionnaire";
 // ============================================================================
 
 export default function IntakeSurface(props: {
+  claimId: string; firmId: string; leadId: string;
+  claimType?: string; customFields?: Field[] | null;
+  initialAnswers?: Record<string, any>;
+  initialProperties?: any[];
+  claimantName?: string; claimantEmail?: string;
+  readOnly?: boolean;
+}) {
+  if (props.readOnly) {
+    const fields = (props.customFields && props.customFields.length)
+      ? props.customFields
+      : intakeForType(props.claimType ?? "motel_trafficking");
+    return (
+      <IntakeReview
+        fields={fields}
+        answers={props.initialAnswers ?? {}}
+        properties={props.initialProperties ?? []}
+      />
+    );
+  }
+  return <StaffIntakeSurface {...props} />;
+}
+
+function StaffIntakeSurface(props: {
   claimId: string; firmId: string; leadId: string;
   claimType?: string; customFields?: Field[] | null;
   initialAnswers?: Record<string, any>;

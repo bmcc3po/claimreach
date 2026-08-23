@@ -1,15 +1,16 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import PhoneInput from "@/components/PhoneInput";
 import {
-  HEALTH_LABEL, OUTCOMES, PURPOSES, POINT_KINDS, SOCIAL_PLATFORMS,
-  LOR_STATUSES, LOR_SENT_TO, lorShowsOnToday,
+  HEALTH_LABEL, OUTCOMES, POINT_KINDS, SOCIAL_PLATFORMS,
   daysAgo, dueWording, displayName, formatLocalDateTime, formatLocalDate,
   dueAtFromDateInput, SECONDARY_INTERVIEW_DOC_TYPE, type Health,
 } from "@/lib/m6";
 import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
+import LorCard from "./LorCard";
+import { LogTouch, ModalShell } from "./M6Modals";
 
 type Point = {
   id: string; kind: string; value: string; label: string | null;
@@ -34,11 +35,6 @@ export default function CaseFile({
   const [err, setErr] = useState("");
   const [modal, setModal] = useState<Modal>(null);
   const [noteText, setNoteText] = useState("");
-  const [lorStatus, setLorStatus] = useState(lor?.status ?? "not_sent");
-  const [lorToday, setLorToday] = useState(!!lorShowsOnToday(lor));
-  const [lorSentOn, setLorSentOn] = useState(lor?.sent_on ?? "");
-  const [lorSentTo, setLorSentTo] = useState(lor?.sent_to ?? "");
-
   const health: Health = (status?.health ?? "green") as Health;
   const name = displayName(lead);
   const addr = [lead.mail_addr1, lead.mail_city, lead.mail_state, lead.mail_zip].filter(Boolean).join(", ");
@@ -143,59 +139,7 @@ export default function CaseFile({
       )}
       {pageErr && <p className="m6-error">{err}</p>}
 
-      {/* ---- LOR -------------------------------------------------------- */}
-      <section className="m6-card m6-lor">
-        <h2>Letter of representation</h2>
-        <div className="m6-lor-grid">
-          <label className="m6-field">
-            <span>Status</span>
-            <select
-              value={lorStatus}
-              onChange={(e) => {
-                const v = e.target.value;
-                setLorStatus(v);
-                if (v === "ready") setLorToday(true);
-                if (v === "sent" || v === "received") setLorToday(false);
-              }}
-            >
-              {LOR_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </label>
-          <label className="m6-field">
-            <span>Sent on</span>
-            <input type="date" value={lorSentOn} onChange={(e) => setLorSentOn(e.target.value)} />
-          </label>
-          <label className="m6-field">
-            <span>Sent to</span>
-            <select value={lorSentTo} onChange={(e) => setLorSentTo(e.target.value)}>
-              <option value="">Not yet</option>
-              {LOR_SENT_TO.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </label>
-        </div>
-        <label className="m6-check">
-          <input
-            type="checkbox"
-            checked={lorToday}
-            disabled={lorStatus === "sent" || lorStatus === "received"}
-            onChange={(e) => setLorToday(e.target.checked)}
-          />
-          Show on Today
-        </label>
-        <button
-          type="button"
-          className="m6-btn"
-          disabled={!!busy}
-          onClick={() => post("/api/m6/lor", {
-            status: lorStatus,
-            flagged_today: lorToday,
-            sent_on: lorSentOn || null,
-            sent_to: lorSentTo || null,
-          }, "lor")}
-        >
-          {busy === "lor" ? "Saving" : "Save LOR"}
-        </button>
-      </section>
+      <LorCard leadId={lead.id} lor={lor} />
 
       {!!identified?.length && (
         <section className="m6-card m6-identified">
@@ -454,96 +398,6 @@ export default function CaseFile({
         />
       )}
     </div>
-  );
-}
-
-function ModalShell({
-  title, onClose, err, children,
-}: {
-  title: string; onClose: () => void; err: string; children: ReactNode;
-}) {
-  return (
-    <div className="m6-modal-wrap" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="m6-modal">
-        <div className="m6-modal-head">
-          <h2>{title}</h2>
-          <button type="button" className="m6-linkbtn" onClick={onClose}>Close</button>
-        </div>
-        {err && <p className="m6-error">{err}</p>}
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function LogTouch({
-  onClose, onSave, points, busy, err,
-}: {
-  onClose: () => void;
-  onSave: (b: any) => void;
-  points: Point[];
-  busy: boolean;
-  err: string;
-}) {
-  const [purpose, setPurpose] = useState("heartbeat");
-  const [channel, setChannel] = useState("call");
-  const [pointId, setPointId] = useState("");
-  const [note, setNote] = useState("");
-
-  return (
-    <ModalShell title="Log a touch" onClose={onClose} err={err}>
-      <label className="m6-field">
-        <span>Why</span>
-        <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
-          {PURPOSES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-        </select>
-      </label>
-
-      <label className="m6-field">
-        <span>How</span>
-        <select value={channel} onChange={(e) => setChannel(e.target.value)}>
-          <option value="call">Call</option>
-          <option value="sms">Text</option>
-        </select>
-      </label>
-
-      {points.length > 0 && (
-        <label className="m6-field">
-          <span>Which contact point</span>
-          <select value={pointId} onChange={(e) => setPointId(e.target.value)}>
-            <option value="">Not sure</option>
-            {points.map((p) => (
-              <option key={p.id} value={p.id}>{p.value} · {p.label || p.kind}</option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      <label className="m6-field">
-        <span>Note (optional)</span>
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Call after 6" />
-      </label>
-
-      <p className="m6-hint">How did it end? This is what moves the clock.</p>
-      <div className="m6-outcomes">
-        {OUTCOMES.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            className={`m6-outcome ${o.value}`}
-            disabled={busy}
-            onClick={() => onSave({
-              outcome: o.value, purpose, channel,
-              contact_point_id: pointId || null,
-              body: note || null,
-            })}
-          >
-            <strong>{o.label}</strong>
-            <span>{o.hint}</span>
-          </button>
-        ))}
-      </div>
-    </ModalShell>
   );
 }
 

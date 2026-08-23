@@ -2,9 +2,11 @@ export const runtime = "edge";
 import { notFound } from "next/navigation";
 import { supabaseAdmin, supabaseServer } from "@/lib/supabase-server";
 import CaseFile from "@/components/m6/CaseFile";
+import M6FirmFile from "@/components/m6/M6FirmFile";
 import { m6CaseAccess } from "@/lib/m6";
 import { isInternalRole } from "@/lib/permissions";
 import { applyM6LeadFilters, loadM6Actor, loadM6Lead, getTmpFirmId } from "@/lib/m6-scope";
+import { loadM6Rail, loadM6WorkspaceFile } from "@/lib/m6-file";
 import { flattenIdentification } from "@/lib/property-tool";
 
 export default async function CasePage({ params }: { params: Promise<{ id: string }> }) {
@@ -14,6 +16,41 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
   const actor = await loadM6Actor(sb);
   if (!tmpFirmId || !actor) notFound();
 
+  // Staff keep the existing retention CaseFile. Firm gets the internal file,
+  // fenced. Same m6 access check either way.
+  if (isInternalRole(actor.role)) {
+    return <StaffCasePage sb={sb} id={id} tmpFirmId={tmpFirmId} actor={actor} />;
+  }
+
+  const file = await loadM6WorkspaceFile(sb, id, tmpFirmId, actor.role);
+  if (!file || m6CaseAccess(actor, file.lead, tmpFirmId) !== "ok") notFound();
+  const rail = await loadM6Rail(sb, id, tmpFirmId, file.lead);
+
+  return (
+    <M6FirmFile
+      lead={file.lead}
+      claims={file.claims}
+      claimProperties={file.claimProperties}
+      audit={file.audit}
+      notes={file.notes}
+      callLogs={file.callLogs}
+      staff={file.staff}
+      formsByType={file.formsByType}
+      retainers={file.retainers}
+      signables={file.signables}
+      fence={file.fence}
+      lor={rail.lor}
+      identified={rail.identified}
+      points={rail.points}
+    />
+  );
+}
+
+async function StaffCasePage({
+  sb, id, tmpFirmId, actor,
+}: {
+  sb: any; id: string; tmpFirmId: string; actor: { role: string; firmSlug: string | null };
+}) {
   const lead = await loadM6Lead(
     sb, id, tmpFirmId,
     "id, firm_id, campaign, case_type, archived_at, lead_no, claimant_name, full_name, first_name, last_name, phone, phone_alt, email, dob, case_description, comms_monitored, lawruler_url, retention_owner, retention_cadence_days, retention_paused_until, retention_pause_reason, mail_addr1, mail_city, mail_state, mail_zip, ec_name, ec_relationship, ec_phone, ec_message_script, external_id, lawruler_ref_no",
@@ -42,8 +79,6 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
     ? idRes.data.map((r: any) => flattenIdentification(r))
     : [];
 
-  // Firm JWTs can only read their own app_users row. Resolve names server-side
-  // from the ids already on rows this user is allowed to see. Not an RLS change.
   const nameIds = [...new Set([
     ...(notes ?? []).map((n: any) => n.author),
     ...(sched ?? []).map((s: any) => s.assigned_to),

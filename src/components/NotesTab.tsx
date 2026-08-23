@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { isFirmAudience, type FileFence } from "@/lib/file-fence";
 
 const SCOPES = [
   { id: "call", label: "Call note" },
@@ -9,7 +10,7 @@ const SCOPES = [
   { id: "self", label: "My note (self)" },
 ];
 
-export default function NotesTab({ leadId, claimId, initial }: { leadId: string; claimId?: string; initial: any[] }) {
+export default function NotesTab({ leadId, claimId, initial, fence }: { leadId: string; claimId?: string; initial: any[]; fence?: FileFence }) {
   const [scope, setScope] = useState("call");
   const [body, setBody] = useState("");
   const [list, setList] = useState<any[]>(initial ?? []);
@@ -17,16 +18,23 @@ export default function NotesTab({ leadId, claimId, initial }: { leadId: string;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
+  const firm = isFirmAudience(fence);
+
   async function add() {
     if (!body.trim()) return;
     setBusy(true); setErr("");
     try {
-      const r = await fetch("/api/notes", {
+      const r = await fetch(firm ? "/api/m6/note" : "/api/notes", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: leadId, claim_id: claimId, scope, body }),
+        body: JSON.stringify(firm
+          ? { lead_id: leadId, body }
+          : { lead_id: leadId, claim_id: claimId, scope, body }),
       });
       const d = await r.json();
-      if (r.ok) { setList((l) => [d.note, ...l]); setBody(""); }
+      if (r.ok) {
+        const note = d.note ?? { id: `local-${Date.now()}`, body, created_at: new Date().toISOString(), author_name: "You", scope: "file" };
+        setList((l) => [note, ...l]); setBody("");
+      }
       else setErr(d.error || `Save failed (${r.status})`);
     } catch (e: any) { setErr(String(e?.message ?? e)); }
     setBusy(false);
@@ -37,12 +45,14 @@ export default function NotesTab({ leadId, claimId, initial }: { leadId: string;
   return (
     <div>
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-          {SCOPES.map((s) => (
-            <button key={s.id} className={`chip ${scope === s.id ? "active" : ""}`} onClick={() => setScope(s.id)}>{s.label}</button>
-          ))}
-        </div>
-        <textarea rows={3} placeholder={`Write a ${SCOPES.find((s) => s.id === scope)?.label.toLowerCase()}…`} value={body} onChange={(e) => setBody(e.target.value)} />
+        {!firm && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            {SCOPES.map((s) => (
+              <button key={s.id} className={`chip ${scope === s.id ? "active" : ""}`} onClick={() => setScope(s.id)}>{s.label}</button>
+            ))}
+          </div>
+        )}
+        <textarea rows={3} placeholder={firm ? "Write a note on this file…" : `Write a ${SCOPES.find((s) => s.id === scope)?.label.toLowerCase()}…`} value={body} onChange={(e) => setBody(e.target.value)} />
         <button className="btn" style={{ marginTop: 8 }} onClick={add} disabled={busy}>{busy ? "Saving…" : "Add note"}</button>
         {err && <span className="save-msg warn" style={{ marginLeft: 10 }}>{err}</span>}
       </div>

@@ -201,7 +201,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
           <V label="Permission to discuss" value={x.ec_permission_to_discuss ? "Yes" : "No"} />
         </div>
 
-        <button className="edit-cta" onClick={onRequestEdit}>✎ Edit contact info</button>
+        {onRequestEdit && <button className="edit-cta" onClick={onRequestEdit}>✎ Edit contact info</button>}
       </div>
     );
   }

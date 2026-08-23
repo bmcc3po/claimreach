@@ -1895,6 +1895,8 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   display: inline-block; margin-bottom: 7px;
 }
 .m6-back:hover { color: var(--ink-soft); }
+.m6-file .leadhead-line { margin-top: 18px; }
+.m6-file .lead-grid { margin-top: 8px; }
 
 .m6-health {
   background: var(--surface); border: 1px solid var(--line);

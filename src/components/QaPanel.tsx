@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { DEFAULT_DQ_REASONS, type DqReason } from "@/lib/statuses";
+import { fileMayRunQa, type FileFence } from "@/lib/file-fence";
 
 const GRADES = [
   { key: "green", label: "Green", cls: "good" },
@@ -21,7 +22,38 @@ function GradeRow({ label, value, onChange }: { label: string; value: string; on
   );
 }
 
-export default function QaPanel({ leadId, claimId, role }: { leadId: string; claimId?: string; role?: string }) {
+function FirmQaStatus({ claimStatus, grievousVerdict }: { claimStatus?: string; grievousVerdict?: string | null }) {
+  const status = (claimStatus || "new").replace(/_/g, " ");
+  const verdict = grievousVerdict ? String(grievousVerdict).replace(/_/g, " ") : "";
+  return (
+    <div className="qa-panel">
+      <div className="ro-section">QA status</div>
+      <div className="ro-grid">
+        <div className="ro-field">
+          <span className="ro-label">File status</span>
+          <span className={`ro-value ${!claimStatus ? "empty" : ""}`}>{status || "Not collected"}</span>
+        </div>
+        <div className="ro-field">
+          <span className="ro-label">Review verdict</span>
+          <span className={`ro-value ${!verdict ? "empty" : ""}`}>{verdict || "Not collected"}</span>
+        </div>
+      </div>
+      <p className="muted" style={{ fontSize: 13, marginTop: 14 }}>
+        Coaching grades and the internal QA thread stay with Innovative.
+      </p>
+    </div>
+  );
+}
+
+export default function QaPanel({
+  leadId, claimId, role, fence, claimStatus, grievousVerdict,
+}: {
+  leadId: string; claimId?: string; role?: string;
+  fence?: FileFence;
+  claimStatus?: string;
+  grievousVerdict?: string | null;
+}) {
+  const firmView = !fileMayRunQa(fence);
   const isBmc = role === "owner" || role === "admin";
   const [gQa, setGQa] = useState(""); const [gEsign, setGEsign] = useState(""); const [gCrit, setGCrit] = useState("");
   const [cLead, setCLead] = useState(""); const [cComplete, setCComplete] = useState("");
@@ -40,7 +72,7 @@ export default function QaPanel({ leadId, claimId, role }: { leadId: string; cla
     setCards(r.cards ?? []); setThread(r.thread ?? []); setDupOverride(r.dupOverride ?? null);
     try { const d = await (await fetch("/api/dq-reasons")).json(); if (d.reasons?.length) setReasons(d.reasons.filter((x: DqReason) => x.active !== false)); } catch {}
   }
-  useEffect(() => { load(); }, [leadId]);
+  useEffect(() => { if (!firmView) load(); }, [leadId, firmView]);
 
   const grievousCard = cards.find((c) => c.grader === "grievous");
 
@@ -50,6 +82,7 @@ export default function QaPanel({ leadId, claimId, role }: { leadId: string; cla
   // Grades used to live only in React state, so leaving the tab threw the
   // whole review away. Autosave them; the permanent record is still qa_reviews.
   useEffect(() => {
+    if (firmView) return;
     (async () => {
       try {
         const r = await fetch(`/api/qa?lead_id=${leadId}`);
@@ -61,9 +94,10 @@ export default function QaPanel({ leadId, claimId, role }: { leadId: string; cla
         if (d.qaNote) setQaNote(d.qaNote); if (d.agentNote) setAgentNote(d.agentNote);
       } catch { /* a missing draft is not an error */ }
     })();
-  }, [leadId]);
+  }, [leadId, firmView]);
 
   useEffect(() => {
+    if (firmView) return;
     const t = setTimeout(() => {
       void fetch("/api/qa", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -72,7 +106,9 @@ export default function QaPanel({ leadId, claimId, role }: { leadId: string; cla
       }).catch(() => {});
     }, 900);
     return () => clearTimeout(t);
-  }, [gQa, gEsign, gCrit, cLead, cComplete, qaNote, agentNote, leadId]);
+  }, [gQa, gEsign, gCrit, cLead, cComplete, qaNote, agentNote, leadId, firmView]);
+
+  if (firmView) return <FirmQaStatus claimStatus={claimStatus} grievousVerdict={grievousVerdict} />;
 
   async function submit(decision: string, dqReasonKey?: string, dupAck?: boolean) {
     if (!gatesSet) { setMsg("Set all three hard-gate checks first."); return; }

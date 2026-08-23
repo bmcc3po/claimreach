@@ -21,10 +21,13 @@ export async function POST(req: NextRequest) {
 
   // Same table, same source. Relabeled "Messages" in the UI. author_name is
   // not a column — the case page resolves it. Do not invent a second thread.
-  const { error } = await sb.from("lead_notes").insert({
+  const { data, error } = await sb.from("lead_notes").insert({
     firm_id: gate.lead.firm_id, lead_id, author: gate.user.id,
     body: String(body).trim(), source: "m6",
-  });
+  }).select("id, body, created_at, author, pinned, source").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    note: data ? { ...data, author_name: gate.user.name ?? "You", scope: "file" } : null,
+  });
 }

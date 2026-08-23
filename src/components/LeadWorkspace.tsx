@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { STAGE_LABELS } from "@/lib/questionnaire";
 import { LX } from "@/lib/lexicon";
 import FloatingDock from "./FloatingDock";
@@ -16,6 +16,10 @@ import NotesTab from "./NotesTab";
 import CommsTimeline from "./CommsTimeline";
 import QaPanel from "./QaPanel";
 import CaseTimeline from "./CaseTimeline";
+import {
+  INTERNAL_STAFF_FENCE, fileBackHref, fileMayEditLead, fileMayExportPdf,
+  fileMayUseStaffTools, fileTabs, type FileFence,
+} from "@/lib/file-fence";
 
 interface Claim {
   id: string;
@@ -28,10 +32,11 @@ interface Claim {
   answers?: Record<string, any>;
 }
 
-const TABS_HELP = "tabs are computed per-role inside the component";
+const TABS_HELP = "tabs are computed once in file-fence.ts";
 
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
+  fence = INTERNAL_STAFF_FENCE, headerActions, retainers, signables,
 }: {
   lead: any;
   claims: Claim[];
@@ -43,6 +48,10 @@ export default function LeadWorkspace({
   callLogs: any[];
   staff?: { id: string; full_name: string }[];
   formsByType?: Record<string, any[]>;
+  fence?: FileFence;
+  headerActions?: ReactNode;
+  retainers?: any[];
+  signables?: any[];
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -51,11 +60,10 @@ export default function LeadWorkspace({
   const [editMode, setEditMode] = useState(false);
   const activeClaim = claims.find((c) => c.id === activeClaimId);
   const [showAddClaim, setShowAddClaim] = useState(false);
-  const canQa = ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "");
-  // QA tab sits right after Case Details for the people who run QA.
-  const TABS = canQa
-    ? ["Overview", "Case Questions", "Contact Info", "Case Details", "QA", "Retainer", "Messages", "Calls", "Notes", "Timeline", "Activity Log"]
-    : ["Overview", "Case Questions", "Contact Info", "Case Details", "Retainer", "Messages", "Calls", "Notes", "Timeline", "Activity Log"];
+  const canEdit = fileMayEditLead(fence);
+  const canTools = fileMayUseStaffTools(fence);
+  const TABS = fileTabs(lead.current_user_role, fence);
+  const backHref = fileBackHref(fence);
   const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
 
   function claimClass(c: Claim) {
@@ -69,24 +77,27 @@ export default function LeadWorkspace({
     <div>
       {/* One dense header line: name, file, campaign, date, status, lock. */}
       <div className="leadhead-line">
-        <a className="qtab-back" href="/leads" title="Back to your queue">←</a>
+        <a className="qtab-back" href={backHref} title="Back to your queue">←</a>
         <span className="lh-name">{lead.claimant_name ?? "Unnamed claimant"}</span>
         <span className="lh-file">{lead.lead_no}</span>
         <span className="leadhead-dot">·</span>
         <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={lead.current_user_role} />
         <span className="leadhead-dot">·</span>
-        <span className="muted lh-date">{new Date(lead.created_at).toLocaleDateString()}</span>
+        <span className="muted lh-date">{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : ""}</span>
         <span className="lh-spacer" />
-        {stats ? (
+        {canTools && stats ? (
           <>
             <span className="lh-stat"><b>{stats.signed}</b> signed</span>
             <span className="lh-stat"><b>{stats.wip}</b> WIP</span>
           </>
         ) : null}
-        <a className="btn ghost sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
-        {["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
+        {headerActions}
+        {fileMayExportPdf(fence) && (
+          <a className="btn ghost sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
+        )}
+        {canTools && ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
         <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
-        <LockFileButton lead={lead} />
+        {canTools && <LockFileButton lead={lead} />}
       </div>
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
@@ -101,12 +112,12 @@ export default function LeadWorkspace({
       {/* Everything else, injured-party + progress, folds into ONE panel that
           shows just the PNC name when collapsed. */}
       <CollapsiblePanel id="lead_detail" title="File detail" sub={`${lead.claimant_name ?? ""}${STAGE_LABELS?.[activeClaim?.status ?? lead.status ?? "new"] ? " · " + STAGE_LABELS[activeClaim?.status ?? lead.status ?? "new"] : ""}`} defaultOpen={false}>
-        <PncBanner lead={lead} />
+        <PncBanner lead={lead} readOnly={!canEdit} />
         <div style={{ marginTop: 12 }}><PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} /></div>
       </CollapsiblePanel>
 
       {/* WIP fix banner: QA sent this back. Resubmit returns it to the QA queue. */}
-      {lead.wip_pending && <WipBanner lead={lead} signed={/^signed_/.test(activeClaim?.status || "")} />}
+      {canTools && lead.wip_pending && <WipBanner lead={lead} signed={/^signed_/.test(activeClaim?.status || "")} />}
 
       {/* Main grid */}
       <div className="lead-grid solo">
@@ -115,7 +126,7 @@ export default function LeadWorkspace({
             {TABS.map((t) => (
               <button key={t} className={tab === t ? "active" : ""} onClick={() => { setTab(t); setEditMode(false); }}>{t}</button>
             ))}
-            {(tab === "Contact Info" || tab === "Case Details") && (
+            {canEdit && (tab === "Contact Info" || tab === "Case Details") && (
               <button className={`edit-toggle ${editMode ? "on" : ""}`} onClick={() => setEditMode((v) => !v)} title={editMode ? "Done editing" : "Edit"} style={{ alignSelf: "center", marginRight: 8, marginLeft: "auto" }}>
                 {editMode ? "✓ Done" : "✎ Edit"}
               </button>
@@ -123,15 +134,17 @@ export default function LeadWorkspace({
           </div>
           <div className="formbody">
             {tab === "Overview" && (
-              <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} onGo={(t) => { setTab(t); setEditMode(false); }} />
+              <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} onGo={(t) => { setTab(t); setEditMode(false); }} />
             )}
             {tab === "Case Questions" && activeClaim && (
               <div>
-                <div className="gate" style={{ marginBottom: 16 }}>
-                  <span className="tag">Compliance notice</span>
-                  Leading statements of any kind result in forfeiture of file credit and disciplinary
-                  action. Ask every question in order and verbatim.
-                </div>
+                {canEdit && (
+                  <div className="gate" style={{ marginBottom: 16 }}>
+                    <span className="tag">Compliance notice</span>
+                    Leading statements of any kind result in forfeiture of file credit and disciplinary
+                    action. Ask every question in order and verbatim.
+                  </div>
+                )}
                 <IntakeSurface
                   claimId={activeClaim.id}
                   firmId={lead.firm_id}
@@ -142,23 +155,26 @@ export default function LeadWorkspace({
                   claimType={activeClaim.claim_type}
                   leadId={lead.id}
                   customFields={formsByType?.[activeClaim.claim_type]}
+                  readOnly={!canEdit}
                 />
               </div>
             )}
-            {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
-            {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} editMode={editMode} onRequestEdit={() => setEditMode(true)} />}
-            {tab === "QA" && canQa && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} />}
-            {tab === "Retainer" && <RetainerTab leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} />}
-            {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" />}
-            {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" />}
-            {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} />}
+            {tab === "Case Questions" && !activeClaim && (
+              <p className="muted">No intake on this file yet.</p>
+            )}
+            {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} />}
+            {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} />}
+            {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
+            {tab === "Retainer" && <RetainerTab leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} fence={fence} initialRetainers={retainers} initialSignables={signables} />}
+            {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" fence={fence} />}
+            {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" fence={fence} />}
+            {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} fence={fence} />}
             {tab === "Timeline" && <CaseTimeline entries={audit} />}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}
           </div>
         </div>
 
-        {/* Floating Tools dock (hammer pill) — Crissi, Vitals, Agent assist, Integrity, Maverick, Grievous */}
-        <FloatingDock lead={lead} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />
+        {canTools && <FloatingDock lead={lead} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />}
       </div>
     </div>
   );
@@ -242,7 +258,7 @@ function WipBanner({ lead, signed }: { lead: any; signed: boolean }) {
   );
 }
 
-function PncBanner({ lead }: { lead: any }) {
+function PncBanner({ lead, readOnly = false }: { lead: any; readOnly?: boolean }) {
   const [state, setState] = useState<string>(lead.pnc_status ?? "speaking_with_ip");
   const [saving, setSaving] = useState(false);
 
@@ -274,12 +290,14 @@ function PncBanner({ lead }: { lead: any }) {
         <strong>Injured Party: {lead.claimant_name ?? "—"}</strong>
         <div className="muted">{note}</div>
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        {STATES.map((s) => (
-          <button key={s.id} className={`chip ${state === s.id ? "active" : ""}`}
-            disabled={saving} onClick={() => pick(s.id)}>{s.label}</button>
-        ))}
-      </div>
+      {!readOnly && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {STATES.map((s) => (
+            <button key={s.id} className={`chip ${state === s.id ? "active" : ""}`}
+              disabled={saving} onClick={() => pick(s.id)}>{s.label}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

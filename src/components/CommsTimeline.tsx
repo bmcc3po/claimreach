@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect } from "react";
+import { fileMaySendComms, fileMayUseStaffTools, type FileFence } from "@/lib/file-fence";
 
 const ICON: Record<string, string> = { call: "📞", sms: "💬", voicemail: "📩" };
 
-export default function CommsTimeline({ leadId, phone, channel }: { leadId: string; phone?: string; channel?: "call" | "sms" | "all" }) {
+export default function CommsTimeline({ leadId, phone, channel, fence }: { leadId: string; phone?: string; channel?: "call" | "sms" | "all"; fence?: FileFence }) {
   const [comms, setComms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [smsBody, setSmsBody] = useState("");
@@ -35,6 +36,9 @@ export default function CommsTimeline({ leadId, phone, channel }: { leadId: stri
     if (d.ok) { setSmsBody(""); load(); } else setMsg(d.error || "SMS failed");
   }
 
+  const canSend = fileMaySendComms(fence);
+  const showAi = fileMayUseStaffTools(fence);
+
   return (
     <div>
       <div className="row" style={{ gap: 8, marginBottom: 14, alignItems: "center" }}>
@@ -42,7 +46,7 @@ export default function CommsTimeline({ leadId, phone, channel }: { leadId: stri
         {msg && <span className="muted" style={{ fontSize: 12 }}>{msg}</span>}
       </div>
 
-      {channel === "sms" && (
+      {canSend && channel === "sms" && (
         <>
           <div className="row" style={{ gap: 8, marginBottom: 6 }}>
             <input placeholder={phone ? `Text ${phone}…` : "No phone on file"} value={smsBody} onChange={(e) => setSmsBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSms()} style={{ flex: 1 }} disabled={!phone} />
@@ -76,7 +80,7 @@ export default function CommsTimeline({ leadId, phone, channel }: { leadId: stri
               <details style={{ marginTop: 6 }}><summary className="muted" style={{ fontSize: 12, cursor: "pointer" }}>Transcript</summary>
                 <div className="comm-transcript">{c.transcript}</div></details>
             )}
-            {(c.jc_summary || c.jc_sentiment) && (
+            {showAi && (c.jc_summary || c.jc_sentiment) && (
               <div className="comm-jc">
                 <span className="comm-jc-tag">JustCall AI</span>
                 {c.jc_sentiment && <span className="badge count" style={{ marginLeft: 6 }}>{c.jc_sentiment}</span>}

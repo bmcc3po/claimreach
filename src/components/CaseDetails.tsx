@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { fileMaySeeMoney, type FileFence } from "@/lib/file-fence";
 
 // Case-management layer: routing/people, content, dates, tags, events. Separate
 // from the intake questionnaire. Saves to the leads row + case_events.
-export default function CaseDetails({ lead, staff = [], editMode = true, onRequestEdit }: { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void }) {
+export default function CaseDetails({ lead, staff = [], editMode = true, onRequestEdit, fence }: { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void; fence?: FileFence }) {
   const [f, setF] = useState<any>({
     marketing_source: lead.marketing_source ?? "",
     referring_attorney: lead.referring_attorney ?? "",
@@ -96,7 +97,7 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
 
         <div className="ro-section">Status & Dates</div>
         <div className="ro-grid">
-          <V label="Case tier" value={f.case_rating} />
+          {fileMaySeeMoney(fence) && <V label="Case tier" value={f.case_rating} />}
           <V label="Call outcome" value={f.call_outcome} />
           <V label="eSign date" value={f.esign_date} />
           <V label="Last called" value={lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : ""} />
@@ -120,7 +121,7 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
           ))}
         </>}
 
-        <button className="edit-cta" onClick={onRequestEdit}>✎ Edit case details</button>
+        {onRequestEdit && <button className="edit-cta" onClick={onRequestEdit}>✎ Edit case details</button>}
       </div>
     );
   }
@@ -141,7 +142,7 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
 
         <div className="cd-block">
           <div className="section-title">Status & Dates</div>
-          <L label="Case tier / rating"><Sel value={f.case_rating} onChange={(v) => set("case_rating", v)} options={dd("tier")} allowFree /></L>
+          {fileMaySeeMoney(fence) && <L label="Case tier / rating"><Sel value={f.case_rating} onChange={(v) => set("case_rating", v)} options={dd("tier")} allowFree /></L>}
           <L label="Call outcome"><input value={f.call_outcome} onChange={(e) => set("call_outcome", e.target.value)} /></L>
           <L label="eSign date"><input type="date" value={f.esign_date ?? ""} onChange={(e) => set("esign_date", e.target.value)} /></L>
           <L label="Last called"><span className="muted">{lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : "—"}</span></L>

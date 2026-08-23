@@ -1,12 +1,13 @@
 "use client";
-import { useState } from "react";
+import { fileMayEditLead, type FileFence } from "@/lib/file-fence";
 
 // The front door. When anyone opens a file, they land here: who this is,
 // what kind of case, where it stands, last contact, recent notes, then clear
 // "where do you want to go" actions. Works even when the file is empty.
-export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo }: {
+export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence }: {
   lead: any; activeClaim: any; notes?: any[]; callLogs?: any[];
   onGo: (tab: string) => void;
+  fence?: FileFence;
 }) {
   const fullName = lead.claimant_name || `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Unnamed claimant";
   const caseType = activeClaim?.campaign || activeClaim?.claim_type || "No claim yet";
@@ -82,12 +83,23 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
       {/* the actions — where do you want to go */}
       <div className="ov-section-label">What do you want to do?</div>
       <div className="ov-actions">
-        <ActionCard icon="📝" title={intakeProgress > 0 ? "Continue intake" : "Start intake"} sub="Work the questionnaire" onClick={() => onGo("Case Questions")} primary />
+        <ActionCard
+          icon="📝"
+          title={fileMayEditLead(fence) ? (intakeProgress > 0 ? "Continue intake" : "Start intake") : "Review intake"}
+          sub={fileMayEditLead(fence) ? "Work the questionnaire" : "The questions that were asked"}
+          onClick={() => onGo("Case Questions")}
+          primary
+        />
         <ActionCard icon="👤" title="Contact info" sub="Names, address, emergency contact" onClick={() => onGo("Contact Info")} />
         <ActionCard icon="📂" title="File details" sub="Routing, dates, case manager" onClick={() => onGo("Case Details")} />
-        <ActionCard icon="✍️" title="Retainer" sub="Generate, send for signature" onClick={() => onGo("Retainer")} />
+        <ActionCard
+          icon="✍️"
+          title="Retainer"
+          sub={fileMayEditLead(fence) ? "Generate, send for signature" : "Status and signed copies"}
+          onClick={() => onGo("Retainer")}
+        />
         <ActionCard icon="📞" title="Calls" sub={lastCall ? "Review the call timeline" : "No calls yet"} onClick={() => onGo("Calls")} />
-        <ActionCard icon="🗒️" title="Add a note" sub="Log something on the file" onClick={() => onGo("Notes")} />
+        <ActionCard icon="🗒️" title={fileMayEditLead(fence) ? "Add a note" : "Notes"} sub="Log something on the file" onClick={() => onGo("Notes")} />
       </div>
     </div>
   );
