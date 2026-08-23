@@ -9,6 +9,7 @@ import {
   daysAgo, dueWording, displayName, formatLocalDateTime, formatLocalDate,
   dueAtFromDateInput, SECONDARY_INTERVIEW_DOC_TYPE, type Health,
 } from "@/lib/m6";
+import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 
 type Point = {
   id: string; kind: string; value: string; label: string | null;
@@ -21,11 +22,12 @@ type Point = {
 type Modal = "touch" | "sched" | "point" | null;
 
 export default function CaseFile({
-  lead, status, points, notes, comms, schedule, docs, lor,
+  lead, status, points, notes, comms, schedule, docs, lor, identified,
 }: {
   lead: any; status: any; points: Point[];
   notes: any[]; comms: any[]; schedule: any[]; docs: any[];
   lor: any;
+  identified?: IdentifiedProperty[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
@@ -194,6 +196,34 @@ export default function CaseFile({
           {busy === "lor" ? "Saving" : "Save LOR"}
         </button>
       </section>
+
+      {!!identified?.length && (
+        <section className="m6-card m6-identified">
+          <h2>Identified properties</h2>
+          <ul className="m6-points">
+            {identified.map((p) => {
+              const where = [p.street || p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
+              const when = stayRangeLabel(p.stay_from, p.stay_to);
+              return (
+                <li key={p.id}>
+                  <div>
+                    <span className="m6-point-val">{p.name || "Property"}</span>
+                    {where && <span className="m6-point-lab">{where}</span>}
+                    <span className="m6-point-lab">
+                      Remembered as {p.remembered_brand || "not noted"}
+                      {p.current_brand ? ` · current flag ${p.current_brand}` : ""}
+                      {when ? ` · ${when}` : ""}
+                    </span>
+                    {p.brand_mismatch && (
+                      <span className="m6-id-flag">Remembered brand differs from the current flag</span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {/* ---- contact health ---------------------------------------------- */}
       <section className={`m6-health ${health}`}>

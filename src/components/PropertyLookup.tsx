@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import AreaPanel from "./AreaPanel";
+import { guessBrand } from "@/lib/property-brand";
 
 export interface ResolvedProperty {
   place_id: string;
@@ -185,16 +186,4 @@ function ConfirmBrand({
       </button>
     </div>
   );
-}
-
-// Lightweight current-brand guess from the Places display name.
-function guessBrand(name: string): string {
-  const n = (name || "").toLowerCase();
-  const brands = [
-    "Motel 6", "Red Roof", "Super 8", "Days Inn", "Best Western", "Econo Lodge",
-    "Travelodge", "Rodeway", "Quality Inn", "Comfort Inn", "Knights Inn", "Howard Johnson",
-    "Extended Stay", "La Quinta", "Budget Inn", "Americas Best Value",
-  ];
-  for (const b of brands) if (n.includes(b.toLowerCase())) return b;
-  return "";
 }

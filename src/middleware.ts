@@ -15,6 +15,7 @@ function isPublicAsset(path: string) {
 function isPublicPath(path: string) {
   if (isAuthPage(path)) return true;
   if (path.startsWith("/sign")) return true; // claimant e-sign stays public
+  if (path.startsWith("/tools")) return true; // LawRuler property tool; page fail-closes on ?k=
   if (isPublicAsset(path)) return true;
   return false;
 }
@@ -24,7 +25,7 @@ export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const authPage = isAuthPage(path);
   const isProtected = !isPublicPath(path);
-  // Skip the Supabase round-trip on public assets and /sign so a cold edge
+  // Skip the Supabase round-trip on public assets, /sign, and /tools so a cold edge
   // instance isn't paying for wasted work.
   if (!isProtected && !authPage) return NextResponse.next({ request: req });
 

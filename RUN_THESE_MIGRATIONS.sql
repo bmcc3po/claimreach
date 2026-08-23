@@ -1556,3 +1556,47 @@ $$;
 revoke all on function m6_log_touch(uuid, text, text, text, uuid, text) from public;
 grant execute on function m6_log_touch(uuid, text, text, text, uuid, text) to authenticated;
 
+-- ============================================================================
+-- 0090 LAWRULER PROPERTY IDENTIFICATION (apply after 0089)
+-- street/zip on properties_canonical + property_identifications link table.
+-- Full file: supabase/migrations/0090_property_identifications.sql
+-- ============================================================================
+
+alter table properties_canonical add column if not exists street text;
+alter table properties_canonical add column if not exists zip    text;
+
+create table if not exists property_identifications (
+  id                uuid primary key default gen_random_uuid(),
+  firm_id           uuid not null references firms(id),
+  lawruler_leadid   text not null,
+  canonical_id      uuid not null references properties_canonical(id),
+  remembered_brand  text,
+  current_brand     text,
+  brand_mismatch    boolean generated always as
+                      (remembered_brand is distinct from current_brand
+                       and remembered_brand is not null
+                       and current_brand is not null) stored,
+  stay_from         text,
+  stay_to           text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  unique (firm_id, lawruler_leadid, canonical_id)
+);
+
+create index if not exists idx_pi_leadid
+  on property_identifications (firm_id, lawruler_leadid);
+
+drop trigger if exists trg_pi_touch on property_identifications;
+create trigger trg_pi_touch before update on property_identifications
+  for each row execute function touch_updated_at();
+
+alter table property_identifications enable row level security;
+
+drop policy if exists pi_internal_all on property_identifications;
+create policy pi_internal_all on property_identifications for all
+  using ( is_internal() ) with check ( is_internal() );
+
+drop policy if exists pi_firm_read on property_identifications;
+create policy pi_firm_read on property_identifications for select
+  using ( firm_id = my_firm_id() );
+

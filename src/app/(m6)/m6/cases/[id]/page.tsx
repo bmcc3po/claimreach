@@ -5,6 +5,7 @@ import CaseFile from "@/components/m6/CaseFile";
 import { m6CaseAccess } from "@/lib/m6";
 import { isInternalRole } from "@/lib/permissions";
 import { applyM6LeadFilters, loadM6Actor, loadM6Lead, getTmpFirmId } from "@/lib/m6-scope";
+import { flattenIdentification } from "@/lib/property-tool";
 
 export default async function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -15,11 +16,12 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
 
   const lead = await loadM6Lead(
     sb, id, tmpFirmId,
-    "id, firm_id, campaign, case_type, archived_at, lead_no, claimant_name, full_name, first_name, last_name, phone, phone_alt, email, dob, case_description, comms_monitored, lawruler_url, retention_owner, retention_cadence_days, retention_paused_until, retention_pause_reason, mail_addr1, mail_city, mail_state, mail_zip, ec_name, ec_relationship, ec_phone, ec_message_script",
+    "id, firm_id, campaign, case_type, archived_at, lead_no, claimant_name, full_name, first_name, last_name, phone, phone_alt, email, dob, case_description, comms_monitored, lawruler_url, retention_owner, retention_cadence_days, retention_paused_until, retention_pause_reason, mail_addr1, mail_city, mail_state, mail_zip, ec_name, ec_relationship, ec_phone, ec_message_script, external_id, lawruler_ref_no",
   );
   if (m6CaseAccess(actor, lead, tmpFirmId) !== "ok") notFound();
 
-  const [{ data: status }, { data: points }, { data: notes }, { data: comms }, { data: sched }, { data: docs }, { data: lor }] =
+  const vendorId = (lead as any)?.external_id || (lead as any)?.lawruler_ref_no || "";
+  const [{ data: status }, { data: points }, { data: notes }, { data: comms }, { data: sched }, { data: docs }, { data: lor }, idRes] =
     await Promise.all([
       applyM6LeadFilters(sb.from("lead_contact_status").select("*").eq("lead_id", id), tmpFirmId).maybeSingle(),
       sb.from("contact_points").select("*").eq("lead_id", id).eq("firm_id", tmpFirmId).is("retired_at", null).order("kind"),
@@ -28,7 +30,17 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       sb.from("call_schedule").select("id, due_at, kind, note, status, assigned_to, ladder_step").eq("lead_id", id).eq("firm_id", tmpFirmId).eq("status", "open").order("due_at"),
       sb.from("case_documents").select("id, file_name, doc_type, created_at").eq("lead_id", id).eq("firm_id", tmpFirmId).order("created_at", { ascending: false }),
       sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to").eq("lead_id", id).eq("firm_id", tmpFirmId).maybeSingle(),
+      vendorId
+        ? sb.from("property_identifications")
+            .select("id, remembered_brand, current_brand, brand_mismatch, stay_from, stay_to, properties_canonical (name, street, city, state, zip, address, lat, lng, current_brand)")
+            .eq("firm_id", tmpFirmId)
+            .eq("lawruler_leadid", vendorId)
+            .order("created_at")
+        : Promise.resolve({ data: [] as any[], error: null }),
     ]);
+  const identified = !idRes.error && idRes.data
+    ? idRes.data.map((r: any) => flattenIdentification(r))
+    : [];
 
   // Firm JWTs can only read their own app_users row. Resolve names server-side
   // from the ids already on rows this user is allowed to see. Not an RLS change.
@@ -64,6 +76,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       schedule={(sched ?? []).map((s: any) => ({ ...s, assigned_name: nameOf.get(s.assigned_to) ?? null }))}
       docs={(docs ?? []) as any}
       lor={lor ?? null}
+      identified={identified}
     />
   );
 }
