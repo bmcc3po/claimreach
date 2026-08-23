@@ -30,6 +30,7 @@ interface Claim {
   on_behalf_of: boolean;
   is_this_file: boolean;
   answers?: Record<string, any>;
+  grievous_verdict?: string | null;
 }
 
 const TABS_HELP = "tabs are computed once in file-fence.ts";

@@ -88,7 +88,10 @@ export async function loadM6WorkspaceFile(
   // loaded with admin so the firm sees the questions that were asked, then
   // staff scripting is stripped. Answers come from claims (firm-readable).
   const formsByType: Record<string, Field[]> = {};
-  for (const ct of Array.from(new Set(claimRows.map((c: any) => c.claim_type).filter(Boolean)))) {
+  const claimTypes: string[] = Array.from(new Set<string>(
+    claimRows.map((c: any) => String(c.claim_type || "")).filter((t: string) => t.length > 0),
+  ));
+  for (const ct of claimTypes) {
     const ctCampaign = claimRows.find((c: any) => c.claim_type === ct)?.campaign_id
       ?? lead.campaign_id ?? null;
     const resolved = await resolveIntakeFields(admin, ct, ctCampaign);
