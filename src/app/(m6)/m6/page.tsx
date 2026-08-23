@@ -2,18 +2,27 @@ export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
 import { HEALTH_LABEL, daysAgo, filterM6StatusRows, lorShowsOnToday, type Health } from "@/lib/m6";
-import { applyM6LeadFilters, getTmpFirmId, M6_STATUS_COLUMNS } from "@/lib/m6-scope";
+import { applyM6LeadFilters, getTmpFirmId, M6_STATUS_COLUMNS, requireM6Session } from "@/lib/m6-scope";
+import { isInternalRole } from "@/lib/permissions";
+import { todayBuckets, type TodayFile } from "@/lib/m6-cadence";
+import CrissiRail from "@/components/m6/CrissiRail";
 
-// The home screen, and the reason anyone opens this app. If it is right, nobody
-// has to decide what to do next. Four stacks, in the order a caller works them.
-
-type Row = {
-  lead_id: string; lead_no: string; claimant_name: string | null;
-  health: Health; days_overdue: number; days_since_contact: number;
-  last_two_way_at: string | null; next_touch_due: string | null;
-  ladder_step: number | null; retention_owner: string | null;
-  live_contact_points: number;
+type Row = TodayFile & {
+  lead_no: string; claimant_name: string | null;
+  health: Health; last_touch_at?: string | null; last_touch_channel?: string | null;
+  ladder_step: number | null; live_contact_points: number;
+  next_touch_due?: string | null;
+  comms_monitored?: boolean;
 };
+
+function lastTouchLabel(r: Row): string {
+  if (r.last_touch_at) {
+    const ch = r.last_touch_channel === "sms" ? "text" : r.last_touch_channel === "email" ? "email" : "call";
+    return `last ${ch} ${daysAgo(r.last_touch_at)}`;
+  }
+  if (r.last_two_way_at) return `reached ${daysAgo(r.last_two_way_at)}`;
+  return "never reached";
+}
 
 function Stack({ title, note, rows, empty }: {
   title: string; note: string; rows: Row[]; empty: string;
@@ -38,8 +47,10 @@ function Stack({ title, note, rows, empty }: {
                   <span className="m6-row-sub">
                     {r.lead_no}
                     {" · "}
-                    {r.last_two_way_at ? `reached ${daysAgo(r.last_two_way_at)}` : "never reached"}
+                    {lastTouchLabel(r)}
                     {r.live_contact_points === 0 && " · no way to reach them"}
+                    {r.opted_out && " · opted out"}
+                    {r.comms_monitored && " · safe-contact"}
                   </span>
                 </span>
                 <span className="m6-row-tag">
@@ -58,7 +69,9 @@ function Stack({ title, note, rows, empty }: {
 
 export default async function TodayPage() {
   const sb = await supabaseServer();
-  const tmpFirmId = await getTmpFirmId(sb);
+  const session = await requireM6Session(sb);
+  const isStaff = session.ok && isInternalRole(session.user.role);
+  const tmpFirmId = session.ok ? session.tmpFirmId : await getTmpFirmId(sb);
 
   const { data, error } = tmpFirmId
     ? await applyM6LeadFilters(
@@ -76,13 +89,10 @@ export default async function TodayPage() {
       })[], tmpFirmId)
     : [];
 
-  // Never contacted comes first on purpose: a file nobody has ever reached is
-  // more fragile than one that has gone quiet, because there is no contact web
-  // on it yet and the escalation ladder runs out of moves by step four.
-  const neverReached = rows.filter((r) => !r.last_two_way_at && r.health !== "paused");
-  const overdue      = rows.filter((r) => r.last_two_way_at && r.days_overdue > 0 && r.health !== "lost");
-  const lost         = rows.filter((r) => r.health === "lost" && r.last_two_way_at);
-  const unclaimed    = rows.filter((r) => !r.retention_owner && r.health !== "paused" && r.days_overdue > 0);
+  const buckets = todayBuckets(rows.map((r) => ({
+    ...r,
+    next_channel_blocked: !!r.comms_monitored && (r.ladder_step === 1 || r.last_touch_channel === "voicemail"),
+  })));
 
   const { data: lorRows } = tmpFirmId
     ? await sb.from("lead_lor").select("lead_id, status, flagged_today").eq("firm_id", tmpFirmId)
@@ -97,7 +107,7 @@ export default async function TodayPage() {
       <div className="m6-head">
         <h1>Today</h1>
         <p className="m6-sub">
-          Everything that needs a call, a text, or a decision. Work top down.
+          Last touch, replies waiting, and files that have gone quiet. Work top down.
         </p>
       </div>
 
@@ -109,35 +119,57 @@ export default async function TodayPage() {
 
       <div className="m6-stacks">
         <Stack
+          title="Replies waiting"
+          note="They wrote or called. A reply with a callback time is contact."
+          rows={buckets.repliesWaiting as Row[]}
+          empty="No inbound waiting on a disposition."
+        />
+        <Stack
+          title="Heartbeat overdue"
+          note="Past the 14-day (then 30-day) check-in. Any two-way contact resets the clock."
+          rows={buckets.heartbeatOverdue as Row[]}
+          empty="Every heartbeat is current."
+        />
+        <Stack
+          title="Never reached"
+          note="Signed, but nobody has confirmed two-way contact. Highest risk on the board."
+          rows={buckets.neverReached as Row[]}
+          empty="Every file has been reached at least once."
+        />
+        <Stack
+          title="Failed / quiet"
+          note="A send failed, or we have gone quiet past the window."
+          rows={buckets.failedQuiet as Row[]}
+          empty="No failed sends and nobody has gone quiet."
+        />
+        <Stack
+          title="Ladder paused"
+          note="Incarceration, treatment, or a client request. The clock is held, not lost."
+          rows={buckets.ladderPaused as Row[]}
+          empty="No ladders are paused."
+        />
+        <Stack
+          title="Opted out"
+          note="STOP or an opt-out on the number. Hard gate — do not send."
+          rows={buckets.optedOut as Row[]}
+          empty="Nobody has opted out."
+        />
+        <Stack
+          title="Safe-contact conflicts"
+          note="Monitored comms and the next move would violate the safe-channel rule."
+          rows={buckets.safeContactConflicts as Row[]}
+          empty="No safe-contact conflicts."
+        />
+        <Stack
           title="LOR"
           note="Needs a letter of representation, or someone pinned it here."
           rows={lorToday}
           empty="No LOR work today."
         />
-        <Stack
-          title="Never reached"
-          note="Signed, but nobody has confirmed two-way contact yet. Highest risk on the board."
-          rows={neverReached}
-          empty="Every file has been reached at least once."
-        />
-        <Stack
-          title="Overdue"
-          note="Past their check-in window. The ladder step tells you what happens next."
-          rows={overdue}
-          empty="Nothing is overdue."
-        />
-        <Stack
-          title="Unclaimed"
-          note="Overdue with nobody's name on it. These are the ones that quietly rot."
-          rows={unclaimed}
-          empty="Every overdue file has an owner."
-        />
-        <Stack
-          title="Lost contact"
-          note="Past step nine. The firm decides whether to spend on an investigator."
-          rows={lost}
-          empty="No files have been given up on."
-        />
+      </div>
+
+      <div className="m6-today-guide">
+        <CrissiRail showFullLink={!!isStaff} />
       </div>
     </div>
   );

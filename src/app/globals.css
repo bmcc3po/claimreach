@@ -2054,6 +2054,14 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 }
 .m6-check input { width: 16px; height: 16px; }
 
+.m6-guide { list-style: disc; margin: 0 0 14px 18px; padding: 0; }
+.m6-guide li { font-size: 13.5px; color: var(--ink-soft); line-height: 1.5; margin: 4px 0; }
+.m6-compose { margin-bottom: 26px; }
+.m6-crissi { margin-top: 8px; }
+.m6-today-guide { margin-top: 36px; max-width: 720px; }
+.m6-from-staff .m6-note-meta strong { color: var(--ink); }
+.m6-from-firm .m6-note-meta strong { color: var(--brand); }
+
 @media (max-width: 860px) {
   .m6-cols { grid-template-columns: 1fr; }
   .m6-top-in { padding: 0 16px; gap: 18px; }

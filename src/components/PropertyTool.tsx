@@ -21,7 +21,13 @@ type Candidate = {
   current_brand: string;
 };
 
-export default function PropertyTool({ toolKey, leadid }: { toolKey: string; leadid: string }) {
+export default function PropertyTool({
+  toolKey, leadid, apiPath = "/api/tools/property",
+}: {
+  toolKey: string;
+  leadid: string;
+  apiPath?: string;
+}) {
   const [location, setLocation] = useState("");
   const [radius, setRadius] = useState(5);
   const [motel6, setMotel6] = useState(true);
@@ -39,14 +45,15 @@ export default function PropertyTool({ toolKey, leadid }: { toolKey: string; lea
   const [justSaved, setJustSaved] = useState<IdentifiedProperty | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const qs = `k=${encodeURIComponent(toolKey)}`;
+  const qs = toolKey ? `k=${encodeURIComponent(toolKey)}` : "";
+  const api = qs ? `${apiPath}?${qs}` : apiPath;
 
   useEffect(() => {
     if (!leadid) return;
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch(`/api/tools/property?${qs}&leadid=${encodeURIComponent(leadid)}`);
+        const r = await fetch(`${api}${api.includes("?") ? "&" : "?"}leadid=${encodeURIComponent(leadid)}`);
         if (r.status === 404) return;
         const d = await r.json();
         if (!cancelled && Array.isArray(d.properties)) setSaved(d.properties);
@@ -63,7 +70,7 @@ export default function PropertyTool({ toolKey, leadid }: { toolKey: string; lea
   async function search() {
     setBusy("search"); setErr(""); setCandidates([]); setSelected(null); setJustSaved(null);
     try {
-      const r = await fetch(`/api/tools/property?${qs}`, {
+      const r = await fetch(api, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -91,7 +98,7 @@ export default function PropertyTool({ toolKey, leadid }: { toolKey: string; lea
     const current = selected.current_brand || guessBrand(selected.name);
     const rememberedBrand = rememberValue();
     try {
-      const r = await fetch(`/api/tools/property?${qs}`, {
+      const r = await fetch(api, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

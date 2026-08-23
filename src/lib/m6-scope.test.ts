@@ -1,7 +1,7 @@
 // Tenant isolation for the m6 portal. Acceptance gate for launch.
 // Run: npx tsx src/lib/m6-scope.test.ts
 import {
-  TMP_SLUG, M6_CAMPAIGN, M6_CASE_TYPE,
+  TMP_SLUG, M6_CAMPAIGN, M6_CASE_TYPE, PURPOSES,
   canEnterM6App, m6LayoutDestination, isM6Lead, isM6PortalLead,
   m6CaseAccess, m6WriteAccess, filterM6StatusRows,
   lorShowsOnToday, isLorReadyStatus, mergeLorIngest,
@@ -69,6 +69,7 @@ function check(name: string, got: any, want: any) {
 
 console.log("\nSLUG");
 check("TMP slug is tmp, verified in production", TMP_SLUG, "tmp");
+check("secondary interview is a purpose", PURPOSES.some((p) => p.value === "interview"), true);
 
 console.log("\nLAYOUT GATE");
 check("unsigned → firm-login", m6LayoutDestination(null), "firm-login");

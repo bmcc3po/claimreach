@@ -60,7 +60,17 @@ export function fileMaySeeStaffQaNotes(fence?: FileFence | null): boolean {
 }
 
 export function fileMaySendComms(fence?: FileFence | null): boolean {
-  // P1 send rails are a later branch. Firm file is read + existing m6 touches.
+  // Workspace JustCall compose stays staff-only. M6 cadence compose is a
+  // separate rail (fileMayComposeM6) that logs first and live-sends only
+  // when keys + Josh approval + gates pass.
+  return !isFirmAudience(fence);
+}
+
+export function fileMayComposeM6(fence?: FileFence | null): boolean {
+  return fence?.surface === "m6" || !isFirmAudience(fence);
+}
+
+export function fileMaySeeCrissiHub(fence?: FileFence | null): boolean {
   return !isFirmAudience(fence);
 }
 

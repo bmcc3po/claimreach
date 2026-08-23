@@ -8,6 +8,8 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/m6", label: "Today" },
   { href: "/m6/cases", label: "Cases" },
+  { href: "/m6/property", label: "Property" },
+  { href: "/m6/guidance", label: "Guidance" },
 ];
 
 export default function M6Nav({

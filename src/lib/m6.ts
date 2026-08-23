@@ -88,6 +88,7 @@ export const OUTCOMES = [
 
 export const PURPOSES = [
   { value: "heartbeat",  label: "Check in" },
+  { value: "interview",  label: "Secondary interview" },
   { value: "escalation", label: "Escalation" },
   { value: "onboarding", label: "Onboarding" },
   { value: "inbound",    label: "They called us" },

@@ -2,7 +2,8 @@
 import {
   FILE_TABS_CORE, INTERNAL_STAFF_FENCE, M6_FIRM_FENCE,
   fileBackHref, fileMayEditLead, fileMayExportPdf, fileMayRunQa,
-  fileMaySeeMoney, fileMaySeeStaffQaNotes, fileMaySendComms, fileMayUseStaffTools,
+  fileMaySeeMoney, fileMaySeeStaffQaNotes, fileMaySendComms, fileMayComposeM6,
+  fileMaySeeCrissiHub, fileMayUseStaffTools,
   fileSafeAudit, fileShowsQaTab, fileTabs, isFirmAudience, isMoneyShapedAudit,
   isStaffOnlyDetailKey, stripStaffFormFields,
 } from "./file-fence";
@@ -24,6 +25,7 @@ check("staff may use dock", fileMayUseStaffTools(INTERNAL_STAFF_FENCE), true);
 check("staff may run QA", fileMayRunQa(INTERNAL_STAFF_FENCE), true);
 check("staff may see QA coaching", fileMaySeeStaffQaNotes(INTERNAL_STAFF_FENCE), true);
 check("staff may send comms", fileMaySendComms(INTERNAL_STAFF_FENCE), true);
+check("staff may compose m6 cadence", fileMayComposeM6(INTERNAL_STAFF_FENCE), true);
 check("staff may export PDF", fileMayExportPdf(INTERNAL_STAFF_FENCE), true);
 check("staff back is /leads", fileBackHref(INTERNAL_STAFF_FENCE), "/leads");
 check("undefined back is /leads", fileBackHref(undefined), "/leads");
@@ -38,7 +40,10 @@ check("firm cannot edit lead fields", fileMayEditLead(M6_FIRM_FENCE), false);
 check("firm no staff dock", fileMayUseStaffTools(M6_FIRM_FENCE), false);
 check("firm cannot run QA actions", fileMayRunQa(M6_FIRM_FENCE), false);
 check("firm cannot see coaching notes", fileMaySeeStaffQaNotes(M6_FIRM_FENCE), false);
-check("firm cannot compose SMS (P1 later)", fileMaySendComms(M6_FIRM_FENCE), false);
+check("firm cannot use workspace JustCall compose", fileMaySendComms(M6_FIRM_FENCE), false);
+check("firm may use the m6 cadence compose rail", fileMayComposeM6(M6_FIRM_FENCE), true);
+check("firm does not get the full Crissi hub", fileMaySeeCrissiHub(M6_FIRM_FENCE), false);
+check("staff may open the full Crissi hub", fileMaySeeCrissiHub(INTERNAL_STAFF_FENCE), true);
 check("firm cannot export staff PDF", fileMayExportPdf(M6_FIRM_FENCE), false);
 check("firm back is /m6/cases", fileBackHref(M6_FIRM_FENCE), "/m6/cases");
 check("firm always gets the QA tab", fileShowsQaTab("firm", M6_FIRM_FENCE), true);

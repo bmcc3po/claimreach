@@ -42,7 +42,9 @@ export async function POST(req: NextRequest) {
     if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
     const patch: any = {};
-    if (status) patch.status = status;
+    if (status === "dead" || status === "opted_out" || status === "good" || status === "shaky") {
+      patch.status = status;
+    }
     if (label !== undefined) patch.label = label;
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "Nothing to change." }, { status: 400 });

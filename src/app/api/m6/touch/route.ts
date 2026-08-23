@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseAdmin, supabaseServer } from "@/lib/supabase-server";
 import { assertM6Write } from "@/lib/m6-scope";
+import { enterLadderOnInterviewMiss, isStopKeyword } from "@/lib/m6-cadence";
+import { isInternalRole } from "@/lib/permissions";
 export const runtime = "edge";
 
 const OUTCOMES = ["two_way", "no_answer", "voicemail", "bad_number"];
@@ -33,6 +35,25 @@ export async function POST(req: NextRequest) {
     p_body: body ?? null,
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Cadence side effects. Admin after assertM6Write — not a new RLS path.
+  // Two-way already resets via on_two_way_contact. Interview miss enters
+  // the ladder. STOP marks the point opted out without overwriting it.
+  try {
+    const admin = supabaseAdmin();
+    if (isStopKeyword(body) && contact_point_id) {
+      await admin.from("contact_points")
+        .update({ status: "opted_out" })
+        .eq("id", contact_point_id)
+        .eq("lead_id", lead_id);
+    }
+    const interviewish = purpose === "interview" || purpose === "onboarding";
+    if (interviewish && enterLadderOnInterviewMiss(outcome) && isInternalRole(gate.user.role)) {
+      await admin.from("leads").update({ retention_stage: "escalation" }).eq("id", lead_id);
+    }
+  } catch {
+    // Touch already saved. Do not fail the log because a side effect missed.
+  }
 
   return NextResponse.json({ ok: true });
 }

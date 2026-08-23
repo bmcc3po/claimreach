@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const origin = url.origin;
   let fired = 0;
   for (const d of due ?? []) {
+    if (d.campaign === "motel6") continue;
     if (d.channel === "sms" && d.phone) {
       await fetch(`${origin}/api/justcall`, {
         method: "POST", headers: { "Content-Type": "application/json" },

@@ -11,6 +11,8 @@ import {
 import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 import LorCard from "./LorCard";
 import { LogTouch, ModalShell } from "./M6Modals";
+import ComposePanel from "./ComposePanel";
+import CrissiRail from "./CrissiRail";
 
 type Point = {
   id: string; kind: string; value: string; label: string | null;
@@ -94,8 +96,9 @@ export default function CaseFile({
     }
   }
 
-  const live = points.filter((p) => p.status !== "dead");
+  const live = points.filter((p) => p.status !== "dead" && p.status !== "opted_out");
   const dead = points.filter((p) => p.status === "dead");
+  const opted = points.filter((p) => p.status === "opted_out");
   const pageErr = err && !modal;
 
   return (
@@ -125,6 +128,9 @@ export default function CaseFile({
               {busy === "interview" ? "Opening" : "View secondary interview"}
             </button>
           )}
+          <Link href={`/m6/property?leadid=${encodeURIComponent(lead.external_id || lead.lawruler_ref_no || "")}`} className="m6-btn">
+            Property lookup
+          </Link>
           <button type="button" className="m6-btn primary" onClick={() => openModal("touch")}>
             Log a touch
           </button>
@@ -140,6 +146,7 @@ export default function CaseFile({
       {pageErr && <p className="m6-error">{err}</p>}
 
       <LorCard leadId={lead.id} lor={lor} />
+      <ComposePanel leadId={lead.id} isStaff />
 
       {!!identified?.length && (
         <section className="m6-card m6-identified">
@@ -238,9 +245,23 @@ export default function CaseFile({
                     >
                       Mark dead
                     </button>
+                    <button
+                      type="button"
+                      className="m6-linkbtn"
+                      onClick={() => post("/api/m6/contact-point", { id: p.id, status: "opted_out" }, "opt")}
+                    >
+                      Opted out
+                    </button>
                   </li>
                 ))}
               </ul>
+            )}
+            {opted.length > 0 && (
+              <details className="m6-dead">
+                <summary>{opted.length} opted out</summary>
+                <ul>{opted.map((p) => <li key={p.id}>{p.value} · {p.label || p.kind}</li>)}</ul>
+                <p className="m6-hint">Hard gate. Do not send. The number stays on the file.</p>
+              </details>
             )}
             {dead.length > 0 && (
               <details className="m6-dead">
@@ -266,6 +287,8 @@ export default function CaseFile({
               </ul>
             </section>
           )}
+
+          <CrissiRail showFullLink />
 
           {/* ---- documents ------------------------------------------------ */}
           <section className="m6-card">
