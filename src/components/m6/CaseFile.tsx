@@ -8,7 +8,7 @@ import {
   daysAgo, dueWording, displayName, formatLocalDateTime, formatLocalDate,
   dueAtFromDateInput, SECONDARY_INTERVIEW_DOC_TYPE, type Health,
 } from "@/lib/m6";
-import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
+import { propertyFileHref, stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 import LorCard from "./LorCard";
 import { LogTouch, ModalShell } from "./M6Modals";
 import ComposePanel from "./ComposePanel";
@@ -132,7 +132,7 @@ export default function CaseFile({
               {busy === "interview" ? "Opening" : "View secondary interview"}
             </button>
           )}
-          <Link href={`/m6/property?leadid=${encodeURIComponent(lead.external_id || lead.lawruler_ref_no || "")}`} className="m6-btn">
+          <Link href={propertyFileHref(lead)} className="m6-btn">
             Property lookup
           </Link>
           <button type="button" className="m6-btn primary" onClick={() => openModal("touch")}>

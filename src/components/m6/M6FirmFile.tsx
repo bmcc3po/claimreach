@@ -5,7 +5,7 @@ import LogTouchButton from "./LogTouchButton";
 import ComposePanel from "./ComposePanel";
 import FileActions from "./FileActions";
 import Link from "next/link";
-import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
+import { propertyFileHref, stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 import type { FileFence } from "@/lib/file-fence";
 
 export default function M6FirmFile({
@@ -44,7 +44,7 @@ export default function M6FirmFile({
       <LorCard leadId={lead.id} lor={lor} />
       <ComposePanel leadId={lead.id} isStaff={false} />
       <p className="m6-hint">
-        <Link href={`/m6/property?leadid=${encodeURIComponent(lead.external_id || lead.lawruler_ref_no || "")}`}>
+        <Link href={propertyFileHref(lead)}>
           Look up a property
         </Link>
       </p>

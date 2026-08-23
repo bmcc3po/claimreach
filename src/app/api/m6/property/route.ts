@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { requireM6Session } from "@/lib/m6-scope";
-import { cleanLeadid } from "@/lib/property-tool";
+import { propertyLookupKeys } from "@/lib/property-tool";
 import {
-  listPropertiesForLead, savePropertyIdentification, searchProperties, tmpPropertyFirmId,
+  listPropertiesForLead, resolveM6PropertyLead, savePropertyIdentification,
+  searchProperties, stampLeadProperty, tmpPropertyFirmId,
 } from "@/lib/property-ops";
 export const runtime = "edge";
 
@@ -16,9 +17,11 @@ export async function GET(req: NextRequest) {
   if (!session.ok) return NextResponse.json({ error: session.error }, { status: session.status });
   const firmId = await tmpPropertyFirmId();
   if (!firmId) return NextResponse.json({ error: "This tool is not available." }, { status: 503 });
-  const leadid = cleanLeadid(new URL(req.url).searchParams.get("leadid"));
-  if (!leadid) return NextResponse.json({ error: "File # is missing." }, { status: 400 });
-  const { error, rows } = await listPropertiesForLead(firmId, leadid);
+  const raw = new URL(req.url).searchParams.get("leadid");
+  if (!raw) return NextResponse.json({ properties: [] });
+  const lead = await resolveM6PropertyLead(firmId, raw);
+  const keys = lead ? propertyLookupKeys(lead) : propertyLookupKeys({ id: raw, external_id: raw, lawruler_ref_no: raw });
+  const { error, rows } = await listPropertiesForLead(firmId, keys);
   if (error) return NextResponse.json({ error }, { status: 500 });
   return NextResponse.json({ properties: rows });
 }
@@ -37,7 +40,23 @@ export async function POST(req: NextRequest) {
     if (found.status !== 200) return NextResponse.json({ error: found.error }, { status: found.status });
     return NextResponse.json({ candidates: found.candidates, center: found.center });
   }
-  const saved = await savePropertyIdentification(firmId, b);
+
+  const raw = typeof b.leadid === "string" ? b.leadid : typeof b.lead_id === "string" ? b.lead_id : "";
+  const lead = await resolveM6PropertyLead(firmId, raw);
+  if (!lead) {
+    return NextResponse.json({ error: "Open this from a file so the stay can save." }, { status: 400 });
+  }
+  const vendorId = lead.external_id || lead.lawruler_ref_no || lead.id;
+  const saved = await savePropertyIdentification(firmId, { ...b, leadid: vendorId });
   if (saved.status !== 200) return NextResponse.json({ error: saved.error }, { status: saved.status });
+  const stampErr = await stampLeadProperty(firmId, lead.id, saved.property);
+  if (stampErr) {
+    return NextResponse.json({
+      ok: true,
+      property: saved.property,
+      paste: saved.paste,
+      warning: "Saved the lookup. The file address did not update: " + stampErr,
+    });
+  }
   return NextResponse.json({ ok: true, property: saved.property, paste: saved.paste });
 }

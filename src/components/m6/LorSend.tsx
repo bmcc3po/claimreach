@@ -45,10 +45,10 @@ export default function LorSend({
   async function send() {
     setBusy(true); setErr(""); setOk("");
     try {
-      const r = await fetch("/api/m6/lor", {
+      const r = await fetch("/api/m6/lor/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: leadId, action: "send" }),
+        body: JSON.stringify({ lead_id: leadId }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) { setErr(d.error || "The letter did not send."); return; }

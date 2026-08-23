@@ -2,7 +2,8 @@
 // session-gated /m6/property rail. One property stack.
 
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { TMP_SLUG } from "@/lib/m6";
+import { applyM6LeadFilters } from "@/lib/m6-scope";
+import { isM6LeadShape, TMP_SLUG } from "@/lib/m6";
 import { guessBrand } from "@/lib/property-brand";
 import {
   cleanLeadid, flattenIdentification, lawrulerPasteBlock, normalizeStay,
@@ -18,15 +19,53 @@ export async function tmpPropertyFirmId(): Promise<string | null> {
   return data?.id ?? null;
 }
 
-export async function listPropertiesForLead(firmId: string, leadid: string) {
+export async function listPropertiesForLead(firmId: string, leadid: string | string[]) {
+  const keys = (Array.isArray(leadid) ? leadid : [leadid]).map(cleanLeadid).filter(Boolean);
+  if (!keys.length) return { error: null, rows: [] as ReturnType<typeof flattenIdentification>[] };
   const admin = supabaseAdmin();
   const { data, error } = await admin.from("property_identifications")
     .select(LINK_SELECT)
     .eq("firm_id", firmId)
-    .eq("lawruler_leadid", leadid)
+    .in("lawruler_leadid", keys)
     .order("created_at", { ascending: true });
   if (error) return { error: error.message, rows: [] as ReturnType<typeof flattenIdentification>[] };
   return { error: null, rows: (data ?? []).map((r: any) => flattenIdentification(r)) };
+}
+
+const LEAD_RESOLVE = "id, firm_id, campaign, case_type, archived_at, external_id, lawruler_ref_no, property_name, property_street, property_city, property_state, property_zip";
+
+export async function resolveM6PropertyLead(firmId: string, raw: string | null | undefined) {
+  const id = cleanLeadid(raw);
+  if (!id) return null;
+  const admin = supabaseAdmin();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  if (isUuid) {
+    const { data } = await applyM6LeadFilters(admin.from("leads").select(LEAD_RESOLVE), firmId)
+      .eq("id", id).maybeSingle();
+    return data ?? null;
+  }
+  const { data } = await admin.from("leads").select(LEAD_RESOLVE)
+    .eq("firm_id", firmId)
+    .is("archived_at", null)
+    .or(`external_id.eq.${id},lawruler_ref_no.eq.${id}`)
+    .maybeSingle();
+  return data && isM6LeadShape(data) ? data : null;
+}
+
+export async function stampLeadProperty(
+  firmId: string,
+  leadId: string,
+  p: { name?: string | null; street?: string | null; city?: string | null; state?: string | null; zip?: string | null },
+) {
+  const admin = supabaseAdmin();
+  const { error } = await admin.from("leads").update({
+    property_name: p.name || null,
+    property_street: p.street || null,
+    property_city: p.city || null,
+    property_state: p.state || null,
+    property_zip: p.zip || null,
+  }).eq("id", leadId).eq("firm_id", firmId);
+  return error?.message ?? null;
 }
 
 export async function searchProperties(b: Record<string, unknown>) {
@@ -49,7 +88,17 @@ export async function searchProperties(b: Record<string, unknown>) {
     studio6,
     anyChain,
   });
-  if (!found.ok) return { status: 502 as const, error: found.error };
+  if (!found.ok) {
+    const mapsMissing = found.error === "maps key missing";
+    return {
+      status: (mapsMissing ? 503 : 502) as 502 | 503,
+      error: mapsMissing
+        ? "Maps is not configured on this site. Search cannot run until GOOGLE_MAPS_API_KEY is in Pages."
+        : found.error.startsWith("places error")
+          ? "Google Places did not answer. Try again in a minute."
+          : found.error,
+    };
+  }
   const candidates = found.candidates.map((c) => ({
     ...c,
     current_brand: guessBrand(c.name),

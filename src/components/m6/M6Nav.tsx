@@ -7,13 +7,14 @@ const LINKS = [
   { href: "/m6", label: "Today" },
   { href: "/m6/cases", label: "Cases" },
   { href: "/m6/call", label: "Call" },
-  { href: "/m6/crissi", label: "Crissi" },
+  { href: "/m6/guidance", label: "Crissi" },
 ];
 
 function linkOn(path: string, href: string) {
   if (href === "/m6") return path === "/m6";
   if (href === "/m6/call") return path === "/m6/call";
   if (href === "/m6/cases") return path === "/m6/cases" || path.startsWith("/m6/cases/");
+  if (href === "/m6/guidance") return path === "/m6/guidance" || path.startsWith("/m6/guidance/") || path === "/m6/crissi" || path.startsWith("/m6/crissi/");
   return path === href || path.startsWith(`${href}/`);
 }
 

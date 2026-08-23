@@ -26,6 +26,27 @@ export function cleanLeadid(raw: string | null | undefined): string {
   return String(raw).trim().replace(/^[#{}]+|[}]+$/g, "").slice(0, 80);
 }
 
+export function propertyLookupKeys(lead: {
+  id?: string | null;
+  external_id?: string | null;
+  lawruler_ref_no?: string | null;
+}): string[] {
+  return [...new Set(
+    [lead.external_id, lead.lawruler_ref_no, lead.id]
+      .map((v) => cleanLeadid(v))
+      .filter(Boolean),
+  )];
+}
+
+export function propertyFileHref(lead: {
+  id: string;
+  external_id?: string | null;
+  lawruler_ref_no?: string | null;
+}): string {
+  const key = cleanLeadid(lead.external_id || lead.lawruler_ref_no || lead.id);
+  return `/m6/property?leadid=${encodeURIComponent(key)}`;
+}
+
 export function normalizeStay(raw: string | null | undefined): string {
   if (raw == null) return "";
   const trimmed = String(raw).trim();

@@ -9,7 +9,7 @@ import {
   M6_FIRM_FENCE, fileSafeAudit, stripStaffFormFields, type FileFence,
 } from "@/lib/file-fence";
 import { applyM6LeadFilters, loadM6Lead } from "@/lib/m6-scope";
-import { flattenIdentification } from "@/lib/property-tool";
+import { flattenIdentification, propertyLookupKeys } from "@/lib/property-tool";
 
 export async function loadM6WorkspaceFile(
   sb: any,
@@ -135,18 +135,18 @@ export async function loadM6Rail(
   sb: any,
   leadId: string,
   tmpFirmId: string,
-  lead: { external_id?: string | null; lawruler_ref_no?: string | null },
+  lead: { id?: string | null; external_id?: string | null; lawruler_ref_no?: string | null },
 ) {
-  const vendorId = lead.external_id || lead.lawruler_ref_no || "";
+  const keys = propertyLookupKeys({ ...lead, id: lead.id || leadId });
   const [{ data: status }, { data: points }, { data: lor }, idRes] = await Promise.all([
     applyM6LeadFilters(sb.from("lead_contact_status").select("*").eq("lead_id", leadId), tmpFirmId).maybeSingle(),
     sb.from("contact_points").select("*").eq("lead_id", leadId).eq("firm_id", tmpFirmId).is("retired_at", null).order("kind"),
     sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to").eq("lead_id", leadId).eq("firm_id", tmpFirmId).maybeSingle(),
-    vendorId
+    keys.length
       ? sb.from("property_identifications")
           .select("id, remembered_brand, current_brand, brand_mismatch, stay_from, stay_to, properties_canonical (name, street, city, state, zip, address, lat, lng, current_brand)")
           .eq("firm_id", tmpFirmId)
-          .eq("lawruler_leadid", vendorId)
+          .in("lawruler_leadid", keys)
           .order("created_at")
       : Promise.resolve({ data: [] as any[], error: null }),
   ]);

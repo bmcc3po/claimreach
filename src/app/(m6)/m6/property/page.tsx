@@ -17,7 +17,7 @@ export default async function M6PropertyPage({
           Same tool as LawRuler, fenced to this app. Search a city, save the stay to the file.
         </p>
       </div>
-      <PropertyTool toolKey="" leadid={sp.leadid || ""} apiPath="/api/m6/property" />
+      <PropertyTool toolKey="" leadid={sp.leadid || ""} apiPath="/api/m6/property" surface="m6" />
     </div>
   );
 }

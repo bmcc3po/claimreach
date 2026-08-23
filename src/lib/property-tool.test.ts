@@ -2,9 +2,12 @@
 import { guessBrand, brandsMismatch } from "./property-brand";
 import {
   propertyToolKeyOk, cleanLeadid, normalizeStay, lawrulerPasteBlock,
-  stayRangeLabel, flattenIdentification,
+  stayRangeLabel, flattenIdentification, propertyLookupKeys, propertyFileHref,
 } from "./property-tool";
-import { parseAddressComponents, milesToMeters } from "./places-search";
+import {
+  parseAddressComponents, parseFormattedAddress, mergeParsedAddress,
+  parseStayAddressFromNarrative, milesToMeters,
+} from "./places-search";
 
 let pass = 0, fail = 0;
 function check(name: string, got: any, want: any) {
@@ -49,6 +52,29 @@ check("street city state zip", parseAddressComponents([
   { types: ["postal_code"], longText: "89109" },
 ]), { street: "195 E Tropicana Ave", city: "Las Vegas", state: "NV", zip: "89109" });
 check("empty components", parseAddressComponents([]), { street: "", city: "", state: "", zip: "" });
+check("legacy long_name fields", parseAddressComponents([
+  { types: ["street_number"], long_name: "195" },
+  { types: ["route"], long_name: "E Tropicana Ave" },
+  { types: ["locality"], long_name: "Las Vegas" },
+  { types: ["administrative_area_level_1"], short_name: "NV" },
+  { types: ["postal_code"], long_name: "89109" },
+]), { street: "195 E Tropicana Ave", city: "Las Vegas", state: "NV", zip: "89109" });
+check("formattedAddress fallback", parseFormattedAddress("195 E Tropicana Ave, Las Vegas, NV 89109, USA"), {
+  street: "195 E Tropicana Ave", city: "Las Vegas", state: "NV", zip: "89109",
+});
+check("merge fills empty street from formatted", mergeParsedAddress(
+  { street: "", city: "", state: "", zip: "" },
+  "100 Main St, Dallas, TX 75201",
+).street, "100 Main St");
+check("narrative comma address", parseStayAddressFromNarrative(
+  "Motel 6 Dallas — guest at 7111 LBJ Freeway, Dallas, TX 75251 during 2019",
+), { name: "Motel 6", street: "7111 LBJ Freeway", city: "Dallas", state: "TX", zip: "75251" });
+check("keys include uuid fallback", propertyLookupKeys({
+  id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", external_id: null, lawruler_ref_no: null,
+}), ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]);
+check("file href uses vendor id first", propertyFileHref({
+  id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", external_id: "98765", lawruler_ref_no: null,
+}), "/m6/property?leadid=98765");
 
 console.log("\nSTAY + PASTE");
 check("month/year normalizes", normalizeStay("03/2019"), "3/2019");

@@ -1803,8 +1803,11 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   padding: 7px 14px; border-radius: var(--radius-sm);
   font-size: 14px; color: #F1F1F1; opacity: .72; text-decoration: none;
 }
-.m6-link:hover { opacity: 1; background: rgba(255,255,255,.08); text-decoration: none; }
+.m6-link:hover, .m6-link:focus-visible { opacity: 1; background: rgba(255,255,255,.08); text-decoration: none; }
 .m6-link.on { opacity: 1; background: rgba(255,255,255,.12); font-weight: 600; }
+.m6-link:focus-visible, .m6-act:focus-visible, .m6-chip:focus-visible, .m6-burger:focus-visible {
+  outline: 2px solid #E9262B; outline-offset: 2px;
+}
 .m6-burger {
   display: none; font-size: 14px; font-family: inherit; font-weight: 600;
   padding: 10px 14px; min-height: 44px; cursor: pointer;
@@ -1870,7 +1873,7 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   padding: 14px 4px; text-decoration: none;
   min-height: 56px;
 }
-.m6-row:hover { background: var(--surface-2); }
+.m6-row:hover, .m6-row:focus-visible { background: var(--surface-2); }
 .m6-acts {
   display: flex; flex-wrap: wrap; gap: 8px;
   padding: 0 4px 6px;
@@ -1976,7 +1979,7 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   border: 1px solid var(--line); border-radius: 999px;
   background: var(--surface); color: var(--ink-soft);
 }
-.m6-chip:hover { border-color: var(--ink-faint); }
+.m6-chip:hover, .m6-chip:focus-visible { border-color: var(--ink-faint); }
 .m6-chip.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
 .m6-resultcount { font-size: 12.5px; color: var(--ink-faint); margin: 0 0 8px; }
 
@@ -2190,12 +2193,57 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   .m6-crissi-ask { flex-direction: column; }
   .m6-crissi-ask .m6-btn { min-height: 48px; width: 100%; }
 }
+
+/* Real phone pass. 860px is tablet; this is a thumb (~390). Lift .pt sizing. */
+@media (max-width: 430px) {
+  .m6-top-in { padding: 0 10px; height: 56px; gap: 8px; }
+  .m6-lockup { gap: 6px; max-width: calc(100% - 76px); }
+  .m6-logo-inno-mark, .m6-logo-tmp-mark { height: 24px; }
+  .m6-logo-cr { height: 16px; }
+  .m6-logo-cr-chip { padding: 3px 5px; }
+  .m6-lockup-rule { height: 18px; }
+  .m6-burger { min-width: 44px; min-height: 44px; padding: 8px 10px; font-size: 13px; }
+  .m6-menu-link { min-height: 52px; font-size: 17px; }
+  .m6-main { padding: 14px 10px 88px; }
+  .m6-head { margin-bottom: 16px; }
+  .m6-head h1, .m6-file-head h1 { font-size: 22px; }
+  .m6-stack { padding: 14px 12px 6px; }
+  .m6-stacks { gap: 18px; }
+  .m6-row { padding: 12px 2px; gap: 10px; }
+  .m6-row-wrap { padding: 2px 0 8px; }
+  .m6-acts { gap: 6px; }
+  .m6-act {
+    flex: 1 1 calc(50% - 6px);
+    min-height: 48px; min-width: 0;
+    font-size: 15px; padding: 12px 8px;
+  }
+  .m6-file-acts .m6-act, .m6-file-acts-top .m6-act { min-height: 48px; }
+  .m6-card { padding: 16px 14px; }
+  .m6-btn { min-height: 44px; }
+  .m6-search { font-size: 16px; min-width: 0; }
+  .m6-crissi-page .seg-toggle { flex-wrap: wrap; margin-left: 0 !important; }
+  .m6-crissi-page .seg-toggle button { min-height: 44px; }
+  .m6-crissi-page .row { flex-wrap: wrap; }
+  .m6-crissi-page .row input { font-size: 16px; min-height: 48px; }
+  .m6-crissi-page .row .btn { min-height: 48px; width: 100%; }
+  .m6-modal-wrap { padding: 0; }
+  .m6-modal { border-radius: 16px 16px 0 0; max-height: 92vh; }
+}
+
+.m6-crissi-page { max-width: 720px; }
+.m6-crissi-page .crissi-head { flex-wrap: wrap; gap: 8px; }
+.m6-crissi-page .crisis-body { padding: 0; }
+.m6-crissi-page .msg-thread { max-height: 42vh; }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 /* --- LawRuler property tool (/tools/property) ------------------------------ */
 .pt {
   max-width: 560px; margin: 0 auto; padding: 20px 16px 80px;
   min-height: 100dvh;
+}
+.pt-embed {
+  max-width: none; margin: 0; padding: 0; min-height: 0;
 }
 .pt-head { margin-bottom: 18px; }
 .pt-kicker {

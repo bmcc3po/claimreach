@@ -1,5 +1,5 @@
 // One relay for every Crissi / staff AI call. Do not add a second vendor.
-// Used by /api/ai and /api/m6/crissi.
+// Every live chat goes through /api/ai.
 
 const RELAY_URL = process.env.RELAY_URL || "https://bretts-macbook-air.hair-tarpon.ts.net/mav/qa";
 const PROXY_URL = process.env.AI_RELAY_URL || "";

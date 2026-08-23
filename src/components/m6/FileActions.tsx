@@ -27,7 +27,7 @@ export default function FileActions({
 }) {
   const [open, setOpen] = useState<"text" | "lor" | null>(null);
   const tel = e164(file.phone);
-  const crissi = `/m6/crissi?file=${encodeURIComponent(file.id)}`;
+  const crissi = `/m6/guidance?file=${encodeURIComponent(file.id)}`;
 
   return (
     <div className="m6-acts" onClick={(e) => e.stopPropagation()}>

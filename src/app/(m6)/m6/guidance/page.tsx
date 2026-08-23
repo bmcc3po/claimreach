@@ -1,12 +1,48 @@
 export const runtime = "edge";
+import { supabaseServer } from "@/lib/supabase-server";
+import { assertM6Write, requireM6Session } from "@/lib/m6-scope";
+import { displayName } from "@/lib/m6";
+import Crissi from "@/components/Crissi";
 import { redirect } from "next/navigation";
+
+export const metadata = { title: "Crissi" };
 
 export default async function GuidancePage({
   searchParams,
 }: {
   searchParams: Promise<{ file?: string; lead?: string }>;
 }) {
+  const sb = await supabaseServer();
+  const session = await requireM6Session(sb);
+  if (!session.ok) redirect("/firm-login");
+
   const sp = await searchParams;
-  const id = sp.file || sp.lead;
-  redirect(id ? `/m6/crissi?file=${encodeURIComponent(id)}` : "/m6/crissi");
+  const leadId = sp.file || sp.lead || "";
+  let file: { id: string; name: string; leadNo: string | null; commsMonitored?: boolean } | null = null;
+  if (leadId) {
+    const gate = await assertM6Write(
+      sb, leadId,
+      "id, firm_id, campaign, case_type, archived_at, first_name, last_name, full_name, claimant_name, lead_no, comms_monitored",
+    );
+    if (gate.ok) {
+      file = {
+        id: gate.lead.id,
+        name: displayName(gate.lead),
+        leadNo: gate.lead.lead_no ?? null,
+        commsMonitored: !!gate.lead.comms_monitored,
+      };
+    }
+  }
+
+  return (
+    <div className="m6-page">
+      <div className="m6-head">
+        <h1>Crissi</h1>
+        <p className="m6-sub">
+          Live help for this call. Motel 6 / trafficking words only. Stay, connect, escalate.
+        </p>
+      </div>
+      <Crissi layout="page" variant="m6" file={file} />
+    </div>
+  );
 }
