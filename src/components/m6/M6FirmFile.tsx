@@ -3,9 +3,10 @@ import LeadWorkspace from "@/components/LeadWorkspace";
 import LorCard from "./LorCard";
 import LogTouchButton from "./LogTouchButton";
 import ComposePanel from "./ComposePanel";
-import CrissiRail from "./CrissiRail";
+import FileActions from "./FileActions";
 import Link from "next/link";
-import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
+import { propertyFileHref, type IdentifiedProperty } from "@/lib/property-tool";
+import IdentifiedStays from "@/components/IdentifiedStays";
 import type { FileFence } from "@/lib/file-fence";
 
 export default function M6FirmFile({
@@ -28,6 +29,7 @@ export default function M6FirmFile({
   points: { id: string; kind: string; value: string; label: string | null; status: string }[];
 }) {
   const live = points.filter((p) => p.status !== "dead" && p.status !== "opted_out");
+  const phone = lead.phone || live.find((p) => p.kind === "mobile" || p.kind === "landline")?.value || null;
 
   return (
     <div className="m6-page m6-file">
@@ -37,43 +39,17 @@ export default function M6FirmFile({
           text, and follow the approved script with anyone else who answers.
         </p>
       )}
+      <div className="m6-file-acts m6-file-acts-top">
+        <FileActions file={{ id: lead.id, name: lead.claimant_name || lead.full_name, phone }} />
+      </div>
       <LorCard leadId={lead.id} lor={lor} />
       <ComposePanel leadId={lead.id} isStaff={false} />
       <p className="m6-hint">
-        <Link href={`/m6/property?leadid=${encodeURIComponent(lead.external_id || lead.lawruler_ref_no || "")}`}>
+        <Link href={propertyFileHref(lead)}>
           Look up a property
         </Link>
-        {" · "}
-        <Link href="/m6/guidance">Guidance</Link>
       </p>
-      <CrissiRail />
-      {!!identified.length && (
-        <section className="m6-card m6-identified">
-          <h2>Identified properties</h2>
-          <ul className="m6-points">
-            {identified.map((p) => {
-              const where = [p.street || p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
-              const when = stayRangeLabel(p.stay_from, p.stay_to);
-              return (
-                <li key={p.id}>
-                  <div>
-                    <span className="m6-point-val">{p.name || "Property"}</span>
-                    {where && <span className="m6-point-lab">{where}</span>}
-                    <span className="m6-point-lab">
-                      Remembered as {p.remembered_brand || "not noted"}
-                      {p.current_brand ? ` · current flag ${p.current_brand}` : ""}
-                      {when ? ` · ${when}` : ""}
-                    </span>
-                    {p.brand_mismatch && (
-                      <span className="m6-id-flag">Remembered brand differs from the current flag</span>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+      <IdentifiedStays properties={identified} />
       <LeadWorkspace
         lead={lead}
         claims={claims}
@@ -88,6 +64,8 @@ export default function M6FirmFile({
         retainers={retainers}
         signables={signables}
         headerActions={<LogTouchButton leadId={lead.id} points={live} />}
+        points={points}
+        lor={lor}
       />
     </div>
   );

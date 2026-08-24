@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LOR_STATUSES, LOR_SENT_TO, lorShowsOnToday } from "@/lib/m6";
+import LorSend from "./LorSend";
 
 export default function LorCard({ leadId, lor }: { leadId: string; lor: any }) {
   const router = useRouter();
@@ -11,6 +12,7 @@ export default function LorCard({ leadId, lor }: { leadId: string; lor: any }) {
   const [lorSentTo, setLorSentTo] = useState(lor?.sent_to ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [sendOpen, setSendOpen] = useState(false);
 
   async function save() {
     setBusy(true); setErr("");
@@ -76,9 +78,21 @@ export default function LorCard({ leadId, lor }: { leadId: string; lor: any }) {
         />
         Show on Today
       </label>
-      <button type="button" className="m6-btn" disabled={busy} onClick={save}>
-        {busy ? "Saving" : "Save LOR"}
-      </button>
+      <div className="m6-health-acts">
+        <button type="button" className="m6-btn primary" onClick={() => setSendOpen(true)}>
+          Send LOR
+        </button>
+        <button type="button" className="m6-btn" disabled={busy} onClick={save}>
+          {busy ? "Saving" : "Save status"}
+        </button>
+      </div>
+      {sendOpen && (
+        <LorSend
+          leadId={leadId}
+          onClose={() => setSendOpen(false)}
+          onSent={() => { setSendOpen(false); router.refresh(); }}
+        />
+      )}
     </section>
   );
 }

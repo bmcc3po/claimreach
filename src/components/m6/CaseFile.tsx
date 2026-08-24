@@ -8,11 +8,12 @@ import {
   daysAgo, dueWording, displayName, formatLocalDateTime, formatLocalDate,
   dueAtFromDateInput, SECONDARY_INTERVIEW_DOC_TYPE, type Health,
 } from "@/lib/m6";
-import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
+import { propertyFileHref, type IdentifiedProperty } from "@/lib/property-tool";
+import IdentifiedStays from "@/components/IdentifiedStays";
 import LorCard from "./LorCard";
 import { LogTouch, ModalShell } from "./M6Modals";
 import ComposePanel from "./ComposePanel";
-import CrissiRail from "./CrissiRail";
+import FileActions from "./FileActions";
 
 type Point = {
   id: string; kind: string; value: string; label: string | null;
@@ -118,6 +119,10 @@ export default function CaseFile({
           </p>
         </div>
         <div className="m6-file-acts">
+          <FileActions
+            file={{ id: lead.id, name, phone: lead.phone || live.find((p) => p.kind === "mobile" || p.kind === "landline")?.value }}
+            onDone={() => router.refresh()}
+          />
           {interview && (
             <button
               type="button"
@@ -128,7 +133,7 @@ export default function CaseFile({
               {busy === "interview" ? "Opening" : "View secondary interview"}
             </button>
           )}
-          <Link href={`/m6/property?leadid=${encodeURIComponent(lead.external_id || lead.lawruler_ref_no || "")}`} className="m6-btn">
+          <Link href={propertyFileHref(lead)} className="m6-btn">
             Property lookup
           </Link>
           <button type="button" className="m6-btn primary" onClick={() => openModal("touch")}>
@@ -148,33 +153,7 @@ export default function CaseFile({
       <LorCard leadId={lead.id} lor={lor} />
       <ComposePanel leadId={lead.id} isStaff />
 
-      {!!identified?.length && (
-        <section className="m6-card m6-identified">
-          <h2>Identified properties</h2>
-          <ul className="m6-points">
-            {identified.map((p) => {
-              const where = [p.street || p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
-              const when = stayRangeLabel(p.stay_from, p.stay_to);
-              return (
-                <li key={p.id}>
-                  <div>
-                    <span className="m6-point-val">{p.name || "Property"}</span>
-                    {where && <span className="m6-point-lab">{where}</span>}
-                    <span className="m6-point-lab">
-                      Remembered as {p.remembered_brand || "not noted"}
-                      {p.current_brand ? ` · current flag ${p.current_brand}` : ""}
-                      {when ? ` · ${when}` : ""}
-                    </span>
-                    {p.brand_mismatch && (
-                      <span className="m6-id-flag">Remembered brand differs from the current flag</span>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+      <IdentifiedStays properties={identified ?? []} />
 
       {/* ---- contact health ---------------------------------------------- */}
       <section className={`m6-health ${health}`}>
@@ -286,8 +265,6 @@ export default function CaseFile({
               </ul>
             </section>
           )}
-
-          <CrissiRail showFullLink />
 
           {/* ---- documents ------------------------------------------------ */}
           <section className="m6-card">

@@ -14,10 +14,10 @@ export default async function M6PropertyPage({
       <div className="m6-head">
         <h1>Property lookup</h1>
         <p className="m6-sub">
-          Same tool as LawRuler, fenced to this app. Search a city, save the stay to the file.
+          Find the motel. Copy the address onto the file, or type a file number and save the stay.
         </p>
       </div>
-      <PropertyTool toolKey="" leadid={sp.leadid || ""} apiPath="/api/m6/property" />
+      <PropertyTool toolKey="" leadid={sp.leadid || ""} apiPath="/api/m6/property" surface="m6" />
     </div>
   );
 }

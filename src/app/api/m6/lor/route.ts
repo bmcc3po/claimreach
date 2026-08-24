@@ -2,9 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { assertM6Write } from "@/lib/m6-scope";
 import { isLorStatus, type LorStatus } from "@/lib/m6";
+import { LOR_LEAD_COLS, previewPayload } from "@/lib/m6-lor-server";
 export const runtime = "edge";
 
 const SENT_TO = ["g6", "motel6", "sedgwick", "other"] as const;
+
+// Status sidecar only. One-click PostGrid send is POST /api/m6/lor/send.
+
+export async function GET(req: NextRequest) {
+  const sb = await supabaseServer();
+  const leadId = new URL(req.url).searchParams.get("lead_id") || "";
+  if (!leadId) return NextResponse.json({ error: "Missing the file." }, { status: 400 });
+  const gate = await assertM6Write(sb, leadId, LOR_LEAD_COLS);
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+  const { data: lor } = await sb.from("lead_lor")
+    .select("lead_id, status, flagged_today, sent_on, sent_to")
+    .eq("lead_id", leadId).eq("firm_id", gate.lead.firm_id).maybeSingle();
+  return NextResponse.json(previewPayload(gate.lead, lor));
+}
 
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();

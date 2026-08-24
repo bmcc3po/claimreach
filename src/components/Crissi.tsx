@@ -8,8 +8,19 @@ import { CrissiLogo } from "./CrissiLogo";
 import { SILVER_LINERS, linersFor } from "@/lib/silver-liners";
 import SilverLiners from "./SilverLiners";
 import CrissiMessage from "./CrissiMessage";
+import { buildM6CrissiSystem, type M6CrissiFile } from "@/lib/m6-crissi";
+import { M6_CRISSI_CHIPS } from "@/lib/m6-cadence";
 
 type Mode = "moment" | "bible" | "liners" | "sop";
+
+const STAFF_CHIPS = [
+  "Caller is spiraling, what do I say?",
+  "Caller mentioned they don't want to be here",
+  "Caller is dissociating / going flat",
+  "I'm shaken after that call",
+  "Out-of-state caller in danger",
+  "Caller is angry at me",
+];
 
 
 function bibleGrounding() {
@@ -21,10 +32,29 @@ function bibleGrounding() {
   ).join("\n");
 }
 
-export default function Crissi({ trigger = "fab", openExternal, onCloseExternal, hideTrigger }: { trigger?: "fab" | "inline"; openExternal?: boolean; onCloseExternal?: () => void; hideTrigger?: boolean }) {
+export default function Crissi({
+  trigger = "fab",
+  openExternal,
+  onCloseExternal,
+  hideTrigger,
+  layout = "modal",
+  variant = "staff",
+  file = null,
+}: {
+  trigger?: "fab" | "inline";
+  openExternal?: boolean;
+  onCloseExternal?: () => void;
+  hideTrigger?: boolean;
+  layout?: "modal" | "page";
+  variant?: "staff" | "m6";
+  file?: M6CrissiFile | null;
+}) {
   const [open, setOpen] = useState(false);
-  const isOpen = openExternal !== undefined ? openExternal : open;
+  const isPage = layout === "page";
+  const isM6 = variant === "m6";
+  const isOpen = isPage ? true : (openExternal !== undefined ? openExternal : open);
   const close = () => { setOpen(false); onCloseExternal?.(); };
+  const chips = isM6 ? [...M6_CRISSI_CHIPS] : STAFF_CHIPS;
   const [full, setFull] = useState(false);
   const [mode, setMode] = useState<Mode>("moment");
   const [q, setQ] = useState("");
@@ -41,9 +71,15 @@ export default function Crissi({ trigger = "fab", openExternal, onCloseExternal,
     if (!text.trim()) return;
     setThread((t) => [...t, { role: "you", text }]); setQ(""); setBusy(true);
 
-    const system = `${CRISSI_GUARDRAIL_PROMPT}\n\nYou are Crissi, a warm, calm crisis-support coach for a legal-intake agent or case manager working with trafficking survivors (who often have histories of DV, sexual assault, incest, substance use, legal-system trauma, and suicidal ideation). ${DISCLAIMER_SHORT} Coach the worker on how to handle the CALLER (exact words, which resource, when to escalate) and steady the worker too. Stay-with-them, don't-abandon. For acute risk: stay, stabilize, connect to 988 (or 911 if imminent danger), don't over-call police for mere ideation. CRITICAL: never react, gush, or perform — never say things like 'I can't believe you went through that' or 'I could never do it, you're so strong.' Don't minimize and don't glorify. Stay calm, neutral, warm, non-judgmental; you are a vehicle for the facts that get survivors justice, not a character in their story. Empathy not sympathy. Be brief and concrete: 2-5 things to say or do now. Ground in this doctrine:\n\n${bibleGrounding()}\n\nSILVER LINERS (offer warmly when it fits): ${SILVER_LINERS.flatMap((g)=>g.liners.map((l)=>l.line)).join(" | ")}`;
+    const system = isM6
+      ? buildM6CrissiSystem(file)
+      : `${CRISSI_GUARDRAIL_PROMPT}\n\nYou are Crissi, a warm, calm crisis-support coach for a legal-intake agent or case manager working with trafficking survivors (who often have histories of DV, sexual assault, incest, substance use, legal-system trauma, and suicidal ideation). ${DISCLAIMER_SHORT} Coach the worker on how to handle the CALLER (exact words, which resource, when to escalate) and steady the worker too. Stay-with-them, don't-abandon. For acute risk: stay, stabilize, connect to 988 (or 911 if imminent danger), don't over-call police for mere ideation. CRITICAL: never react, gush, or perform — never say things like 'I can't believe you went through that' or 'I could never do it, you're so strong.' Don't minimize and don't glorify. Stay calm, neutral, warm, non-judgmental; you are a vehicle for the facts that get survivors justice, not a character in their story. Empathy not sympathy. Be brief and concrete: 2-5 things to say or do now. Ground in this doctrine:\n\n${bibleGrounding()}\n\nSILVER LINERS (offer warmly when it fits): ${SILVER_LINERS.flatMap((g)=>g.liners.map((l)=>l.line)).join(" | ")}`;
 
-    const out = await askAI(system, text);
+    const out = await askAI(
+      system,
+      text,
+      isM6 ? { surface: "m6", lead_id: file?.id } : undefined,
+    );
     if (out) {
       setThread((t) => [...t, { role: "bot", text: out }]);
     } else {
@@ -73,11 +109,15 @@ export default function Crissi({ trigger = "fab", openExternal, onCloseExternal,
     );
   }
 
-  return (
-    <div className="modal-back" onClick={close}>
-      <div className={`modal crissi-modal ${full ? "full" : ""}`} onClick={(e) => e.stopPropagation()}>
+  const shell = (
+    <>
         <div className="modal-h crissi-head">
           <CrissiLogo height={24} />
+          {isM6 && file && (
+            <span className="m6-row-tag" style={{ marginLeft: 10 }}>
+              {file.name}{file.leadNo ? ` · ${file.leadNo}` : ""}
+            </span>
+          )}
           <div className="seg-toggle" style={{ marginLeft: 12 }}>
             <button className={mode === "moment" ? "active" : ""} onClick={() => setMode("moment")}>In the moment</button>
             <button className={mode === "bible" ? "active" : ""} onClick={() => setMode("bible")}>The Bible</button>
@@ -85,8 +125,12 @@ export default function Crissi({ trigger = "fab", openExternal, onCloseExternal,
             <button className={mode === "sop" ? "active" : ""} onClick={() => setMode("sop")}>SOP</button>
           </div>
           <span className="spacer" />
-          <button className="btn ghost sm" onClick={() => setFull((f) => !f)}>{full ? "⤡ Shrink" : "⤢ Full window"}</button>
-          <button className="btn ghost sm" onClick={close}>Close</button>
+          {!isPage && (
+            <>
+              <button className="btn ghost sm" onClick={() => setFull((f) => !f)}>{full ? "⤡ Shrink" : "⤢ Full window"}</button>
+              <button className="btn ghost sm" onClick={close}>Close</button>
+            </>
+          )}
         </div>
 
         <div className="crisis-resources">
@@ -102,12 +146,18 @@ export default function Crissi({ trigger = "fab", openExternal, onCloseExternal,
             <div>
               <div className="disclaimer-bar">{DISCLAIMER_SHORT}</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "10px 0" }}>
-                {["Caller is spiraling, what do I say?", "Caller mentioned they don't want to be here", "Caller is dissociating / going flat", "I'm shaken after that call", "Out-of-state caller in danger", "Caller is angry at me"].map((p) => (
+                {chips.map((p) => (
                   <button key={p} className="chip" onClick={() => ask(p)}>{p}</button>
                 ))}
               </div>
-              <div className="msg-thread" style={{ maxHeight: full ? "52vh" : 300 }}>
-                {thread.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Tell me what's happening. I'll give you the next thing to say, and stay with you.</p>}
+              <div className="msg-thread" style={{ maxHeight: full || isPage ? "52vh" : 300 }}>
+                {thread.length === 0 && (
+                  <p className="muted" style={{ fontSize: 13 }}>
+                    {isM6 && file
+                      ? `You are with ${file.name}. Tell me what is happening on this call.`
+                      : "Tell me what's happening. I'll give you the next thing to say, and stay with you."}
+                  </p>
+                )}
                 {thread.map((m, i) => (
                   <div key={i} className={`msg ${m.role === "you" ? "mine" : ""}`}>
                     <div className="msg-bubble">
@@ -188,6 +238,17 @@ export default function Crissi({ trigger = "fab", openExternal, onCloseExternal,
             </div>
           )}
         </div>
+    </>
+  );
+
+  if (isPage) {
+    return <section className="m6-card m6-crissi-live m6-crissi-page">{shell}</section>;
+  }
+
+  return (
+    <div className="modal-back" onClick={close}>
+      <div className={`modal crissi-modal ${full ? "full" : ""}`} onClick={(e) => e.stopPropagation()}>
+        {shell}
       </div>
     </div>
   );

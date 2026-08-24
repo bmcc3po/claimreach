@@ -22,12 +22,14 @@ type Candidate = {
 };
 
 export default function PropertyTool({
-  toolKey, leadid, apiPath = "/api/tools/property",
+  toolKey, leadid, apiPath = "/api/tools/property", surface = "tools",
 }: {
   toolKey: string;
   leadid: string;
   apiPath?: string;
+  surface?: "tools" | "m6";
 }) {
+  const embedded = surface === "m6";
   const [location, setLocation] = useState("");
   const [radius, setRadius] = useState(5);
   const [motel6, setMotel6] = useState(true);
@@ -44,6 +46,8 @@ export default function PropertyTool({
   const [saved, setSaved] = useState<IdentifiedProperty[]>([]);
   const [justSaved, setJustSaved] = useState<IdentifiedProperty | null>(null);
   const [copied, setCopied] = useState(false);
+  const [fileRef, setFileRef] = useState(leadid);
+  useEffect(() => { setFileRef(leadid); }, [leadid]);
 
   const qs = toolKey ? `k=${encodeURIComponent(toolKey)}` : "";
   const api = qs ? `${apiPath}?${qs}` : apiPath;
@@ -81,7 +85,12 @@ export default function PropertyTool({
         }),
       });
       if (r.status === 404) { setErr("This tool is not available."); return; }
-      const d = await r.json();
+      const raw = await r.text();
+      let d: any = {};
+      try { d = raw ? JSON.parse(raw) : {}; } catch {
+        setErr("Search did not finish. Try again.");
+        return;
+      }
       if (!r.ok) { setErr(d.error || "Search failed."); return; }
       setCandidates(d.candidates || []);
       if (!(d.candidates || []).length) setErr("No properties in that radius. Widen the circle or try Any chain.");
@@ -93,7 +102,7 @@ export default function PropertyTool({
   }
 
   async function save() {
-    if (!selected || !leadid) return;
+    if (!selected || !(embedded ? fileRef : leadid)) return;
     setBusy("save"); setErr("");
     const current = selected.current_brand || guessBrand(selected.name);
     const rememberedBrand = rememberValue();
@@ -103,7 +112,7 @@ export default function PropertyTool({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           op: "save",
-          leadid,
+          leadid: embedded ? fileRef : leadid,
           place_id: selected.place_id,
           name: selected.name,
           street: selected.street,
@@ -175,14 +184,27 @@ export default function PropertyTool({
   const pasteOf = justSaved ?? null;
 
   return (
-    <div className="pt">
-      <header className="pt-head">
-        <p className="pt-kicker">Property lookup</p>
-        <h1>{leadid ? `File #${leadid}` : "File # —"}</h1>
-        {!leadid && (
-          <p className="pt-warn">Open this from the LawRuler file so the number is filled in. You can still search.</p>
-        )}
-      </header>
+    <div className={embedded ? "pt pt-embed" : "pt"}>
+      {!embedded && (
+        <header className="pt-head">
+          <p className="pt-kicker">Property lookup</p>
+          <h1>{leadid ? `File #${leadid}` : "File # —"}</h1>
+          {!leadid && (
+            <p className="pt-warn">Search works without a file. Type a file number to save a stay.</p>
+          )}
+        </header>
+      )}
+      {embedded && (
+        <label className="pt-field">
+          <span>File number (to save a stay)</span>
+          <input
+            value={fileRef}
+            onChange={(e) => setFileRef(e.target.value)}
+            placeholder="TMP-1001 or the file #"
+            autoComplete="off"
+          />
+        </label>
+      )}
 
       {saved.length > 0 && (
         <section className="pt-saved">
@@ -198,7 +220,7 @@ export default function PropertyTool({
                   {stayRangeLabel(p.stay_from, p.stay_to) ? ` · ${stayRangeLabel(p.stay_from, p.stay_to)}` : ""}
                 </span>
                 <button type="button" className="pt-copy" onClick={() => { setJustSaved(p); void copyPaste(p); }}>
-                  Copy for LawRuler
+                  Copy address
                 </button>
               </li>
             ))}
@@ -208,7 +230,11 @@ export default function PropertyTool({
 
       {pasteOf && (
         <section className="pt-confirm">
-          <p className="pt-ok">Saved. Paste this into the LawRuler property fields, then add another if you need to.</p>
+          <p className="pt-ok">
+            {embedded
+              ? "Saved to this file. Add another stay if you need to."
+              : "Saved to this file. Copy the address block if you need it elsewhere."}
+          </p>
           <pre>{lawrulerPasteBlock(pasteOf)}</pre>
           <button type="button" className="pt-btn primary" onClick={() => void copyPaste(pasteOf)}>
             {copied ? "Copied" : "Copy"}
@@ -333,12 +359,16 @@ export default function PropertyTool({
           <button
             type="button"
             className="pt-btn primary"
-            disabled={!!busy || !leadid}
+            disabled={!!busy || !(embedded ? fileRef.trim() : leadid)}
             onClick={() => void save()}
           >
             {busy === "save" ? "Saving…" : "Save to this file"}
           </button>
-          {!leadid && <p className="pt-warn">Need a File # from LawRuler before this can save.</p>}
+          {!(embedded ? fileRef.trim() : leadid) && (
+            <p className="pt-warn">
+              {embedded ? "Type a file number above to save the stay." : "Need a File # before this can save."}
+            </p>
+          )}
         </section>
       )}
     </div>

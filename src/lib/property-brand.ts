@@ -1,5 +1,5 @@
 // Current-brand guess from a Places display name. One list so intake
-// PropertyLookup and the LawRuler property tool cannot drift.
+// PropertyLookup (intake) and /m6/property cannot drift.
 // Studio 6 is a G6 flag of its own — check it, not only Motel 6.
 
 const BRANDS = [

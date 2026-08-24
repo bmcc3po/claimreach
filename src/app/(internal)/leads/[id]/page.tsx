@@ -2,6 +2,8 @@ export const runtime = "edge";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import LeadWorkspace from "@/components/LeadWorkspace";
+import { loadIdentifiedForLead } from "@/lib/property-ops";
+import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -43,10 +45,6 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     .select("id, created_at, actor_name, category, description")
     .eq("lead_id", id).order("created_at", { ascending: false }).limit(200);
 
-  // Notes for this file.
-  const { data: notes } = await sb.from("notes")
-    .select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100);
-
   // Call logs for this file.
   const { data: callLogs } = await sb.from("call_logs")
     .select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100);
@@ -55,6 +53,19 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const stats = { signed: 0, tierA: 0, weekPay: 0, wip: claims?.length ?? 0 };
 
   const { data: staff } = await sb.from("app_users").select("id, full_name").order("full_name");
+
+  const [{ data: lor }, identified, fileNotesRaw, { data: points }, { data: lastComms }] = await Promise.all([
+    sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to")
+      .eq("lead_id", id).eq("firm_id", lead.firm_id).maybeSingle(),
+    loadIdentifiedForLead(sb, lead.firm_id, lead),
+    loadFileNotes(sb, id, lead.firm_id),
+    sb.from("contact_points").select("id, kind, value, label, status")
+      .eq("lead_id", id).eq("firm_id", lead.firm_id).is("retired_at", null).order("kind"),
+    sb.from("communications").select("channel, direction, occurred_at, outcome, body, agent_name")
+      .eq("lead_id", id).order("occurred_at", { ascending: false }).limit(1),
+  ]);
+  const nameOf = new Map((staff ?? []).map((u: any) => [u.id, u.full_name || ""]));
+  const notes = mergeFileNotes(fileNotesRaw.notes, fileNotesRaw.deskNotes, nameOf);
 
   const { data: { user: cur } } = await sb.auth.getUser();
   const { data: meRow } = await sb.from("app_users").select("role, full_name").eq("id", cur!.id).maybeSingle();
@@ -87,6 +98,10 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       callLogs={callLogs ?? []}
       staff={staff ?? []}
       formsByType={formsByType}
+      identified={identified}
+      lor={lor ?? null}
+      points={(points ?? []) as any}
+      lastComm={lastComms?.[0] ?? null}
     />
   );
 }

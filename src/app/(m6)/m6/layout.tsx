@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { requireM6Session } from "@/lib/m6-scope";
 import M6Nav from "@/components/m6/M6Nav";
+import M6CrissiDock from "@/components/m6/M6CrissiContext";
 
 // Innovative staff and TMP firm users work the same files here. Anyone else
 // (a TMT firm user, a missing profile) is sent out — never shown an empty
@@ -17,8 +18,10 @@ export default async function M6Layout({ children }: { children: React.ReactNode
   }
 
   return (
-    <M6Nav userName={session.user.name ?? "You"} role={session.user.role}>
-      {children}
-    </M6Nav>
+    <M6CrissiDock>
+      <M6Nav userName={session.user.name ?? "You"} role={session.user.role}>
+        {children}
+      </M6Nav>
+    </M6CrissiDock>
   );
 }

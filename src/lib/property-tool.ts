@@ -26,6 +26,27 @@ export function cleanLeadid(raw: string | null | undefined): string {
   return String(raw).trim().replace(/^[#{}]+|[}]+$/g, "").slice(0, 80);
 }
 
+export function propertyLookupKeys(lead: {
+  id?: string | null;
+  external_id?: string | null;
+  lawruler_ref_no?: string | null;
+}): string[] {
+  return [...new Set(
+    [lead.external_id, lead.lawruler_ref_no, lead.id]
+      .map((v) => cleanLeadid(v))
+      .filter(Boolean),
+  )];
+}
+
+export function propertyFileHref(lead: {
+  id: string;
+  external_id?: string | null;
+  lawruler_ref_no?: string | null;
+}): string {
+  const key = cleanLeadid(lead.external_id || lead.lawruler_ref_no || lead.id);
+  return `/m6/property?leadid=${encodeURIComponent(key)}`;
+}
+
 export function normalizeStay(raw: string | null | undefined): string {
   if (raw == null) return "";
   const trimmed = String(raw).trim();
@@ -72,7 +93,40 @@ export type IdentifiedProperty = {
   address: string | null;
   lat: number | null;
   lng: number | null;
+  history: BrandHistoryEntry[];
 };
+
+export type BrandHistoryEntry = {
+  brand: string;
+  from: number | null;
+  to: number | null;
+  llc: string;
+  owner: string;
+  address: string;
+  source: "desk";
+};
+
+export function normalizeBrandHistory(history: unknown): BrandHistoryEntry[] {
+  if (!Array.isArray(history)) return [];
+  return history.map((h: any) => ({
+    brand: String(h?.brand || ""),
+    from: h?.from == null || h?.from === "" ? null : Number(h.from),
+    to: h?.to == null || h?.to === "" ? null : Number(h.to),
+    llc: String(h?.llc || ""),
+    owner: String(h?.owner || ""),
+    address: String(h?.address || ""),
+    source: "desk" as const,
+  }));
+}
+
+export function brandHistoryForYear(history: unknown, year: number): BrandHistoryEntry | null {
+  const hits = normalizeBrandHistory(history).filter((h) => {
+    const from = Number(h.from);
+    const to = h.to == null ? 9999 : Number(h.to);
+    return Number.isFinite(from) && year >= from && year <= to;
+  });
+  return hits[hits.length - 1] ?? null;
+}
 
 export function flattenIdentification(row: {
   id: string;
@@ -91,6 +145,7 @@ export function flattenIdentification(row: {
     lat?: number | null;
     lng?: number | null;
     current_brand?: string | null;
+    brand_history?: unknown;
   } | {
     name?: string | null;
     street?: string | null;
@@ -101,6 +156,7 @@ export function flattenIdentification(row: {
     lat?: number | null;
     lng?: number | null;
     current_brand?: string | null;
+    brand_history?: unknown;
   }[] | null;
 }): IdentifiedProperty {
   const canon = Array.isArray(row.properties_canonical)
@@ -121,5 +177,6 @@ export function flattenIdentification(row: {
     address: canon?.address ?? null,
     lat: canon?.lat ?? null,
     lng: canon?.lng ?? null,
+    history: normalizeBrandHistory(canon?.brand_history),
   };
 }

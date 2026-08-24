@@ -2,9 +2,14 @@
 import { guessBrand, brandsMismatch } from "./property-brand";
 import {
   propertyToolKeyOk, cleanLeadid, normalizeStay, lawrulerPasteBlock,
-  stayRangeLabel, flattenIdentification,
+  stayRangeLabel, flattenIdentification, propertyLookupKeys, propertyFileHref,
+  brandHistoryForYear,
 } from "./property-tool";
-import { parseAddressComponents, milesToMeters } from "./places-search";
+import {
+  parseAddressComponents, parseFormattedAddress, mergeParsedAddress,
+  parseStayAddressFromNarrative, milesToMeters, mapsApiKey,
+} from "./places-search";
+import { MAPS_NOT_CONFIGURED, searchProperties } from "./property-search";
 
 let pass = 0, fail = 0;
 function check(name: string, got: any, want: any) {
@@ -49,6 +54,37 @@ check("street city state zip", parseAddressComponents([
   { types: ["postal_code"], longText: "89109" },
 ]), { street: "195 E Tropicana Ave", city: "Las Vegas", state: "NV", zip: "89109" });
 check("empty components", parseAddressComponents([]), { street: "", city: "", state: "", zip: "" });
+check("legacy long_name fields", parseAddressComponents([
+  { types: ["street_number"], long_name: "195" },
+  { types: ["route"], long_name: "E Tropicana Ave" },
+  { types: ["locality"], long_name: "Las Vegas" },
+  { types: ["administrative_area_level_1"], short_name: "NV" },
+  { types: ["postal_code"], long_name: "89109" },
+]), { street: "195 E Tropicana Ave", city: "Las Vegas", state: "NV", zip: "89109" });
+check("formattedAddress fallback", parseFormattedAddress("195 E Tropicana Ave, Las Vegas, NV 89109, USA"), {
+  street: "195 E Tropicana Ave", city: "Las Vegas", state: "NV", zip: "89109",
+});
+check("merge fills empty street from formatted", mergeParsedAddress(
+  { street: "", city: "", state: "", zip: "" },
+  "100 Main St, Dallas, TX 75201",
+).street, "100 Main St");
+check("narrative comma address", parseStayAddressFromNarrative(
+  "Motel 6 Dallas — guest at 7111 LBJ Freeway, Dallas, TX 75251 during 2019",
+), { name: "Motel 6", street: "7111 LBJ Freeway", city: "Dallas", state: "TX", zip: "75251" });
+check("keys include uuid fallback", propertyLookupKeys({
+  id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", external_id: null, lawruler_ref_no: null,
+}), ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]);
+check("file href uses vendor id first", propertyFileHref({
+  id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", external_id: "98765", lawruler_ref_no: null,
+}), "/m6/property?leadid=98765");
+check("history hits the stay year", brandHistoryForYear(
+  [{ brand: "Motel 6", from: 2012, to: 2016, llc: "Motels of Indiana LLC", owner: "", address: "123 Happy St", source: "desk" }],
+  2014,
+)?.llc, "Motels of Indiana LLC");
+check("history misses other years", brandHistoryForYear(
+  [{ brand: "Motel 6", from: 2012, to: 2016, llc: "X", owner: "", address: "", source: "desk" }],
+  2020,
+), null);
 
 console.log("\nSTAY + PASTE");
 check("month/year normalizes", normalizeStay("03/2019"), "3/2019");
@@ -89,6 +125,47 @@ check("nested canonical object", flattenIdentification({
     lat: 1, lng: 2,
   },
 }).name, "Red Roof Inn");
+check("flatten keeps recorded history", flattenIdentification({
+  id: "link-2",
+  remembered_brand: "Motel 6",
+  current_brand: "Red Roof",
+  brand_mismatch: true,
+  stay_from: "3/2014",
+  stay_to: "11/2014",
+  properties_canonical: {
+    name: "Red Roof Inn",
+    street: "100 Main",
+    city: "Gary",
+    state: "IN",
+    zip: "46402",
+    address: "100 Main, Gary, IN 46402",
+    lat: 1, lng: 2,
+    current_brand: "Red Roof",
+    brand_history: [{
+      brand: "Motel 6", from: 2014, to: 2014,
+      llc: "Motels of Indiana LLC", owner: "", address: "123 Happy St", source: "desk",
+    }],
+  },
+}).history[0]?.llc, "Motels of Indiana LLC");
 
-console.log(`\n${pass} passed, ${fail} failed\n`);
-if (fail) process.exit(1);
+async function searchCases() {
+  console.log("\nSEARCH (no crash, JSON errors)");
+  const empty = await searchProperties({});
+  check("empty location is 400 JSON", empty.status, 400);
+  const prev = process.env.GOOGLE_MAPS_API_KEY;
+  delete process.env.GOOGLE_MAPS_API_KEY;
+  const missing = await searchProperties({ location: "Tropicana & Boulder Hwy, Las Vegas" });
+  check("missing maps key is 503 JSON", missing.status, 503);
+  check("missing maps key names Pages env", (missing as any).error, MAPS_NOT_CONFIGURED);
+  check("mapsApiKey is null without env", mapsApiKey(), null);
+  if (prev == null) delete process.env.GOOGLE_MAPS_API_KEY;
+  else process.env.GOOGLE_MAPS_API_KEY = prev;
+}
+
+searchCases().then(() => {
+  console.log(`\n${pass} passed, ${fail} failed\n`);
+  if (fail) process.exit(1);
+}).catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

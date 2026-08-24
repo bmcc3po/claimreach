@@ -1,53 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { askRelay, callProxy, callRelayDirect, relayConfig } from "@/lib/ai-relay";
+import { gateUser } from "@/lib/gate";
+import { canEnterM6App, displayName } from "@/lib/m6";
+import { assertM6Write, firmSlugFor } from "@/lib/m6-scope";
+import { buildM6CrissiSystem, type M6CrissiFile } from "@/lib/m6-crissi";
 export const runtime = "edge";
 
-// Crissi / ClaimReach AI. The relay (Tailscale Funnel) is the real endpoint:
-//   POST {system, user, temperature?} -> {answer}, header X-Maverick-Secret.
-// Cloudflare's edge historically couldn't resolve the .ts.net host (error 1016
-// when the Funnel was misconfigured). Now that Funnel is public, we try the relay
-// DIRECTLY first; if that throws (edge DNS refusal), fall back to the Netlify proxy.
-//
-// Env:
-//   MAVERICK_RELAY_SECRET  - the shared secret (required)
-//   RELAY_URL              - default https://bretts-macbook-air.hair-tarpon.ts.net/mav/qa
-//   AI_RELAY_URL           - optional Netlify proxy fallback (dashboard.innovativeintake.com/.netlify/functions/ai-relay)
-//   CR_AI_GATE             - optional shared secret for the Netlify proxy
+// One Crissi brain. Staff FloatingDock keeps its client system. /m6 and
+// TMP firm users are forced onto Motel 6 / trafficking doctrine — never
+// the California women's prison hub. Same relay. No second vendor.
 
-const RELAY_URL = process.env.RELAY_URL || "https://bretts-macbook-air.hair-tarpon.ts.net/mav/qa";
-const PROXY_URL = process.env.AI_RELAY_URL || "";
+const FILE_COLS = "id, firm_id, campaign, case_type, archived_at, first_name, last_name, full_name, claimant_name, lead_no, comms_monitored";
 
-async function callRelayDirect(system: string, user: string) {
-  const secret = process.env.MAVERICK_RELAY_SECRET;
-  if (!secret) return { answer: "", error: "no_secret" };
-  const r = await fetch(RELAY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Maverick-Secret": secret },
-    body: JSON.stringify({ system, user, temperature: 0.3 }),
-  });
-  if (!r.ok) return { answer: "", error: `relay_${r.status}` };
-  const d: any = await r.json();
-  return { answer: d.answer ?? d.text ?? "" };
+async function m6File(sb: any, leadId: string): Promise<M6CrissiFile | null> {
+  if (!leadId) return null;
+  const gate = await assertM6Write(sb, leadId, FILE_COLS);
+  if (!gate.ok) return null;
+  return {
+    id: gate.lead.id,
+    name: displayName(gate.lead),
+    leadNo: gate.lead.lead_no ?? null,
+    commsMonitored: !!gate.lead.comms_monitored,
+  };
 }
 
-async function callProxy(system: string, user: string) {
-  if (!PROXY_URL) return { answer: "", error: "no_proxy" };
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.CR_AI_GATE) headers["X-CR-Secret"] = process.env.CR_AI_GATE;
-  const r = await fetch(PROXY_URL, { method: "POST", headers, body: JSON.stringify({ system, user }) });
-  if (!r.ok) return { answer: "", error: `proxy_${r.status}` };
-  const d: any = await r.json();
-  return { answer: d.answer ?? "" };
-}
-
-// GET ?health=1 — diagnostic across both paths.
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  if (!url.searchParams.get("health")) return NextResponse.json({ ok: true, relay: RELAY_URL, proxy: PROXY_URL || null });
-  const out: Record<string, unknown> = { relay: RELAY_URL, proxy: PROXY_URL || null, secretSet: !!process.env.MAVERICK_RELAY_SECRET };
+  const cfg = relayConfig();
+  if (!url.searchParams.get("health")) return NextResponse.json({ ok: true, relay: cfg.relay, proxy: cfg.proxy });
+  const out: Record<string, unknown> = { ...cfg };
   try { const d = await callRelayDirect("You are a test.", "say OK"); out.direct = d; }
   catch (e: any) { out.directError = String(e?.message ?? e); }
-  if (PROXY_URL) {
+  if (cfg.proxy) {
     try { const d = await callProxy("You are a test.", "say OK"); out.viaProxy = d; }
     catch (e: any) { out.proxyError = String(e?.message ?? e); }
   }
@@ -59,22 +44,19 @@ export async function POST(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { system, user } = await req.json();
-  const sys = system ?? "";
-  const usr = user ?? "";
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+  const userText = typeof body.user === "string" ? body.user : "";
+  let system = typeof body.system === "string" ? body.system : "";
 
-  // 1) Try the relay directly.
-  try {
-    const d = await callRelayDirect(sys, usr);
-    if (d.answer) return NextResponse.json({ answer: d.answer });
-  } catch { /* edge couldn't reach .ts.net — fall through to proxy */ }
+  const gated = await gateUser(sb);
+  const firmSlug = gated ? await firmSlugFor(sb, gated.firmId) : null;
+  const m6Firm = !!gated && gated.role === "firm" && canEnterM6App({ role: gated.role, firmSlug });
+  const m6Surface = body.surface === "m6" || m6Firm;
+  if (m6Surface) {
+    const leadId = typeof body.lead_id === "string" ? body.lead_id : "";
+    system = buildM6CrissiSystem(await m6File(sb, leadId));
+  }
 
-  // 2) Fall back to the Netlify proxy if configured.
-  try {
-    const d = await callProxy(sys, usr);
-    if (d.answer) return NextResponse.json({ answer: d.answer });
-  } catch { /* both failed */ }
-
-  // 3) Graceful empty so the UI uses its offline (Bible) fallback.
-  return NextResponse.json({ answer: "", error: "unreachable" }, { status: 200 });
+  const answer = await askRelay(system ?? "", userText);
+  return NextResponse.json({ answer, error: answer ? undefined : "unreachable" }, { status: 200 });
 }

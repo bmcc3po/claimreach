@@ -9,7 +9,8 @@ import {
   M6_FIRM_FENCE, fileSafeAudit, stripStaffFormFields, type FileFence,
 } from "@/lib/file-fence";
 import { applyM6LeadFilters, loadM6Lead } from "@/lib/m6-scope";
-import { flattenIdentification } from "@/lib/property-tool";
+import { loadIdentifiedForLead } from "@/lib/property-ops";
+import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
 
 export async function loadM6WorkspaceFile(
   sb: any,
@@ -32,14 +33,14 @@ export async function loadM6WorkspaceFile(
   const lead = await loadM6Lead(sb, leadId, tmpFirmId, "*");
   if (!lead) return null;
 
-  const [{ data: claims }, { data: notes }, { data: m6Notes }, { data: audit }, { data: callLogs }] =
+  const [{ data: claims }, fileNotesRaw, { data: audit }, { data: callLogs }] =
     await Promise.all([
       sb.from("claims").select("*").eq("lead_id", leadId).order("created_at"),
-      sb.from("notes").select("*").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(100),
-      sb.from("lead_notes").select("id, body, created_at, author, pinned, source").eq("lead_id", leadId).eq("firm_id", tmpFirmId).order("created_at", { ascending: false }).limit(50),
+      loadFileNotes(sb, leadId, tmpFirmId),
       sb.from("audit_log").select("id, created_at, actor_name, category, description").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(200),
       sb.from("call_logs").select("*").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(100),
     ]);
+  const { notes, deskNotes: m6Notes } = fileNotesRaw;
 
   const claimRows = claims ?? [];
   const claimIds = claimRows.map((c: any) => c.id);
@@ -67,22 +68,7 @@ export async function loadM6WorkspaceFile(
     }
   }
 
-  const fileNotes = [
-    ...(notes ?? []).map((n: any) => ({
-      ...n,
-      author_name: n.author_name || nameOf.get(n.author) || n.author || "Staff",
-    })),
-    ...(m6Notes ?? []).map((n: any) => ({
-      id: n.id,
-      body: n.body,
-      created_at: n.created_at,
-      author: n.author,
-      author_name: nameOf.get(n.author) || "File",
-      scope: "file",
-      source: n.source || "m6",
-      pinned: n.pinned,
-    })),
-  ].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const fileNotes = mergeFileNotes(notes, m6Notes, nameOf);
 
   // intake_forms is internal-only RLS. Form *definitions* (not answers) are
   // loaded with admin so the firm sees the questions that were asked, then
@@ -135,23 +121,13 @@ export async function loadM6Rail(
   sb: any,
   leadId: string,
   tmpFirmId: string,
-  lead: { external_id?: string | null; lawruler_ref_no?: string | null },
+  lead: { id?: string | null; external_id?: string | null; lawruler_ref_no?: string | null },
 ) {
-  const vendorId = lead.external_id || lead.lawruler_ref_no || "";
-  const [{ data: status }, { data: points }, { data: lor }, idRes] = await Promise.all([
+  const [{ data: status }, { data: points }, { data: lor }, identified] = await Promise.all([
     applyM6LeadFilters(sb.from("lead_contact_status").select("*").eq("lead_id", leadId), tmpFirmId).maybeSingle(),
     sb.from("contact_points").select("*").eq("lead_id", leadId).eq("firm_id", tmpFirmId).is("retired_at", null).order("kind"),
     sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to").eq("lead_id", leadId).eq("firm_id", tmpFirmId).maybeSingle(),
-    vendorId
-      ? sb.from("property_identifications")
-          .select("id, remembered_brand, current_brand, brand_mismatch, stay_from, stay_to, properties_canonical (name, street, city, state, zip, address, lat, lng, current_brand)")
-          .eq("firm_id", tmpFirmId)
-          .eq("lawruler_leadid", vendorId)
-          .order("created_at")
-      : Promise.resolve({ data: [] as any[], error: null }),
+    loadIdentifiedForLead(sb, tmpFirmId, { ...lead, id: lead.id || leadId }),
   ]);
-  const identified = !idRes.error && idRes.data
-    ? idRes.data.map((r: any) => flattenIdentification(r))
-    : [];
   return { status, points: points ?? [], lor: lor ?? null, identified };
 }

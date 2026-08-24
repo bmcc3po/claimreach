@@ -3,9 +3,8 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
 import { HEALTH_LABEL, daysAgo, filterM6StatusRows, lorShowsOnToday, type Health } from "@/lib/m6";
 import { applyM6LeadFilters, getTmpFirmId, M6_STATUS_COLUMNS, requireM6Session } from "@/lib/m6-scope";
-import { isInternalRole } from "@/lib/permissions";
 import { todayBuckets, type TodayFile } from "@/lib/m6-cadence";
-import CrissiRail from "@/components/m6/CrissiRail";
+import FileActions from "@/components/m6/FileActions";
 
 type Row = TodayFile & {
   lead_no: string; claimant_name: string | null;
@@ -13,6 +12,7 @@ type Row = TodayFile & {
   ladder_step: number | null; live_contact_points: number;
   next_touch_due?: string | null;
   comms_monitored?: boolean;
+  phone?: string | null;
 };
 
 function lastTouchLabel(r: Row): string {
@@ -41,7 +41,7 @@ function Stack({ title, note, rows, empty, tone = "default" }: {
       ) : (
         <ul className="m6-rows">
           {rows.map((r) => (
-            <li key={r.lead_id}>
+            <li key={r.lead_id} className="m6-row-wrap">
               <Link href={`/m6/cases/${r.lead_id}`} className="m6-row">
                 <span className={`m6-dot ${r.health}`} aria-hidden="true" />
                 <span className="m6-row-main">
@@ -62,6 +62,14 @@ function Stack({ title, note, rows, empty, tone = "default" }: {
                     : HEALTH_LABEL[r.health]}
                 </span>
               </Link>
+              <FileActions
+                file={{
+                  id: r.lead_id,
+                  name: r.claimant_name || "Unnamed file",
+                  phone: r.phone,
+                  optedOut: !!r.opted_out,
+                }}
+              />
             </li>
           ))}
         </ul>
@@ -73,7 +81,6 @@ function Stack({ title, note, rows, empty, tone = "default" }: {
 export default async function TodayPage() {
   const sb = await supabaseServer();
   const session = await requireM6Session(sb);
-  const isStaff = session.ok && isInternalRole(session.user.role);
   const tmpFirmId = session.ok ? session.tmpFirmId : await getTmpFirmId(sb);
 
   const { data, error } = tmpFirmId
@@ -92,7 +99,14 @@ export default async function TodayPage() {
       })[], tmpFirmId)
     : [];
 
-  const buckets = todayBuckets(rows.map((r) => ({
+  const ids = rows.map((r) => r.lead_id);
+  const { data: phones } = tmpFirmId && ids.length
+    ? await sb.from("leads").select("id, phone").eq("firm_id", tmpFirmId).in("id", ids)
+    : { data: [] as { id: string; phone: string | null }[] };
+  const phoneOf = new Map((phones ?? []).map((p) => [p.id, p.phone ?? null]));
+  const withPhone = rows.map((r) => ({ ...r, phone: phoneOf.get(r.lead_id) ?? null }));
+
+  const buckets = todayBuckets(withPhone.map((r) => ({
     ...r,
     next_channel_blocked: !!r.comms_monitored && (r.ladder_step === 1 || r.last_touch_channel === "voicemail"),
   })));
@@ -103,7 +117,7 @@ export default async function TodayPage() {
   const lorTodayIds = new Set(
     (lorRows ?? []).filter((r) => lorShowsOnToday(r)).map((r) => r.lead_id),
   );
-  const lorToday = rows.filter((r) => lorTodayIds.has(r.lead_id));
+  const lorToday = withPhone.filter((r) => lorTodayIds.has(r.lead_id));
 
   return (
     <div className="m6-page">
@@ -170,14 +184,10 @@ export default async function TodayPage() {
         />
         <Stack
           title="LOR"
-          note="Needs a letter of representation, or someone pinned it here."
+          note="Needs a letter of representation. Send certified mail from the row — one click after you read it."
           rows={lorToday}
           empty="No letters waiting."
         />
-      </div>
-
-      <div className="m6-today-guide">
-        <CrissiRail showFullLink={!!isStaff} />
       </div>
     </div>
   );
