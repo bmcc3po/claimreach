@@ -11,7 +11,7 @@ const LINKS = [
   { href: "/m6/brand", label: "Brand & owner" },
   { href: "/m6/guidance", label: "Crissi" },
   { href: "/m6/drips", label: "Drip settings" },
-  { href: "/m6/pfs", label: "Fact sheet" },
+  { href: "/m6/pfs", label: "Questionnaire" },
   { href: "/m6/campaigns", label: "Email campaigns" },
   { href: "/m6/users", label: "Add a user" },
   { href: "/m6/lor", label: "LOR / letters" },

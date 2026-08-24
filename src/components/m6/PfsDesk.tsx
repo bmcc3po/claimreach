@@ -21,6 +21,12 @@ type Draft = {
 
 const blankDraft = (): Draft => ({ label: "", kind: "longtext", section: "", optionsText: "" });
 
+function questionnaireName(raw?: string | null): string {
+  const n = (raw || "").trim();
+  if (!n || /^plaintiff fact sheet$/i.test(n)) return "Questionnaire";
+  return n;
+}
+
 function needsOptions(kind: string) {
   return kind === "select" || kind === "multiselect";
 }
@@ -32,7 +38,7 @@ export default function PfsDesk({
   canImport: boolean;
 }) {
   const [fields, setFields] = useState<Field[]>(form?.fields ?? []);
-  const [name] = useState(form?.name || "Plaintiff fact sheet");
+  const [name] = useState(questionnaireName(form?.name));
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -173,7 +179,7 @@ export default function PfsDesk({
           rows={3}
           value={draft.label}
           onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
-          placeholder="What the judge asked"
+          placeholder="The question"
         />
       </label>
       <label className="m6-field">
@@ -242,8 +248,8 @@ export default function PfsDesk({
     <>
       {empty ? (
         <section className="m6-card">
-          <h2>No fact sheet yet</h2>
-          <p>Import the judge&apos;s sheet, or add one question at a time. Answers already on files stay.</p>
+          <h2>No questionnaire yet</h2>
+          <p>Import an intake questionnaire, or add one question at a time. Answers already on files stay.</p>
         </section>
       ) : (
         <section className="m6-card">
@@ -260,7 +266,7 @@ export default function PfsDesk({
         <div className="m6-paths">
           <button type="button" className="m6-path" onClick={() => setPanel("import")}>
             <strong>Import CSV</strong>
-            <span>Drop in the judge&apos;s list. First row can name the columns.</span>
+            <span>Drop in the intake list. First row can name the columns.</span>
           </button>
           <button type="button" className="m6-path" onClick={startAdd}>
             <strong>Add a question</strong>
@@ -310,7 +316,7 @@ export default function PfsDesk({
 
       {!canImport && empty && (
         <section className="m6-card">
-          <p>Ask Innovative to import the judge&apos;s list or add the first question. Until then this page stays empty on purpose.</p>
+          <p>Ask Innovative to import the intake questionnaire or add the first question. Until then this page stays empty on purpose.</p>
         </section>
       )}
     </>

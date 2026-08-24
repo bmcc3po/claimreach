@@ -53,7 +53,7 @@ async function persistFields(
 ): Promise<{ id: string } | { error: string }> {
   const tmpFirmId = await getTmpFirmId(sb);
   const existing = await loadLatestForm(sb);
-  const sheetName = (name || "").trim() || existing?.name || "Plaintiff fact sheet";
+  const sheetName = (name || "").trim() || existing?.name || "Questionnaire";
   if (existing?.id) {
     const { error } = await sb.from("intake_forms").update({
       name: sheetName, fields, status: "published", description,
@@ -92,14 +92,14 @@ export async function GET(req: NextRequest) {
     : null;
 
   if (exp) {
-    if (!published) return NextResponse.json({ error: "No fact sheet has been imported yet." }, { status: 404 });
+    if (!published) return NextResponse.json({ error: "No questionnaire has been imported yet." }, { status: 404 });
     if (leadId) {
       const gate = await assertM6Write(sb, leadId, "id, firm_id, campaign, case_type, archived_at, lead_no, claimant_name");
       if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
       const { data: claim } = await sb.from("claims").select("answers").eq("lead_id", leadId).order("created_at").limit(1).maybeSingle();
       const stamp = new Date().toISOString().slice(0, 10);
       const safe = String(gate.lead.lead_no || "file").replace(/[^a-z0-9]+/gi, "_");
-      return csvResponse(`${safe}_fact_sheet_${stamp}.csv`, buildPfsAnswersCsv(published.fields, [{
+      return csvResponse(`${safe}_questionnaire_${stamp}.csv`, buildPfsAnswersCsv(published.fields, [{
         lead_no: gate.lead.lead_no, claimant_name: gate.lead.claimant_name, answers: claim?.answers ?? {},
       }]));
     }
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
       for (const c of claims ?? []) answersByLead[c.lead_id] = c.answers ?? {};
     }
     const stamp = new Date().toISOString().slice(0, 10);
-    return csvResponse(`motel6_fact_sheet_${stamp}.csv`, buildPfsAnswersCsv(published.fields, (leads ?? []).map((l: any) => ({
+    return csvResponse(`motel6_questionnaire_${stamp}.csv`, buildPfsAnswersCsv(published.fields, (leads ?? []).map((l: any) => ({
       lead_no: l.lead_no, claimant_name: l.claimant_name, answers: answersByLead[l.id],
     }))));
   }
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
 
   if (p.op === "import") {
     if (!canEditSheet(session.user.role)) {
-      return NextResponse.json({ error: "Ask an admin to import the fact sheet." }, { status: 403 });
+      return NextResponse.json({ error: "Ask an admin to import the questionnaire." }, { status: 403 });
     }
     const parsed = fieldsFromPfsCsv(String(p.csv || ""));
     if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 200 });
@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
       : parsed.fields;
     const saved = await persistFields(
       sb, session, fields,
-      "Motel 6 plaintiff fact sheet. Same answers table as intake.",
+      "Motel 6 intake questionnaire. Same answers table as intake.",
       (p.name || "").trim() || undefined,
     );
     if ("error" in saved) return NextResponse.json({ error: saved.error }, { status: 500 });
@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
     if (added.error) return NextResponse.json({ error: added.error }, { status: 200 });
     const saved = await persistFields(
       sb, session, added.fields,
-      "Motel 6 plaintiff fact sheet. Same answers table as intake.",
+      "Motel 6 intake questionnaire. Same answers table as intake.",
     );
     if ("error" in saved) return NextResponse.json({ error: saved.error }, { status: 500 });
     return NextResponse.json({ ok: true, id: saved.id, field_id: added.id, count: pfsAskable(added.fields).length, fields: added.fields });
@@ -217,7 +217,7 @@ export async function PATCH(req: NextRequest) {
   const id = String(p.id || "");
   if (!id) return NextResponse.json({ error: "Missing the question." }, { status: 400 });
   const existing = await loadLatestForm(sb);
-  if (!existing) return NextResponse.json({ error: "No fact sheet yet." }, { status: 404 });
+  if (!existing) return NextResponse.json({ error: "No questionnaire yet." }, { status: 404 });
 
   const dir = p.dir === 1 || p.dir === -1 ? p.dir as 1 | -1 : null;
   const next = dir
@@ -231,7 +231,7 @@ export async function PATCH(req: NextRequest) {
   if (next.error) return NextResponse.json({ error: next.error }, { status: 200 });
   const saved = await persistFields(
     sb, session, next.fields,
-    "Motel 6 plaintiff fact sheet. Same answers table as intake.",
+    "Motel 6 intake questionnaire. Same answers table as intake.",
   );
   if ("error" in saved) return NextResponse.json({ error: saved.error }, { status: 500 });
   return NextResponse.json({ ok: true, id: saved.id, count: pfsAskable(next.fields).length, fields: next.fields });
@@ -252,12 +252,12 @@ export async function DELETE(req: NextRequest) {
   }
   if (!id) return NextResponse.json({ error: "Missing the question." }, { status: 400 });
   const existing = await loadLatestForm(sb);
-  if (!existing) return NextResponse.json({ error: "No fact sheet yet." }, { status: 404 });
+  if (!existing) return NextResponse.json({ error: "No questionnaire yet." }, { status: 404 });
   const next = removePfsQuestion(existing.fields, id);
   if (next.error) return NextResponse.json({ error: next.error }, { status: 200 });
   const saved = await persistFields(
     sb, session, next.fields,
-    "Motel 6 plaintiff fact sheet. Same answers table as intake.",
+    "Motel 6 intake questionnaire. Same answers table as intake.",
   );
   if ("error" in saved) return NextResponse.json({ error: saved.error }, { status: 500 });
   return NextResponse.json({ ok: true, id: saved.id, count: pfsAskable(next.fields).length, fields: next.fields });

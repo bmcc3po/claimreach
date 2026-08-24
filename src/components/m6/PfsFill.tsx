@@ -71,7 +71,7 @@ export default function PfsFill({
   if (!field) {
     return (
       <section className="m6-card">
-        <p>The sheet has no fillable questions.</p>
+        <p>This questionnaire has no questions to fill in.</p>
       </section>
     );
   }
@@ -80,7 +80,7 @@ export default function PfsFill({
     <div className="m6-page">
       <div className="m6-head">
         <Link href={`/m6/cases/${leadId}`} className="m6-back">File</Link>
-        <h1>Fact sheet</h1>
+        <h1>Questionnaire</h1>
         <p className="m6-sub">{leadName} · {leadNo} · {progress.answered} of {progress.asked} answered</p>
       </div>
       <section className="m6-card">

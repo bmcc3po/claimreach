@@ -364,7 +364,7 @@ export const M6_TEMPLATES: CadenceTemplate[] = [
     channel: "memo",
     delayDays: 30,
     subject: "At-risk report — deadline review",
-    body: `The file lands on the fact sheet at-risk report alongside its deadline. That report is the dollar figure — staff only, never the firm screen.`,
+    body: `The file lands on the questionnaire at-risk report alongside its deadline. That report is the dollar figure — staff only, never the firm screen.`,
     method: "Terminal ladder step. Firm decides next spend. Money stays off the firm file.",
     approvedByFirm: false,
     fireOnce: false,
