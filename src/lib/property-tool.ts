@@ -95,6 +95,36 @@ export type IdentifiedProperty = {
   lng: number | null;
 };
 
+export type BrandHistoryEntry = {
+  brand: string;
+  from: number | null;
+  to: number | null;
+  llc: string;
+  owner: string;
+  address: string;
+  source: "desk";
+};
+
+export function brandHistoryForYear(history: unknown, year: number): BrandHistoryEntry | null {
+  if (!Array.isArray(history)) return null;
+  const hits = history.filter((h: any) => {
+    const from = Number(h?.from);
+    const to = h?.to == null || h?.to === "" ? 9999 : Number(h.to);
+    return Number.isFinite(from) && year >= from && year <= to;
+  });
+  const last = hits[hits.length - 1];
+  if (!last) return null;
+  return {
+    brand: String(last.brand || ""),
+    from: last.from == null ? null : Number(last.from),
+    to: last.to == null || last.to === "" ? null : Number(last.to),
+    llc: String(last.llc || ""),
+    owner: String(last.owner || ""),
+    address: String(last.address || ""),
+    source: "desk",
+  };
+}
+
 export function flattenIdentification(row: {
   id: string;
   remembered_brand: string | null;

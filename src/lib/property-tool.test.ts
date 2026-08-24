@@ -3,6 +3,7 @@ import { guessBrand, brandsMismatch } from "./property-brand";
 import {
   propertyToolKeyOk, cleanLeadid, normalizeStay, lawrulerPasteBlock,
   stayRangeLabel, flattenIdentification, propertyLookupKeys, propertyFileHref,
+  brandHistoryForYear,
 } from "./property-tool";
 import {
   parseAddressComponents, parseFormattedAddress, mergeParsedAddress,
@@ -75,6 +76,14 @@ check("keys include uuid fallback", propertyLookupKeys({
 check("file href uses vendor id first", propertyFileHref({
   id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", external_id: "98765", lawruler_ref_no: null,
 }), "/m6/property?leadid=98765");
+check("history hits the stay year", brandHistoryForYear(
+  [{ brand: "Motel 6", from: 2012, to: 2016, llc: "Motels of Indiana LLC", owner: "", address: "123 Happy St", source: "desk" }],
+  2014,
+)?.llc, "Motels of Indiana LLC");
+check("history misses other years", brandHistoryForYear(
+  [{ brand: "Motel 6", from: 2012, to: 2016, llc: "X", owner: "", address: "", source: "desk" }],
+  2020,
+), null);
 
 console.log("\nSTAY + PASTE");
 check("month/year normalizes", normalizeStay("03/2019"), "3/2019");

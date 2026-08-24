@@ -5,7 +5,7 @@ import { isInternalRole } from "@/lib/permissions";
 import { TMP_SLUG, isM6LeadShape } from "./lawruler-email";
 
 export {
-  M6_CAMPAIGN, M6_CASE_TYPE, TMP_SLUG,
+  M6_CAMPAIGN, M6_CASE_TYPE, TMP_SLUG, isM6LeadShape,
   SECONDARY_INTERVIEW_DOC_TYPE, SECONDARY_INTERVIEW_TITLE,
   parseLrFilenameLeadId, classifyLrAttachment, lrAttachmentPlan,
   pickSecondaryInterviewPdf, authenticateIntakeEmail,

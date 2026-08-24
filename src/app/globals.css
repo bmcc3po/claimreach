@@ -1829,7 +1829,32 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .m6-who-name { display: block; font-size: 13px; color: #F1F1F1; }
 .m6-who-role { display: block; font-size: 11px; color: rgba(241,241,241,.62); }
 
-.m6-main { max-width: 1180px; margin: 0 auto; padding: 34px 28px 90px; }
+.m6-body { display: flex; align-items: stretch; min-height: calc(100vh - 76px); }
+.m6-side {
+  width: 220px; flex: none;
+  padding: 18px 12px 48px;
+  background: #231F20;
+  border-right: 1px solid rgba(241,241,241,.08);
+}
+.m6-side-link {
+  display: block; width: 100%; min-height: 40px; padding: 10px 12px;
+  color: #F1F1F1; text-decoration: none; font-size: 14px; font-weight: 600;
+  font-family: inherit; text-align: left; border: 0; background: transparent;
+  border-radius: 8px; cursor: pointer; opacity: .78;
+}
+.m6-side-link:hover, .m6-side-link:focus-visible { opacity: 1; background: rgba(255,255,255,.08); }
+.m6-side-link.on { opacity: 1; background: rgba(255,255,255,.12); }
+.m6-side-crissi { margin-top: 10px; background: #E9262B; opacity: 1; color: #fff; }
+.m6-nav-back { display: none; }
+.m6-crissi-dock {
+  position: fixed; right: 16px; bottom: 16px; z-index: 70;
+  background: #E9262B; color: #fff; border: 0; border-radius: 30px;
+  padding: 12px 18px; min-height: 48px;
+  font-weight: 700; font-size: 14px; font-family: inherit; cursor: pointer;
+  box-shadow: 0 6px 20px rgba(233,38,43,.35);
+}
+.m6-crissi-dock:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.m6-main { flex: 1; min-width: 0; max-width: 1180px; margin: 0 auto; padding: 34px 28px 90px; }
 .m6-page { display: block; }
 .m6-head { margin-bottom: 28px; }
 .m6-head h1, .m6-file-head h1 {
@@ -2176,6 +2201,16 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   .m6-links-desk, .m6-who { display: none; }
   .m6-burger { display: inline-flex; align-items: center; margin-left: auto; }
   .m6-menu { display: block; }
+  .m6-body { display: block; min-height: 0; }
+  .m6-side {
+    display: none; position: fixed; left: 0; top: 64px; bottom: 0; z-index: 55;
+    width: min(280px, 86vw); overflow-y: auto;
+  }
+  .m6-shell.nav-open .m6-side { display: block; }
+  .m6-shell.nav-open .m6-nav-back {
+    display: block; position: fixed; inset: 0; z-index: 50;
+    background: rgba(0,0,0,.45); border: 0; padding: 0;
+  }
   .m6-main { padding: 20px 14px 80px; overflow-x: hidden; }
   .m6-page { overflow-x: hidden; }
   .m6-head h1, .m6-file-head h1 { font-size: 24px; }

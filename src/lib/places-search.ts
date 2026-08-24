@@ -126,20 +126,24 @@ export async function googlePlacesSearchText(opts: {
     else body.locationBias = { circle };
   }
 
-  const resp = await fetch("https://places.googleapis.com/v1/places:searchText", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": key,
-      "X-Goog-FieldMask": opts.fieldMask ?? LODGING_MASK,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    return { ok: false, status: 502, error: `places error ${resp.status}` };
+  try {
+    const resp = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": opts.fieldMask ?? LODGING_MASK,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      return { ok: false, status: 502, error: `places error ${resp.status}` };
+    }
+    const data = await resp.json();
+    return { ok: true, places: data.places || [] };
+  } catch {
+    return { ok: false, status: 502, error: "places unreachable" };
   }
-  const data = await resp.json();
-  return { ok: true, places: data.places || [] };
 }
 
 export async function geocodeLocation(query: string): Promise<{ lat: number; lng: number } | null> {

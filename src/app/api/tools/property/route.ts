@@ -37,12 +37,16 @@ export async function POST(req: NextRequest) {
   if (!firmId) return NextResponse.json({ error: "This tool is not available." }, { status: 503 });
 
   const op = b.op === "save" ? "save" : "search";
-  if (op === "search") {
-    const found = await searchProperties(b);
-    if (found.status !== 200) return NextResponse.json({ error: found.error }, { status: found.status });
-    return NextResponse.json({ candidates: found.candidates, center: found.center });
+  try {
+    if (op === "search") {
+      const found = await searchProperties(b);
+      if (found.status !== 200) return NextResponse.json({ error: found.error }, { status: found.status });
+      return NextResponse.json({ candidates: found.candidates, center: found.center });
+    }
+    const saved = await savePropertyIdentification(firmId, b);
+    if (saved.status !== 200) return NextResponse.json({ error: saved.error }, { status: saved.status });
+    return NextResponse.json({ ok: true, property: saved.property, paste: saved.paste });
+  } catch {
+    return NextResponse.json({ error: "Search did not finish. Try again." }, { status: 502 });
   }
-  const saved = await savePropertyIdentification(firmId, b);
-  if (saved.status !== 200) return NextResponse.json({ error: saved.error }, { status: saved.status });
-  return NextResponse.json({ ok: true, property: saved.property, paste: saved.paste });
 }

@@ -3,10 +3,12 @@ import { useState } from "react";
 import Link from "next/link";
 import LorSend from "./LorSend";
 import TextSend from "./TextSend";
+import { useM6Crissi } from "./M6CrissiContext";
 
 export type FileActionTarget = {
   id: string;
   name?: string;
+  leadNo?: string | null;
   phone?: string | null;
   optedOut?: boolean;
 };
@@ -27,7 +29,7 @@ export default function FileActions({
 }) {
   const [open, setOpen] = useState<"text" | "lor" | null>(null);
   const tel = e164(file.phone);
-  const crissi = `/m6/guidance?file=${encodeURIComponent(file.id)}`;
+  const { openCrissi } = useM6Crissi();
 
   return (
     <div className="m6-acts" onClick={(e) => e.stopPropagation()}>
@@ -46,7 +48,17 @@ export default function FileActions({
       >
         Text
       </button>
-      <Link className="m6-act crissi" href={crissi}>Crissi</Link>
+      <button
+        type="button"
+        className="m6-act crissi"
+        onClick={() => openCrissi({
+          id: file.id,
+          name: file.name || "this file",
+          leadNo: file.leadNo ?? null,
+        })}
+      >
+        Crissi
+      </button>
       <button type="button" className="m6-act lor" onClick={() => setOpen("lor")}>LOR</button>
 
       {open === "text" && (

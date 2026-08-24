@@ -46,6 +46,8 @@ export default function PropertyTool({
   const [saved, setSaved] = useState<IdentifiedProperty[]>([]);
   const [justSaved, setJustSaved] = useState<IdentifiedProperty | null>(null);
   const [copied, setCopied] = useState(false);
+  const [fileRef, setFileRef] = useState(leadid);
+  useEffect(() => { setFileRef(leadid); }, [leadid]);
 
   const qs = toolKey ? `k=${encodeURIComponent(toolKey)}` : "";
   const api = qs ? `${apiPath}?${qs}` : apiPath;
@@ -83,7 +85,12 @@ export default function PropertyTool({
         }),
       });
       if (r.status === 404) { setErr("This tool is not available."); return; }
-      const d = await r.json();
+      const raw = await r.text();
+      let d: any = {};
+      try { d = raw ? JSON.parse(raw) : {}; } catch {
+        setErr("Search did not finish. Try again.");
+        return;
+      }
       if (!r.ok) { setErr(d.error || "Search failed."); return; }
       setCandidates(d.candidates || []);
       if (!(d.candidates || []).length) setErr("No properties in that radius. Widen the circle or try Any chain.");
@@ -95,7 +102,7 @@ export default function PropertyTool({
   }
 
   async function save() {
-    if (!selected || !leadid) return;
+    if (!selected || !(embedded ? fileRef : leadid)) return;
     setBusy("save"); setErr("");
     const current = selected.current_brand || guessBrand(selected.name);
     const rememberedBrand = rememberValue();
@@ -105,7 +112,7 @@ export default function PropertyTool({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           op: "save",
-          leadid,
+          leadid: embedded ? fileRef : leadid,
           place_id: selected.place_id,
           name: selected.name,
           street: selected.street,
@@ -187,8 +194,16 @@ export default function PropertyTool({
           )}
         </header>
       )}
-      {embedded && !leadid && (
-        <p className="pt-warn">Search a city or motel name. Open this from a file to save the stay.</p>
+      {embedded && (
+        <label className="pt-field">
+          <span>File number (to save a stay)</span>
+          <input
+            value={fileRef}
+            onChange={(e) => setFileRef(e.target.value)}
+            placeholder="TMP-1001 or the LawRuler file #"
+            autoComplete="off"
+          />
+        </label>
       )}
 
       {saved.length > 0 && (
@@ -344,14 +359,14 @@ export default function PropertyTool({
           <button
             type="button"
             className="pt-btn primary"
-            disabled={!!busy || !leadid}
+            disabled={!!busy || !(embedded ? fileRef.trim() : leadid)}
             onClick={() => void save()}
           >
             {busy === "save" ? "Saving…" : "Save to this file"}
           </button>
-          {!leadid && (
+          {!(embedded ? fileRef.trim() : leadid) && (
             <p className="pt-warn">
-              {embedded ? "Open this from a file before the stay can save." : "Need a File # from LawRuler before this can save."}
+              {embedded ? "Type a file number above to save the stay." : "Need a File # before this can save."}
             </p>
           )}
         </section>
