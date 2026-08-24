@@ -13,6 +13,7 @@ import {
   type M6Actor, type M6LeadRow, type RedirectActor,
 } from "./m6";
 import { firstNonEmpty, inboundCanonicalId, mapInbound, canonicalToLeadColumns } from "./webhooks";
+import { composeLorLetter } from "./m6-lor";
 import { isInternalRole } from "./permissions";
 import { firmAccessEmailMatch, needsFirmProvision, wouldProvisionFromAllowlist, provisionRpcFailed } from "./firm-home";
 
@@ -255,6 +256,17 @@ check("live LR shape: first_name + lastname", canonicalToLeadColumns(mapInbound(
   mail_addr1: null, mail_addr2: null, mail_city: null, mail_state: null, mail_zip: "89101",
   dob: null, handling_attorney: null, marketing_source: null,
 });
+const certified = canonicalToLeadColumns(mapInbound({
+  first_name: "Bob", lastname: "Builder", zip: "39201",
+}));
+const fromCertified = composeLorLetter({
+  firstName: certified.first_name, lastName: certified.last_name, gender: "male",
+  incidentStart: "2019-04-01", incidentEnd: "2019-06-15",
+  propertyName: "Motel 6", propertyStreet: "100 Main",
+  propertyCity: "Jackson", propertyState: "MS", propertyZip: "39201",
+});
+check("certified lastname reaches the TMP letter", fromCertified.clientName, "Bob Builder");
+check("letter from lastname is the TMP letter", fromCertified.body.includes("Dear Sir or Madam:"), true);
 check("firstNonEmpty prefers first real value", firstNonEmpty("", "{{token}}", "Smith", "Other"), "Smith");
 check("firstNonEmpty strips LR test placeholders", firstNonEmpty("{{default23}}-Last Name"), null);
 check("date input becomes an ISO timestamp", !!dueAtFromDateInput("2026-08-24"), true);
