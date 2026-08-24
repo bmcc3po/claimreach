@@ -190,7 +190,7 @@ export default function PropertyTool({
           <p className="pt-kicker">Property lookup</p>
           <h1>{leadid ? `File #${leadid}` : "File # —"}</h1>
           {!leadid && (
-            <p className="pt-warn">Open this from the LawRuler file so the number is filled in. You can still search.</p>
+            <p className="pt-warn">Search works without a file. Type a file number to save a stay.</p>
           )}
         </header>
       )}
@@ -200,7 +200,7 @@ export default function PropertyTool({
           <input
             value={fileRef}
             onChange={(e) => setFileRef(e.target.value)}
-            placeholder="TMP-1001 or the LawRuler file #"
+            placeholder="TMP-1001 or the file #"
             autoComplete="off"
           />
         </label>
@@ -220,7 +220,7 @@ export default function PropertyTool({
                   {stayRangeLabel(p.stay_from, p.stay_to) ? ` · ${stayRangeLabel(p.stay_from, p.stay_to)}` : ""}
                 </span>
                 <button type="button" className="pt-copy" onClick={() => { setJustSaved(p); void copyPaste(p); }}>
-                  {embedded ? "Copy address" : "Copy for LawRuler"}
+                  Copy address
                 </button>
               </li>
             ))}
@@ -233,7 +233,7 @@ export default function PropertyTool({
           <p className="pt-ok">
             {embedded
               ? "Saved to this file. Add another stay if you need to."
-              : "Saved. Paste this into the LawRuler property fields, then add another if you need to."}
+              : "Saved to this file. Copy the address block if you need it elsewhere."}
           </p>
           <pre>{lawrulerPasteBlock(pasteOf)}</pre>
           <button type="button" className="pt-btn primary" onClick={() => void copyPaste(pasteOf)}>

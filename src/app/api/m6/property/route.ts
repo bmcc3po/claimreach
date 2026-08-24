@@ -2,43 +2,52 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { requireM6Session } from "@/lib/m6-scope";
 import { propertyLookupKeys } from "@/lib/property-tool";
+import { searchProperties } from "@/lib/property-search";
 import {
   listPropertiesForLead, loadCanonicalByPlaceId, resolveM6PropertyLead,
-  saveBrandHistory, savePropertyIdentification, searchProperties,
+  saveBrandHistory, savePropertyIdentification,
   stampLeadProperty, tmpPropertyFirmId,
 } from "@/lib/property-ops";
 export const runtime = "edge";
 
+function fail(error: string, status = 502) {
+  return NextResponse.json({ error }, { status });
+}
+
 // Session-gated property lookup for /m6. Same Places search as intake.
-// Search does not need the admin client. Save does.
+// Search never imports the admin client. Save does.
 
 export async function GET(req: NextRequest) {
-  const sb = await supabaseServer();
-  const session = await requireM6Session(sb);
-  if (!session.ok) return NextResponse.json({ error: session.error }, { status: session.status });
-  const firmId = await tmpPropertyFirmId();
-  if (!firmId) return NextResponse.json({ error: "This tool is not available." }, { status: 503 });
-  const url = new URL(req.url);
-  const placeId = url.searchParams.get("place_id");
-  if (placeId) {
-    const data = await loadCanonicalByPlaceId(firmId, placeId);
-    return NextResponse.json({ property: data ?? null, history: data?.brand_history ?? [] });
+  try {
+    const sb = await supabaseServer();
+    const session = await requireM6Session(sb);
+    if (!session.ok) return NextResponse.json({ error: session.error }, { status: session.status });
+    const firmId = await tmpPropertyFirmId();
+    if (!firmId) return fail("This tool is not available.", 503);
+    const url = new URL(req.url);
+    const placeId = url.searchParams.get("place_id");
+    if (placeId) {
+      const data = await loadCanonicalByPlaceId(firmId, placeId);
+      return NextResponse.json({ property: data ?? null, history: data?.brand_history ?? [] });
+    }
+    const raw = url.searchParams.get("leadid");
+    if (!raw) return NextResponse.json({ properties: [] });
+    const lead = await resolveM6PropertyLead(firmId, raw);
+    const keys = lead ? propertyLookupKeys(lead) : propertyLookupKeys({ id: raw, external_id: raw, lawruler_ref_no: raw });
+    const { error, rows } = await listPropertiesForLead(firmId, keys);
+    if (error) return fail(error, 500);
+    return NextResponse.json({ properties: rows });
+  } catch {
+    return fail("Could not load properties.");
   }
-  const raw = url.searchParams.get("leadid");
-  if (!raw) return NextResponse.json({ properties: [] });
-  const lead = await resolveM6PropertyLead(firmId, raw);
-  const keys = lead ? propertyLookupKeys(lead) : propertyLookupKeys({ id: raw, external_id: raw, lawruler_ref_no: raw });
-  const { error, rows } = await listPropertiesForLead(firmId, keys);
-  if (error) return NextResponse.json({ error }, { status: 500 });
-  return NextResponse.json({ properties: rows });
 }
 
 export async function POST(req: NextRequest) {
-  const sb = await supabaseServer();
-  const session = await requireM6Session(sb);
-  if (!session.ok) return NextResponse.json({ error: session.error }, { status: session.status });
-
   try {
+    const sb = await supabaseServer();
+    const session = await requireM6Session(sb);
+    if (!session.ok) return NextResponse.json({ error: session.error }, { status: session.status });
+
     const b = await req.json().catch(() => ({} as Record<string, unknown>));
     const op = b.op === "history" ? "history" : b.op === "save" ? "save" : "search";
     if (op === "search") {
@@ -48,7 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     const firmId = await tmpPropertyFirmId();
-    if (!firmId) return NextResponse.json({ error: "This tool is not available." }, { status: 503 });
+    if (!firmId) return fail("This tool is not available.", 503);
 
     if (op === "history") {
       const saved = await saveBrandHistory(firmId, b);
@@ -81,6 +90,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, property: saved.property, paste: saved.paste });
   } catch {
-    return NextResponse.json({ error: "Search did not finish. Try again." }, { status: 502 });
+    return fail("Search did not finish. Try again.");
   }
 }

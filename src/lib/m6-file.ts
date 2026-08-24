@@ -9,7 +9,7 @@ import {
   M6_FIRM_FENCE, fileSafeAudit, stripStaffFormFields, type FileFence,
 } from "@/lib/file-fence";
 import { applyM6LeadFilters, loadM6Lead } from "@/lib/m6-scope";
-import { flattenIdentification, propertyLookupKeys } from "@/lib/property-tool";
+import { loadIdentifiedForLead } from "@/lib/property-ops";
 
 export async function loadM6WorkspaceFile(
   sb: any,
@@ -137,21 +137,11 @@ export async function loadM6Rail(
   tmpFirmId: string,
   lead: { id?: string | null; external_id?: string | null; lawruler_ref_no?: string | null },
 ) {
-  const keys = propertyLookupKeys({ ...lead, id: lead.id || leadId });
-  const [{ data: status }, { data: points }, { data: lor }, idRes] = await Promise.all([
+  const [{ data: status }, { data: points }, { data: lor }, identified] = await Promise.all([
     applyM6LeadFilters(sb.from("lead_contact_status").select("*").eq("lead_id", leadId), tmpFirmId).maybeSingle(),
     sb.from("contact_points").select("*").eq("lead_id", leadId).eq("firm_id", tmpFirmId).is("retired_at", null).order("kind"),
     sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to").eq("lead_id", leadId).eq("firm_id", tmpFirmId).maybeSingle(),
-    keys.length
-      ? sb.from("property_identifications")
-          .select("id, remembered_brand, current_brand, brand_mismatch, stay_from, stay_to, properties_canonical (name, street, city, state, zip, address, lat, lng, current_brand)")
-          .eq("firm_id", tmpFirmId)
-          .in("lawruler_leadid", keys)
-          .order("created_at")
-      : Promise.resolve({ data: [] as any[], error: null }),
+    loadIdentifiedForLead(sb, tmpFirmId, { ...lead, id: lead.id || leadId }),
   ]);
-  const identified = !idRes.error && idRes.data
-    ? idRes.data.map((r: any) => flattenIdentification(r))
-    : [];
   return { status, points: points ?? [], lor: lor ?? null, identified };
 }

@@ -20,6 +20,7 @@ import {
   INTERNAL_STAFF_FENCE, fileBackHref, fileMayEditLead, fileMayExportPdf,
   fileMayUseStaffTools, fileTabs, type FileFence,
 } from "@/lib/file-fence";
+import type { IdentifiedProperty } from "@/lib/property-tool";
 
 interface Claim {
   id: string;
@@ -37,7 +38,7 @@ const TABS_HELP = "tabs are computed once in file-fence.ts";
 
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
-  fence = INTERNAL_STAFF_FENCE, headerActions, retainers, signables,
+  fence = INTERNAL_STAFF_FENCE, headerActions, retainers, signables, identified = [], lor = null,
 }: {
   lead: any;
   claims: Claim[];
@@ -53,6 +54,8 @@ export default function LeadWorkspace({
   headerActions?: ReactNode;
   retainers?: any[];
   signables?: any[];
+  identified?: IdentifiedProperty[];
+  lor?: { status?: string | null; sent_on?: string | null; sent_to?: string | null } | null;
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -135,7 +138,7 @@ export default function LeadWorkspace({
           </div>
           <div className="formbody">
             {tab === "Overview" && (
-              <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} onGo={(t) => { setTab(t); setEditMode(false); }} />
+              <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} onGo={(t) => { setTab(t); setEditMode(false); }} />
             )}
             {tab === "Case Questions" && activeClaim && (
               <div>

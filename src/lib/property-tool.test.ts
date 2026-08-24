@@ -7,8 +7,9 @@ import {
 } from "./property-tool";
 import {
   parseAddressComponents, parseFormattedAddress, mergeParsedAddress,
-  parseStayAddressFromNarrative, milesToMeters,
+  parseStayAddressFromNarrative, milesToMeters, mapsApiKey,
 } from "./places-search";
+import { MAPS_NOT_CONFIGURED, searchProperties } from "./property-search";
 
 let pass = 0, fail = 0;
 function check(name: string, got: any, want: any) {
@@ -125,5 +126,24 @@ check("nested canonical object", flattenIdentification({
   },
 }).name, "Red Roof Inn");
 
-console.log(`\n${pass} passed, ${fail} failed\n`);
-if (fail) process.exit(1);
+async function searchCases() {
+  console.log("\nSEARCH (no crash, JSON errors)");
+  const empty = await searchProperties({});
+  check("empty location is 400 JSON", empty.status, 400);
+  const prev = process.env.GOOGLE_MAPS_API_KEY;
+  delete process.env.GOOGLE_MAPS_API_KEY;
+  const missing = await searchProperties({ location: "Tropicana & Boulder Hwy, Las Vegas" });
+  check("missing maps key is 503 JSON", missing.status, 503);
+  check("missing maps key names Pages env", (missing as any).error, MAPS_NOT_CONFIGURED);
+  check("mapsApiKey is null without env", mapsApiKey(), null);
+  if (prev == null) delete process.env.GOOGLE_MAPS_API_KEY;
+  else process.env.GOOGLE_MAPS_API_KEY = prev;
+}
+
+searchCases().then(() => {
+  console.log(`\n${pass} passed, ${fail} failed\n`);
+  if (fail) process.exit(1);
+}).catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

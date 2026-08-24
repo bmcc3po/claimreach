@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cleanLeadid, propertyToolKeyOk } from "@/lib/property-tool";
+import { searchProperties } from "@/lib/property-search";
 import {
-  listPropertiesForLead, savePropertyIdentification, searchProperties, tmpPropertyFirmId,
+  listPropertiesForLead, savePropertyIdentification, tmpPropertyFirmId,
 } from "@/lib/property-ops";
 
 export const runtime = "edge";
@@ -31,18 +32,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const b = await req.json().catch(() => ({} as Record<string, unknown>));
-  if (!propertyToolKeyOk(keyFrom(req, b))) return deny();
-  const firmId = await tmpPropertyFirmId();
-  if (!firmId) return NextResponse.json({ error: "This tool is not available." }, { status: 503 });
-
-  const op = b.op === "save" ? "save" : "search";
   try {
+    const b = await req.json().catch(() => ({} as Record<string, unknown>));
+    if (!propertyToolKeyOk(keyFrom(req, b))) return deny();
+    const op = b.op === "save" ? "save" : "search";
     if (op === "search") {
       const found = await searchProperties(b);
       if (found.status !== 200) return NextResponse.json({ error: found.error }, { status: found.status });
       return NextResponse.json({ candidates: found.candidates, center: found.center });
     }
+    const firmId = await tmpPropertyFirmId();
+    if (!firmId) return NextResponse.json({ error: "This tool is not available." }, { status: 503 });
     const saved = await savePropertyIdentification(firmId, b);
     if (saved.status !== 200) return NextResponse.json({ error: saved.error }, { status: saved.status });
     return NextResponse.json({ ok: true, property: saved.property, paste: saved.paste });

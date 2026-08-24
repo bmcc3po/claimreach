@@ -7,9 +7,9 @@ import { isM6LeadShape, TMP_SLUG } from "@/lib/m6";
 import { guessBrand } from "@/lib/property-brand";
 import {
   cleanLeadid, flattenIdentification, lawrulerPasteBlock, normalizeStay,
-  type BrandHistoryEntry,
+  propertyLookupKeys, type BrandHistoryEntry, type IdentifiedProperty,
 } from "@/lib/property-tool";
-import { geocodeLocation, milesToMeters, searchLodgingAround } from "@/lib/places-search";
+export { searchProperties } from "@/lib/property-search";
 
 const CANON_SELECT = "name, street, city, state, zip, address, lat, lng, current_brand, brand_history";
 const LINK_SELECT = `id, remembered_brand, current_brand, brand_mismatch, stay_from, stay_to, properties_canonical (${CANON_SELECT})`;
@@ -40,15 +40,40 @@ export async function loadCanonicalByPlaceId(firmId: string, placeId: string) {
 
 export async function listPropertiesForLead(firmId: string, leadid: string | string[]) {
   const keys = (Array.isArray(leadid) ? leadid : [leadid]).map(cleanLeadid).filter(Boolean);
-  if (!keys.length) return { error: null, rows: [] as ReturnType<typeof flattenIdentification>[] };
-  const admin = supabaseAdmin();
-  const { data, error } = await admin.from("property_identifications")
-    .select(LINK_SELECT)
-    .eq("firm_id", firmId)
-    .in("lawruler_leadid", keys)
-    .order("created_at", { ascending: true });
-  if (error) return { error: error.message, rows: [] as ReturnType<typeof flattenIdentification>[] };
-  return { error: null, rows: (data ?? []).map((r: any) => flattenIdentification(r)) };
+  if (!keys.length) return { error: null, rows: [] as IdentifiedProperty[] };
+  try {
+    const admin = supabaseAdmin();
+    const { data, error } = await admin.from("property_identifications")
+      .select(LINK_SELECT)
+      .eq("firm_id", firmId)
+      .in("lawruler_leadid", keys)
+      .order("created_at", { ascending: true });
+    if (error) return { error: error.message, rows: [] as IdentifiedProperty[] };
+    return { error: null, rows: (data ?? []).map((r: any) => flattenIdentification(r)) };
+  } catch (e: any) {
+    return { error: e?.message || "Could not load properties.", rows: [] as IdentifiedProperty[] };
+  }
+}
+
+// Same rows /m6 writes. Staff /leads/[id] and the m6 file both call this.
+export async function loadIdentifiedForLead(
+  sb: any,
+  firmId: string | null | undefined,
+  lead: { id?: string | null; external_id?: string | null; lawruler_ref_no?: string | null },
+): Promise<IdentifiedProperty[]> {
+  const keys = propertyLookupKeys(lead);
+  if (!firmId || !keys.length) return [];
+  try {
+    const { data, error } = await sb.from("property_identifications")
+      .select(LINK_SELECT)
+      .eq("firm_id", firmId)
+      .in("lawruler_leadid", keys)
+      .order("created_at", { ascending: true });
+    if (error || !data) return [];
+    return data.map((r: any) => flattenIdentification(r));
+  } catch {
+    return [];
+  }
 }
 
 const LEAD_RESOLVE = "id, firm_id, campaign, case_type, archived_at, external_id, lawruler_ref_no, lead_no, property_name, property_street, property_city, property_state, property_zip";
@@ -85,48 +110,6 @@ export async function stampLeadProperty(
     property_zip: p.zip || null,
   }).eq("id", leadId).eq("firm_id", firmId);
   return error?.message ?? null;
-}
-
-export async function searchProperties(b: Record<string, unknown>) {
-  const location = typeof b.location === "string" ? b.location.trim() : "";
-  if (!location) return { status: 400 as const, error: "Enter a city, intersection, or landmark." };
-  const radiusMiles = typeof b.radiusMiles === "number" ? b.radiusMiles : Number(b.radiusMiles) || 5;
-  const anyChain = b.anyChain === true;
-  const motel6 = anyChain ? false : b.motel6 !== false;
-  const studio6 = anyChain ? false : b.studio6 !== false;
-
-  try {
-    const center = await geocodeLocation(location);
-    if (!center) {
-      return { status: 400 as const, error: "Could not find that location. Try a city and state." };
-    }
-    const found = await searchLodgingAround({
-      lat: center.lat,
-      lng: center.lng,
-      radiusMeters: milesToMeters(radiusMiles),
-      motel6,
-      studio6,
-      anyChain,
-    });
-    if (!found.ok) {
-      const mapsMissing = found.error === "maps key missing";
-      return {
-        status: (mapsMissing ? 503 : 502) as 502 | 503,
-        error: mapsMissing
-          ? "Maps is not configured on this site. Search cannot run until GOOGLE_MAPS_API_KEY is in Pages."
-          : found.error === "places unreachable" || found.error.startsWith("places error")
-            ? "Google Places did not answer. Try again in a minute."
-            : found.error,
-      };
-    }
-    const candidates = found.candidates.map((c) => ({
-      ...c,
-      current_brand: guessBrand(c.name),
-    }));
-    return { status: 200 as const, candidates, center };
-  } catch {
-    return { status: 502 as const, error: "Search did not finish. Try again." };
-  }
 }
 
 export async function savePropertyIdentification(firmId: string, b: Record<string, unknown>) {

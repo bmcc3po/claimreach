@@ -2,6 +2,7 @@ export const runtime = "edge";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import LeadWorkspace from "@/components/LeadWorkspace";
+import { loadIdentifiedForLead } from "@/lib/property-ops";
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -56,6 +57,12 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
 
   const { data: staff } = await sb.from("app_users").select("id, full_name").order("full_name");
 
+  const [{ data: lor }, identified] = await Promise.all([
+    sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to")
+      .eq("lead_id", id).eq("firm_id", lead.firm_id).maybeSingle(),
+    loadIdentifiedForLead(sb, lead.firm_id, lead),
+  ]);
+
   const { data: { user: cur } } = await sb.auth.getUser();
   const { data: meRow } = await sb.from("app_users").select("role, full_name").eq("id", cur!.id).maybeSingle();
   (lead as any).current_user_role = meRow?.role ?? null;
@@ -87,6 +94,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       callLogs={callLogs ?? []}
       staff={staff ?? []}
       formsByType={formsByType}
+      identified={identified}
+      lor={lor ?? null}
     />
   );
 }

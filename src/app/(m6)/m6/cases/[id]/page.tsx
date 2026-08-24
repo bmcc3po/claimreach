@@ -7,7 +7,7 @@ import { m6CaseAccess } from "@/lib/m6";
 import { isInternalRole } from "@/lib/permissions";
 import { applyM6LeadFilters, loadM6Actor, loadM6Lead, getTmpFirmId } from "@/lib/m6-scope";
 import { loadM6Rail, loadM6WorkspaceFile } from "@/lib/m6-file";
-import { flattenIdentification, propertyLookupKeys } from "@/lib/property-tool";
+import { loadIdentifiedForLead } from "@/lib/property-ops";
 
 export default async function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -57,8 +57,7 @@ async function StaffCasePage({
   );
   if (m6CaseAccess(actor, lead, tmpFirmId) !== "ok") notFound();
 
-  const keys = propertyLookupKeys({ ...(lead as any), id });
-  const [{ data: status }, { data: points }, { data: notes }, { data: comms }, { data: sched }, { data: docs }, { data: lor }, idRes] =
+  const [{ data: status }, { data: points }, { data: notes }, { data: comms }, { data: sched }, { data: docs }, { data: lor }, identified] =
     await Promise.all([
       applyM6LeadFilters(sb.from("lead_contact_status").select("*").eq("lead_id", id), tmpFirmId).maybeSingle(),
       sb.from("contact_points").select("*").eq("lead_id", id).eq("firm_id", tmpFirmId).is("retired_at", null).order("kind"),
@@ -67,17 +66,8 @@ async function StaffCasePage({
       sb.from("call_schedule").select("id, due_at, kind, note, status, assigned_to, ladder_step").eq("lead_id", id).eq("firm_id", tmpFirmId).eq("status", "open").order("due_at"),
       sb.from("case_documents").select("id, file_name, doc_type, created_at").eq("lead_id", id).eq("firm_id", tmpFirmId).order("created_at", { ascending: false }),
       sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to").eq("lead_id", id).eq("firm_id", tmpFirmId).maybeSingle(),
-      keys.length
-        ? sb.from("property_identifications")
-            .select("id, remembered_brand, current_brand, brand_mismatch, stay_from, stay_to, properties_canonical (name, street, city, state, zip, address, lat, lng, current_brand)")
-            .eq("firm_id", tmpFirmId)
-            .in("lawruler_leadid", keys)
-            .order("created_at")
-        : Promise.resolve({ data: [] as any[], error: null }),
+      loadIdentifiedForLead(sb, tmpFirmId, { ...(lead as any), id }),
     ]);
-  const identified = !idRes.error && idRes.data
-    ? idRes.data.map((r: any) => flattenIdentification(r))
-    : [];
 
   const nameIds = [...new Set([
     ...(notes ?? []).map((n: any) => n.author),

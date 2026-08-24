@@ -5,7 +5,8 @@ import LogTouchButton from "./LogTouchButton";
 import ComposePanel from "./ComposePanel";
 import FileActions from "./FileActions";
 import Link from "next/link";
-import { propertyFileHref, stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
+import { propertyFileHref, type IdentifiedProperty } from "@/lib/property-tool";
+import IdentifiedStays from "@/components/IdentifiedStays";
 import type { FileFence } from "@/lib/file-fence";
 
 export default function M6FirmFile({
@@ -48,33 +49,7 @@ export default function M6FirmFile({
           Look up a property
         </Link>
       </p>
-      {!!identified.length && (
-        <section className="m6-card m6-identified">
-          <h2>Identified properties</h2>
-          <ul className="m6-points">
-            {identified.map((p) => {
-              const where = [p.street || p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
-              const when = stayRangeLabel(p.stay_from, p.stay_to);
-              return (
-                <li key={p.id}>
-                  <div>
-                    <span className="m6-point-val">{p.name || "Property"}</span>
-                    {where && <span className="m6-point-lab">{where}</span>}
-                    <span className="m6-point-lab">
-                      Remembered as {p.remembered_brand || "not noted"}
-                      {p.current_brand ? ` · current flag ${p.current_brand}` : ""}
-                      {when ? ` · ${when}` : ""}
-                    </span>
-                    {p.brand_mismatch && (
-                      <span className="m6-id-flag">Remembered brand differs from the current flag</span>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+      <IdentifiedStays properties={identified} />
       <LeadWorkspace
         lead={lead}
         claims={claims}

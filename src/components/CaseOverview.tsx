@@ -1,13 +1,17 @@
 "use client";
 import { fileMayEditLead, type FileFence } from "@/lib/file-fence";
+import { LOR_STATUSES } from "@/lib/m6";
+import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 
 // The front door. When anyone opens a file, they land here: who this is,
 // what kind of case, where it stands, last contact, recent notes, then clear
 // "where do you want to go" actions. Works even when the file is empty.
-export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence }: {
+export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence, identified = [], lor = null }: {
   lead: any; activeClaim: any; notes?: any[]; callLogs?: any[];
   onGo: (tab: string) => void;
   fence?: FileFence;
+  identified?: IdentifiedProperty[];
+  lor?: { status?: string | null; sent_on?: string | null; sent_to?: string | null } | null;
 }) {
   const fullName = lead.claimant_name || `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Unnamed claimant";
   const caseType = activeClaim?.campaign || activeClaim?.claim_type || "No claim yet";
@@ -30,6 +34,8 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
   const intakeProgress = activeClaim?.answers ? Object.keys(activeClaim.answers).filter((k) => activeClaim.answers[k] !== "" && activeClaim.answers[k] != null).length : 0;
 
   const addr = [lead.mail_addr1, [lead.mail_city, lead.mail_state].filter(Boolean).join(", "), lead.mail_zip].filter(Boolean).join(" · ");
+  const stamped = [lead.property_name, lead.property_street, [lead.property_city, lead.property_state].filter(Boolean).join(", "), lead.property_zip].filter(Boolean).join(" · ");
+  const lorLabel = LOR_STATUSES.find((s) => s.value === lor?.status)?.label || (lor?.status ? String(lor.status) : "");
 
   return (
     <div className="ov">
@@ -66,6 +72,44 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
           {activeClaim?.grievous_approved && <div className="ov-val-sub" style={{ color: "var(--ok)" }}>✓ Grievous approved</div>}
         </Glance>
       </div>
+
+      {(identified.length > 0 || stamped || lorLabel) && (
+        <>
+          <div className="ov-section-label">Property and LOR</div>
+          {identified.length > 0 ? (
+            <div className="ov-notes">
+              {identified.map((p) => {
+                const where = [p.street || p.address, p.city, p.state, p.zip].filter(Boolean).join(", ");
+                const when = stayRangeLabel(p.stay_from, p.stay_to);
+                return (
+                  <div key={p.id} className="ov-note">
+                    <span className="ov-note-meta">
+                      {p.remembered_brand || "brand not noted"}
+                      {p.current_brand ? ` · current ${p.current_brand}` : ""}
+                      {when ? ` · ${when}` : ""}
+                    </span>
+                    <span>{p.name || "Property"}{where ? ` · ${where}` : ""}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : stamped ? (
+            <div className="ov-notes">
+              <div className="ov-note">
+                <span className="ov-note-meta">Address on the file</span>
+                <span>{stamped}</span>
+              </div>
+            </div>
+          ) : null}
+          {lorLabel && (
+            <div className="ov-val-sub" style={{ marginTop: 8 }}>
+              LOR: {lorLabel}
+              {lor?.sent_on ? ` · ${new Date(lor.sent_on).toLocaleDateString()}` : ""}
+              {lor?.sent_to ? ` · ${lor.sent_to}` : ""}
+            </div>
+          )}
+        </>
+      )}
 
       {/* recent notes */}
       <div className="ov-section-label">Recent notes</div>

@@ -1,7 +1,6 @@
 // Google Places (New) searchText + address-component parse.
-// Used by the LawRuler property tool. /api/places stays as the intake
-// surface; this helper is the one Places call shape for radius + parsed
-// street/city/state/zip.
+// /api/places is the intake surface. This helper is the one Places call
+// shape for radius + parsed street/city/state/zip. Same GOOGLE_MAPS_API_KEY.
 
 export type ParsedAddress = { street: string; city: string; state: string; zip: string };
 
@@ -99,6 +98,11 @@ function mapPlace(p: any): PlaceCandidate {
   };
 }
 
+export function mapsApiKey(): string | null {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  return key && String(key).trim() ? String(key).trim() : null;
+}
+
 export async function googlePlacesSearchText(opts: {
   textQuery: string;
   includedType?: string;
@@ -109,7 +113,7 @@ export async function googlePlacesSearchText(opts: {
   maxResultCount?: number;
   fieldMask?: string;
 }): Promise<{ ok: true; places: any[] } | { ok: false; status: number; error: string }> {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = mapsApiKey();
   if (!key) return { ok: false, status: 503, error: "maps key missing" };
 
   const body: Record<string, unknown> = {
@@ -146,17 +150,46 @@ export async function googlePlacesSearchText(opts: {
   }
 }
 
-export async function geocodeLocation(query: string): Promise<{ lat: number; lng: number } | null> {
-  const r = await googlePlacesSearchText({
-    textQuery: query,
-    maxResultCount: 1,
-    fieldMask: "places.id,places.displayName,places.location,places.formattedAddress",
-  });
-  if (!r.ok || !r.places.length) return null;
-  const lat = r.places[0].location?.latitude;
-  const lng = r.places[0].location?.longitude;
-  if (typeof lat !== "number" || typeof lng !== "number") return null;
-  return { lat, lng };
+async function geocodeViaGeocodingApi(query: string, key: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&components=country:US&key=${encodeURIComponent(key)}`;
+    const r = await fetch(url);
+    const d: any = await r.json().catch(() => ({}));
+    const loc = d?.results?.[0]?.geometry?.location;
+    if (typeof loc?.lat === "number" && typeof loc?.lng === "number") return { lat: loc.lat, lng: loc.lng };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Intersections are not businesses. Same Geocoding API /api/geocode uses for
+// crash scenes. Places searchText is the fallback if Geocoding is off.
+export async function geocodeLocation(query: string): Promise<
+  | { ok: true; lat: number; lng: number }
+  | { ok: false; status: number; error: string }
+> {
+  const key = mapsApiKey();
+  if (!key) return { ok: false, status: 503, error: "maps key missing" };
+  try {
+    const fromGeo = await geocodeViaGeocodingApi(query, key);
+    if (fromGeo) return { ok: true, ...fromGeo };
+    const r = await googlePlacesSearchText({
+      textQuery: query,
+      maxResultCount: 1,
+      fieldMask: "places.id,places.displayName,places.location,places.formattedAddress",
+    });
+    if (!r.ok) return { ok: false, status: r.status, error: r.error };
+    if (!r.places.length) return { ok: false, status: 400, error: "no location" };
+    const lat = r.places[0].location?.latitude;
+    const lng = r.places[0].location?.longitude;
+    if (typeof lat !== "number" || typeof lng !== "number") {
+      return { ok: false, status: 400, error: "no location" };
+    }
+    return { ok: true, lat, lng };
+  } catch {
+    return { ok: false, status: 502, error: "places unreachable" };
+  }
 }
 
 export async function searchLodgingAround(opts: {
@@ -185,26 +218,30 @@ export async function searchLodgingAround(opts: {
     { restrict: false },
   ];
 
-  for (const pass of passes) {
-    for (const textQuery of queries) {
-      const r = await googlePlacesSearchText({
-        textQuery,
-        includedType: pass.includedType,
-        lat: opts.lat,
-        lng: opts.lng,
-        radiusMeters: opts.radiusMeters,
-        restrict: pass.restrict,
-        maxResultCount: 10,
-      });
-      if (!r.ok) { lastError = r.error; continue; }
-      for (const p of r.places) {
-        const c = mapPlace(p);
-        if (!c.place_id || seen.has(c.place_id)) continue;
-        seen.add(c.place_id);
-        out.push(c);
+  try {
+    for (const pass of passes) {
+      for (const textQuery of queries) {
+        const r = await googlePlacesSearchText({
+          textQuery,
+          includedType: pass.includedType,
+          lat: opts.lat,
+          lng: opts.lng,
+          radiusMeters: opts.radiusMeters,
+          restrict: pass.restrict,
+          maxResultCount: 10,
+        });
+        if (!r.ok) { lastError = r.error; continue; }
+        for (const p of r.places) {
+          const c = mapPlace(p);
+          if (!c.place_id || seen.has(c.place_id)) continue;
+          seen.add(c.place_id);
+          out.push(c);
+        }
       }
+      if (out.length) break;
     }
-    if (out.length) break;
+  } catch {
+    return { ok: false, error: "places unreachable" };
   }
   if (!out.length && lastError) return { ok: false, error: lastError };
   return { ok: true, candidates: out };
