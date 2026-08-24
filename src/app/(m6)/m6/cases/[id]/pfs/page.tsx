@@ -7,7 +7,7 @@ import { PFS_FORM_KEY, pfsAnswersOnly } from "@/lib/pfs";
 import type { Field } from "@/lib/questionnaire";
 import PfsFill from "@/components/m6/PfsFill";
 
-export const metadata = { title: "Fact sheet" };
+export const metadata = { title: "Questionnaire" };
 
 export default async function M6FilePfsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -34,13 +34,13 @@ export default async function M6FilePfsPage({ params }: { params: Promise<{ id: 
       <div className="m6-page">
         <div className="m6-head">
           <Link href={`/m6/cases/${id}`} className="m6-back">File</Link>
-          <h1>Fact sheet</h1>
+          <h1>Questionnaire</h1>
           <p className="m6-sub">{gate.lead.claimant_name || "This file"} · {gate.lead.lead_no}</p>
         </div>
         <section className="m6-card">
-          <p>No fact sheet yet.</p>
-          <p className="m6-hint">Import the judge&apos;s sheet or add a question on the Fact sheet page. Until then this stays empty.</p>
-          <p><Link href="/m6/pfs">Go to Fact sheet</Link></p>
+          <p>No questionnaire yet.</p>
+          <p className="m6-hint">Import an intake questionnaire, or add a question on the Questionnaire page. Until then this stays empty.</p>
+          <p><Link href="/m6/pfs">Go to Questionnaire</Link></p>
         </section>
       </div>
     );

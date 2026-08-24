@@ -135,7 +135,7 @@ export default function CaseFile({
             </button>
           )}
           <Link href={`/m6/cases/${lead.id}/pfs`} className="m6-btn">
-            Fact sheet
+            Questionnaire
           </Link>
           <Link href={propertyFileHref(lead)} className="m6-btn">
             Property lookup

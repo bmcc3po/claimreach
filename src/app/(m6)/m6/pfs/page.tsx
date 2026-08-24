@@ -6,7 +6,7 @@ import { PFS_FORM_KEY, pfsAskable } from "@/lib/pfs";
 import type { Field } from "@/lib/questionnaire";
 import PfsDesk from "@/components/m6/PfsDesk";
 
-export const metadata = { title: "Fact sheet" };
+export const metadata = { title: "Questionnaire" };
 
 export default async function M6PfsPage() {
   const sb = await supabaseServer();
@@ -35,9 +35,9 @@ export default async function M6PfsPage() {
   return (
     <div className="m6-page">
       <div className="m6-head">
-        <h1>Fact sheet</h1>
+        <h1>Questionnaire</h1>
         <p className="m6-sub">
-          Import the judge&apos;s sheet, or add one question at a time. Answers already on files stay.
+          Import an intake questionnaire, or add one question at a time. Answers already on files stay.
         </p>
       </div>
       <PfsDesk form={form} canImport={canImport} />
