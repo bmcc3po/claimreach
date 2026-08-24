@@ -7,7 +7,10 @@ import PhoneInput, { formatUsPhone } from "./PhoneInput";
 // Contact Info tab — caller information + emergency contact. These fields are
 // the single source of truth (stored on the lead). Any inline-in-intake copy
 // reads/writes the same data, so they stay in sync (most recent write wins).
-export default function ContactInfo({ lead, claimType, editMode = true, onRequestEdit }: { lead: any; claimType?: string; editMode?: boolean; onRequestEdit?: () => void }) {
+export default function ContactInfo({ lead, claimType, editMode = true, onRequestEdit, points = [] }: {
+  lead: any; claimType?: string; editMode?: boolean; onRequestEdit?: () => void;
+  points?: { id: string; kind: string; value: string; label?: string | null; status: string }[];
+}) {
   const allFields = contactFieldsForType(claimType ?? "motel_trafficking");
 
   // Conditions the field definitions do not carry yet. Keyed by field id.
@@ -201,6 +204,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
           <V label="Permission to discuss" value={x.ec_permission_to_discuss ? "Yes" : "No"} />
         </div>
 
+        {points.length > 0 && <ContactPointsList points={points} />}
         {onRequestEdit && <button className="edit-cta" onClick={onRequestEdit}>✎ Edit contact info</button>}
       </div>
     );
@@ -252,6 +256,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       <div className="field"><label style={{ fontSize: 13 }}>Mailing address</label><input value={x.ec_mail} onChange={(e) => setx("ec_mail", e.target.value)} /></div>
       <label className="fld-row"><input type="checkbox" checked={!!x.ec_permission_to_discuss} onChange={(e) => setx("ec_permission_to_discuss", e.target.checked)} /> Permission to discuss the case with this contact</label>
 
+      {points.length > 0 && <ContactPointsList points={points} />}
       {blocks.length > 0 && <div className="section-title" style={{ marginTop: 18 }}>Additional Contact Fields</div>}
       {blocks}
       <div className="seg-nav">
@@ -262,5 +267,22 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
           : <span className="muted" style={{ fontSize: 12 }}>{saving ? "Saving…" : "Changes save automatically."}</span>}
       </div>
     </div>
+  );
+}
+
+function ContactPointsList({ points }: { points: { id: string; kind: string; value: string; label?: string | null; status: string }[] }) {
+  return (
+    <>
+      <div className="section-title" style={{ marginTop: 18 }}>Contact points on this file</div>
+      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Same rows the Motel 6 desk uses. Not a second list.</p>
+      <ul style={{ margin: "0 0 12px", paddingLeft: 18 }}>
+        {points.map((p) => (
+          <li key={p.id} className="muted" style={{ fontSize: 13, marginBottom: 4 }}>
+            {p.label || p.kind}: {/phone|mobile|landline|sms/i.test(p.kind) ? formatUsPhone(p.value) : p.value}
+            {p.status && p.status !== "live" ? ` · ${p.status}` : ""}
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

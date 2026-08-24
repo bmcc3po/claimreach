@@ -64,6 +64,8 @@ export default function M6FirmFile({
         retainers={retainers}
         signables={signables}
         headerActions={<LogTouchButton leadId={lead.id} points={live} />}
+        points={points}
+        lor={lor}
       />
     </div>
   );

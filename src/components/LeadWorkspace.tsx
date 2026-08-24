@@ -11,6 +11,7 @@ import FileStatusControl from "./FileStatusControl";
 import ActivityLog from "./ActivityLog";
 import ContactInfo from "./ContactInfo";
 import CaseDetails from "./CaseDetails";
+import CaseDocuments from "./CaseDocuments";
 import RetainerTab from "./RetainerTab";
 import NotesTab from "./NotesTab";
 import CommsTimeline from "./CommsTimeline";
@@ -39,6 +40,7 @@ const TABS_HELP = "tabs are computed once in file-fence.ts";
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
   fence = INTERNAL_STAFF_FENCE, headerActions, retainers, signables, identified = [], lor = null,
+  points = [], lastComm = null,
 }: {
   lead: any;
   claims: Claim[];
@@ -56,6 +58,8 @@ export default function LeadWorkspace({
   signables?: any[];
   identified?: IdentifiedProperty[];
   lor?: { status?: string | null; sent_on?: string | null; sent_to?: string | null } | null;
+  points?: { id: string; kind: string; value: string; label?: string | null; status: string }[];
+  lastComm?: { channel?: string; direction?: string; occurred_at?: string; outcome?: string; body?: string; agent_name?: string } | null;
 }) {
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
@@ -138,7 +142,7 @@ export default function LeadWorkspace({
           </div>
           <div className="formbody">
             {tab === "Overview" && (
-              <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} onGo={(t) => { setTab(t); setEditMode(false); }} />
+              <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} onGo={(t) => { setTab(t); setEditMode(false); }} />
             )}
             {tab === "Case Questions" && activeClaim && (
               <div>
@@ -166,8 +170,13 @@ export default function LeadWorkspace({
             {tab === "Case Questions" && !activeClaim && (
               <p className="muted">No intake on this file yet.</p>
             )}
-            {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} />}
-            {tab === "Case Details" && <CaseDetails lead={lead} staff={staff} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} />}
+            {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} points={points} />}
+            {tab === "Case Details" && (
+              <>
+                <CaseDetails lead={lead} staff={staff} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} />
+                <CaseDocuments leadId={lead.id} claimId={activeClaim?.id} />
+              </>
+            )}
             {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
             {tab === "Retainer" && <RetainerTab leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} fence={fence} initialRetainers={retainers} initialSignables={signables} />}
             {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" fence={fence} />}

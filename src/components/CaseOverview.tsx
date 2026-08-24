@@ -6,12 +6,14 @@ import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
 // The front door. When anyone opens a file, they land here: who this is,
 // what kind of case, where it stands, last contact, recent notes, then clear
 // "where do you want to go" actions. Works even when the file is empty.
-export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence, identified = [], lor = null }: {
+export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence, identified = [], lor = null, lastComm = null, points = [] }: {
   lead: any; activeClaim: any; notes?: any[]; callLogs?: any[];
   onGo: (tab: string) => void;
   fence?: FileFence;
   identified?: IdentifiedProperty[];
   lor?: { status?: string | null; sent_on?: string | null; sent_to?: string | null } | null;
+  lastComm?: { channel?: string; direction?: string; occurred_at?: string; outcome?: string; body?: string; agent_name?: string } | null;
+  points?: { id: string; kind: string; value: string; label?: string | null; status: string }[];
 }) {
   const fullName = lead.claimant_name || `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Unnamed claimant";
   const caseType = activeClaim?.campaign || activeClaim?.claim_type || "No claim yet";
@@ -28,7 +30,12 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
     return { label: "In progress", cls: "neutral" };
   })();
 
-  const lastCall = callLogs[0];
+  const lastCall = lastComm?.occurred_at ? lastComm : callLogs[0];
+  const lastCallWhen = lastCall?.occurred_at ? new Date(lastCall.occurred_at).toLocaleString() : "";
+  const lastCallLabel = lastComm?.occurred_at
+    ? `${lastComm.direction === "inbound" ? "Inbound" : "Outbound"} ${lastComm.channel === "sms" ? "text" : lastComm.channel === "email" ? "email" : "call"}`
+    : lastCall ? `${lastCall.direction === "inbound" ? "Inbound" : "Outbound"} · ${lastCallWhen}` : "";
+  const livePoints = points.filter((p) => p.status !== "dead" && p.status !== "opted_out");
   const recentNotes = (notes || []).slice(0, 3);
   const diagnosis = activeClaim?.answers?.qualified_injury || activeClaim?.answers?.date_of_diagnosis || lead.diagnosis;
   const intakeProgress = activeClaim?.answers ? Object.keys(activeClaim.answers).filter((k) => activeClaim.answers[k] !== "" && activeClaim.answers[k] != null).length : 0;
@@ -60,11 +67,16 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
           {diagnosis ? <div className="ov-val-sub">Dx: {String(diagnosis)}</div> : <div className="ov-empty">No diagnosis recorded</div>}
         </Glance>
 
-        <Glance label="Last call">
+        <Glance label="Last touch">
           {lastCall ? <>
-            <div className="ov-val-strong">{lastCall.direction === "inbound" ? "Inbound" : "Outbound"} · {lastCall.occurred_at ? new Date(lastCall.occurred_at).toLocaleString() : ""}</div>
-            {lastCall.jc_summary && <div className="ov-val-sub">{lastCall.jc_summary.slice(0, 90)}</div>}
+            <div className="ov-val-strong">{lastCallLabel}{lastComm?.occurred_at && lastCallWhen ? ` · ${lastCallWhen}` : ""}</div>
+            {(lastComm?.outcome || lastCall.jc_summary) && (
+              <div className="ov-val-sub">{lastComm?.outcome || String(lastCall.jc_summary).slice(0, 90)}</div>
+            )}
           </> : <div className="ov-empty">No calls yet</div>}
+          {livePoints.length > 0 && (
+            <div className="ov-val-sub">{livePoints.length} live contact {livePoints.length === 1 ? "point" : "points"}</div>
+          )}
         </Glance>
 
         <Glance label="Intake">
