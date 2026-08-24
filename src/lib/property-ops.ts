@@ -261,7 +261,7 @@ export async function huntBrandOwner(firmId: string, b: Record<string, unknown>)
     history: existing?.brand_history,
     token: process.env.OPENCORPORATES_API_KEY || "",
   });
-  if (found.error) return { status: 502 as const, error: found.error, ...found };
+  if (found.error) return { status: 502 as const, ...found, error: found.error };
   return { status: 200 as const, ...found };
 }
 

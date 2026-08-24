@@ -189,6 +189,7 @@ export function parseOwnerMailing(raw: string | null | undefined): {
 
 export function franchiseeRecipientFromHistory(entry: {
   llc?: string | null; owner?: string | null; address?: string | null;
+  brand?: string | null; from?: number | null; to?: number | null; source?: string | null;
 } | null | undefined): LorRecipient | null {
   const llc = (entry?.llc || "").trim();
   if (!llc) return null;
