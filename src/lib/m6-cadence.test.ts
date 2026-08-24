@@ -2,10 +2,10 @@
 import {
   ALWAYS_RULES, HEARTBEAT_INITIAL_DAYS, HEARTBEAT_STEADY_DAYS, LADDER_STEPS,
   M6_SENDING_NUMBER, M6_TEMPLATES,
-  actorFirmLabel, addDays, bodyHasForbiddenLegal, daysBetween,
-  enterLadderOnInterviewMiss, evaluateOutboundGates, heartbeatIntervalDays,
+  actorFirmLabel, addDays, bodyHasForbiddenLegal, commandGauges, daysBetween,
+  enterLadderOnInterviewMiss, evaluateOutboundGates, fileFacts, heartbeatIntervalDays,
   idempotencyKey, inQuietHours, isStopKeyword, ladderStepFromDays,
-  mergeCadenceText, resolveCadenceStage, safeChannelsAllow, templateByKey,
+  mergeCadenceText, nextMove, resolveCadenceStage, safeChannelsAllow, templateByKey,
   templatesForAudience, timezoneFromPhone, todayBuckets, twoWayStopsLadder,
   walkCadence,
 } from "./m6-cadence";
@@ -208,6 +208,71 @@ check("opted out is e", buckets.optedOut.map((r) => r.lead_id), ["e"]);
 check("safe-contact conflict is f", buckets.safeContactConflicts.map((r) => r.lead_id), ["f"]);
 check("heartbeat overdue is b and f (e opted out)", buckets.heartbeatOverdue.map((r) => r.lead_id).sort(), ["b", "f"]);
 check("paused file is not never-reached", buckets.neverReached.some((r) => r.lead_id === "d"), false);
+
+console.log("\nNEXT MOVE");
+check("inbound is first", nextMove({
+  name: "Lina Khalaf", inboundWaiting: true, lastTwoWayAt: "2026-08-20T00:00:00Z", hasInterview: true,
+}).kind, "inbound");
+check("inbound names them", nextMove({
+  name: "Lina Khalaf", inboundWaiting: true, lastTwoWayAt: "2026-08-20T00:00:00Z", hasInterview: true,
+}).headline, "They wrote back. Answer Lina now.");
+check("never reached beats ladder", nextMove({
+  name: "Lina Khalaf", lastTwoWayAt: null, retentionStage: "escalation", ladderStep: 3,
+}).kind, "never_interviewed");
+check("never reached line is the interview", nextMove({
+  name: "Lina Khalaf", lastTwoWayAt: null,
+}).line, "Call the interview. Never reached. No contact web.");
+check("ladder uses the run-sheet step", nextMove({
+  name: "Ada", lastTwoWayAt: "2026-08-01T00:00:00Z", hasInterview: true,
+  enterLadder: true, ladderStep: 3,
+}).headline, "Ladder step 3: SMS. Do this today.");
+check("ladder action follows the channel", nextMove({
+  name: "Ada", lastTwoWayAt: "2026-08-01T00:00:00Z", hasInterview: true,
+  enterLadder: true, ladderStep: 3,
+}).action, "text");
+check("heartbeat overdue", nextMove({
+  name: "Lina Khalaf", lastTwoWayAt: "2026-08-01T00:00:00Z", hasInterview: true,
+  heartbeatOverdue: true,
+}).headline, "Check-in is late. Call Lina. Ask still your best number.");
+check("LOR when facts are ready", nextMove({
+  name: "Ada", lastTwoWayAt: "2026-08-20T00:00:00Z", hasInterview: true,
+  lorStatus: "ready", lorFactsReady: true, liveContactPoints: 3, hasStablePerson: true,
+}).kind, "lor");
+check("thin web after they are reached", nextMove({
+  name: "Ada", lastTwoWayAt: "2026-08-20T00:00:00Z", hasInterview: true,
+  liveContactPoints: 1, hasStablePerson: false, lorStatus: "sent",
+}).kind, "thin_web");
+check("on track names the date", nextMove({
+  name: "Ada", lastTwoWayAt: "2026-08-20T00:00:00Z", hasInterview: true,
+  liveContactPoints: 3, hasStablePerson: true, lorStatus: "sent",
+  nextTouchDue: "2026-09-01T12:00:00Z",
+}).headline, "On track. Next check-in Sep 1.");
+check("replies sort ahead of never reached", nextMove({ inboundWaiting: true, lastTwoWayAt: null }).sort
+  < nextMove({ lastTwoWayAt: null }).sort, true);
+
+const gauges = commandGauges([
+  { lead_id: "a", last_two_way_at: null, health: "red", days_overdue: 20, ladder_step: 4 },
+  { lead_id: "b", last_two_way_at: "2026-08-20T00:00:00Z", health: "green", days_overdue: 0, inbound_waiting: true },
+  { lead_id: "c", last_two_way_at: "2026-08-20T00:00:00Z", health: "green", days_overdue: 0 },
+  { lead_id: "d", last_two_way_at: "2026-08-01T00:00:00Z", health: "yellow", days_overdue: 8, retention_stage: "escalation", ladder_step: 3 },
+], { nowIso: NOW, lorNotSentIds: new Set(["a", "c"]) });
+check("gone dark includes never reached and ladder", gauges.gone_dark.map((r) => r.lead_id).sort(), ["a", "d"]);
+check("replies gauge is b", gauges.replies.map((r) => r.lead_id), ["b"]);
+check("moving is last two-way in 7 days", gauges.moving.map((r) => r.lead_id).sort(), ["b", "c"]);
+check("ladder is escalation or a step", gauges.ladder.map((r) => r.lead_id).sort(), ["a", "d"]);
+check("lor not sent uses the join set", gauges.lor_not_sent.map((r) => r.lead_id).sort(), ["a", "c"]);
+
+const facts = fileFacts({
+  hasInterview: false, livePhones: 1, hasStablePerson: false,
+  lorSent: false, hasTwoWay: false, commsMonitored: true,
+});
+check("lacking interview", facts.find((f) => f.id === "interview")?.done, false);
+check("lacking second number", facts.find((f) => f.id === "second_number")?.done, false);
+check("monitored is not done", facts.find((f) => f.id === "monitored")?.done, false);
+check("done facts stay quiet", fileFacts({
+  hasInterview: true, livePhones: 2, hasStablePerson: true,
+  lorSent: true, hasTwoWay: true, commsMonitored: false,
+}).every((f) => f.done), true);
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);

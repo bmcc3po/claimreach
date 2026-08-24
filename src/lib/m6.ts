@@ -230,6 +230,16 @@ export type LorRow = {
   flagged_today?: boolean | null;
 };
 
+export type M6FeedItem = {
+  id: string;
+  lead_id: string;
+  name: string;
+  direction: string;
+  channel: string;
+  snippet: string;
+  occurred_at: string | null;
+};
+
 export function lorShowsOnToday(row: LorRow | null | undefined): boolean {
   if (!row) return false;
   if (row.status === "sent" || row.status === "received") return false;

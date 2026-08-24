@@ -105,4 +105,4 @@ export async function assertM6Write(
 }
 
 export const M6_STATUS_COLUMNS =
-  "lead_id, lead_no, claimant_name, health, days_overdue, days_since_contact, last_two_way_at, last_touch_at, last_touch_channel, last_touch_direction, next_touch_due, ladder_step, retention_owner, live_contact_points, inbound_waiting, last_send_failed, opted_out, comms_monitored, retention_stage, retention_paused_until, firm_id, campaign, case_type, archived_at";
+  "lead_id, lead_no, claimant_name, health, days_overdue, days_since_contact, last_two_way_at, last_touch_at, last_touch_channel, last_touch_direction, next_touch_due, ladder_step, retention_owner, live_contact_points, stable_people, inbound_waiting, last_send_failed, opted_out, comms_monitored, retention_stage, retention_paused_until, firm_id, campaign, case_type, archived_at";

@@ -42,6 +42,9 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
       lor={rail.lor}
       identified={rail.identified}
       points={rail.points}
+      status={rail.status}
+      comms={rail.comms}
+      docs={rail.docs}
     />
   );
 }
@@ -53,7 +56,7 @@ async function StaffCasePage({
 }) {
   const lead = await loadM6Lead(
     sb, id, tmpFirmId,
-    "id, firm_id, campaign, case_type, archived_at, lead_no, claimant_name, full_name, first_name, last_name, phone, phone_alt, email, dob, case_description, comms_monitored, lawruler_url, retention_owner, retention_cadence_days, retention_paused_until, retention_pause_reason, mail_addr1, mail_city, mail_state, mail_zip, ec_name, ec_relationship, ec_phone, ec_message_script, external_id, lawruler_ref_no",
+    "id, firm_id, campaign, case_type, archived_at, created_at, lead_no, claimant_name, full_name, first_name, last_name, phone, phone_alt, email, dob, case_description, comms_monitored, lawruler_url, retention_owner, retention_cadence_days, retention_started_at, retention_stage, retention_paused_until, retention_pause_reason, mail_addr1, mail_city, mail_state, mail_zip, ec_name, ec_relationship, ec_phone, ec_message_script, external_id, lawruler_ref_no",
   );
   if (m6CaseAccess(actor, lead, tmpFirmId) !== "ok") notFound();
 

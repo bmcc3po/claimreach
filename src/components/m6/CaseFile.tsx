@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import PhoneInput from "@/components/PhoneInput";
 import {
-  HEALTH_LABEL, OUTCOMES, POINT_KINDS, SOCIAL_PLATFORMS,
+  HEALTH_LABEL, POINT_KINDS, SOCIAL_PLATFORMS,
   daysAgo, dueWording, displayName, formatLocalDateTime, formatLocalDate,
   dueAtFromDateInput, SECONDARY_INTERVIEW_DOC_TYPE, type Health,
 } from "@/lib/m6";
@@ -14,6 +14,7 @@ import LorCard from "./LorCard";
 import { LogTouch, ModalShell } from "./M6Modals";
 import ComposePanel from "./ComposePanel";
 import FileActions from "./FileActions";
+import FileCommand from "./FileCommand";
 
 type Point = {
   id: string; kind: string; value: string; label: string | null;
@@ -153,17 +154,24 @@ export default function CaseFile({
       )}
       {pageErr && <p className="m6-error">{err}</p>}
 
+      <FileCommand
+        lead={lead}
+        status={status}
+        points={points}
+        comms={comms}
+        docs={docs}
+        lor={lor}
+      />
+
       <LorCard leadId={lead.id} lor={lor} />
       <ComposePanel leadId={lead.id} isStaff />
 
       <IdentifiedStays properties={identified ?? []} />
 
-      {/* ---- contact health ---------------------------------------------- */}
       <section className={`m6-health ${health}`}>
         <div className="m6-health-top">
           <span className={`m6-dot ${health}`} aria-hidden="true" />
           <strong>{HEALTH_LABEL[health]}</strong>
-          {status?.ladder_step && <span className="m6-step">Ladder step {status.ladder_step}</span>}
         </div>
         <dl className="m6-health-facts">
           <div><dt>Last reached</dt><dd>{daysAgo(status?.last_two_way_at)}</dd></div>
@@ -171,7 +179,6 @@ export default function CaseFile({
           <div><dt>Ways to reach them</dt><dd>{live.length}</dd></div>
         </dl>
         <div className="m6-health-acts">
-          {pageErr && <p className="m6-error">{err}</p>}
           <button
             type="button"
             className="m6-btn"
@@ -338,30 +345,6 @@ export default function CaseFile({
             )}
           </section>
 
-          {/* ---- history -------------------------------------------------- */}
-          <section className="m6-card">
-            <h2>Contact history</h2>
-            {comms.length === 0 ? (
-              <p className="m6-empty">Nothing logged. The last touch starts here.</p>
-            ) : (
-              <ul className="m6-comms">
-                {comms.map((c) => (
-                  <li key={c.id} className={c.outcome === "two_way" ? "hit" : ""}>
-                    <span className="m6-comm-when">
-                      {formatLocalDateTime(c.occurred_at)}
-                    </span>
-                    <span className="m6-comm-what">
-                      {c.channel === "sms" ? "Text" : "Call"}
-                      {c.direction === "inbound" ? " in" : " out"}
-                      {c.outcome && ` · ${OUTCOMES.find((o) => o.value === c.outcome)?.label ?? c.outcome}`}
-                      {c.agent_name && ` · ${c.agent_name}`}
-                    </span>
-                    {c.body && <span className="m6-comm-body">{c.body}</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
         </div>
       </div>
 
