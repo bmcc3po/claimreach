@@ -5,7 +5,7 @@ import { isInternalRole } from "@/lib/permissions";
 import {
   M6_SENDING_NUMBER, actorFirmLabel, evaluateOutboundGates, gateMessage,
   idempotencyKey, mergeCadenceText, templateByKey, templatesForAudience,
-  timezoneFromPhone, type GateChannel,
+  timezoneFromPhone, type GateChannel, type GateReason,
 } from "@/lib/m6-cadence";
 import { sendEmail } from "@/lib/email";
 import { resolveM6SmsDestination, sendJustCallSms } from "@/lib/justcall-send";
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
   }
 
   let sendStatus = "logged";
-  let blockedReason = verdict.blocked[0] ?? null;
+  let blockedReason: GateReason | null = verdict.blocked[0] ?? null;
   let liveError: string | null = null;
 
   if (liveSend && verdict.canLiveSend) {

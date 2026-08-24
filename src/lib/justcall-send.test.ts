@@ -36,7 +36,7 @@ async function run() {
   });
   check("opted-out dest is a hard gate", optedPhone.optedOut, true);
 
-  let called: { url: string; auth: string | null; body: any } | null = null;
+  const captured = { url: "", auth: null as string | null, body: null as any };
   const sent = await sendJustCallSms({
     to: "6015550100",
     body: "Hi Ada, still your best number?",
@@ -44,20 +44,18 @@ async function run() {
     apiKey: "k",
     apiSecret: "s",
     fetchImpl: (async (url, init) => {
-      called = {
-        url: String(url),
-        auth: (init?.headers as any)?.Authorization ?? null,
-        body: JSON.parse(String(init?.body ?? "{}")),
-      };
+      captured.url = String(url);
+      captured.auth = (init?.headers as any)?.Authorization ?? null;
+      captured.body = JSON.parse(String(init?.body ?? "{}"));
       return new Response(JSON.stringify({ id: "jc_1" }), { status: 200 });
     }) as typeof fetch,
   });
   check("2xx is sent", sent.ok, true);
-  check("posts texts/new", called?.url, JUSTCALL_TEXTS_URL);
-  check("raw key:secret auth", called?.auth, "k:s");
-  check("from is the M6 line", called?.body?.justcall_number, "+12562075828");
-  check("to is E.164", called?.body?.contact_number, "+16015550100");
-  check("body is the agent text", called?.body?.body, "Hi Ada, still your best number?");
+  check("posts texts/new", captured.url, JUSTCALL_TEXTS_URL);
+  check("raw key:secret auth", captured.auth, "k:s");
+  check("from is the M6 line", captured.body?.justcall_number, "+12562075828");
+  check("to is E.164", captured.body?.contact_number, "+16015550100");
+  check("body is the agent text", captured.body?.body, "Hi Ada, still your best number?");
 
   const failed = await sendJustCallSms({
     to: "6015550100",
