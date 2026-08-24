@@ -5,7 +5,7 @@ import {
   M6_LOR_FROM_PHONE_DEFAULT, M6_LOR_INJURY_PHRASE, M6_LOR_RECIPIENT,
   M6_LOR_TEMPLATE_KEY, composeLorLetter, dateRangeLine, defaultLorFrom,
   displayClientName, franchiseeRecipientFromHistory, letterIsMoneyBlind,
-  lorAlreadySent, minusYears, pickLorRecipient, postgridMode, pronounsFor,
+  lorAlreadySent, lorFactsPatch, minusYears, pickLorRecipient, postgridMode, pronounsFor,
   windowLine,
 } from "./m6-lor";
 
@@ -117,6 +117,39 @@ check("no invented LLC", franchiseeRecipientFromHistory({
   brand: "Motel 6", from: 2014, to: 2014, llc: "", owner: "", address: "", source: "desk",
 }), null);
 check("blank history does not become G6 clone", franchiseeRecipientFromHistory(null), null);
+
+console.log("\nLOR FACTS PATCH");
+check("empty does not wipe a LawRuler date", lorFactsPatch(
+  { incident_start: "2019-04-01" },
+  { incident_start: "" },
+), {});
+check("agent edit overwrites a date", lorFactsPatch(
+  { incident_start: "2019-04-01" },
+  { incident_start: "2019-05-01" },
+), { incident_start: "2019-05-01" });
+check("fill an empty date", lorFactsPatch(
+  { incident_start: null },
+  { incident_start: "2019-04-01" },
+), { incident_start: "2019-04-01" });
+check("same date is a no-op", lorFactsPatch(
+  { incident_start: "2019-04-01" },
+  { incident_start: "2019-04-01" },
+), {});
+check("gender F matches female in the picker", lorFactsPatch(
+  { gender: "F" },
+  { gender: "female" },
+), {});
+check("agent can change gender", lorFactsPatch(
+  { gender: "female" },
+  { gender: "male" },
+), { gender: "male" });
+check("unknown property keys are ignored", lorFactsPatch(
+  { incident_start: "2019-04-01" },
+  { incident_start: "2019-04-01", phantom: "nope" },
+), {});
+check("composed letter still uses placeholders when dates are blank", composeLorLetter({
+  claimantName: "Destiny Henry",
+}).body.includes("[start date]"), true);
 
 if (fail) { console.log(`\n${fail} failed`); process.exit(1); }
 console.log(`\n${pass} passed`);

@@ -5,7 +5,7 @@ import { loadIdentifiedForLead } from "@/lib/property-ops";
 import { brandHistoryForYear, type BrandHistoryEntry } from "@/lib/property-tool";
 import {
   M6_LOR_RECIPIENT, M6_LOR_TEMPLATE_KEY, composeLorLetter, defaultLorFrom,
-  franchiseeRecipientFromHistory, letterIsMoneyBlind, lorAlreadySent,
+  factsFormFromLead, franchiseeRecipientFromHistory, letterIsMoneyBlind, lorAlreadySent,
   pickLorRecipient, postgridMode, recipientCanMail,
   type LorRecipient,
 } from "@/lib/m6-lor";
@@ -107,6 +107,7 @@ export async function previewPayload(lead: any, lor: any, sb?: any) {
     },
     recipients,
     defaultRecipient: "g6",
+    facts: factsFormFromLead(lead),
     lor: lor ?? null,
     alreadySent: already,
     rails: {

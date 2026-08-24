@@ -1,5 +1,7 @@
 "use client";
+import { useRouter } from "next/navigation";
 import FileActions from "./FileActions";
+import LorFacts, { lorFactsShowFromLead } from "./LorFacts";
 import { commDirection } from "./ConversationFeed";
 import {
   OUTCOMES, SECONDARY_INTERVIEW_DOC_TYPE, displayName, formatLocalDateTime,
@@ -9,6 +11,7 @@ import {
   LADDER_STEPS, STAGE_LABELS, fileFacts, nextMove, resolveCadenceStage,
   type CadenceStage, type FileClock,
 } from "@/lib/m6-cadence";
+import { factsFormFromLead } from "@/lib/m6-lor";
 
 type Point = {
   kind: string; status: string; value?: string | null; person_name?: string | null;
@@ -50,6 +53,7 @@ export default function FileCommand({
   docs: any[];
   lor: any;
 }) {
+  const router = useRouter();
   const name = displayName(lead);
   const interview = (docs ?? []).find((d) => d.doc_type === SECONDARY_INTERVIEW_DOC_TYPE);
   const interviewComm = (comms ?? []).find((c) =>
@@ -173,6 +177,14 @@ export default function FileCommand({
             )}
           </div>
         </div>
+        <LorFacts
+          leadId={lead.id}
+          facts={factsFormFromLead(lead)}
+          show={lorFactsShowFromLead(lead)}
+          hint="Stay dates go on the letter. Old files and CSV intakes do not get these from LawRuler."
+          saveLabel="Save"
+          onSaved={() => router.refresh()}
+        />
       </section>
 
       <section className="m6-card m6-convo">

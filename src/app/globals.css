@@ -2067,6 +2067,11 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .m6-facts-col li { font-size: 14px; padding: 5px 0; color: var(--ink); }
 .m6-facts-col.lack li { color: #E9262B; font-weight: 600; }
 .m6-facts-col.done li { color: var(--ink-soft); }
+.m6-lor-facts {
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.m6-lor-facts .m6-btn { margin-top: 4px; }
 .m6-convo { margin-bottom: 22px; }
 .m6-comms-live li.in { border-left-color: #E9262B; }
 .m6-comms-live li.out { border-left-color: #231F20; }

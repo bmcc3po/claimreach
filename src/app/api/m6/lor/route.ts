@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseAdmin, supabaseServer } from "@/lib/supabase-server";
 import { assertM6Write } from "@/lib/m6-scope";
 import { isLorStatus, type LorStatus } from "@/lib/m6";
+import { lorFactsPatch } from "@/lib/m6-lor";
 import { LOR_LEAD_COLS, previewPayload } from "@/lib/m6-lor-server";
 export const runtime = "edge";
 
 const SENT_TO = ["g6", "franchisee", "motel6", "sedgwick", "other"] as const;
 
-// Status sidecar only. One-click PostGrid send is POST /api/m6/lor/send.
+async function previewFor(sb: any, leadId: string, firmId: string) {
+  const admin = supabaseAdmin();
+  const [{ data: lead }, { data: lor }] = await Promise.all([
+    admin.from("leads").select(LOR_LEAD_COLS).eq("id", leadId).eq("firm_id", firmId).maybeSingle(),
+    sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to")
+      .eq("lead_id", leadId).eq("firm_id", firmId).maybeSingle(),
+  ]);
+  if (!lead) return null;
+  return previewPayload(lead, lor, sb);
+}
 
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
@@ -27,9 +37,15 @@ export async function POST(req: NextRequest) {
   let b: any;
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Bad request." }, { status: 400 }); }
 
-  const { lead_id, status, flagged_today, sent_on, sent_to } = b ?? {};
+  const { lead_id, status, flagged_today, sent_on, sent_to, facts } = b ?? {};
   if (!lead_id) return NextResponse.json({ error: "Missing the file." }, { status: 400 });
-  if (!isLorStatus(status)) {
+
+  const hasFacts = facts && typeof facts === "object" && !Array.isArray(facts);
+  const hasStatus = status != null && status !== "";
+  if (!hasFacts && !hasStatus) {
+    return NextResponse.json({ error: "Pick an LOR status." }, { status: 400 });
+  }
+  if (hasStatus && !isLorStatus(status)) {
     return NextResponse.json({ error: "Pick an LOR status." }, { status: 400 });
   }
   if (sent_to != null && sent_to !== "" && !SENT_TO.includes(sent_to)) {
@@ -45,25 +61,45 @@ export async function POST(req: NextRequest) {
     sentOn = String(sent_on).slice(0, 10);
   }
 
-  const gate = await assertM6Write(sb, lead_id, "id, firm_id, campaign, case_type, archived_at");
+  const gate = await assertM6Write(sb, lead_id, LOR_LEAD_COLS);
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
-  const st: LorStatus = status;
-  const flagged = st === "sent" || st === "received"
-    ? false
-    : (flagged_today === true || st === "ready");
+  if (hasFacts) {
+    const patch = lorFactsPatch(gate.lead, facts);
+    if (Object.keys(patch).length) {
+      const { error } = await supabaseAdmin()
+        .from("leads")
+        .update(patch)
+        .eq("id", lead_id)
+        .eq("firm_id", gate.lead.firm_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
 
-  const { error } = await sb.from("lead_lor").upsert({
-    lead_id,
-    firm_id: gate.lead.firm_id,
-    status: st,
-    flagged_today: flagged,
-    sent_on: sentOn,
-    sent_to: sent_to || null,
-    updated_at: new Date().toISOString(),
-    updated_by: gate.user.id,
-  }, { onConflict: "lead_id" });
+  if (hasStatus) {
+    const st: LorStatus = status;
+    const flagged = st === "sent" || st === "received"
+      ? false
+      : (flagged_today === true || st === "ready");
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const { error } = await sb.from("lead_lor").upsert({
+      lead_id,
+      firm_id: gate.lead.firm_id,
+      status: st,
+      flagged_today: flagged,
+      sent_on: sentOn,
+      sent_to: sent_to || null,
+      updated_at: new Date().toISOString(),
+      updated_by: gate.user.id,
+    }, { onConflict: "lead_id" });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (hasFacts) {
+    const preview = await previewFor(sb, lead_id, gate.lead.firm_id);
+    if (!preview) return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ...preview });
+  }
   return NextResponse.json({ ok: true });
 }
