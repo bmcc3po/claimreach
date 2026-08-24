@@ -36,7 +36,7 @@ export default function PfsDesk({
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const [panel, setPanel] = useState<"none" | "add" | "import">(form?.fields?.length ? "none" : "none");
+  const [panel, setPanel] = useState<"none" | "add" | "import">("none");
   const [draft, setDraft] = useState<Draft>(blankDraft());
 
   const rows = useMemo(() => pfsListRows(fields), [fields]);
