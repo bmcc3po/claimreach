@@ -9,7 +9,7 @@ import {
   cleanLeadid, flattenIdentification, lawrulerPasteBlock, normalizeStay,
   propertyLookupKeys, type BrandHistoryEntry, type IdentifiedProperty,
 } from "@/lib/property-tool";
-import { inboundOwnerFields, runBrandHunt, yearOfIso } from "@/lib/property-hunt";
+import { runBrandHunt } from "@/lib/property-hunt";
 export { searchProperties } from "@/lib/property-search";
 
 const CANON_SELECT = "name, street, city, state, zip, address, lat, lng, current_brand, brand_history";
@@ -263,75 +263,4 @@ export async function huntBrandOwner(firmId: string, b: Record<string, unknown>)
   });
   if (found.error) return { status: 502 as const, ...found, error: found.error };
   return { status: 200 as const, ...found };
-}
-
-// LawRuler sometimes already sends LLC / owner. Map onto recorded history
-// when we can attach it to a real building. Never invent a place or an LLC.
-export async function recordInboundBrandHistory(
-  firmId: string,
-  lead: { id: string; external_id?: string | null; lawruler_ref_no?: string | null },
-  fields: Record<string, any>,
-  property: {
-    name?: string | null;
-    city?: string | null;
-    state?: string | null;
-    incidentStart?: string | null;
-    incidentEnd?: string | null;
-  },
-) {
-  const own = inboundOwnerFields(fields);
-  if (!own.llc && !own.owner && !own.address) return { wrote: false };
-  const year = yearOfIso(property.incidentStart) || yearOfIso(property.incidentEnd);
-  if (!year) return { wrote: false };
-
-  const admin = supabaseAdmin();
-  const keys = propertyLookupKeys(lead);
-  let canonical: { id: string; brand_history: unknown } | null = null;
-  if (keys.length) {
-    const { data: links } = await admin.from("property_identifications")
-      .select("canonical_id, properties_canonical (id, brand_history)")
-      .eq("firm_id", firmId)
-      .in("lawruler_leadid", keys)
-      .limit(1);
-    const row: any = links?.[0];
-    const canon = Array.isArray(row?.properties_canonical)
-      ? row.properties_canonical[0]
-      : row?.properties_canonical;
-    if (canon?.id) canonical = { id: canon.id, brand_history: canon.brand_history };
-  }
-  if (!canonical && property.name && property.city && property.state) {
-    const { data } = await admin.from("properties_canonical")
-      .select("id, brand_history")
-      .eq("firm_id", firmId)
-      .ilike("name", property.name)
-      .ilike("city", property.city)
-      .ilike("state", property.state)
-      .limit(1)
-      .maybeSingle();
-    if (data?.id) canonical = data;
-  }
-  if (!canonical) return { wrote: false };
-
-  const prev = Array.isArray(canonical.brand_history) ? canonical.brand_history as any[] : [];
-  const existing = prev.find((h) => Number(h?.from) === year && (h?.to == null || Number(h.to) === year));
-  const nextEntry: BrandHistoryEntry = {
-    brand: String(existing?.brand || ""),
-    from: year,
-    to: year,
-    llc: own.llc || String(existing?.llc || ""),
-    owner: own.owner || String(existing?.owner || ""),
-    address: own.address || String(existing?.address || ""),
-    source: "desk",
-  };
-  if (!nextEntry.llc && !nextEntry.owner && !nextEntry.address) return { wrote: false };
-  const next = [
-    ...prev.filter((h) => !(Number(h?.from) === year && (h?.to == null || Number(h.to) === year))),
-    nextEntry,
-  ];
-  const { error } = await admin.from("properties_canonical")
-    .update({ brand_history: next })
-    .eq("id", canonical.id)
-    .eq("firm_id", firmId);
-  if (error) return { wrote: false, error: error.message };
-  return { wrote: true };
 }

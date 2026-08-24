@@ -12,13 +12,16 @@ type RecipientOpt = {
   recommended?: boolean;
 };
 
+type LetterView = {
+  subject: string; body: string; clientName: string; leadNo: string | null;
+  recipient: { orgName: string; attention: string; address: string };
+  from: { companyName: string; attention: string; phone: string; address: string };
+  missing: string[];
+};
+
 type Preview = {
-  letter: {
-    subject: string; body: string; clientName: string; leadNo: string | null;
-    recipient: { orgName: string; attention: string; address: string };
-    from: { companyName: string; attention: string; phone: string; address: string };
-    missing: string[];
-  };
+  letter: LetterView;
+  letters?: Record<string, LetterView>;
   recipients?: RecipientOpt[];
   defaultRecipient?: string;
   alreadySent: boolean;
@@ -77,12 +80,12 @@ export default function LorSend({
   }
 
   const choices = preview?.recipients?.length ? preview.recipients : [];
-  const chosen = choices.find((c) => c.key === recipient) || choices[0];
+  const shown = (preview && (preview.letters?.[recipient] || preview.letter)) || null;
 
   return (
     <ModalShell title="Send LOR" onClose={onClose} err={err} wide>
       {!preview && !err && <p className="m6-hint">Loading the letter…</p>}
-      {preview && (
+      {preview && shown && (
         <div className="m6-lor-preview">
           <p className="m6-hint">{preview.rails.whatItDoes}</p>
           {choices.length > 1 && (
@@ -106,11 +109,11 @@ export default function LorSend({
             </fieldset>
           )}
           <p className="m6-lor-meta">
-            To {chosen?.orgName || preview.letter.recipient.orgName}, {chosen?.attention || preview.letter.recipient.attention}. {chosen?.address || preview.letter.recipient.address}.
+            To {shown.recipient.orgName}, {shown.recipient.attention}. {shown.recipient.address}.
           </p>
-          <pre className="m6-letter">{preview.letter.body}</pre>
-          {preview.letter.missing.length > 0 && (
-            <p className="m6-hint">Still missing: {preview.letter.missing.join(", ")}. The letter will send with what we have if the name is on the file.</p>
+          <pre className="m6-letter">{shown.body}</pre>
+          {shown.missing.length > 0 && (
+            <p className="m6-hint">Still missing: {shown.missing.join(", ")}. The letter will send with what we have if the name is on the file.</p>
           )}
           {ok && <p className="m6-hint">{ok}</p>}
           <div className="m6-modal-acts">

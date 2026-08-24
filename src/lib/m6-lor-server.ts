@@ -58,10 +58,36 @@ export async function loadStayYearOwner(sb: any, lead: any): Promise<BrandHistor
   return null;
 }
 
+function letterPreview(letter: ReturnType<typeof composeLorLetter>) {
+  return {
+    subject: letter.subject,
+    body: letter.body,
+    html: letter.html,
+    date: letter.date,
+    clientName: letter.clientName,
+    leadNo: letter.leadNo,
+    recipient: serializeRecipient(letter.recipient),
+    from: {
+      companyName: letter.from.companyName,
+      attention: letter.from.attention,
+      phone: letter.from.phone,
+      fax: letter.from.fax,
+      email: letter.from.email,
+      address: [letter.from.addressLine1, letter.from.city, letter.from.state, letter.from.zip].filter(Boolean).join(", "),
+    },
+    missing: letter.missing,
+    moneyBlind: letterIsMoneyBlind(letter.body),
+  };
+}
+
 export async function previewPayload(lead: any, lor: any, sb?: any) {
   const recorded = sb ? await loadStayYearOwner(sb, lead) : null;
   const franchisee = franchiseeRecipientFromHistory(recorded);
-  const letter = composeLorLetter(factsFromLead(lead), { recipient: M6_LOR_RECIPIENT });
+  const facts = factsFromLead(lead);
+  const letter = composeLorLetter(facts, { recipient: M6_LOR_RECIPIENT });
+  const franchiseeLetter = franchisee && recipientCanMail(franchisee)
+    ? composeLorLetter(facts, { recipient: franchisee })
+    : null;
   const key = process.env.POSTGRID_API_KEY || "";
   const mode = postgridMode(key);
   const already = lorAlreadySent(lor?.status);
@@ -74,24 +100,10 @@ export async function previewPayload(lead: any, lor: any, sb?: any) {
     }] : []),
   ];
   return {
-    letter: {
-      subject: letter.subject,
-      body: letter.body,
-      html: letter.html,
-      date: letter.date,
-      clientName: letter.clientName,
-      leadNo: letter.leadNo,
-      recipient: serializeRecipient(letter.recipient),
-      from: {
-        companyName: letter.from.companyName,
-        attention: letter.from.attention,
-        phone: letter.from.phone,
-        fax: letter.from.fax,
-        email: letter.from.email,
-        address: [letter.from.addressLine1, letter.from.city, letter.from.state, letter.from.zip].filter(Boolean).join(", "),
-      },
-      missing: letter.missing,
-      moneyBlind: letterIsMoneyBlind(letter.body),
+    letter: letterPreview(letter),
+    letters: {
+      g6: letterPreview(letter),
+      ...(franchiseeLetter ? { franchisee: letterPreview(franchiseeLetter) } : {}),
     },
     recipients,
     defaultRecipient: "g6",
