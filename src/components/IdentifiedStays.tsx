@@ -31,6 +31,13 @@ export default function IdentifiedStays({
                 {p.brand_mismatch && (
                   <span className="m6-id-flag">Remembered brand differs from the current flag</span>
                 )}
+                {p.history?.map((h, i) => (
+                  <span key={`${p.id}-h-${i}`} className="m6-point-lab">
+                    Recorded {h.from ?? "?"}{h.to && h.to !== h.from ? `–${h.to}` : ""}: {h.brand || "brand not noted"}
+                    {h.llc ? ` · ${h.llc}` : ""}
+                    {h.address ? ` · ${h.address}` : ""}
+                  </span>
+                ))}
               </div>
             </li>
           );

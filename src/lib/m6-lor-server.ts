@@ -55,7 +55,7 @@ export function previewPayload(lead: any, lor: any) {
       postgrid: mode !== "missing",
       mode,
       whatItDoes: mode === "live"
-        ? "One click sends certified mail with return receipt to G6 via PostGrid. LawRuler is not in this path."
+        ? "One click sends certified mail with return receipt to G6 via PostGrid."
         : mode === "test"
           ? "PostGrid test key is on. This creates a test letter. It will not go to a live mailbox."
           : "PostGrid key is not in Pages. You can preview. Send will not mail until a test or live key is set.",

@@ -125,6 +125,28 @@ check("nested canonical object", flattenIdentification({
     lat: 1, lng: 2,
   },
 }).name, "Red Roof Inn");
+check("flatten keeps recorded history", flattenIdentification({
+  id: "link-2",
+  remembered_brand: "Motel 6",
+  current_brand: "Red Roof",
+  brand_mismatch: true,
+  stay_from: "3/2014",
+  stay_to: "11/2014",
+  properties_canonical: {
+    name: "Red Roof Inn",
+    street: "100 Main",
+    city: "Gary",
+    state: "IN",
+    zip: "46402",
+    address: "100 Main, Gary, IN 46402",
+    lat: 1, lng: 2,
+    current_brand: "Red Roof",
+    brand_history: [{
+      brand: "Motel 6", from: 2014, to: 2014,
+      llc: "Motels of Indiana LLC", owner: "", address: "123 Happy St", source: "desk",
+    }],
+  },
+}).history[0]?.llc, "Motels of Indiana LLC");
 
 async function searchCases() {
   console.log("\nSEARCH (no crash, JSON errors)");

@@ -89,6 +89,12 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
                       {when ? ` · ${when}` : ""}
                     </span>
                     <span>{p.name || "Property"}{where ? ` · ${where}` : ""}</span>
+                    {p.history?.map((h, i) => (
+                      <span key={`${p.id}-h-${i}`} className="ov-note-meta">
+                        Recorded {h.from ?? "?"}{h.to && h.to !== h.from ? `–${h.to}` : ""}: {h.brand || "brand not noted"}
+                        {h.llc ? ` · ${h.llc}` : ""}
+                      </span>
+                    ))}
                   </div>
                 );
               })}

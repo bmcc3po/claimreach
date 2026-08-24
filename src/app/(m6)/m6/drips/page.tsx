@@ -15,7 +15,6 @@ export default function M6DripsPage() {
         <p>Sending number: {M6_SENDING_NUMBER}</p>
         <p className="m6-hint">Heartbeat is fourteen days for the first ninety, then thirty. Quiet hours 8am–8pm. Firm users do not edit master drip rules here.</p>
         <p><Link href="/m6">Back to Today</Link></p>
-        <p className="m6-hint"><Link href="/settings">Staff: open Settings</Link> if you need the full drip table.</p>
       </section>
     </div>
   );

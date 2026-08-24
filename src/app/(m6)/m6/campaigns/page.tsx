@@ -13,7 +13,6 @@ export default function M6CampaignsPage() {
       <section className="m6-card">
         <p>Compose from the file. Approved words only. No case subject if comms are monitored.</p>
         <p><Link href="/m6/cases">Open a file to write</Link></p>
-        <p className="m6-hint"><Link href="/settings/campaigns">Staff: campaign templates</Link></p>
       </section>
     </div>
   );

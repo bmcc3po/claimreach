@@ -14,7 +14,7 @@ export default async function M6PropertyPage({
       <div className="m6-head">
         <h1>Property lookup</h1>
         <p className="m6-sub">
-          Find the motel. Copy the address or save it to a file. This is ClaimReach&apos;s lookup — LawRuler does not have one.
+          Find the motel. Copy the address onto the file, or type a file number and save the stay.
         </p>
       </div>
       <PropertyTool toolKey="" leadid={sp.leadid || ""} apiPath="/api/m6/property" surface="m6" />

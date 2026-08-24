@@ -34,7 +34,7 @@ export default function BrandOwner() {
       const r = await fetch("/api/m6/property", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "search", location, radiusMiles: 5, motel6: true, studio6: true, anyChain: false }),
+        body: JSON.stringify({ op: "search", location, radiusMiles: 5, motel6: false, studio6: false, anyChain: true }),
       });
       const raw = await r.text();
       let d: any = {};
@@ -105,7 +105,7 @@ export default function BrandOwner() {
   return (
     <div className="pt pt-embed">
       <p className="m6-hint">
-        Live Google shows today&apos;s flag. The year fields are what someone recorded — not a live SOS pull.
+        Search the building as it stands today — even if the flag changed. Live Google is today. The year fields are recorded history, not a live Secretary of State pull.
       </p>
       <label className="pt-field">
         <span>City or motel</span>

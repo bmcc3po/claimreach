@@ -93,6 +93,7 @@ export type IdentifiedProperty = {
   address: string | null;
   lat: number | null;
   lng: number | null;
+  history: BrandHistoryEntry[];
 };
 
 export type BrandHistoryEntry = {
@@ -105,24 +106,26 @@ export type BrandHistoryEntry = {
   source: "desk";
 };
 
+export function normalizeBrandHistory(history: unknown): BrandHistoryEntry[] {
+  if (!Array.isArray(history)) return [];
+  return history.map((h: any) => ({
+    brand: String(h?.brand || ""),
+    from: h?.from == null || h?.from === "" ? null : Number(h.from),
+    to: h?.to == null || h?.to === "" ? null : Number(h.to),
+    llc: String(h?.llc || ""),
+    owner: String(h?.owner || ""),
+    address: String(h?.address || ""),
+    source: "desk" as const,
+  }));
+}
+
 export function brandHistoryForYear(history: unknown, year: number): BrandHistoryEntry | null {
-  if (!Array.isArray(history)) return null;
-  const hits = history.filter((h: any) => {
-    const from = Number(h?.from);
-    const to = h?.to == null || h?.to === "" ? 9999 : Number(h.to);
+  const hits = normalizeBrandHistory(history).filter((h) => {
+    const from = Number(h.from);
+    const to = h.to == null ? 9999 : Number(h.to);
     return Number.isFinite(from) && year >= from && year <= to;
   });
-  const last = hits[hits.length - 1];
-  if (!last) return null;
-  return {
-    brand: String(last.brand || ""),
-    from: last.from == null ? null : Number(last.from),
-    to: last.to == null || last.to === "" ? null : Number(last.to),
-    llc: String(last.llc || ""),
-    owner: String(last.owner || ""),
-    address: String(last.address || ""),
-    source: "desk",
-  };
+  return hits[hits.length - 1] ?? null;
 }
 
 export function flattenIdentification(row: {
@@ -142,6 +145,7 @@ export function flattenIdentification(row: {
     lat?: number | null;
     lng?: number | null;
     current_brand?: string | null;
+    brand_history?: unknown;
   } | {
     name?: string | null;
     street?: string | null;
@@ -152,6 +156,7 @@ export function flattenIdentification(row: {
     lat?: number | null;
     lng?: number | null;
     current_brand?: string | null;
+    brand_history?: unknown;
   }[] | null;
 }): IdentifiedProperty {
   const canon = Array.isArray(row.properties_canonical)
@@ -172,5 +177,6 @@ export function flattenIdentification(row: {
     address: canon?.address ?? null,
     lat: canon?.lat ?? null,
     lng: canon?.lng ?? null,
+    history: normalizeBrandHistory(canon?.brand_history),
   };
 }
