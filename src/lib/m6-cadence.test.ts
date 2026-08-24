@@ -174,6 +174,22 @@ check("monitored + case words in SMS", evaluateOutboundGates({
 check("live send without approval is blocked", evaluateOutboundGates({
   ...baseGate, liveSend: true, approvedByFirm: false, hasJustCallKeys: true,
 }).blocked.includes("unapproved_live"), true);
+check("agent-initiated live SMS skips Josh approval", evaluateOutboundGates({
+  ...baseGate, liveSend: true, approvedByFirm: false, hasJustCallKeys: true, agentInitiated: true,
+}).canLiveSend, true);
+check("agent-initiated live SMS is not unapproved_live", evaluateOutboundGates({
+  ...baseGate, liveSend: true, approvedByFirm: false, hasJustCallKeys: true, agentInitiated: true,
+}).blocked.includes("unapproved_live"), false);
+check("agent-initiated still blocks opt-out", evaluateOutboundGates({
+  ...baseGate, liveSend: true, approvedByFirm: false, hasJustCallKeys: true,
+  agentInitiated: true, optedOut: true,
+}).canLiveSend, false);
+check("drip live send still needs Josh", evaluateOutboundGates({
+  ...baseGate, liveSend: true, approvedByFirm: false, hasJustCallKeys: true, agentInitiated: false,
+}).canLiveSend, false);
+check("agent-initiated still needs JustCall keys", evaluateOutboundGates({
+  ...baseGate, liveSend: true, approvedByFirm: false, hasJustCallKeys: false, agentInitiated: true,
+}).blocked.includes("missing_justcall"), true);
 check("live SMS without JustCall is blocked", evaluateOutboundGates({
   ...baseGate, liveSend: true, approvedByFirm: true, hasJustCallKeys: false,
 }).blocked.includes("missing_justcall"), true);

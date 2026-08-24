@@ -8,6 +8,7 @@ import {
   timezoneFromPhone, type GateChannel,
 } from "@/lib/m6-cadence";
 import { sendEmail } from "@/lib/email";
+import { resolveM6SmsDestination, sendJustCallSms } from "@/lib/justcall-send";
 export const runtime = "edge";
 
 const CHANNELS: GateChannel[] = ["sms", "email", "call", "voicemail", "letter", "social", "trace", "memo"];
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     templates,
     sendingNumber: settings?.sending_number || M6_SENDING_NUMBER,
-    rails: { justcall: keys.justcall, resend: keys.resend, live: false },
+    rails: { justcall: keys.justcall, resend: keys.resend, live: keys.justcall || keys.resend },
     isStaff,
   });
 }
@@ -90,10 +91,20 @@ export async function POST(req: NextRequest) {
     .eq("campaign", "motel6").maybeSingle();
   const sendingNumber = settings?.sending_number || M6_SENDING_NUMBER;
 
-  let optedOut = false;
-  if (b.contact_point_id) {
-    const { data: point } = await sb.from("contact_points")
-      .select("status").eq("id", b.contact_point_id).eq("lead_id", leadId).maybeSingle();
+  const { data: points } = await sb.from("contact_points")
+    .select("id, kind, value, status")
+    .eq("lead_id", leadId)
+    .eq("firm_id", gate.lead.firm_id)
+    .is("retired_at", null);
+
+  const dest = resolveM6SmsDestination({
+    contactPointId: b.contact_point_id || null,
+    leadPhone: gate.lead.phone,
+    points: (points ?? []) as { id: string; kind: string; value: string; status: string }[],
+  });
+  let optedOut = dest.optedOut;
+  if (b.contact_point_id && !optedOut) {
+    const point = (points ?? []).find((p: any) => p.id === b.contact_point_id);
     optedOut = point?.status === "opted_out";
   }
   const { data: lastIn } = await sb.from("communications")
@@ -116,6 +127,7 @@ export async function POST(req: NextRequest) {
     approvedByFirm: !!tpl?.approvedByFirm,
     isStaff,
     liveSend,
+    agentInitiated: true,
     sendingNumber,
     hasJustCallKeys: keys.justcall,
     hasResendKey: keys.resend,
@@ -155,14 +167,29 @@ export async function POST(req: NextRequest) {
       if (sent.ok) sendStatus = "sent";
       else { sendStatus = "failed"; liveError = sent.error || "Email did not send."; }
     } else if (channel === "sms") {
-      sendStatus = "queued";
-      blockedReason = "missing_justcall";
-      liveError = "JustCall is not wired for a live Motel 6 send. Logged to the timeline.";
+      if (!dest.to) {
+        sendStatus = "failed";
+        liveError = "No number to text.";
+      } else {
+        const sent = await sendJustCallSms({
+          to: dest.to,
+          body: mergedBody,
+          from: sendingNumber,
+        });
+        if (sent.ok) {
+          sendStatus = "sent";
+          blockedReason = null;
+        } else {
+          sendStatus = "failed";
+          liveError = sent.error;
+        }
+      }
     } else {
       sendStatus = "logged";
     }
   } else if (liveSend && !verdict.canLiveSend) {
     sendStatus = "blocked";
+    liveError = verdict.blocked.map(gateMessage).join(" ") || "The text did not send.";
   }
 
   const commChannel = channel === "email" ? "email" : channel === "sms" ? "sms" : "call";
@@ -171,14 +198,14 @@ export async function POST(req: NextRequest) {
     firm_id: gate.lead.firm_id,
     channel: commChannel,
     direction: "outbound",
-    phone_raw: gate.lead.phone,
+    phone_raw: dest.to || gate.lead.phone,
     body: mergedSubject ? `${mergedSubject}\n\n${mergedBody}` : mergedBody,
     agent_name: gate.user.name ?? "You",
     agent_email: null,
     occurred_at: new Date().toISOString(),
     purpose: tpl?.stage === "06" ? "escalation" : tpl?.stage === "05" ? "heartbeat" : tpl?.stage === "04" || tpl?.stage === "03" || tpl?.stage === "01" ? "onboarding" : "ad_hoc",
     outcome: sendStatus === "sent" ? "delivered" : null,
-    contact_point_id: b.contact_point_id || null,
+    contact_point_id: b.contact_point_id || dest.contactPointId || null,
     logged_manually: true,
     dispositioned_by: gate.user.id,
     dispositioned_at: new Date().toISOString(),
@@ -196,12 +223,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const didSend = sendStatus === "sent";
   return NextResponse.json({
     ok: true,
     id: row?.id,
     send_status: sendStatus,
-    live: sendStatus === "sent",
-    error: liveError,
+    live: didSend,
+    error: liveSend && !didSend ? liveError : null,
+    sendingNumber,
     gates: {
       ...verdict,
       messages: verdict.blocked.map(gateMessage),

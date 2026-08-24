@@ -702,6 +702,9 @@ export type OutboundGateInput = {
   approvedByFirm?: boolean;
   isStaff?: boolean;
   liveSend?: boolean;
+  // Human clicked Send on a file. A filled body is the agent standing behind
+  // it. Auto drips still need approvedByFirm — do not pass this from cron.
+  agentInitiated?: boolean;
   sendingNumber?: string | null;
   hasJustCallKeys?: boolean;
   hasResendKey?: boolean;
@@ -830,7 +833,7 @@ export function evaluateOutboundGates(input: OutboundGateInput): GateResult {
     if (live) blocked.push("unapproved_live");
   }
 
-  if (live && !input.approvedByFirm) blocked.push("unapproved_live");
+  if (live && !input.approvedByFirm && !input.agentInitiated) blocked.push("unapproved_live");
   if (live && !input.sendingNumber) blocked.push("missing_sending_number");
   if (live && (input.channel === "sms" || input.channel === "call" || input.channel === "voicemail") && !input.hasJustCallKeys) {
     blocked.push("missing_justcall");
@@ -853,7 +856,7 @@ export function gateMessage(reason: GateReason): string {
     case "monitored_case_subject": return "Communications may be monitored. Nothing that names the case.";
     case "unapproved_live": return "Josh has not approved this script. You can log it, but it will not send.";
     case "missing_sending_number": return "No Motel 6 sending number is set.";
-    case "missing_justcall": return "JustCall keys are not in Pages. Logged only.";
+    case "missing_justcall": return "JustCall keys are not in Cloudflare Pages. Logged only.";
     case "missing_resend": return "Resend is not in Pages. Logged only.";
   }
 }
