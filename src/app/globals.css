@@ -2641,6 +2641,10 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 }
 .pt-sheet-name { margin: 0 0 2px; }
 .pt-sheet > .pt-btn { margin: 10px 0 12px; }
+.pt-sheet > a.pt-btn {
+  display: flex; align-items: center; justify-content: center;
+  text-decoration: none; box-sizing: border-box; margin-top: 0;
+}
 .pt-hunt { list-style: none; margin: 12px 0 16px; padding: 0; display: grid; gap: 8px; }
 .pt-hunt-card {
   width: 100%; text-align: left; font-family: inherit; cursor: pointer;
