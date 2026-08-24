@@ -133,6 +133,9 @@ export default function CaseFile({
               {busy === "interview" ? "Opening" : "View secondary interview"}
             </button>
           )}
+          <Link href={`/m6/cases/${lead.id}/pfs`} className="m6-btn">
+            Fact sheet
+          </Link>
           <Link href={propertyFileHref(lead)} className="m6-btn">
             Property lookup
           </Link>

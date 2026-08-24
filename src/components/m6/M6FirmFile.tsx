@@ -45,9 +45,9 @@ export default function M6FirmFile({
       <LorCard leadId={lead.id} lor={lor} />
       <ComposePanel leadId={lead.id} isStaff={false} />
       <p className="m6-hint">
-        <Link href={propertyFileHref(lead)}>
-          Look up a property
-        </Link>
+        <Link href={`/m6/cases/${lead.id}/pfs`}>Fact sheet</Link>
+        {" · "}
+        <Link href={propertyFileHref(lead)}>Look up a property</Link>
       </p>
       <IdentifiedStays properties={identified} />
       <LeadWorkspace

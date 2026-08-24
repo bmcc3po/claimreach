@@ -1,15 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
+import {
+  M6_DRIP_CAMPAIGN, collectDripCampaignKeys, dripCampaignClause, dripStepKey, sortDripRules,
+} from "@/lib/drip-rules";
 export const runtime = "edge";
 
-// GET — list due drips (what would fire now).
-export async function GET() {
+const RULE_COLS = "id, name, channel, every_days, template, assign_to, active, campaign, stage, step_key, delay_days, subject, kind, method_note, fire_once";
+
+// GET — list due drips (what would fire now) plus rules. ?campaign=motel6
+// filters the rule table so Motel 6 is not mixed with unscoped TMT/prison rows.
+export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { data } = await sb.from("drips_due").select("*").limit(200);
-  const { data: rules } = await sb.from("drip_rules").select("id, name, channel, every_days, template, assign_to, active").order("every_days");
-  return NextResponse.json({ due: data ?? [], rules: rules ?? [] });
+
+  const allQ = await sb.from("drip_rules").select("campaign");
+  const campaignKeys = collectDripCampaignKeys(allQ.data ?? []);
+
+  const clause = dripCampaignClause(new URL(req.url).searchParams.get("campaign"));
+  let q = sb.from("drip_rules").select(RULE_COLS);
+  if (clause.kind === "none") q = q.is("campaign", null);
+  if (clause.kind === "eq") q = q.eq("campaign", clause.value);
+  const { data: rules, error } = await q.order("every_days");
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ due: data ?? [], rules: sortDripRules(rules ?? []), campaign_keys: campaignKeys });
 }
 
 // POST { op:'enroll', lead_id } — enroll a lead in active drip rules.
@@ -27,11 +42,13 @@ export async function POST(req: NextRequest) {
     if (!["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const admin = supabaseAdmin();
     if (p.op === "delete_rule") {
-      await admin.from("drip_rules").delete().eq("id", p.id);
+      const { error } = await admin.from("drip_rules").delete().eq("id", p.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true });
     }
     if (p.op === "toggle_rule") {
-      await admin.from("drip_rules").update({ active: !!p.active }).eq("id", p.id);
+      const { error } = await admin.from("drip_rules").update({ active: !!p.active }).eq("id", p.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true });
     }
     // save_rule (create or update)
@@ -41,11 +58,23 @@ export async function POST(req: NextRequest) {
     if (!every || every < 1) return NextResponse.json({ error: "Cadence (every N days) must be a positive number." }, { status: 200 });
     const channel = ["sms", "email", "call_reminder"].includes(p.channel) ? p.channel : "sms";
     const assign = ["agent", "case_manager", "both"].includes(p.assign_to) ? p.assign_to : "agent";
-    const row: any = { name, channel, every_days: every, template: p.template ?? null, assign_to: assign, active: p.active !== false, firm_id: me.firm_id };
+    const row: Record<string, any> = {
+      name, channel, every_days: every, template: p.template ?? null,
+      assign_to: assign, active: p.active !== false, firm_id: me.firm_id,
+      subject: (p.subject ?? "").trim() || null,
+      delay_days: every,
+    };
     if (p.id) {
+      // Never re-key or un-scope a walker row. Campaign and step_key stay put.
       const { error } = await admin.from("drip_rules").update(row).eq("id", p.id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true, id: p.id });
+    }
+    const campaign = (p.campaign || "").trim() || null;
+    if (campaign) {
+      row.campaign = campaign;
+      row.step_key = dripStepKey(name);
+      if (campaign === M6_DRIP_CAMPAIGN) row.assign_to = assign || "both";
     }
     const { data, error } = await admin.from("drip_rules").insert(row).select("id").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
