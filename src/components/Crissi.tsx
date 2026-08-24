@@ -1,9 +1,9 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { CRISIS_SOP } from "@/lib/sop";
 import { BIBLE, BIBLE_GROUPS, searchBible, bibleFallback, type BibleEntry } from "@/lib/bible";
 import { DISCLAIMER_SHORT, DISCLAIMER_FULL, ESCALATION_LINE, CRISSI_GUARDRAIL_PROMPT } from "@/lib/crissi-disclaimers";
-import { askAI } from "@/lib/ai";
+import { askAI, crissiBrainFromHealth, type CrissiBrain } from "@/lib/ai";
 import { CrissiLogo } from "./CrissiLogo";
 import { SILVER_LINERS, linersFor } from "@/lib/silver-liners";
 import SilverLiners from "./SilverLiners";
@@ -62,6 +62,7 @@ export default function Crissi({
   const [thread, setThread] = useState<{ role: "you" | "bot"; text: string; offline?: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
   const [topic, setTopic] = useState<string | null>(null);
+  const brain = useCrissiBrain(isOpen);
 
   const results = useMemo(() => searchBible(search), [search]);
   const selected = BIBLE.find((e) => e.id === topic);
@@ -113,6 +114,7 @@ export default function Crissi({
     <>
         <div className="modal-h crissi-head">
           <CrissiLogo height={24} />
+          <CrissiBrainChip status={brain} />
           {isM6 && file && (
             <span className="m6-row-tag" style={{ marginLeft: 10 }}>
               {file.name}{file.leadNo ? ` · ${file.leadNo}` : ""}
@@ -132,6 +134,9 @@ export default function Crissi({
             </>
           )}
         </div>
+        {brain === "offline" && (
+          <p className="crissi-offline-note">Reading the written guide. The live brain is down.</p>
+        )}
 
         <div className="crisis-resources">
           <span className="badge danger">911 danger</span>
@@ -251,6 +256,45 @@ export default function Crissi({
         {shell}
       </div>
     </div>
+  );
+}
+
+function useCrissiBrain(open: boolean): CrissiBrain {
+  const [status, setStatus] = useState<CrissiBrain>("unknown");
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    async function ping() {
+      try {
+        const r = await fetch("/api/ai?health=1");
+        if (r.status === 401) {
+          if (!cancelled) setStatus("unknown");
+          return;
+        }
+        const d = await r.json();
+        if (!cancelled) setStatus(crissiBrainFromHealth(d));
+      } catch {
+        if (!cancelled) setStatus("unknown");
+      }
+    }
+
+    ping();
+    const id = setInterval(ping, 30_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [open]);
+
+  return status;
+}
+
+function CrissiBrainChip({ status }: { status: CrissiBrain }) {
+  const label = status === "live" ? "Crissi live" : status === "offline" ? "Crissi offline" : "Checking";
+  return (
+    <span className={`crissi-brain ${status}`} role="status" aria-live="polite">
+      <span className="crissi-brain-dot" aria-hidden />
+      {label}
+    </span>
   );
 }
 
