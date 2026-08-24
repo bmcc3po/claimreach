@@ -4,7 +4,7 @@
 
 export type CrissiBrain = "live" | "offline" | "unknown";
 
-type HealthAnswer = { answer?: unknown } | null | undefined;
+type HealthAnswer = { answer?: unknown; error?: unknown } | null | undefined;
 
 function nonemptyAnswer(block: HealthAnswer): boolean {
   return typeof block?.answer === "string" && block.answer.trim() !== "";
