@@ -15,7 +15,7 @@ export default async function M6PfsPage() {
   const canImport = isInternalRole(session.user.role)
     && ["owner", "admin", "manager"].includes(session.user.role);
 
-  let form: { name: string; question_count: number; updated_at: string | null } | null = null;
+  let form: { name: string; question_count: number; updated_at: string | null; fields: Field[] } | null = null;
   const { data } = await sb.from("intake_forms")
     .select("name, fields, updated_at")
     .eq("claim_type", PFS_FORM_KEY)
@@ -28,6 +28,7 @@ export default async function M6PfsPage() {
       name: data.name,
       question_count: pfsAskable(data.fields as Field[]).length,
       updated_at: data.updated_at ?? null,
+      fields: data.fields as Field[],
     };
   }
 
@@ -35,7 +36,9 @@ export default async function M6PfsPage() {
     <div className="m6-page">
       <div className="m6-head">
         <h1>Fact sheet</h1>
-        <p className="m6-sub">The judge&apos;s questions. Same answers table as intake. Motel 6 only.</p>
+        <p className="m6-sub">
+          Import the judge&apos;s sheet, or add one question at a time. Answers already on files stay.
+        </p>
       </div>
       <PfsDesk form={form} canImport={canImport} />
     </div>

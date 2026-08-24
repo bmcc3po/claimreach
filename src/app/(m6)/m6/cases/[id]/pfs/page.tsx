@@ -38,8 +38,8 @@ export default async function M6FilePfsPage({ params }: { params: Promise<{ id: 
           <p className="m6-sub">{gate.lead.claimant_name || "This file"} · {gate.lead.lead_no}</p>
         </div>
         <section className="m6-card">
-          <p>No fact sheet has been imported yet.</p>
-          <p className="m6-hint">Import the judge&apos;s CSV on the Fact sheet page. Until then this stays empty.</p>
+          <p>No fact sheet yet.</p>
+          <p className="m6-hint">Import the judge&apos;s sheet or add a question on the Fact sheet page. Until then this stays empty.</p>
           <p><Link href="/m6/pfs">Go to Fact sheet</Link></p>
         </section>
       </div>

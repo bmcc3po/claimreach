@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { guessBrand } from "@/lib/property-brand";
+import { guessBrand, isG6Property } from "@/lib/property-brand";
 import { brandHistoryForYear, type BrandHistoryEntry } from "@/lib/property-tool";
 
 type Candidate = {
@@ -14,8 +14,15 @@ type Candidate = {
   current_brand: string;
 };
 
-export default function BrandOwner() {
+function persistG6(on: boolean) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("g6", on ? "1" : "0");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolean }) {
   const [location, setLocation] = useState("");
+  const [g6Only, setG6Only] = useState(g6Start);
   const [year, setYear] = useState("2014");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
@@ -28,20 +35,28 @@ export default function BrandOwner() {
   const [owner, setOwner] = useState("");
   const [llcAddress, setLlcAddress] = useState("");
 
-  async function search() {
+  async function search(lock = g6Only) {
     setBusy("search"); setErr(""); setOk(""); setCandidates([]); setSelected(null); setRecorded(null);
     try {
       const r = await fetch("/api/m6/property", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "search", location, radiusMiles: 5, motel6: false, studio6: false, anyChain: true }),
+        body: JSON.stringify(lock
+          ? { op: "search", location, radiusMiles: 5, g6Only: true, motel6: true, studio6: true, anyChain: false }
+          : { op: "search", location, radiusMiles: 5, g6Only: false, motel6: false, studio6: false, anyChain: true }),
       });
       const raw = await r.text();
       let d: any = {};
       try { d = raw ? JSON.parse(raw) : {}; } catch { setErr("Search did not finish. Try again."); return; }
       if (!r.ok) { setErr(d.error || "Search failed."); return; }
-      setCandidates(d.candidates || []);
-      if (!(d.candidates || []).length) setErr("No properties in that radius. Widen the city or try another landmark.");
+      const found = (d.candidates || []) as Candidate[];
+      const next = lock ? found.filter((c) => isG6Property(c)) : found;
+      setCandidates(next);
+      if (!next.length) {
+        setErr(lock
+          ? "No Motel 6 or Studio 6 in that radius. Uncheck Only Motel 6 / G6 to see other flags."
+          : "No properties in that radius. Widen the city or try another landmark.");
+      }
     } catch {
       setErr("Could not reach search. Check your connection and try again.");
     } finally {
@@ -114,6 +129,25 @@ export default function BrandOwner() {
       <label className="pt-field">
         <span>Stay year</span>
         <input value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="2014" />
+      </label>
+      <label className="pt-check">
+        <input
+          type="checkbox"
+          checked={g6Only}
+          onChange={(e) => {
+            const on = e.target.checked;
+            setG6Only(on);
+            persistG6(on);
+            setSelected(null);
+            setRecorded(null);
+            if (location.trim()) void search(on);
+            else setCandidates([]);
+          }}
+        />
+        <span>
+          <strong>Only Motel 6 / G6</strong>
+          <em>Studio 6 and Motel 6 count. Other flags stay hidden.</em>
+        </span>
       </label>
       <button type="button" className="pt-btn primary" disabled={!!busy || !location.trim()} onClick={() => void search()}>
         {busy === "search" ? "Searching…" : "Search"}

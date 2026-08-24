@@ -65,7 +65,7 @@ export function milesToMeters(miles: number): number {
 }
 
 const LODGING_MASK =
-  "places.id,places.displayName,places.formattedAddress,places.location,places.photos,places.businessStatus,places.addressComponents";
+  "places.id,places.displayName,places.formattedAddress,places.location,places.photos,places.businessStatus,places.addressComponents,places.types";
 
 export type PlaceCandidate = {
   place_id: string;
@@ -79,6 +79,7 @@ export type PlaceCandidate = {
   lng: number | null;
   photo_ref: string | null;
   status: string | null;
+  types: string[];
 };
 
 function mapPlace(p: any): PlaceCandidate {
@@ -95,6 +96,7 @@ function mapPlace(p: any): PlaceCandidate {
     lng: p.location?.longitude ?? null,
     photo_ref: p.photos?.[0]?.name ?? null,
     status: p.businessStatus ?? null,
+    types: Array.isArray(p.types) ? p.types.map(String) : [],
   };
 }
 
