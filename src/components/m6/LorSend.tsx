@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ModalShell } from "./M6Modals";
+import LorFacts, { lorFactsShowFromMissing } from "./LorFacts";
 
 type RecipientOpt = {
   key: string;
@@ -26,6 +27,11 @@ type Preview = {
   defaultRecipient?: string;
   alreadySent: boolean;
   canSend: boolean;
+  facts?: {
+    gender: string; incident_start: string; incident_end: string;
+    property_name: string; property_street: string; property_city: string;
+    property_state: string; property_zip: string;
+  };
   rails: { postgrid: boolean; mode: string; whatItDoes: string };
 };
 
@@ -42,22 +48,25 @@ export default function LorSend({
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/m6/lor?lead_id=${encodeURIComponent(leadId)}`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || "Could not load the letter.");
+    setPreview(d as Preview);
+    setRecipient((cur) => d.defaultRecipient || cur || "g6");
+  }, [leadId]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch(`/api/m6/lor?lead_id=${encodeURIComponent(leadId)}`);
-        const d = await r.json().catch(() => ({}));
-        if (cancelled) return;
-        if (!r.ok || d.error) { setErr(d.error || "Could not load the letter."); return; }
-        setPreview(d as Preview);
-        setRecipient(d.defaultRecipient || "g6");
-      } catch {
-        if (!cancelled) setErr("Could not load the letter.");
+        await load();
+      } catch (e: any) {
+        if (!cancelled) setErr(e?.message || "Could not load the letter.");
       }
     })();
     return () => { cancelled = true; };
-  }, [leadId]);
+  }, [load]);
 
   async function send() {
     setBusy(true); setErr(""); setOk("");
@@ -81,6 +90,7 @@ export default function LorSend({
 
   const choices = preview?.recipients?.length ? preview.recipients : [];
   const shown = (preview && (preview.letters?.[recipient] || preview.letter)) || null;
+  const factsShow = lorFactsShowFromMissing(shown?.missing);
 
   return (
     <ModalShell title="Send LOR" onClose={onClose} err={err} wide>
@@ -88,6 +98,15 @@ export default function LorSend({
       {preview && shown && (
         <div className="m6-lor-preview">
           <p className="m6-hint">{preview.rails.whatItDoes}</p>
+          <LorFacts
+            leadId={leadId}
+            facts={preview.facts}
+            show={factsShow}
+            hint="Old files and CSV intakes do not get stay dates from LawRuler. Type them here. The letter updates as soon as you save."
+            onSaved={async () => {
+              try { await load(); } catch (e: any) { setErr(e?.message || "Could not reload the letter."); }
+            }}
+          />
           {choices.length > 1 && (
             <fieldset className="m6-lor-who">
               <legend>Where should this go?</legend>

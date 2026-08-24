@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { guessBrand, isG6Property } from "@/lib/property-brand";
 import { brandHistoryForYear, type BrandHistoryEntry } from "@/lib/property-tool";
-import type { HuntHit } from "@/lib/property-hunt";
+import { huntQueries, openCorporatesPublicSearchUrl, OPENCORPORATES_PUBLIC_SEARCH, type HuntHit } from "@/lib/property-hunt";
 
 type Candidate = {
   place_id: string;
@@ -117,17 +117,22 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
         }),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) {
-        setErr(d.error || "Hunt could not finish.");
-        return;
-      }
-      const next = (d.hits || []) as HuntHit[];
+      const next = Array.isArray(d.hits) ? (d.hits as HuntHit[]) : [];
       setHits(next);
       if (d.recorded) setRecorded(d.recorded);
       if (next[0]) applyHit(next[0]);
-      else setHuntNote(d.emptyMessage || `No filing found for this building in ${year}. You can type one if you have it.`);
+      const hint = typeof d.emptyMessage === "string" && d.emptyMessage.trim()
+        ? d.emptyMessage
+        : null;
+      if (hint) setHuntNote(hint);
+      else if (!next.length) {
+        setHuntNote(`No filing found for this building in ${year}. You can type one if you have it.`);
+      }
+      if (!r.ok && r.status === 400) {
+        setErr(typeof d.error === "string" && d.error ? d.error : "Hunt needs a stay year.");
+      }
     } catch {
-      setErr("Hunt could not finish. Check your connection.");
+      setHuntNote("Hunt could not finish. Type the LLC if you have it.");
     } finally {
       setBusy("");
     }
@@ -167,6 +172,12 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
   }
 
   const liveBrand = selected ? (selected.current_brand || guessBrand(selected.name) || "unknown today") : "";
+  const huntQuery = selected
+    ? (huntQueries({ name: selected.name, city: selected.city, state: selected.state })[0] || selected.name)
+    : "";
+  const ocPublicUrl = huntQuery
+    ? openCorporatesPublicSearchUrl(huntQuery)
+    : OPENCORPORATES_PUBLIC_SEARCH;
 
   return (
     <div className="pt pt-embed">
@@ -236,6 +247,12 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
           <button type="button" className="pt-btn primary" disabled={!!busy || year.length !== 4} onClick={() => void hunt()}>
             {busy === "hunt" ? "Hunting…" : `Hunt for ${year || "that year"}`}
           </button>
+          <a className="pt-btn" href={ocPublicUrl} target="_blank" rel="noopener noreferrer">
+            Search OpenCorporates
+          </a>
+          {year.length === 4 && (
+            <p className="m6-hint">Look for filings around {year}.</p>
+          )}
           {huntNote && <p className="m6-hint">{huntNote}</p>}
           {hits.length > 0 && (
             <ul className="pt-hunt">

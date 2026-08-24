@@ -2067,6 +2067,11 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .m6-facts-col li { font-size: 14px; padding: 5px 0; color: var(--ink); }
 .m6-facts-col.lack li { color: #E9262B; font-weight: 600; }
 .m6-facts-col.done li { color: var(--ink-soft); }
+.m6-lor-facts {
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.m6-lor-facts .m6-btn { margin-top: 4px; }
 .m6-convo { margin-bottom: 22px; }
 .m6-comms-live li.in { border-left-color: #E9262B; }
 .m6-comms-live li.out { border-left-color: #231F20; }
@@ -2318,7 +2323,11 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 .m6-dead { margin-top: 12px; }
 .m6-dead summary { font-size: 12.5px; color: var(--ink-faint); cursor: pointer; }
 .m6-dead ul { list-style: none; margin: 9px 0 0; padding: 0; font-size: 13px; color: var(--ink-faint); }
-.m6-dead li { padding: 3px 0; text-decoration: line-through; }
+.m6-dead li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 6px 0;
+}
+.m6-dead .m6-dead-val { text-decoration: line-through; }
 
 .m6-sched { list-style: none; margin: 0; padding: 0; }
 .m6-sched li { padding: 9px 0; font-size: 13.5px; color: var(--ink); }
@@ -2375,6 +2384,7 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
   background: none; border: 0; cursor: pointer; padding: 2px 4px;
 }
 .m6-linkbtn:hover { color: var(--danger); }
+.m6-linkbtn.put-back:hover { color: var(--ink); }
 
 /* --- log a touch ------------------------------------------------------------ */
 .m6-modal-wrap {
@@ -2631,6 +2641,10 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 }
 .pt-sheet-name { margin: 0 0 2px; }
 .pt-sheet > .pt-btn { margin: 10px 0 12px; }
+.pt-sheet > a.pt-btn {
+  display: flex; align-items: center; justify-content: center;
+  text-decoration: none; box-sizing: border-box; margin-top: 0;
+}
 .pt-hunt { list-style: none; margin: 12px 0 16px; padding: 0; display: grid; gap: 8px; }
 .pt-hunt-card {
   width: 100%; text-align: left; font-family: inherit; cursor: pointer;

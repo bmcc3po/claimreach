@@ -103,6 +103,11 @@ export default function CaseFile({
   const opted = points.filter((p) => p.status === "opted_out");
   const pageErr = err && !modal;
 
+  function putBack(p: Point) {
+    if (!confirm("Put this back on the desk?")) return;
+    void post("/api/m6/contact-point", { id: p.id, status: "good" }, `restore-${p.id}`);
+  }
+
   return (
     <div className="m6-page m6-file">
       {/* ---- header ------------------------------------------------------ */}
@@ -247,14 +252,42 @@ export default function CaseFile({
             {opted.length > 0 && (
               <details className="m6-dead">
                 <summary>{opted.length} opted out</summary>
-                <ul>{opted.map((p) => <li key={p.id}>{p.value} · {p.label || p.kind}</li>)}</ul>
+                <ul>
+                  {opted.map((p) => (
+                    <li key={p.id}>
+                      <span className="m6-dead-val">{p.value} · {p.label || p.kind}</span>
+                      <button
+                        type="button"
+                        className="m6-linkbtn put-back"
+                        disabled={!!busy}
+                        onClick={() => putBack(p)}
+                      >
+                        {busy === `restore-${p.id}` ? "Putting back" : "Put back"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
                 <p className="m6-hint">Hard gate. Do not send. The number stays on the file.</p>
               </details>
             )}
             {dead.length > 0 && (
               <details className="m6-dead">
                 <summary>{dead.length} dead {dead.length === 1 ? "number" : "numbers"}</summary>
-                <ul>{dead.map((p) => <li key={p.id}>{p.value} · {p.label || p.kind}</li>)}</ul>
+                <ul>
+                  {dead.map((p) => (
+                    <li key={p.id}>
+                      <span className="m6-dead-val">{p.value} · {p.label || p.kind}</span>
+                      <button
+                        type="button"
+                        className="m6-linkbtn put-back"
+                        disabled={!!busy}
+                        onClick={() => putBack(p)}
+                      >
+                        {busy === `restore-${p.id}` ? "Putting back" : "Put back"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
                 <p className="m6-hint">Kept on purpose. A dead number is a starting point for a skip trace.</p>
               </details>
             )}

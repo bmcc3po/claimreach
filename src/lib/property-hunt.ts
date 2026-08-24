@@ -4,8 +4,13 @@
 import { brandHistoryForYear, type BrandHistoryEntry } from "./property-tool";
 
 export const OPENCORPORATES_SEARCH = "https://api.opencorporates.com/v0.4/companies/search";
+export const OPENCORPORATES_PUBLIC_SEARCH = "https://opencorporates.com/companies";
 export const REGISTRY_UNREACHABLE =
   "Could not reach the company registry. Try Hunt again in a minute. We did not invent an LLC.";
+export const REGISTRY_KEY_MISSING =
+  "Company registry key is not in Pages (OPENCORPORATES_API_KEY). Type the LLC if you have it.";
+export const REGISTRY_KEY_INVALID =
+  "OpenCorporates key is missing or invalid. Type the LLC if you have it.";
 
 export type HuntHit = {
   id: string;
@@ -26,10 +31,20 @@ export type HuntResult = {
   year: number;
   hits: HuntHit[];
   recorded: BrandHistoryEntry | null;
-  registry: "ok" | "skipped" | "unreachable";
+  registry: "ok" | "skipped" | "unauthorized" | "unreachable";
   emptyMessage: string | null;
   error: string | null;
 };
+
+export function registryToken(raw?: string | null): string {
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+export function openCorporatesPublicSearchUrl(query: string): string {
+  const q = query.replace(/\s+/g, " ").trim();
+  if (!q) return OPENCORPORATES_PUBLIC_SEARCH;
+  return `${OPENCORPORATES_PUBLIC_SEARCH}?q=${encodeURIComponent(q)}`;
+}
 
 export function huntEmptyMessage(year: number): string {
   return `No filing found for this building in ${year}. You can type one if you have it.`;
@@ -210,20 +225,24 @@ export function mergeHuntHits(rows: HuntHit[], year: number, state?: string | nu
 export async function searchOpenCorporates(
   query: string,
   opts?: { token?: string | null; fetchImpl?: typeof fetch },
-): Promise<{ ok: true; companies: any[] } | { ok: false; reason: "unreachable" }> {
+): Promise<
+  | { ok: true; companies: any[] }
+  | { ok: false; reason: "skipped" | "unauthorized" | "unreachable" }
+> {
+  const token = registryToken(opts?.token);
+  if (!token) return { ok: false, reason: "skipped" };
   const fetchImpl = opts?.fetchImpl || fetch;
   const url = new URL(OPENCORPORATES_SEARCH);
   url.searchParams.set("q", query);
   url.searchParams.set("per_page", "20");
   url.searchParams.set("order", "score");
-  if (opts?.token) url.searchParams.set("api_token", opts.token);
+  url.searchParams.set("api_token", token);
   try {
     const r = await fetchImpl(url.toString(), {
       headers: { Accept: "application/json" },
     });
-    if (r.status === 429 || r.status === 403 || r.status >= 500) {
-      return { ok: false, reason: "unreachable" };
-    }
+    if (r.status === 401 || r.status === 403) return { ok: false, reason: "unauthorized" };
+    if (r.status === 429 || r.status >= 500) return { ok: false, reason: "unreachable" };
     if (!r.ok) return { ok: false, reason: "unreachable" };
     const d = await r.json().catch(() => ({}));
     return { ok: true, companies: companiesFromOpenCorporates(d) };
@@ -246,34 +265,41 @@ export async function runBrandHunt(input: {
   const fromDesk = deskHits(input.history, year);
   const queries = huntQueries({ name: input.name, city: input.city, state: input.state });
   const fromRegistry: HuntHit[] = [];
-  let registry: HuntResult["registry"] = queries.length ? "ok" : "skipped";
+  const token = registryToken(input.token);
+  let registry: HuntResult["registry"] = !token || !queries.length ? "skipped" : "ok";
 
-  for (const q of queries) {
-    const found = await searchOpenCorporates(q, { token: input.token, fetchImpl: input.fetchImpl });
-    if (!found.ok) {
-      registry = "unreachable";
-      break;
-    }
-    for (const c of found.companies) {
-      const hit = huntHitFromCompany(c, year);
-      if (hit) fromRegistry.push(hit);
+  if (token) {
+    for (const q of queries) {
+      const found = await searchOpenCorporates(q, { token, fetchImpl: input.fetchImpl });
+      if (!found.ok) {
+        registry = found.reason === "unauthorized" ? "unauthorized"
+          : found.reason === "skipped" ? "skipped"
+          : "unreachable";
+        break;
+      }
+      for (const c of found.companies) {
+        const hit = huntHitFromCompany(c, year);
+        if (hit) fromRegistry.push(hit);
+      }
     }
   }
 
   const hits = mergeHuntHits([...fromDesk, ...fromRegistry], year, input.state, input.name);
-  if (registry === "unreachable" && fromDesk.length === 0 && fromRegistry.length === 0) {
-    return {
-      year, hits: [], recorded, registry,
-      emptyMessage: null,
-      error: REGISTRY_UNREACHABLE,
-    };
-  }
+  const emptyMessage = !token
+    ? REGISTRY_KEY_MISSING
+    : registry === "unauthorized"
+      ? REGISTRY_KEY_INVALID
+      : registry === "unreachable"
+        ? REGISTRY_UNREACHABLE
+        : hits.length
+          ? null
+          : huntEmptyMessage(year);
   return {
     year,
     hits,
     recorded,
     registry,
-    emptyMessage: hits.length ? null : huntEmptyMessage(year),
+    emptyMessage,
     error: null,
   };
 }

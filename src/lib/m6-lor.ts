@@ -109,11 +109,88 @@ export function pronounsFor(gender: string | null | undefined): { they: string; 
   return { they: "they", their: "their", them: "them" };
 }
 
-function isoDate(raw: string | null | undefined): string | null {
+export function isoDate(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const s = String(raw).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
   return s;
+}
+
+export const LOR_FACT_KEYS = [
+  "gender", "incident_start", "incident_end",
+  "property_name", "property_street", "property_city", "property_state", "property_zip",
+] as const;
+
+export type LorFactKey = (typeof LOR_FACT_KEYS)[number];
+
+export type LorFactsForm = Record<LorFactKey, string>;
+
+export function genderSelectValue(raw: string | null | undefined): "female" | "male" | "unknown" | "" {
+  const g = String(raw || "").trim().toLowerCase();
+  if (g === "f" || g === "female" || g === "woman" || g === "she") return "female";
+  if (g === "m" || g === "male" || g === "man" || g === "he") return "male";
+  if (g === "unknown" || g === "they" || g === "other") return "unknown";
+  return "";
+}
+
+export function factsFormFromLead(lead: {
+  gender?: string | null;
+  incident_start?: string | null;
+  incident_end?: string | null;
+  property_name?: string | null;
+  property_street?: string | null;
+  property_city?: string | null;
+  property_state?: string | null;
+  property_zip?: string | null;
+} | null | undefined): LorFactsForm {
+  return {
+    gender: genderSelectValue(lead?.gender),
+    incident_start: isoDate(lead?.incident_start) || "",
+    incident_end: isoDate(lead?.incident_end) || "",
+    property_name: String(lead?.property_name || "").trim(),
+    property_street: String(lead?.property_street || "").trim(),
+    property_city: String(lead?.property_city || "").trim(),
+    property_state: String(lead?.property_state || "").trim().toUpperCase(),
+    property_zip: String(lead?.property_zip || "").trim(),
+  };
+}
+
+function normalizeLorFact(key: LorFactKey, value: unknown): string | null {
+  if (key === "gender") {
+    const g = genderSelectValue(typeof value === "string" ? value : "");
+    return g || null;
+  }
+  if (key === "incident_start" || key === "incident_end") return isoDate(typeof value === "string" ? value : null);
+  if (key === "property_state") {
+    const s = String(value ?? "").trim().toUpperCase();
+    if (!s) return null;
+    return s.slice(0, 2);
+  }
+  const t = String(value ?? "").trim();
+  return t || null;
+}
+
+function currentLorFact(lead: Record<string, unknown> | null | undefined, key: LorFactKey): string | null {
+  return normalizeLorFact(key, lead?.[key]);
+}
+
+// Only write what the agent typed. Empty incoming never wipes a filled
+// LawRuler value. A different non-empty value is an edit and does write.
+export function lorFactsPatch(
+  current: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown> | null | undefined,
+): Partial<Record<LorFactKey, string>> {
+  if (!incoming) return {};
+  const patch: Partial<Record<LorFactKey, string>> = {};
+  for (const key of LOR_FACT_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(incoming, key)) continue;
+    const next = normalizeLorFact(key, incoming[key]);
+    if (!next) continue;
+    const prev = currentLorFact(current, key);
+    if (prev === next) continue;
+    patch[key] = next;
+  }
+  return patch;
 }
 
 export function formatLetterDate(iso: string): string {
