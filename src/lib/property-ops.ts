@@ -9,6 +9,7 @@ import {
   cleanLeadid, flattenIdentification, lawrulerPasteBlock, normalizeStay,
   propertyLookupKeys, type BrandHistoryEntry, type IdentifiedProperty,
 } from "@/lib/property-tool";
+import { runBrandHunt } from "@/lib/property-hunt";
 export { searchProperties } from "@/lib/property-search";
 
 const CANON_SELECT = "name, street, city, state, zip, address, lat, lng, current_brand, brand_history";
@@ -239,4 +240,27 @@ export async function saveBrandHistory(firmId: string, b: Record<string, unknown
     recorded: entry,
     liveGoogleBrand: currentBrand,
   };
+}
+
+export async function huntBrandOwner(firmId: string, b: Record<string, unknown>) {
+  const placeId = typeof b.place_id === "string" ? b.place_id.trim() : "";
+  if (!placeId) return { status: 400 as const, error: "Pick a property first." };
+  const year = Number(b.year);
+  if (!Number.isFinite(year) || year < 1980 || year > 2100) {
+    return { status: 400 as const, error: "Enter a stay year." };
+  }
+  const name = typeof b.name === "string" ? b.name.trim() : "";
+  const city = typeof b.city === "string" ? b.city.trim() : "";
+  const state = typeof b.state === "string" ? b.state.trim() : "";
+  const existing = await loadCanonicalByPlaceId(firmId, placeId);
+  const found = await runBrandHunt({
+    year,
+    name: name || existing?.name || "",
+    city: city || existing?.city || "",
+    state: state || existing?.state || "",
+    history: existing?.brand_history,
+    token: process.env.OPENCORPORATES_API_KEY || "",
+  });
+  if (found.error) return { status: 502 as const, ...found, error: found.error };
+  return { status: 200 as const, ...found };
 }
