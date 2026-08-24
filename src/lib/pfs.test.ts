@@ -1,7 +1,9 @@
 // Plaintiff fact sheet. Run: npx tsx src/lib/pfs.test.ts
 import {
-  PFS_FORM_KEY, PFS_ID_PREFIX, buildPfsAnswersCsv, fieldsFromPfsCsv,
-  isPfsFieldId, mergePfsAnswers, parseCsvRows, pfsAnswersOnly, pfsProgress,
+  PFS_FORM_KEY, PFS_ID_PREFIX, addPfsQuestion, buildPfsAnswersCsv, fieldsFromPfsCsv,
+  isPfsFieldId, mergePfsAnswers, mergePfsFields, movePfsQuestion, parseCsvRows,
+  pfsAnswersOnly, pfsKindLabel, pfsListRows, pfsProgress, pfsSectionOf,
+  removePfsQuestion, updatePfsQuestion,
 } from "./pfs";
 
 let pass = 0, fail = 0;
@@ -55,6 +57,37 @@ check("csv has header and one row", csv.split("\n").length, 2);
 check("csv has Yes", /Yes/.test(csv), true);
 check("csv has lead no", /TMP-1/.test(csv), true);
 check("prefix constant", PFS_ID_PREFIX, "pfs_");
+
+console.log("\nONE-BY-ONE");
+const started = addPfsQuestion([], { label: "What is your name?", kind: "text", section: "About you" });
+check("add makes section + question", started.fields.map((f) => f.kind), ["section", "text"]);
+check("add id is pfs_", started.id?.startsWith("pfs_"), true);
+check("kind label matches builder", pfsKindLabel("bool"), "Yes / No");
+check("blank label errors", addPfsQuestion([], { label: "  ", kind: "text" }).error, "Type the question.");
+check("choice needs options", addPfsQuestion([], { label: "Brand?", kind: "select" }).error, "Add at least one choice.");
+
+const withChoice = addPfsQuestion(started.fields, {
+  label: "Which brand?", kind: "select", section: "Stay", options: ["Motel 6", "Studio 6"],
+});
+check("second section", withChoice.fields.filter((f) => f.kind === "section").map((f) => f.label), ["About you", "Stay"]);
+check("list rows skip section", pfsListRows(withChoice.fields).map((r) => r.section), ["About you", "Stay"]);
+check("section of second", pfsSectionOf(withChoice.fields, withChoice.id!), "Stay");
+
+const edited = updatePfsQuestion(withChoice.fields, started.id!, { label: "Full name?" });
+check("edit keeps place", pfsListRows(edited.fields)[0].field.label, "Full name?");
+check("edit does not jump section", pfsSectionOf(edited.fields, started.id!), "About you");
+
+const moved = movePfsQuestion(edited.fields, started.id!, 1);
+check("move swaps askable rows", pfsListRows(moved.fields).map((r) => r.field.id), [
+  withChoice.id, started.id,
+]);
+
+const gone = removePfsQuestion(edited.fields, started.id!);
+check("delete drops question", pfsListRows(gone.fields).map((r) => r.field.label), ["Which brand?"]);
+check("empty section cleaned", gone.fields.some((f) => f.label === "About you"), false);
+
+const merged = mergePfsFields(gone.fields, fieldsFromPfsCsv("What is your name?\nWhich brand?").fields);
+check("merge skips same label", pfsListRows(merged).map((r) => r.field.label), ["Which brand?", "What is your name?"]);
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 if (fail) process.exit(1);

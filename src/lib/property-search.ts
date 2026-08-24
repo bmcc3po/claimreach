@@ -1,7 +1,7 @@
 // Places-only search. No Supabase. POST op=search must stay on this
 // module so a missing service-role key cannot crash the edge handler.
 
-import { guessBrand } from "@/lib/property-brand";
+import { guessBrand, isG6Property } from "@/lib/property-brand";
 import { geocodeLocation, mapsApiKey, milesToMeters, searchLodgingAround } from "@/lib/places-search";
 
 export const MAPS_NOT_CONFIGURED =
@@ -22,9 +22,10 @@ export async function searchProperties(b: Record<string, unknown>) {
   if (!mapsApiKey()) return { status: 503 as const, error: MAPS_NOT_CONFIGURED };
 
   const radiusMiles = typeof b.radiusMiles === "number" ? b.radiusMiles : Number(b.radiusMiles) || 5;
-  const anyChain = b.anyChain === true;
-  const motel6 = anyChain ? false : b.motel6 !== false;
-  const studio6 = anyChain ? false : b.studio6 !== false;
+  const g6Only = b.g6Only === true;
+  const anyChain = g6Only ? false : b.anyChain === true;
+  const motel6 = g6Only ? true : (anyChain ? false : b.motel6 !== false);
+  const studio6 = g6Only ? true : (anyChain ? false : b.studio6 !== false);
 
   try {
     const center = await geocodeLocation(location);
@@ -48,10 +49,11 @@ export async function searchProperties(b: Record<string, unknown>) {
         error: placesUserError(found.error),
       };
     }
-    const candidates = found.candidates.map((c) => ({
+    const mapped = found.candidates.map((c) => ({
       ...c,
-      current_brand: guessBrand(c.name),
+      current_brand: guessBrand(c.name) || guessBrand(c.address),
     }));
+    const candidates = g6Only ? mapped.filter((c) => isG6Property(c)) : mapped;
     return { status: 200 as const, candidates, center: { lat: center.lat, lng: center.lng } };
   } catch {
     return { status: 502 as const, error: "Search did not finish. Try again." };

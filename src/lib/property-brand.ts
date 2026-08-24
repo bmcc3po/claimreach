@@ -29,6 +29,23 @@ export function guessBrand(name: string | null | undefined): string {
   return "";
 }
 
+// Motel 6 campaign lock. Studio 6 is a G6 flag. Do not treat every motel as a hit.
+const G6_RE = /(?:motel\s*6|studio\s*6|\bg6(?:\s*hospitality)?\b)/i;
+
+export function isG6Property(p: {
+  name?: string | null;
+  address?: string | null;
+  current_brand?: string | null;
+  brand?: string | null;
+  types?: string[] | null;
+}): boolean {
+  const bits = [p.name, p.address, p.current_brand, p.brand, ...(p.types ?? [])]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/[_-]+/g, " ");
+  return G6_RE.test(bits);
+}
+
 export function brandsMismatch(
   remembered: string | null | undefined,
   current: string | null | undefined,

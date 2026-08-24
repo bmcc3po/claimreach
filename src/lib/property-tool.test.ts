@@ -1,5 +1,5 @@
 // npx tsx src/lib/property-tool.test.ts
-import { guessBrand, brandsMismatch } from "./property-brand";
+import { guessBrand, brandsMismatch, isG6Property } from "./property-brand";
 import {
   propertyToolKeyOk, cleanLeadid, normalizeStay, lawrulerPasteBlock,
   stayRangeLabel, flattenIdentification, propertyLookupKeys, propertyFileHref,
@@ -44,6 +44,15 @@ check("unknown stays blank", guessBrand("Sunrise Inn"), "");
 check("mismatch is case-insensitive", brandsMismatch("motel 6", "Motel 6"), false);
 check("rebrand flags", brandsMismatch("Motel 6", "Red Roof"), true);
 check("blank remembered does not flag", brandsMismatch("", "Motel 6"), false);
+check("Motel6 no space is G6", isG6Property({ name: "Motel6 Chicago Downtown" }), true);
+check("Studio 6 in address is G6", isG6Property({ name: "Extended Stay", address: "Studio 6, 100 Main, Chicago, IL" }), true);
+check("G6 Hospitality is G6", isG6Property({ current_brand: "G6 Hospitality" }), true);
+check("live brand Motel 6 is G6", isG6Property({ name: "Inn on the Mile", current_brand: "Motel 6" }), true);
+check("google type motel_6 is G6", isG6Property({ name: "Lodging", types: ["motel_6"] }), true);
+check("Rodeway is not G6", isG6Property({ name: "Rodeway Inn Chicago", address: "Chicago, IL" }), false);
+check("Freehand is not G6", isG6Property({ name: "Freehand Chicago" }), false);
+check("Magnificent Mile hotel is not G6", isG6Property({ name: "The Chicago Hotel Collection Magnificent Mile" }), false);
+check("Route 66 motel is not G6", isG6Property({ name: "Route 66 Motel" }), false);
 
 console.log("\nADDRESS PARSE");
 check("street city state zip", parseAddressComponents([

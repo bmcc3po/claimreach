@@ -36,6 +36,219 @@ export function pfsAskable(fields: Field[]): Field[] {
   return fields.filter((f) => !SKIP_KINDS.has(f.kind) && f.scope !== "property");
 }
 
+// Same kinds the staff FormBuilder uses for a real question. Section is a
+// grouping row, not an answer. Do not invent a second type list.
+export const PFS_ASK_KINDS: { kind: FieldKind; label: string }[] = [
+  { kind: "text", label: "Short text" },
+  { kind: "longtext", label: "Long text" },
+  { kind: "bool", label: "Yes / No" },
+  { kind: "select", label: "Dropdown" },
+  { kind: "multiselect", label: "Checkboxes" },
+  { kind: "int", label: "Number" },
+  { kind: "date", label: "Date" },
+];
+
+const PFS_KIND_LABEL: Record<string, string> = Object.fromEntries(
+  PFS_ASK_KINDS.map((k) => [k.kind, k.label]),
+);
+PFS_KIND_LABEL.section = "Section";
+
+export function pfsKindLabel(kind: string): string {
+  return PFS_KIND_LABEL[kind] ?? kind;
+}
+
+export function isPfsAskKind(kind: string): kind is FieldKind {
+  return PFS_ASK_KINDS.some((k) => k.kind === kind);
+}
+
+function normLabel(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function usedIds(fields: Field[]): Set<string> {
+  return new Set(fields.map((f) => f.id));
+}
+
+function uniquePfsId(fields: Field[], n: number, raw?: string): string {
+  const used = usedIds(fields);
+  let id = slugId(n, raw);
+  if (!used.has(id)) return id;
+  let i = n;
+  while (used.has(`${PFS_ID_PREFIX}q${String(i).padStart(3, "0")}`)) i += 1;
+  return `${PFS_ID_PREFIX}q${String(i).padStart(3, "0")}`;
+}
+
+function sectionFieldId(fields: Field[], section: string): string {
+  const slug = section.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 32) || String(fields.length);
+  const sid = `${PFS_ID_PREFIX}s_${slug}`;
+  const used = usedIds(fields);
+  return used.has(sid) ? `${sid}_${fields.length}` : sid;
+}
+
+export function pfsSectionOf(fields: Field[], id: string): string {
+  let section = "";
+  for (const f of fields) {
+    if (f.kind === "section") section = f.label;
+    if (f.id === id) return f.kind === "section" ? f.label : section;
+  }
+  return "";
+}
+
+export function pfsListRows(fields: Field[]): { field: Field; section: string }[] {
+  let section = "";
+  const rows: { field: Field; section: string }[] = [];
+  for (const f of fields) {
+    if (f.kind === "section") { section = f.label; continue; }
+    if (SKIP_KINDS.has(f.kind) || f.scope === "property") continue;
+    rows.push({ field: f, section });
+  }
+  return rows;
+}
+
+function dropEmptySections(fields: Field[]): Field[] {
+  return fields.filter((f, i) => {
+    if (f.kind !== "section") return true;
+    for (let j = i + 1; j < fields.length; j++) {
+      if (fields[j].kind === "section") return false;
+      if (!SKIP_KINDS.has(fields[j].kind) && fields[j].scope !== "property") return true;
+    }
+    return false;
+  });
+}
+
+function ensureSection(fields: Field[], section: string): Field[] {
+  const label = section.trim();
+  if (!label) return fields;
+  if (fields.some((f) => f.kind === "section" && normLabel(f.label) === normLabel(label))) {
+    return fields;
+  }
+  return [...fields, {
+    id: sectionFieldId(fields, label),
+    scope: "lead",
+    kind: "section",
+    label,
+    origin: "custom",
+  }];
+}
+
+function placeAfterSection(fields: Field[], field: Field, section: string): Field[] {
+  const label = section.trim();
+  const without = fields.filter((f) => f.id !== field.id);
+  if (!label) return [...without, field];
+  let last = -1;
+  let current = "";
+  for (let i = 0; i < without.length; i++) {
+    if (without[i].kind === "section") current = without[i].label;
+    if (normLabel(current) === normLabel(label)) last = i;
+  }
+  if (last < 0) return [...without, field];
+  const next = [...without];
+  next.splice(last + 1, 0, field);
+  return next;
+}
+
+export function addPfsQuestion(
+  fields: Field[],
+  input: { label: string; kind: string; section?: string; options?: string[] },
+): { fields: Field[]; error?: string; id?: string } {
+  const label = (input.label || "").trim();
+  if (!label) return { fields, error: "Type the question." };
+  const kind = isPfsAskKind(input.kind) ? input.kind : "longtext";
+  const options = (input.options ?? []).map((s) => s.trim()).filter(Boolean);
+  if ((kind === "select" || kind === "multiselect") && !options.length) {
+    return { fields, error: "Add at least one choice." };
+  }
+  const section = (input.section || "").trim();
+  let next = ensureSection(fields, section);
+  const id = uniquePfsId(next, pfsAskable(next).length + 1, label);
+  const field: Field = { id, scope: "lead", kind, label, origin: "custom" };
+  if (kind === "select" || kind === "multiselect") field.options = options;
+  next = placeAfterSection(next, field, section);
+  return { fields: dropEmptySections(next), id };
+}
+
+export function updatePfsQuestion(
+  fields: Field[],
+  id: string,
+  input: { label?: string; kind?: string; section?: string; options?: string[] },
+): { fields: Field[]; error?: string } {
+  const idx = fields.findIndex((f) => f.id === id);
+  if (idx < 0) return { fields, error: "That question is gone." };
+  const prev = fields[idx];
+  if (SKIP_KINDS.has(prev.kind)) return { fields, error: "That row is not a question." };
+  const label = input.label !== undefined ? input.label.trim() : prev.label;
+  if (!label) return { fields, error: "Type the question." };
+  const kind = input.kind !== undefined
+    ? (isPfsAskKind(input.kind) ? input.kind : prev.kind)
+    : prev.kind;
+  const options = input.options !== undefined
+    ? input.options.map((s) => s.trim()).filter(Boolean)
+    : (prev.options ?? []);
+  if ((kind === "select" || kind === "multiselect") && !options.length) {
+    return { fields, error: "Add at least one choice." };
+  }
+  const nextField: Field = { ...prev, label, kind };
+  if (kind === "select" || kind === "multiselect") nextField.options = options;
+  else delete nextField.options;
+  const prevSection = pfsSectionOf(fields, id);
+  const section = input.section !== undefined ? input.section.trim() : prevSection;
+  let next = fields.map((f) => (f.id === id ? nextField : f));
+  if (normLabel(section) !== normLabel(prevSection)) {
+    next = ensureSection(next, section);
+    next = placeAfterSection(next, nextField, section);
+  }
+  return { fields: dropEmptySections(next) };
+}
+
+export function removePfsQuestion(fields: Field[], id: string): { fields: Field[]; error?: string } {
+  if (!fields.some((f) => f.id === id)) return { fields, error: "That question is gone." };
+  return { fields: dropEmptySections(fields.filter((f) => f.id !== id)) };
+}
+
+export function movePfsQuestion(
+  fields: Field[],
+  id: string,
+  dir: -1 | 1,
+): { fields: Field[]; error?: string } {
+  const askable = fields
+    .map((f, i) => ({ f, i }))
+    .filter(({ f }) => !SKIP_KINDS.has(f.kind) && f.scope !== "property");
+  const pos = askable.findIndex((x) => x.f.id === id);
+  if (pos < 0) return { fields, error: "That question is gone." };
+  const dest = pos + dir;
+  if (dest < 0 || dest >= askable.length) return { fields };
+  const i = askable[pos].i;
+  const j = askable[dest].i;
+  const next = [...fields];
+  [next[i], next[j]] = [next[j], next[i]];
+  return { fields: next };
+}
+
+export function mergePfsFields(existing: Field[], incoming: Field[]): Field[] {
+  const usedId = usedIds(existing);
+  const usedLabel = new Set(
+    existing.filter((f) => !SKIP_KINDS.has(f.kind)).map((f) => normLabel(f.label)),
+  );
+  const usedSection = new Set(
+    existing.filter((f) => f.kind === "section").map((f) => normLabel(f.label)),
+  );
+  const next = [...existing];
+  for (const f of incoming) {
+    if (f.kind === "section") {
+      if (usedSection.has(normLabel(f.label)) || usedId.has(f.id)) continue;
+      usedSection.add(normLabel(f.label));
+      usedId.add(f.id);
+      next.push(f);
+      continue;
+    }
+    if (usedId.has(f.id) || usedLabel.has(normLabel(f.label))) continue;
+    usedId.add(f.id);
+    usedLabel.add(normLabel(f.label));
+    next.push(f);
+  }
+  return next;
+}
+
 export function pfsProgress(fields: Field[], answers: Record<string, any> | null | undefined): {
   asked: number; answered: number;
 } {
