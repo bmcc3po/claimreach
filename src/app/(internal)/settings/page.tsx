@@ -18,13 +18,8 @@ export default async function SettingsPage() {
         <div className="vrow"><span className="vk">Role</span><span className="vv">{me?.role ?? "—"}</span></div>
         <div className="vrow"><span className="vk">Email</span><span className="vv">{user?.email}</span></div>
       </div>
-      <div style={{ maxWidth: 760, marginBottom: 16 }}>
-        {isAdmin ? <DripRulesManager /> : (
-          <div className="side-card">
-            <h3>Automated messaging (drip)</h3>
-            <p className="muted" style={{ marginTop: 0 }}>Recurring touches assigned to the agent and/or case manager.</p>
-          </div>
-        )}
+      <div style={{ maxWidth: 880, marginBottom: 16 }}>
+        <DripRulesManager canEdit={!!isAdmin} />
       </div>
       <div className="side-card" style={{ maxWidth: 620 }}>
         <h3>Campaigns</h3>
