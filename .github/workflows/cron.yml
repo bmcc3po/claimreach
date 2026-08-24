@@ -54,3 +54,51 @@ jobs:
           curl --fail-with-body -sS \
             -H "x-cron-secret: $CRON_SECRET" \
             https://claimreach.com/api/cron/drips
+
+  # Same schedule as drain. Public GET — no CRON_SECRET.
+  # Same live/offline rule as crissiBrainFromHealth in src/lib/ai.ts:
+  # LIVE = non-empty direct.answer OR viaProxy.answer. HTTP 200 is not health.
+  # A GitHub network blip retries once and does not fail the run.
+  crissi-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Crissi brain
+        run: |
+          set +e
+          fetch_health() {
+            curl -sS --max-time 20 -o /tmp/crissi-health.json -w "%{http_code}" \
+              "https://claimreach.com/api/ai?health=1"
+          }
+          code=$(fetch_health)
+          curl_ok=$?
+          if [ $curl_ok -ne 0 ]; then
+            echo "first health fetch failed (curl $curl_ok); retrying once"
+            sleep 2
+            code=$(fetch_health)
+            curl_ok=$?
+            if [ $curl_ok -ne 0 ]; then
+              echo "::warning::GitHub could not reach claimreach.com — not treating as Crissi down"
+              exit 0
+            fi
+          fi
+          echo "HTTP $code"
+          python3 - <<'PY'
+          import json, sys
+          try:
+              data = json.load(open("/tmp/crissi-health.json"))
+          except Exception as e:
+              print("::error::health JSON unreadable:", e)
+              sys.exit(1)
+          direct = data.get("direct") or {}
+          proxy = data.get("viaProxy") or {}
+          da = (direct.get("answer") or "").strip() if isinstance(direct, dict) else ""
+          pa = (proxy.get("answer") or "").strip() if isinstance(proxy, dict) else ""
+          err = direct.get("error") if isinstance(direct, dict) else None
+          print("direct.answer:", repr(da))
+          print("viaProxy.answer:", repr(pa))
+          print("direct.error:", err)
+          if not da and not pa:
+              print(f"::error::Crissi offline — both answers empty (direct.error={err})")
+              sys.exit(1)
+          print("Crissi live")
+          PY
