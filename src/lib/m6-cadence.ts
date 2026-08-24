@@ -875,6 +875,7 @@ export type TodayFile = {
   next_channel_blocked?: boolean;
   retention_paused_until?: string | null;
   retention_stage?: string | null;
+  ladder_step?: number | null;
   now?: string;
 };
 
@@ -911,4 +912,276 @@ export function todayBuckets(rows: TodayFile[], nowIso = new Date().toISOString(
 
 export function actorFirmLabel(role: string | null | undefined): "Innovative" | "Turnbull" {
   return role === "firm" ? "Turnbull" : "Innovative";
+}
+
+// ---------------------------------------------------------------------------
+// Command center. ONE next-move so Today rows and the file banner cannot
+// disagree. Same facts, same order of force.
+// ---------------------------------------------------------------------------
+
+export const STAGE_LABELS: Record<CadenceStage, string> = {
+  "01": "Day 0",
+  "02": "Interview",
+  "03": "Interview complete",
+  "04": "Onboarding drip",
+  "05": "Heartbeat",
+  "06": "Missed-contact ladder",
+};
+
+export const QUEUE_PREVIEW = 10;
+
+export type NextMoveKind =
+  | "inbound"
+  | "never_interviewed"
+  | "ladder"
+  | "heartbeat"
+  | "lor"
+  | "thin_web"
+  | "on_track";
+
+export type NextMoveAction = "call" | "text" | "lor" | "none";
+
+export type NextMoveInput = {
+  name?: string | null;
+  inboundWaiting?: boolean;
+  lastTwoWayAt?: string | null;
+  interviewAt?: string | null;
+  hasInterview?: boolean;
+  retentionStage?: string | null;
+  ladderStep?: number | null;
+  enterLadder?: boolean;
+  pausedUntil?: string | null;
+  heartbeatOverdue?: boolean;
+  daysOverdue?: number;
+  lorStatus?: string | null;
+  lorFactsReady?: boolean;
+  liveContactPoints?: number;
+  hasStablePerson?: boolean;
+  commsMonitored?: boolean;
+  nextTouchDue?: string | null;
+  now?: string;
+};
+
+export type NextMove = {
+  kind: NextMoveKind;
+  headline: string;
+  line: string;
+  action: NextMoveAction;
+  actionLabel: string;
+  alarm: boolean;
+  sort: number;
+};
+
+export type FileFact = {
+  id: string;
+  label: string;
+  done: boolean;
+};
+
+export type CommandGaugeKey = "gone_dark" | "replies" | "moving" | "ladder" | "lor_not_sent";
+
+function firstNameOf(name: string | null | undefined): string {
+  const t = String(name ?? "").trim();
+  if (!t || /^unnamed/i.test(t)) return "them";
+  return t.split(/\s+/)[0];
+}
+
+export function shortDate(iso: string | null | undefined): string {
+  if (!iso) return "soon";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "soon";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+export function withinDays(iso: string | null | undefined, days: number, nowIso: string): boolean {
+  if (!iso) return false;
+  const a = Date.parse(iso);
+  const b = Date.parse(nowIso);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return b - a <= days * 86400000 && b >= a;
+}
+
+export function isLorUnsent(status: string | null | undefined): boolean {
+  return status !== "sent" && status !== "received";
+}
+
+export function ladderSpec(step: number | null | undefined) {
+  const n = step && step >= 1 ? Math.min(9, Math.floor(step)) : 1;
+  return LADDER_STEPS.find((s) => s.step === n) ?? LADDER_STEPS[0];
+}
+
+export function actionForChannel(channel: CadenceChannel): NextMoveAction {
+  if (channel === "sms") return "text";
+  if (channel === "letter") return "lor";
+  if (channel === "memo" || channel === "trace" || channel === "social") return "call";
+  return "call";
+}
+
+export function nextMove(file: NextMoveInput): NextMove {
+  const now = file.now || new Date().toISOString();
+  const first = firstNameOf(file.name);
+  const interviewKnown = file.hasInterview !== undefined || file.interviewAt !== undefined;
+  const interviewed = file.hasInterview === true || !!file.interviewAt;
+  const neverTwoWay = !file.lastTwoWayAt;
+  const neverInterviewed = interviewKnown ? !interviewed : neverTwoWay;
+  const onLadder = file.enterLadder === true || file.retentionStage === "escalation";
+
+  if (file.inboundWaiting) {
+    return {
+      kind: "inbound",
+      headline: `They wrote back. Answer ${first} now.`,
+      line: "They wrote back. Answer them now.",
+      action: "text",
+      actionLabel: "Text",
+      alarm: true,
+      sort: 0,
+    };
+  }
+
+  if (neverTwoWay || neverInterviewed) {
+    return {
+      kind: "never_interviewed",
+      headline: "Call the secondary interview. There is no contact web yet.",
+      line: "Call the interview. Never reached. No contact web.",
+      action: "call",
+      actionLabel: "Call",
+      alarm: true,
+      sort: 1,
+    };
+  }
+
+  if (onLadder && !isPausedOn(file.pausedUntil, now)) {
+    const spec = ladderSpec(file.ladderStep);
+    return {
+      kind: "ladder",
+      headline: `Ladder step ${spec.step}: ${spec.label}. Do this today.`,
+      line: `Ladder step ${spec.step}: ${spec.label}. Do this today.`,
+      action: actionForChannel(spec.channel as CadenceChannel),
+      actionLabel: spec.channel === "sms" ? "Text" : spec.channel === "letter" ? "Mail" : "Call",
+      alarm: true,
+      sort: 2,
+    };
+  }
+
+  if (file.heartbeatOverdue || ((file.daysOverdue ?? 0) > 0 && !!file.lastTwoWayAt && !isPausedOn(file.pausedUntil, now))) {
+    return {
+      kind: "heartbeat",
+      headline: `Check-in is late. Call ${first}. Ask still your best number.`,
+      line: "Check-in is late. Call them.",
+      action: "call",
+      actionLabel: "Call",
+      alarm: true,
+      sort: 3,
+    };
+  }
+
+  if (isLorUnsent(file.lorStatus) && file.lorFactsReady) {
+    return {
+      kind: "lor",
+      headline: "Send the LOR.",
+      line: "Send the LOR. Facts are ready.",
+      action: "lor",
+      actionLabel: "LOR",
+      alarm: true,
+      sort: 4,
+    };
+  }
+
+  const points = file.liveContactPoints ?? 0;
+  if (points <= 1 && !file.hasStablePerson) {
+    return {
+      kind: "thin_web",
+      headline: "Get a second number and a stable person before you hang up.",
+      line: "Contact web is thin. Get a second number.",
+      action: "call",
+      actionLabel: "Call",
+      alarm: false,
+      sort: 5,
+    };
+  }
+
+  return {
+    kind: "on_track",
+    headline: `On track. Next check-in ${shortDate(file.nextTouchDue)}.`,
+    line: `On track. Next check-in ${shortDate(file.nextTouchDue)}.`,
+    action: "none",
+    actionLabel: "Open",
+    alarm: false,
+    sort: 6,
+  };
+}
+
+export function fileFacts(input: {
+  hasInterview?: boolean;
+  livePhones?: number;
+  hasStablePerson?: boolean;
+  lorSent?: boolean;
+  hasTwoWay?: boolean;
+  commsMonitored?: boolean;
+}): FileFact[] {
+  return [
+    { id: "interview", label: "Interview", done: !!input.hasInterview },
+    { id: "two_way", label: "Two-way contact", done: !!input.hasTwoWay },
+    { id: "second_number", label: "Second number", done: (input.livePhones ?? 0) >= 2 },
+    { id: "stable_person", label: "Stable person", done: !!input.hasStablePerson },
+    { id: "lor", label: "LOR sent", done: !!input.lorSent },
+    { id: "monitored", label: "Comms monitored — no voicemail", done: !input.commsMonitored },
+  ];
+}
+
+export function moveInputFromToday(row: TodayFile & {
+  claimant_name?: string | null;
+  live_contact_points?: number;
+  stable_people?: number;
+  next_touch_due?: string | null;
+  lorStatus?: string | null;
+  lorFactsReady?: boolean;
+}): NextMoveInput {
+  return {
+    name: row.claimant_name,
+    inboundWaiting: !!row.inbound_waiting,
+    lastTwoWayAt: row.last_two_way_at,
+    retentionStage: row.retention_stage,
+    ladderStep: row.ladder_step,
+    enterLadder: row.retention_stage === "escalation",
+    pausedUntil: row.retention_paused_until,
+    heartbeatOverdue: !!row.last_two_way_at && row.days_overdue > 0 && row.health !== "lost" && !row.opted_out,
+    daysOverdue: row.days_overdue,
+    lorStatus: row.lorStatus,
+    lorFactsReady: row.lorFactsReady,
+    liveContactPoints: row.live_contact_points,
+    hasStablePerson: (row.stable_people ?? 0) > 0,
+    commsMonitored: row.comms_monitored,
+    nextTouchDue: row.next_touch_due,
+    now: row.now,
+  };
+}
+
+export function commandGauges(
+  rows: TodayFile[],
+  opts?: { nowIso?: string; lorNotSentIds?: Set<string> },
+): Record<CommandGaugeKey, TodayFile[]> {
+  const nowIso = opts?.nowIso ?? new Date().toISOString();
+  const buckets = todayBuckets(rows, nowIso);
+  const ladder = rows.filter((r) => {
+    if (isPausedOn(r.retention_paused_until ?? null, nowIso) || r.opted_out) return false;
+    return r.retention_stage === "escalation" || ((r.ladder_step ?? 0) > 0);
+  });
+  const goneDarkIds = new Set([
+    ...buckets.neverReached.map((r) => r.lead_id),
+    ...buckets.heartbeatOverdue.map((r) => r.lead_id),
+    ...ladder.map((r) => r.lead_id),
+  ]);
+  const goneDark = rows.filter((r) => goneDarkIds.has(r.lead_id));
+  const moving = rows.filter((r) => withinDays(r.last_two_way_at, 7, nowIso));
+  const lorNotSent = opts?.lorNotSentIds
+    ? rows.filter((r) => opts.lorNotSentIds!.has(r.lead_id))
+    : [];
+  return {
+    gone_dark: goneDark,
+    replies: buckets.repliesWaiting,
+    moving,
+    ladder,
+    lor_not_sent: lorNotSent,
+  };
 }

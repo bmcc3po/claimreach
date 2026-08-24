@@ -11,6 +11,8 @@ import {
 import { applyM6LeadFilters, loadM6Lead } from "@/lib/m6-scope";
 import { loadIdentifiedForLead } from "@/lib/property-ops";
 import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
+import type { M6FeedItem } from "@/lib/m6";
+export type { M6FeedItem };
 
 export async function loadM6WorkspaceFile(
   sb: any,
@@ -123,11 +125,46 @@ export async function loadM6Rail(
   tmpFirmId: string,
   lead: { id?: string | null; external_id?: string | null; lawruler_ref_no?: string | null },
 ) {
-  const [{ data: status }, { data: points }, { data: lor }, identified] = await Promise.all([
+  const [{ data: status }, { data: points }, { data: lor }, identified, { data: comms }, { data: docs }] = await Promise.all([
     applyM6LeadFilters(sb.from("lead_contact_status").select("*").eq("lead_id", leadId), tmpFirmId).maybeSingle(),
     sb.from("contact_points").select("*").eq("lead_id", leadId).eq("firm_id", tmpFirmId).is("retired_at", null).order("kind"),
     sb.from("lead_lor").select("lead_id, status, flagged_today, sent_on, sent_to").eq("lead_id", leadId).eq("firm_id", tmpFirmId).maybeSingle(),
     loadIdentifiedForLead(sb, tmpFirmId, { ...lead, id: lead.id || leadId }),
+    sb.from("communications").select("id, channel, direction, outcome, purpose, body, agent_name, occurred_at, ladder_step").eq("lead_id", leadId).eq("firm_id", tmpFirmId).order("occurred_at", { ascending: false }).limit(50),
+    sb.from("case_documents").select("id, file_name, doc_type, created_at").eq("lead_id", leadId).eq("firm_id", tmpFirmId).order("created_at", { ascending: false }),
   ]);
-  return { status, points: points ?? [], lor: lor ?? null, identified };
+  return {
+    status,
+    points: points ?? [],
+    lor: lor ?? null,
+    identified,
+    comms: comms ?? [],
+    docs: docs ?? [],
+  };
+}
+
+export async function loadM6ConversationFeed(
+  sb: any,
+  tmpFirmId: string,
+  leadIds: string[],
+  nameOf: Map<string, string | null>,
+  limit = 20,
+): Promise<M6FeedItem[]> {
+  if (!tmpFirmId || leadIds.length === 0) return [];
+  const allowed = new Set(leadIds);
+  const { data } = await sb.from("communications")
+    .select("id, lead_id, channel, direction, body, occurred_at")
+    .eq("firm_id", tmpFirmId)
+    .not("lead_id", "is", null)
+    .order("occurred_at", { ascending: false })
+    .limit(Math.max(limit * 4, 80));
+  return (data ?? []).filter((c: any) => allowed.has(c.lead_id)).slice(0, limit).map((c: any) => ({
+    id: c.id,
+    lead_id: c.lead_id,
+    name: nameOf.get(c.lead_id) || "Unnamed file",
+    direction: c.direction === "inbound" ? "inbound" : "outbound",
+    channel: c.channel || "call",
+    snippet: String(c.body || "").replace(/\s+/g, " ").trim().slice(0, 140),
+    occurred_at: c.occurred_at ?? null,
+  }));
 }

@@ -22,10 +22,11 @@ function e164(raw: string | null | undefined): string | null {
 }
 
 export default function FileActions({
-  file, onDone,
+  file, onDone, primary,
 }: {
   file: FileActionTarget;
   onDone?: () => void;
+  primary?: "call" | "text" | "lor";
 }) {
   const [open, setOpen] = useState<"text" | "lor" | null>(null);
   const tel = e164(file.phone);
@@ -36,13 +37,13 @@ export default function FileActions({
       {file.optedOut ? (
         <span className="m6-act dead">Call</span>
       ) : tel ? (
-        <a className="m6-act call" href={`tel:${tel}`}>Call</a>
+        <a className={`m6-act call${primary === "call" ? " primary" : ""}`} href={`tel:${tel}`}>Call</a>
       ) : (
-        <Link className="m6-act" href={`/m6/cases/${file.id}`}>Call</Link>
+        <Link className={`m6-act${primary === "call" ? " primary" : ""}`} href={`/m6/cases/${file.id}`}>Call</Link>
       )}
       <button
         type="button"
-        className="m6-act"
+        className={`m6-act${primary === "text" ? " primary" : ""}`}
         disabled={!!file.optedOut}
         onClick={() => setOpen("text")}
       >
@@ -59,7 +60,7 @@ export default function FileActions({
       >
         Crissi
       </button>
-      <button type="button" className="m6-act lor" onClick={() => setOpen("lor")}>LOR</button>
+      <button type="button" className={`m6-act lor${primary === "lor" ? " primary" : ""}`} onClick={() => setOpen("lor")}>LOR</button>
 
       {open === "text" && (
         <TextSend leadId={file.id} onClose={() => { setOpen(null); onDone?.(); }} />

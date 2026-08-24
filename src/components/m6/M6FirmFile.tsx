@@ -4,6 +4,7 @@ import LorCard from "./LorCard";
 import LogTouchButton from "./LogTouchButton";
 import ComposePanel from "./ComposePanel";
 import FileActions from "./FileActions";
+import FileCommand from "./FileCommand";
 import Link from "next/link";
 import { propertyFileHref, type IdentifiedProperty } from "@/lib/property-tool";
 import IdentifiedStays from "@/components/IdentifiedStays";
@@ -11,7 +12,7 @@ import type { FileFence } from "@/lib/file-fence";
 
 export default function M6FirmFile({
   lead, claims, claimProperties, audit, notes, callLogs, staff, formsByType,
-  retainers, signables, fence, lor, identified, points,
+  retainers, signables, fence, lor, identified, points, status, comms, docs,
 }: {
   lead: any;
   claims: any[];
@@ -27,6 +28,9 @@ export default function M6FirmFile({
   lor: any;
   identified: IdentifiedProperty[];
   points: { id: string; kind: string; value: string; label: string | null; status: string }[];
+  status?: any;
+  comms?: any[];
+  docs?: any[];
 }) {
   const live = points.filter((p) => p.status !== "dead" && p.status !== "opted_out");
   const phone = lead.phone || live.find((p) => p.kind === "mobile" || p.kind === "landline")?.value || null;
@@ -42,6 +46,14 @@ export default function M6FirmFile({
       <div className="m6-file-acts m6-file-acts-top">
         <FileActions file={{ id: lead.id, name: lead.claimant_name || lead.full_name, phone }} />
       </div>
+      <FileCommand
+        lead={lead}
+        status={status}
+        points={points}
+        comms={comms ?? []}
+        docs={docs ?? []}
+        lor={lor}
+      />
       <LorCard leadId={lead.id} lor={lor} />
       <ComposePanel leadId={lead.id} isStaff={false} />
       <p className="m6-hint">
