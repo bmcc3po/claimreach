@@ -4,7 +4,7 @@ import { requireM6Session } from "@/lib/m6-scope";
 import { propertyLookupKeys } from "@/lib/property-tool";
 import { searchProperties } from "@/lib/property-search";
 import {
-  listPropertiesForLead, loadCanonicalByPlaceId, resolveM6PropertyLead,
+  huntBrandOwner, listPropertiesForLead, loadCanonicalByPlaceId, resolveM6PropertyLead,
   saveBrandHistory, savePropertyIdentification,
   stampLeadProperty, tmpPropertyFirmId,
 } from "@/lib/property-ops";
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     if (!session.ok) return NextResponse.json({ error: session.error }, { status: session.status });
 
     const b = await req.json().catch(() => ({} as Record<string, unknown>));
-    const op = b.op === "history" ? "history" : b.op === "save" ? "save" : "search";
+    const op = b.op === "history" ? "history" : b.op === "hunt" ? "hunt" : b.op === "save" ? "save" : "search";
     if (op === "search") {
       const found = await searchProperties(b);
       if (found.status !== 200) return NextResponse.json({ error: found.error }, { status: found.status });
@@ -68,6 +68,26 @@ export async function POST(req: NextRequest) {
         history: saved.history,
         recorded: saved.recorded,
         liveGoogleBrand: saved.liveGoogleBrand,
+      });
+    }
+
+    if (op === "hunt") {
+      const found = await huntBrandOwner(firmId, b);
+      if (found.status !== 200) {
+        return NextResponse.json({
+          error: found.error,
+          year: (found as any).year,
+          hits: (found as any).hits || [],
+          emptyMessage: (found as any).emptyMessage || null,
+        }, { status: found.status });
+      }
+      return NextResponse.json({
+        ok: true,
+        year: found.year,
+        hits: found.hits,
+        recorded: found.recorded,
+        registry: found.registry,
+        emptyMessage: found.emptyMessage,
       });
     }
 

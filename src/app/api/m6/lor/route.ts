@@ -5,7 +5,7 @@ import { isLorStatus, type LorStatus } from "@/lib/m6";
 import { LOR_LEAD_COLS, previewPayload } from "@/lib/m6-lor-server";
 export const runtime = "edge";
 
-const SENT_TO = ["g6", "motel6", "sedgwick", "other"] as const;
+const SENT_TO = ["g6", "franchisee", "motel6", "sedgwick", "other"] as const;
 
 // Status sidecar only. One-click PostGrid send is POST /api/m6/lor/send.
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const { data: lor } = await sb.from("lead_lor")
     .select("lead_id, status, flagged_today, sent_on, sent_to")
     .eq("lead_id", leadId).eq("firm_id", gate.lead.firm_id).maybeSingle();
-  return NextResponse.json(previewPayload(gate.lead, lor));
+  return NextResponse.json(await previewPayload(gate.lead, lor, sb));
 }
 
 export async function POST(req: NextRequest) {

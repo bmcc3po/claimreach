@@ -2,6 +2,16 @@
 import { useEffect, useState } from "react";
 import { ModalShell } from "./M6Modals";
 
+type RecipientOpt = {
+  key: string;
+  orgName: string;
+  attention: string;
+  address: string;
+  canMail: boolean;
+  label: string;
+  recommended?: boolean;
+};
+
 type Preview = {
   letter: {
     subject: string; body: string; clientName: string; leadNo: string | null;
@@ -9,6 +19,8 @@ type Preview = {
     from: { companyName: string; attention: string; phone: string; address: string };
     missing: string[];
   };
+  recipients?: RecipientOpt[];
+  defaultRecipient?: string;
   alreadySent: boolean;
   canSend: boolean;
   rails: { postgrid: boolean; mode: string; whatItDoes: string };
@@ -22,6 +34,7 @@ export default function LorSend({
   onSent?: () => void;
 }) {
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [recipient, setRecipient] = useState("g6");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,6 +48,7 @@ export default function LorSend({
         if (cancelled) return;
         if (!r.ok || d.error) { setErr(d.error || "Could not load the letter."); return; }
         setPreview(d as Preview);
+        setRecipient(d.defaultRecipient || "g6");
       } catch {
         if (!cancelled) setErr("Could not load the letter.");
       }
@@ -48,7 +62,7 @@ export default function LorSend({
       const r = await fetch("/api/m6/lor/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: leadId }),
+        body: JSON.stringify({ lead_id: leadId, recipient }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) { setErr(d.error || "The letter did not send."); return; }
@@ -62,14 +76,37 @@ export default function LorSend({
     }
   }
 
+  const choices = preview?.recipients?.length ? preview.recipients : [];
+  const chosen = choices.find((c) => c.key === recipient) || choices[0];
+
   return (
-    <ModalShell title="Send LOR" onClose={onClose} err={err}>
+    <ModalShell title="Send LOR" onClose={onClose} err={err} wide>
       {!preview && !err && <p className="m6-hint">Loading the letter…</p>}
       {preview && (
-        <>
+        <div className="m6-lor-preview">
           <p className="m6-hint">{preview.rails.whatItDoes}</p>
+          {choices.length > 1 && (
+            <fieldset className="m6-lor-who">
+              <legend>Where should this go?</legend>
+              {choices.map((c) => (
+                <label key={c.key} className={recipient === c.key ? "on" : ""}>
+                  <input
+                    type="radio"
+                    name="lor-recipient"
+                    checked={recipient === c.key}
+                    disabled={!c.canMail && c.key !== "g6"}
+                    onChange={() => setRecipient(c.key)}
+                  />
+                  <span>
+                    <strong>{c.recommended ? `${c.orgName} (usual)` : c.orgName}</strong>
+                    <em>{c.address || "Need a full mailing address to send here."}</em>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
           <p className="m6-lor-meta">
-            To {preview.letter.recipient.orgName}, {preview.letter.recipient.attention}. {preview.letter.recipient.address}.
+            To {chosen?.orgName || preview.letter.recipient.orgName}, {chosen?.attention || preview.letter.recipient.attention}. {chosen?.address || preview.letter.recipient.address}.
           </p>
           <pre className="m6-letter">{preview.letter.body}</pre>
           {preview.letter.missing.length > 0 && (
@@ -87,7 +124,7 @@ export default function LorSend({
               {busy ? "Sending" : preview.alreadySent ? "Already sent" : preview.canSend ? "Send certified mail" : "Cannot send yet"}
             </button>
           </div>
-        </>
+        </div>
       )}
     </ModalShell>
   );

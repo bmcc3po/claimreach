@@ -7,13 +7,13 @@ export type TouchPoint = {
 };
 
 export function ModalShell({
-  title, onClose, err, children,
+  title, onClose, err, children, wide,
 }: {
-  title: string; onClose: () => void; err: string; children: ReactNode;
+  title: string; onClose: () => void; err: string; children: ReactNode; wide?: boolean;
 }) {
   return (
     <div className="m6-modal-wrap" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="m6-modal">
+      <div className={wide ? "m6-modal m6-modal-wide" : "m6-modal"}>
         <div className="m6-modal-head">
           <h2>{title}</h2>
           <button type="button" className="m6-linkbtn" onClick={onClose}>Close</button>

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { guessBrand, isG6Property } from "@/lib/property-brand";
 import { brandHistoryForYear, type BrandHistoryEntry } from "@/lib/property-tool";
+import type { HuntHit } from "@/lib/property-hunt";
 
 type Candidate = {
   place_id: string;
@@ -34,9 +35,13 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
   const [llc, setLlc] = useState("");
   const [owner, setOwner] = useState("");
   const [llcAddress, setLlcAddress] = useState("");
+  const [hits, setHits] = useState<HuntHit[]>([]);
+  const [pickedHit, setPickedHit] = useState<string>("");
+  const [huntNote, setHuntNote] = useState("");
 
   async function search(lock = g6Only) {
     setBusy("search"); setErr(""); setOk(""); setCandidates([]); setSelected(null); setRecorded(null);
+    setHits([]); setPickedHit(""); setHuntNote("");
     try {
       const r = await fetch("/api/m6/property", {
         method: "POST",
@@ -77,8 +82,54 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
       setLlc(hit?.llc || "");
       setOwner(hit?.owner || "");
       setLlcAddress(hit?.address || "");
+      setHits([]);
+      setPickedHit("");
+      setHuntNote("");
     } catch {
       setRecorded(null);
+    }
+  }
+
+  function applyHit(h: HuntHit) {
+    setPickedHit(h.id);
+    if (h.brand) setHistoricalBrand(h.brand);
+    if (h.llc) setLlc(h.llc);
+    if (h.owner) setOwner(h.owner);
+    if (h.address) setLlcAddress(h.address);
+    setOk("");
+    setHuntNote("Review the boxes, then save. Hunt fills. Save writes.");
+  }
+
+  async function hunt() {
+    if (!selected) return;
+    setBusy("hunt"); setErr(""); setOk(""); setHuntNote(""); setHits([]); setPickedHit("");
+    try {
+      const r = await fetch("/api/m6/property", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          op: "hunt",
+          place_id: selected.place_id,
+          name: selected.name,
+          city: selected.city,
+          state: selected.state,
+          year: Number(year),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) {
+        setErr(d.error || "Hunt could not finish.");
+        return;
+      }
+      const next = (d.hits || []) as HuntHit[];
+      setHits(next);
+      if (d.recorded) setRecorded(d.recorded);
+      if (next[0]) applyHit(next[0]);
+      else setHuntNote(d.emptyMessage || `No filing found for this building in ${year}. You can type one if you have it.`);
+    } catch {
+      setErr("Hunt could not finish. Check your connection.");
+    } finally {
+      setBusy("");
     }
   }
 
@@ -120,7 +171,7 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
   return (
     <div className="pt pt-embed">
       <p className="m6-hint">
-        Search the building as it stands today — even if the flag changed. Live Google is today. The year fields are recorded history, not a live Secretary of State pull.
+        Search the building as it stands today. Then Hunt looks up the LLC for that stay year. You review and save. We never invent a filing.
       </p>
       <label className="pt-field">
         <span>City or motel</span>
@@ -182,6 +233,28 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
               {recorded.llc ? ` · ${recorded.llc}` : ""}
             </p>
           )}
+          <button type="button" className="pt-btn primary" disabled={!!busy || year.length !== 4} onClick={() => void hunt()}>
+            {busy === "hunt" ? "Hunting…" : `Hunt for ${year || "that year"}`}
+          </button>
+          {huntNote && <p className="m6-hint">{huntNote}</p>}
+          {hits.length > 0 && (
+            <ul className="pt-hunt">
+              {hits.map((h) => (
+                <li key={h.id}>
+                  <button
+                    type="button"
+                    className={pickedHit === h.id ? "pt-hunt-card on" : "pt-hunt-card"}
+                    onClick={() => applyHit(h)}
+                  >
+                    <strong>{h.llc || h.owner || "Named on the filing"}</strong>
+                    <span>{[h.status, h.jurisdiction, h.companyNumber].filter(Boolean).join(" · ")}</span>
+                    {h.address && <span>{h.address}</span>}
+                    <em>{[h.sourceLabel, h.url ? h.url.replace(/^https?:\/\//, "") : ""].filter(Boolean).join(" · ")}</em>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <label className="pt-field">
             <span>Brand that year (recorded)</span>
             <input value={historicalBrand} onChange={(e) => setHistoricalBrand(e.target.value)} placeholder="Motel 6" />
@@ -198,7 +271,7 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
             <span>Last known address (recorded)</span>
             <input value={llcAddress} onChange={(e) => setLlcAddress(e.target.value)} placeholder="123 Happy St, Gary IN" />
           </label>
-          <button type="button" className="pt-btn primary" disabled={!!busy} onClick={() => void save()}>
+          <button type="button" className="pt-btn" disabled={!!busy} onClick={() => void save()}>
             {busy === "save" ? "Saving…" : "Save recorded history"}
           </button>
         </section>

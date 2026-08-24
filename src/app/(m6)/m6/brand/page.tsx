@@ -14,7 +14,7 @@ export default async function M6BrandPage({
       <div className="m6-head">
         <h1>Brand &amp; owner</h1>
         <p className="m6-sub">
-          Today&apos;s Google pin is one fact. The flag and LLC in the stay year is another. We record what we know. We do not invent a Secretary of State filing.
+          Pick the building and the stay year. Hunt looks up the LLC. You review and save. We never invent a filing.
         </p>
       </div>
       <BrandOwner g6Only={sp.g6 !== "0"} />

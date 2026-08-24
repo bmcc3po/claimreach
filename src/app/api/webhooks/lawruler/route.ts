@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { mapInbound, canonicalToLeadColumns, firstNonEmpty } from "@/lib/webhooks";
 import { isLorReadyStatus, isLorStatus, lrAttachmentPlan, mergeLorIngest, type LorStatus } from "@/lib/m6";
+import { recordInboundBrandHistory } from "@/lib/property-ops";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -285,6 +286,19 @@ export async function POST(req: NextRequest) {
 
   // ---- LOR (ingest-ready; webhook stays off until Phase C) ----------------
   await upsertLor(admin, firmId, leadId, fields);
+
+  // LLC / owner already on the LawRuler fire — keep them if we can attach
+  // to a real building. Do not invent a place. Hunt can still look later.
+  try {
+    await recordInboundBrandHistory(firmId, {
+      id: leadId, external_id: vendorId, lawruler_ref_no: vendorId,
+    }, fields, {
+      name: base.property_name, city: base.property_city, state: base.property_state,
+      incidentStart: base.incident_start, incidentEnd: base.incident_end,
+    });
+  } catch {
+    /* sidecar only — the lead already saved */
+  }
 
   // ---- attachments --------------------------------------------------------
   // PDF = Secondary interview (SSN/DOB). CSV = thin contact summary — skip.

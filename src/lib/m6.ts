@@ -209,10 +209,11 @@ export const LOR_STATUSES = [
 export type LorStatus = typeof LOR_STATUSES[number]["value"];
 
 export const LOR_SENT_TO = [
-  { value: "g6",        label: "G6 Hospitality" },
-  { value: "motel6",    label: "Motel 6" },
-  { value: "sedgwick",  label: "Sedgwick" },
-  { value: "other",     label: "Other" },
+  { value: "g6",         label: "G6 Hospitality" },
+  { value: "franchisee", label: "Franchisee / owner of record" },
+  { value: "motel6",     label: "Motel 6" },
+  { value: "sedgwick",   label: "Sedgwick" },
+  { value: "other",      label: "Other" },
 ] as const;
 
 export const LOR_READY_STATUS = "secondary intake ok sent to firm";
