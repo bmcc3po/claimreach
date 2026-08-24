@@ -47,7 +47,7 @@ check("queries include live name", huntQueries({
 }).some((q) => q.includes("Red Roof Inn Gary")), true);
 check("public search uses first hunt query", openCorporatesPublicSearchUrl(huntQueries({
   name: "Motel 6 Hammond", city: "Hammond", state: "IN",
-})[0]), "https://opencorporates.com/companies?q=Motel+6+Hammond+IN");
+})[0]), "https://opencorporates.com/companies?q=Motel%206%20Hammond%20IN");
 check("active in year", companyActiveInYear({
   incorporation_date: "2010-01-01", dissolution_date: null, current_status: "Active",
 }, 2014), true);

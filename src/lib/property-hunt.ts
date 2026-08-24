@@ -42,9 +42,8 @@ export function registryToken(raw?: string | null): string {
 
 export function openCorporatesPublicSearchUrl(query: string): string {
   const q = query.replace(/\s+/g, " ").trim();
-  const url = new URL(OPENCORPORATES_PUBLIC_SEARCH);
-  if (q) url.searchParams.set("q", q);
-  return url.toString();
+  if (!q) return OPENCORPORATES_PUBLIC_SEARCH;
+  return `${OPENCORPORATES_PUBLIC_SEARCH}?q=${encodeURIComponent(q)}`;
 }
 
 export function huntEmptyMessage(year: number): string {

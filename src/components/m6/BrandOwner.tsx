@@ -251,7 +251,7 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
             Search OpenCorporates
           </a>
           {year.length === 4 && (
-            <p className="m6-hint">Look for filings around {year}. Copy the LLC here, then Save. We do not scrape that page.</p>
+            <p className="m6-hint">Look for filings around {year}.</p>
           )}
           {huntNote && <p className="m6-hint">{huntNote}</p>}
           {hits.length > 0 && (
