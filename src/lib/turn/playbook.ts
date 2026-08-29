@@ -5,6 +5,7 @@ import { TURN_DEMO_TODAY, type PlaybookHit, type TurnFile, type WhyKey } from ".
 import { formatShort } from "./fields";
 import { primaryCarrier, providerByKind } from "./seed";
 import { BOLTON_BUTTON } from "./shell";
+import { isMadClient, isVoicePref } from "./classify";
 
 export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookHit[] {
   const t = text.toLowerCase();
@@ -12,7 +13,7 @@ export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookH
   const carrier = primaryCarrier(file);
   const claim = carrier?.claimNo || "the claim";
 
-  if (why === "client_phone" || /\bscream|\bangry\b|\bnobody\b|\bpd check\b|\bthe check\b|person not a text|do not text/.test(t)) {
+  if (why === "client_phone" || isMadClient(text)) {
     hits.push({
       id: "keep_apologized",
       playbook: "KEEP",
@@ -31,7 +32,7 @@ export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookH
     });
   }
 
-  if (/person not a text|do not text|voice only|don't text|dont text|no text/.test(t) || why === "client_phone") {
+  if (isVoicePref(text) || why === "client_phone") {
     hits.push({
       id: "keep_voice_pref",
       playbook: "KEEP",

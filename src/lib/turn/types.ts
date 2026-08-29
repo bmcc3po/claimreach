@@ -214,6 +214,8 @@ export type TurnPatch = {
 
 export type IngestResult = {
   source: "haiku" | "fallback";
+  sourceLabel: string;
+  answer?: string;
   note: string;
   noteMeta: string;
   diff: DiffRow[];

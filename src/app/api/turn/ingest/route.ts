@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ORTIZ_FILE_ID, type TurnFile, type WhyKey, WHY_CHIPS } from "@/lib/turn/types";
 import { loadSeedFile } from "@/lib/turn/seed";
 import { ingestSystemPrompt, mergeHaikuIngest, parseHaikuJson, runFallbackIngest } from "@/lib/turn/ingest";
+import { classifyWhy } from "@/lib/turn/classify";
 export const runtime = "edge";
 
 // ClaimTurn extract only. Not Crissi. Not /api/ai. Never reads leads.
@@ -45,8 +46,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This demo only opens the Ortiz file." }, { status: 404 });
   }
 
-  const why = asWhy(body.why);
+  const hinted = asWhy(body.why);
   const text = typeof body.text === "string" ? body.text : "";
+  const why = classifyWhy(text, hinted);
   const seed = loadSeedFile(fileId);
   if (!seed) return NextResponse.json({ error: "File is not on the demo desk." }, { status: 404 });
 
@@ -57,7 +59,7 @@ export async function POST(req: NextRequest) {
 
   const fallback = runFallbackIngest(file, why, text);
   const key = (process.env.ANTHROPIC_API_KEY || "").trim();
-  if (!key) return NextResponse.json({ ...fallback, source: "fallback" });
+  if (!key) return NextResponse.json({ ...fallback, source: "fallback", sourceLabel: "fallback · no key" });
 
   try {
     const raw = await askHaiku(
@@ -65,9 +67,9 @@ export async function POST(req: NextRequest) {
       JSON.stringify({ why, text, file }),
     );
     const parsed = parseHaikuJson(raw);
-    if (!parsed) return NextResponse.json(fallback);
+    if (!parsed) return NextResponse.json({ ...fallback, sourceLabel: "fallback · haiku miss" });
     return NextResponse.json(mergeHaikuIngest(file, why, text, parsed));
   } catch {
-    return NextResponse.json(fallback);
+    return NextResponse.json({ ...fallback, sourceLabel: "fallback · haiku miss" });
   }
 }

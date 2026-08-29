@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { IngestResult, PlaybookHitId, TurnFile, TurnRole, WhyKey } from "@/lib/turn/types";
 import { loadSeedFile, personByRole, primaryCarrier } from "@/lib/turn/seed";
+import { classifyWhy } from "@/lib/turn/classify";
 import { answerAsk, assignTask, landFile, queueLorResend, trySendSms } from "@/lib/turn/land";
 import { TurnChrome, CallBar } from "./TurnChrome";
 import { AdjusterScreen, IngestScreen, KeepScreen, PaintScreen, ScreamScreen, WhyScreen } from "./TurnScreens";
@@ -108,15 +109,23 @@ export default function TurnFileApp({ fileId }: { fileId: string }) {
     setView(viewForWhy(w));
   }
 
-  async function runIngest(fromText?: string) {
+  async function runIngest(fromText?: string, whyHint?: WhyKey | null) {
     const body = (fromText ?? text).trim();
+    const hinted = whyHint ?? why;
+    if (!body && !hinted) {
+      setErr("Type it or pick why.");
+      return;
+    }
+    const classified = classifyWhy(body, hinted);
+    setWhy(classified);
+    setRole(roleForWhy(classified));
     setBusy(true);
     setErr(null);
     try {
       const r = await fetch("/api/turn/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileId: live.id, why: why || "looking", text: body, file: live }),
+        body: JSON.stringify({ fileId: live.id, why: classified, text: body, file: live }),
       });
       const d = await r.json();
       if (!r.ok) { setErr(d.error || "Ingest failed."); return; }
@@ -157,8 +166,8 @@ export default function TurnFileApp({ fileId }: { fileId: string }) {
           detail={`${client ? `${client.firstName} ${client.lastName}` : "Client"} · ${client?.phone || ""} · bolt-on · JustCall matched this file`}
           stayLabel="Save and stay"
           endLabel="End call"
-          onStay={() => { setText(text); void runIngest(text); }}
-          onEnd={() => { void runIngest(text); }}
+          onStay={() => { void runIngest(text, why || "client_phone"); }}
+          onEnd={() => { void runIngest(text, why || "client_phone"); }}
         />
       )}
       {view === "adjuster" && (
@@ -168,8 +177,8 @@ export default function TurnFileApp({ fileId }: { fileId: string }) {
           detail={`${carrier?.name} · ${adjuster ? `${adjuster.firstName} ${adjuster.lastName}` : "Adjuster"} · ${adjuster?.phone || ""} · claim ${carrier?.claimNo || ""}`}
           stayLabel="Save note"
           endLabel="End call"
-          onStay={() => void runIngest(text)}
-          onEnd={() => void runIngest(text)}
+          onStay={() => void runIngest(text, why || "adjuster")}
+          onEnd={() => void runIngest(text, why || "adjuster")}
         />
       )}
       {view === "ingest" && (
@@ -191,22 +200,21 @@ export default function TurnFileApp({ fileId }: { fileId: string }) {
           file={file}
           why={why}
           text={text}
+          busy={busy}
+          err={err}
           onWhy={pickWhy}
           onText={setText}
-          onTell={() => {
-            if (!why) pickWhy("client_phone");
-            void runIngest(text);
-          }}
+          onTell={() => { void runIngest(text, why); }}
         />
       )}
       {view === "scream" && (
-        <ScreamScreen file={file} note={text} onNote={setText} onIngest={() => void runIngest(text)} />
+        <ScreamScreen file={file} note={text} busy={busy} onNote={setText} onIngest={() => void runIngest(text, why || "client_phone")} />
       )}
       {view === "adjuster" && (
-        <AdjusterScreen file={file} note={text} onNote={setText} onIngest={() => void runIngest(text)} />
+        <AdjusterScreen file={file} note={text} busy={busy} onNote={setText} onIngest={() => void runIngest(text, why || "adjuster")} />
       )}
       {view === "paint" && why && (
-        <PaintScreen file={file} why={why} onIngest={() => setView("ingest")} onBack={() => setView("why")} />
+        <PaintScreen file={file} why={why} busy={busy} onIngest={() => void runIngest(text, why)} onBack={() => setView("why")} />
       )}
       {view === "ingest" && (
         <IngestScreen

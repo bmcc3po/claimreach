@@ -26,6 +26,8 @@ export function WhyScreen(props: {
   file: TurnFile;
   why: WhyKey | null;
   text: string;
+  busy?: boolean;
+  err?: string | null;
   onWhy: (w: WhyKey) => void;
   onText: (v: string) => void;
   onTell: () => void;
@@ -59,10 +61,14 @@ export function WhyScreen(props: {
             value={props.text}
             onChange={(e) => props.onText(e.target.value)}
             placeholder="he's screaming about the check and nobody calling"
-            onKeyDown={(e) => e.key === "Enter" && props.onTell()}
+            disabled={props.busy}
+            onKeyDown={(e) => e.key === "Enter" && !props.busy && props.onTell()}
           />
-          <button type="button" className="turn-btn" onClick={props.onTell}>Tell me</button>
+          <button type="button" className="turn-btn" disabled={props.busy} onClick={props.onTell}>
+            {props.busy ? "Reading…" : "Tell me"}
+          </button>
         </div>
+        {props.err && <p className="turn-foot" style={{ color: "#c2302a" }}>{props.err}</p>}
         <p className="turn-foot">Bolt-on · JustCall already knows it&apos;s the client if the call is live. You only type when you opened the file yourself.</p>
         <Facts file={props.file} />
         <p className="turn-foot">Or skip. The full file is still under this. Concierge is a door, not a wall. {SHELL_MARK}.</p>
@@ -76,6 +82,7 @@ export function WhyScreen(props: {
 export function ScreamScreen(props: {
   file: TurnFile;
   note: string;
+  busy?: boolean;
   onNote: (v: string) => void;
   onIngest: () => void;
 }) {
@@ -123,8 +130,10 @@ export function ScreamScreen(props: {
           </div>
           <div className="turn-card">
             <p className="turn-kicker">Note this call</p>
-            <textarea className="turn-area" value={props.note} onChange={(e) => props.onNote(e.target.value)} placeholder="Client angry, 19 days no human..." />
-            <button type="button" className="turn-btn" style={{ marginTop: 12 }} onClick={props.onIngest}>Ingest this note</button>
+            <textarea className="turn-area" value={props.note} onChange={(e) => props.onNote(e.target.value)} placeholder="he's pissed nobody called about the check" />
+            <button type="button" className="turn-btn" style={{ marginTop: 12 }} disabled={props.busy} onClick={props.onIngest}>
+              {props.busy ? "Reading…" : "Ingest this note"}
+            </button>
             <p className="turn-foot">Haiku maps the note to rows. Nothing lands until you stay or end.</p>
           </div>
         </div>
@@ -142,6 +151,7 @@ function shortWhen(iso: string) {
 export function AdjusterScreen(props: {
   file: TurnFile;
   note: string;
+  busy?: boolean;
   onNote: (v: string) => void;
   onIngest: () => void;
 }) {
@@ -194,7 +204,9 @@ export function AdjusterScreen(props: {
             <button type="button" className="turn-chip on" onClick={() => props.onNote((props.note + " They missing LOR.").trim())}>They missing LOR</button>
             <button type="button" className="turn-chip on" onClick={() => props.onNote((props.note + " Callback Mon.").trim())}>Callback Mon</button>
           </div>
-          <button type="button" className="turn-btn" onClick={props.onIngest}>Ingest</button>
+          <button type="button" className="turn-btn" disabled={props.busy} onClick={props.onIngest}>
+            {props.busy ? "Reading…" : "Ingest"}
+          </button>
           <p className="turn-foot">Saves as Call · Adjuster · Maya. Can queue a LOR resend from here. Does not mail.</p>
         </div>
       </div>
@@ -202,7 +214,7 @@ export function AdjusterScreen(props: {
   );
 }
 
-export function PaintScreen(props: { file: TurnFile; why: WhyKey; onIngest: () => void; onBack: () => void }) {
+export function PaintScreen(props: { file: TurnFile; why: WhyKey; busy?: boolean; onIngest: () => void; onBack: () => void }) {
   const f = storedFacts(props.file);
   const title = WHY_CHIPS.find((w) => w.key === props.why)?.label || "File";
   const chiro = providerByKind(props.file, "chiro");
@@ -248,7 +260,9 @@ export function PaintScreen(props: { file: TurnFile; why: WhyKey; onIngest: () =
           </>
         )}
         <div className="turn-chips" style={{ marginTop: 16 }}>
-          <button type="button" className="turn-btn" onClick={props.onIngest}>Dump English</button>
+          <button type="button" className="turn-btn" disabled={props.busy} onClick={props.onIngest}>
+            {props.busy ? "Reading…" : "Dump English"}
+          </button>
           <button type="button" className="turn-chip" onClick={props.onBack}>Back to why</button>
         </div>
       </div>
@@ -286,8 +300,10 @@ export function IngestScreen(props: {
           <p className="turn-kicker">File note · ready to land</p>
           {props.result ? (
             <>
-              <p className="turn-muted">{props.result.noteMeta} · {props.result.source === "haiku" ? BOLTON_BUTTON.haiku : `${SHELL_MARK} parser`}</p>
-              <p>{props.result.note}</p>
+              <p className="turn-muted">{props.result.noteMeta} · {props.result.sourceLabel || (props.result.source === "haiku" ? "haiku" : "fallback")}</p>
+              {props.result.answer && <h2 className="turn-q" style={{ fontSize: 28 }}>{props.result.answer}</h2>}
+              {props.result.note && props.result.note !== props.result.answer && <p>{props.result.note}</p>}
+              {!props.result.answer && <p>{props.result.note}</p>}
             </>
           ) : (
             <p className="turn-hint">Nothing drafted yet. Tap Ingest.</p>

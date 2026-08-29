@@ -8,6 +8,7 @@ import { BOLTON_BUTTON, BOLTONS, SHELL_LINE, SHELL_MARK, SHELL_ROWS, chartswapIs
 import { pulledBrief, mmiFromRows } from "./brief";
 import { returnToProviderRule, smsSendEnabled, selectHits } from "./playbook";
 import { fallbackParse, runFallbackIngest, sanitizePatch, firmNote } from "./ingest";
+import { classifyWhy, detectPulls, isMadClient } from "./classify";
 import { answerAsk, landFile, queueLorResend, trySendSms } from "./land";
 
 let pass = 0, fail = 0;
@@ -89,6 +90,43 @@ check("sanitize keeps voice pref", invented.clientPref, "voice");
 const emptyParse = fallbackParse(file, "looking", "just checking the file");
 check("looking does not invent MMI", emptyParse.keepReset, undefined);
 check("looking does not set a visit", (emptyParse as any).valleyLastVisit, undefined);
+const lookingNote = firmNote(file, "looking", "just checking the file", emptyParse);
+check("looking note is not the angry template", /angry/i.test(lookingNote), false);
+check("looking note quotes the dump", /just checking the file/i.test(lookingNote), true);
+
+console.log("\nCLASSIFY FROM TEXT — chip not required");
+check("mmi question is mmi", classifyWhy("did we hit mmi yet and whats left to treat", "looking"), "mmi");
+check("mmi question pulls both topics", detectPulls("did we hit mmi yet and whats left to treat").sort(), ["left_to_treat", "mmi"]);
+check("pissed check is mad client", isMadClient("he's pissed nobody called about the check"), true);
+check("pissed check classifies client_phone", classifyWhy("he's pissed nobody called about the check", "looking"), "client_phone");
+check("dana lor classifies adjuster", classifyWhy("dana doesn't have the lor, email monday, asked for limits", "looking"), "adjuster");
+check("mmi question is not mad", isMadClient("did we hit mmi yet and whats left to treat"), false);
+
+console.log("\nFALLBACK BRAIN — three live dumps, why=looking as preview sends");
+const mmiQ = runFallbackIngest(file, "looking", "did we hit mmi yet and whats left to treat");
+check("mmi dump is not angry", /angry/i.test(mmiQ.note), false);
+check("mmi dump says not MMI", /not MMI/i.test(mmiQ.note) || /not MMI/i.test(mmiQ.answer || ""), true);
+check("mmi dump names Sep 4 MRI", /Sep 4/.test(mmiQ.note + (mmiQ.answer || "")) && /MRI/.test(mmiQ.note + (mmiQ.answer || "")), true);
+check("mmi dump names ortho", /ortho/i.test(mmiQ.note + (mmiQ.answer || "")), true);
+check("mmi dump does not reset KEEP", mmiQ.patch.keepReset, undefined);
+check("mmi dump has no Maya callback hit", mmiQ.hits.some((h) => h.id === "keep_maya_callback"), false);
+check("mmi dump has a pull answer", !!(mmiQ.answer && /not MMI/i.test(mmiQ.answer)), true);
+
+const pissed = runFallbackIngest(file, "looking", "he's pissed nobody called about the check");
+check("pissed uses his words", /pissed|nobody called|the check/i.test(pissed.note), true);
+check("pissed is not the canned angry line only", /^Client Ortiz angry/.test(pissed.note), false);
+check("pissed resets KEEP", pissed.patch.keepReset, true);
+check("pissed Maya callback", pissed.patch.callbackOwner, "Maya Chen");
+check("pissed KEEP Maya hit", pissed.hits.some((h) => h.id === "keep_maya_callback"), true);
+check("pissed KEEP apologized hit", pissed.hits.some((h) => h.id === "keep_apologized"), true);
+
+const dana = runFallbackIngest(file, "looking", "dana doesn't have the lor, email monday, asked for limits");
+check("dana disputes LOR", dana.patch.lorDisputed, true);
+check("dana PostGrid NOTICE hit", dana.hits.some((h) => h.id === "notice_resend_lor"), true);
+check("dana COVER tickler hit", dana.hits.some((h) => h.id === "cover_tickler"), true);
+check("dana monday tickler date", dana.patch.adjusterWillEmailOn, "2026-08-31");
+check("dana asked limits again", dana.patch.askedLimitsAgain, true);
+check("dana note is not angry client", /Client Ortiz angry/i.test(dana.note), false);
 
 console.log("\nLAND — note + Maya + draft SMS, no live send");
 const landed = landFile({

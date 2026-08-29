@@ -2,6 +2,7 @@ export * from "./types";
 export * from "./seed";
 export * from "./fields";
 export * from "./brief";
+export * from "./classify";
 export * from "./playbook";
 export * from "./ingest";
 export * from "./land";
