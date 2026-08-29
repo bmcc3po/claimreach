@@ -10,7 +10,7 @@ import { AdjusterScreen, IngestScreen, KeepScreen, PaintScreen, ScreamScreen, Wh
 
 type View = "why" | "scream" | "adjuster" | "paint" | "ingest" | "keep";
 
-const STORE = "claimturn.v1.";
+const STORE = "claimturn.v2.";
 
 function readStore(id: string): TurnFile | null {
   try {
@@ -154,7 +154,7 @@ export default function TurnFileApp({ fileId }: { fileId: string }) {
         <CallBar
           tone="red"
           title={`CLIENT ON THE LINE · ${clock}`}
-          detail={`${client ? `${client.firstName} ${client.lastName}` : "Client"} · ${client?.phone || ""} · JustCall matched this file`}
+          detail={`${client ? `${client.firstName} ${client.lastName}` : "Client"} · ${client?.phone || ""} · bolt-on · JustCall matched this file`}
           stayLabel="Save and stay"
           endLabel="End call"
           onStay={() => { setText(text); void runIngest(text); }}

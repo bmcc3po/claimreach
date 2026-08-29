@@ -126,6 +126,7 @@ export function storedFacts(file: TurnFile) {
     fileNo: file.fileNo,
     caseType: file.caseType,
     phase: file.phase,
+    venue: file.venue || MISSING,
     doi: formatLong(file.doi),
     sol: formatLong(file.sol),
     mmi: mmiLabel(file),

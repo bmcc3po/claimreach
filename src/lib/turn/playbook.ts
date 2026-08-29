@@ -4,6 +4,7 @@
 import { TURN_DEMO_TODAY, type PlaybookHit, type TurnFile, type WhyKey } from "./types";
 import { formatShort } from "./fields";
 import { primaryCarrier, providerByKind } from "./seed";
+import { BOLTON_BUTTON } from "./shell";
 
 export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookHit[] {
   const t = text.toLowerCase();
@@ -18,6 +19,7 @@ export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookH
       label: "Apologized",
       button: "Apologized",
       detail: "Human spoke. Ladder resets when you land.",
+      bolton: null,
     });
     hits.push({
       id: "keep_maya_callback",
@@ -25,6 +27,7 @@ export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookH
       label: "Maya owns callback",
       button: "Maya owns callback",
       detail: "Call Ortiz tomorrow by noon. Voice, not text. PD check status.",
+      bolton: null,
     });
   }
 
@@ -35,6 +38,7 @@ export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookH
       label: "Do not text, call",
       button: "Do not text, call",
       detail: "Client pref = voice only. Draft SMS stays blocked until this is resolved.",
+      bolton: null,
     });
   }
 
@@ -44,8 +48,9 @@ export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookH
       id: "notice_resend_lor",
       playbook: "NOTICE",
       label: `Resend LOR to claim ${claim}`,
-      button: "Queue PostGrid",
-      detail: `NOTICE · resend LOR to claim ${claim}. Queues a send-log row. Does not mail.`,
+      button: BOLTON_BUTTON.postgrid,
+      detail: `NOTICE · resend LOR to claim ${claim}. Bolt-on queues paper. Result lands on the send log. Does not mail.`,
+      bolton: "postgrid",
     });
   }
 
@@ -56,7 +61,8 @@ export function selectHits(file: TurnFile, why: WhyKey, text: string): PlaybookH
       playbook: "COVER",
       label: "Tickler Mon for dec page / limits",
       button: "Set tickler",
-      detail: "COVER · tickler Monday for dec page / limits email.",
+      detail: "COVER · tickler Monday for dec page / limits email. Shell task. No vendor.",
+      bolton: null,
     });
   }
 

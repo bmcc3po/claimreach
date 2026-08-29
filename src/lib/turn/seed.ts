@@ -55,6 +55,8 @@ const valley: Provider = {
   name: "Valley Chiro",
   kind: "chiro",
   lastVisit: null,
+  nextVisit: null,
+  nextTime: null,
   cadence: null,
   onFile: true,
 };
@@ -64,6 +66,8 @@ const desert: Provider = {
   name: "Desert Radiology",
   kind: "imaging",
   lastVisit: null,
+  nextVisit: "2026-09-04",
+  nextTime: "09:20",
   cadence: null,
   onFile: true,
 };
@@ -73,6 +77,8 @@ const pt: Provider = {
   name: "PT",
   kind: "pt",
   lastVisit: "2026-08-22",
+  nextVisit: null,
+  nextTime: null,
   cadence: null,
   onFile: true,
 };
@@ -116,6 +122,7 @@ export function seedOrtiz(): TurnFile {
     office: "Vegas",
     caseType: "MVA",
     phase: "Pre-lit / records",
+    venue: "NV · Clark",
     doi: "2026-03-12",
     sol: "2028-03-12",
     injuries: ["Lumbar strain", "L knee"],
@@ -140,7 +147,28 @@ export function seedOrtiz(): TurnFile {
     providers: [valley, desert, pt],
     carriers: [stateFarm],
     liens: [],
-    sendLog: [],
+    documents: [
+      { id: "doc-lor", kind: "LOR", label: "Letter of representation · State Farm", on: "2026-03-18", pointer: "send log" },
+      { id: "doc-cover", kind: "COVER", label: "Limits request letter", on: "2026-08-01", pointer: "send log" },
+      { id: "doc-records", kind: "records", label: "Medical records 4 of 11", on: null, pointer: "provider rows" },
+    ],
+    acl: [
+      { name: "Jordan Hale", role: "Attorney", access: "file" },
+      { name: "Maya Chen", role: "Paralegal", access: "file" },
+      { name: "TMP · Vegas", role: "Firm", access: "firm" },
+    ],
+    sendLog: [
+      {
+        id: "send-lor-seed",
+        kind: "lor",
+        status: "sent",
+        channel: "PostGrid",
+        toLabel: "State Farm claim 18-449201",
+        body: "LOR mailed Mar 18 · already on the send log. Demo fact. live = false.",
+        createdOn: "2026-03-18",
+        live: false,
+      },
+    ],
     tasks: [],
     notes: [],
     timeline: [

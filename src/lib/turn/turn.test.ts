@@ -4,6 +4,7 @@ import { isTurnPublicPath } from "./public";
 import { ORTIZ_FILE_ID, ORTIZ_FILE_NO, TURN_DEMO_TODAY } from "./types";
 import { loadSeedFile, seedOrtiz, providerByKind } from "./seed";
 import { lastHumanLabel, storedFacts, valleyChiroLastVisit, MISSING } from "./fields";
+import { BOLTON_BUTTON, BOLTONS, SHELL_LINE, SHELL_MARK, SHELL_ROWS, chartswapIsRecordsPath, isShellRow } from "./shell";
 import { pulledBrief, mmiFromRows } from "./brief";
 import { returnToProviderRule, smsSendEnabled, selectHits } from "./playbook";
 import { fallbackParse, runFallbackIngest, sanitizePatch, firmNote } from "./ingest";
@@ -37,6 +38,10 @@ check("claim number", file.carriers[0].claimNo, "18-449201");
 check("LOR mailed Mar 18", file.carriers[0].lorMailedOn, "2026-03-18");
 check("limits requested not in", file.carriers[0].limitsIn, false);
 check("never a lead id shape", file.id.includes("-1182"), true);
+check("venue is on the matter", file.venue, "NV · Clark");
+check("MMI is one field on the file", typeof file.mmi, "boolean");
+check("document pointers exist", file.documents.length > 0, true);
+check("who sees this file is named", file.acl.some((a) => a.name === "Jordan Hale"), true);
 
 console.log("\nCONCIERGE — stored fields only");
 const facts = storedFacts(file);
@@ -66,7 +71,8 @@ const adjIngest = runFallbackIngest(file, "adjuster", adj);
 check("adjuster disputes LOR", adjIngest.patch.lorDisputed, true);
 check("adjuster tickler monday", adjIngest.patch.adjusterWillEmailOn, "2026-08-31");
 check("note cites mailed LOR from row", /Mar 18/.test(adjIngest.note) || /March 18/.test(adjIngest.note), true);
-check("NOTICE hit is a button", adjIngest.hits.find((h) => h.id === "notice_resend_lor")?.button, "Queue PostGrid");
+check("NOTICE hit is a PostGrid bolt-on button", adjIngest.hits.find((h) => h.id === "notice_resend_lor")?.button, BOLTON_BUTTON.postgrid);
+check("NOTICE hit is tagged postgrid", adjIngest.hits.find((h) => h.id === "notice_resend_lor")?.bolton, "postgrid");
 check("COVER hit is a button", adjIngest.hits.find((h) => h.id === "cover_tickler")?.button, "Set tickler");
 
 const invented = sanitizePatch(file, {
@@ -105,7 +111,8 @@ check("sms helper agrees", smsSendEnabled(landed), false);
 
 const sent = trySendSms(landed);
 check("trySend never sends", sent.sent, false);
-check("file still has no live SMS", landed.sendLog.every((s) => s.live === false && s.kind !== "sms" || s.status !== "sent"), true);
+check("file still has no live SMS", landed.sendLog.filter((s) => s.kind === "sms").every((s) => s.live === false && s.status !== "sent"), true);
+check("every send-log row is not live", landed.sendLog.every((s) => s.live === false), true);
 
 const queued = queueLorResend(landed);
 check("LOR is queued not sent", queued.sendLog[0]?.status, "queued");
@@ -128,6 +135,20 @@ const b = selectHits(file, "adjuster", adj).map((h) => h.id).sort();
 check("SELECT is deterministic", a, b);
 check("firm note pulls claim number", adjIngest.note.includes("18-449201"), true);
 check("firm note pulls mailed LOR date", /Mar 18|March 18/.test(adjIngest.note), true);
+
+console.log("\nSHELL vs BOLT-ON — one vocabulary");
+check("shell mark is ClaimTurn · shell", SHELL_MARK, "ClaimTurn · shell");
+check("matter is a shell row", SHELL_ROWS.some((r) => r.key === "matter"), true);
+check("providers are a shell row", SHELL_ROWS.some((r) => r.key === "providers"), true);
+check("ChartSwap is not a shell row", isShellRow("chartswap"), false);
+check("ChartSwap is not the records path", chartswapIsRecordsPath(), false);
+check("Eve is a bolt-on and off this file", BOLTONS.find((b) => b.key === "eve")?.onFile, false);
+check("ChartSwap is off this file", BOLTONS.find((b) => b.key === "chartswap")?.onFile, false);
+check("Haiku is extract not chatbot", /not a chatbot/i.test(BOLTONS.find((b) => b.key === "haiku")?.job || ""), true);
+check("PostGrid button label is one string", BOLTON_BUTTON.postgrid, "bolt-on · PostGrid");
+check("JustCall button label is one string", BOLTON_BUTTON.justcall, "bolt-on · JustCall");
+check("copy says we are the file", /ClaimTurn is the file/.test(SHELL_LINE), true);
+check("copy rejects Filevine as the brain", /Filevine/.test(SHELL_LINE), true);
 
 console.log("\nISOLATION — /turn is not /m6");
 check("/turn is a public demo path", isTurnPublicPath("/turn"), true);

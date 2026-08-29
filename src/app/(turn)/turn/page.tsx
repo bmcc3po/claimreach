@@ -6,6 +6,7 @@ import Link from "next/link";
 import { listSeedFiles, clientName } from "@/lib/turn/seed";
 import { lastHumanLabel, storedFacts } from "@/lib/turn/fields";
 import { TurnChrome } from "@/components/turn/TurnChrome";
+import { ShellLegend } from "@/components/turn/TurnShell";
 
 export default function TurnDesk() {
   const files = useMemo(() => listSeedFiles(), []);
@@ -24,7 +25,8 @@ export default function TurnDesk() {
       <div className="turn-wrap">
         <p className="turn-kicker">TMP · Vegas desk</p>
         <h1 className="turn-h1">ClaimTurn</h1>
-        <p className="turn-sub">Future PI files. Demo only. Fake people. Motel 6 is not here.</p>
+        <p className="turn-sub">The file is the presentation. Demo only. Fake people. Motel 6 is not here.</p>
+        <ShellLegend />
         {shown.map((f) => {
           const facts = storedFacts(f);
           return (

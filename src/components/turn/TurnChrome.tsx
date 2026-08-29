@@ -16,7 +16,7 @@ export function TurnChrome(props: {
   return (
     <header className="turn-nav">
       <div className="turn-brand">
-        <Link href="/turn" className="turn-logo">ClaimTurn</Link>
+        <Link href="/turn" className="turn-logo">ClaimTurn <span className="turn-shell-badge">shell</span></Link>
         <span className="turn-office">TMP · Vegas</span>
       </div>
       <input

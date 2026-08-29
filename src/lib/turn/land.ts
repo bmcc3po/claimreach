@@ -28,6 +28,8 @@ export function applyPatch(file: TurnFile, patch: TurnPatch, today = TURN_DEMO_T
     providers: file.providers.map((p) => ({ ...p })),
     carriers: file.carriers.map((c) => ({ ...c })),
     liens: [...file.liens],
+    documents: (file.documents ?? []).map((d) => ({ ...d })),
+    acl: (file.acl ?? []).map((a) => ({ ...a })),
     sendLog: [...file.sendLog],
     tasks: file.tasks.map((t) => ({ ...t })),
     notes: file.notes.map((n) => ({ ...n })),

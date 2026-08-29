@@ -38,8 +38,24 @@ export type Provider = {
   name: string;
   kind: string;
   lastVisit: string | null;
+  nextVisit: string | null;
+  nextTime: string | null;
   cadence: string | null;
   onFile: boolean;
+};
+
+export type DocPointer = {
+  id: string;
+  kind: string;
+  label: string;
+  on: string | null;
+  pointer: string;
+};
+
+export type AclRow = {
+  name: string;
+  role: string;
+  access: "file" | "firm";
 };
 
 export type Carrier = {
@@ -109,6 +125,7 @@ export type TurnFile = {
   office: "Vegas";
   caseType: "MVA";
   phase: string;
+  venue: string;
   doi: string;
   sol: string;
   injuries: string[];
@@ -133,6 +150,8 @@ export type TurnFile = {
   providers: Provider[];
   carriers: Carrier[];
   liens: Lien[];
+  documents: DocPointer[];
+  acl: AclRow[];
   sendLog: SendLogRow[];
   tasks: TurnTask[];
   notes: TurnNote[];
@@ -174,6 +193,7 @@ export type PlaybookHit = {
   label: string;
   button: string;
   detail: string;
+  bolton: "postgrid" | "justcall" | null;
 };
 
 export type TurnPatch = {

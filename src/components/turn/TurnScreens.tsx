@@ -7,6 +7,8 @@ import { clientName, personByRole, primaryCarrier, providerByKind } from "@/lib/
 import { lastHumanLabel, limitsLabel, lorLabel, recordsLabel, storedFacts } from "@/lib/turn/fields";
 import { pulledBrief, screamSayLine, whyYelling, whyYouAreHere } from "@/lib/turn/brief";
 import { MISSING } from "@/lib/turn/types";
+import { BOLTON_BUTTON, SHELL_MARK } from "@/lib/turn/shell";
+import { FileShell, ShellLegend } from "./TurnShell";
 
 function Facts({ file }: { file: TurnFile }) {
   const f = storedFacts(file);
@@ -61,10 +63,12 @@ export function WhyScreen(props: {
           />
           <button type="button" className="turn-btn" onClick={props.onTell}>Tell me</button>
         </div>
-        <p className="turn-foot">JustCall already knows it&apos;s the client if the call is live. You only type when you opened the file yourself.</p>
+        <p className="turn-foot">Bolt-on · JustCall already knows it&apos;s the client if the call is live. You only type when you opened the file yourself.</p>
         <Facts file={props.file} />
-        <p className="turn-foot">Or skip. The full file is still under this. Concierge is a door, not a wall.</p>
+        <p className="turn-foot">Or skip. The full file is still under this. Concierge is a door, not a wall. {SHELL_MARK}.</p>
       </div>
+      <ShellLegend />
+      <FileShell file={props.file} />
     </div>
   );
 }
@@ -225,7 +229,7 @@ export function PaintScreen(props: { file: TurnFile; why: WhyKey; onIngest: () =
           <>
             <p className="turn-kicker">Records</p>
             <h2 className="turn-q">{f.records}</h2>
-            <p>Limits: {f.limits}. LOR: {f.lor}.</p>
+            <p>Limits: {f.limits}. LOR: {f.lor}. Records are document pointers on the shell. ChartSwap is a hospital toll, not this path.</p>
           </>
         )}
         {props.why === "clerk" && (
@@ -240,6 +244,7 @@ export function PaintScreen(props: { file: TurnFile; why: WhyKey; onIngest: () =
             <p className="turn-kicker">Looking</p>
             <p>{pulledBrief(props.file)}</p>
             <Facts file={props.file} />
+            <FileShell file={props.file} />
           </>
         )}
         <div className="turn-chips" style={{ marginTop: 16 }}>
@@ -273,7 +278,7 @@ export function IngestScreen(props: {
           <textarea className="turn-area" value={props.text} onChange={(e) => props.onText(e.target.value)} />
           <p className="turn-foot">Plain language. Typos fine. Do not write &apos;pursuant to.&apos; That is the agent&apos;s job.</p>
           <button type="button" className="turn-btn" style={{ marginTop: 12 }} disabled={props.busy} onClick={props.onIngest}>
-            {props.busy ? "Reading…" : "Ingest"}
+            {props.busy ? "Reading…" : `${BOLTON_BUTTON.haiku} · extract`}
           </button>
           {props.err && <p className="turn-foot" style={{ color: "#c2302a" }}>{props.err}</p>}
         </div>
@@ -281,7 +286,7 @@ export function IngestScreen(props: {
           <p className="turn-kicker">File note · ready to land</p>
           {props.result ? (
             <>
-              <p className="turn-muted">{props.result.noteMeta} · {props.result.source}</p>
+              <p className="turn-muted">{props.result.noteMeta} · {props.result.source === "haiku" ? BOLTON_BUTTON.haiku : `${SHELL_MARK} parser`}</p>
               <p>{props.result.note}</p>
             </>
           ) : (
@@ -386,7 +391,7 @@ export function KeepScreen(props: {
                 <p>{t.title}</p>
                 <p className="turn-muted">{t.dueLabel}</p>
                 {t.playbook === "NOTICE" ? (
-                  <button type="button" className="turn-btn ghost" onClick={props.onQueueLor}>{t.status === "queued" ? "Queued" : "Queue"}</button>
+                  <button type="button" className="turn-btn ghost" onClick={props.onQueueLor}>{t.status === "queued" ? "Queued" : BOLTON_BUTTON.postgrid}</button>
                 ) : (
                   <button type="button" className="turn-btn ghost" onClick={() => props.onAssign(t.id)}>{t.status === "assigned" || t.status === "set" || t.status === "queued" ? t.status[0].toUpperCase() + t.status.slice(1) : "Assign"}</button>
                 )}
@@ -427,7 +432,7 @@ export function KeepScreen(props: {
                     className="turn-btn"
                     disabled={!props.file.draftSms.sendEnabled}
                     onClick={props.onSendSms}
-                  >JustCall · after he okays</button>
+                  >{BOLTON_BUTTON.justcall} · after he okays</button>
                 </div>
                 {props.smsNote && <p className="turn-foot">{props.smsNote}</p>}
                 <p className="turn-foot">Playbook: treating + gap + not MMI → return-to-provider text. Same SELECT every time. Haiku only filled the names and dates from the rows.</p>
@@ -435,6 +440,7 @@ export function KeepScreen(props: {
             )}
           </div>
         </div>
+        <FileShell file={props.file} />
       </div>
     </div>
   );
