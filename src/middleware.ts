@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveFirmHome } from "@/lib/firm-home";
 import { bouncePath, isSafeFirmNext } from "@/lib/m6";
+import { isTurnPublicPath } from "@/lib/turn/public";
 
 function isAuthPage(path: string) {
   return path === "/login" || path === "/firm-login" || path.startsWith("/auth");
@@ -16,6 +17,7 @@ function isPublicPath(path: string) {
   if (isAuthPage(path)) return true;
   if (path.startsWith("/sign")) return true; // claimant e-sign stays public
   if (path.startsWith("/tools")) return true; // LawRuler property tool; page fail-closes on ?k=
+  if (isTurnPublicPath(path)) return true; // ClaimTurn demo. Fake people. Not /m6.
   if (isPublicAsset(path)) return true;
   return false;
 }
