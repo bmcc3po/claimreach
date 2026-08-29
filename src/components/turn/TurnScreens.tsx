@@ -22,15 +22,26 @@ function Facts({ file }: { file: TurnFile }) {
   );
 }
 
-export function WhyScreen(props: {
+export type ConciergeTurn = {
+  id: string;
+  you: string;
+  result: IngestResult;
+};
+
+export function FileConcierge(props: {
   file: TurnFile;
   why: WhyKey | null;
   text: string;
   busy?: boolean;
   err?: string | null;
+  thread: ConciergeTurn[];
+  armed: PlaybookHitId[];
   onWhy: (w: WhyKey) => void;
   onText: (v: string) => void;
   onTell: () => void;
+  onToggle: (id: PlaybookHitId) => void;
+  onLand: (turnId: string) => void;
+  belowThread?: ReactNode;
 }) {
   const f = storedFacts(props.file);
   const name = clientName(props.file);
@@ -45,36 +56,111 @@ export function WhyScreen(props: {
         <span className="turn-pill"><strong>{carrier?.name || "Carrier"}</strong> {carrier?.claimNo || MISSING}</span>
         <span className="turn-pill"><strong>Last human</strong> {lastHumanLabel(props.file)}</span>
       </div>
-      <div className="turn-card">
-        <p className="turn-kicker">Concierge</p>
+
+      <div className="turn-composer">
+        <p className="turn-kicker">Concierge · this box stays</p>
         <h2 className="turn-q">Why are you in this file?</h2>
-        <p className="turn-hint">Pick one. The screen paints itself. You do not have to click around.</p>
+        <p className="turn-hint">Type it. Enter sends. Chips are shortcuts. They do not take this box away.</p>
+        <textarea
+          className="turn-composer-box"
+          value={props.text}
+          onChange={(e) => props.onText(e.target.value)}
+          placeholder={"he's screaming about the check\ndid we hit MMI"}
+          disabled={props.busy}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !props.busy) {
+              e.preventDefault();
+              props.onTell();
+            }
+          }}
+        />
+        <div className="turn-composer-row">
+          <button type="button" className="turn-btn" disabled={props.busy} onClick={props.onTell}>
+            {props.busy ? "Reading…" : "Tell me"}
+          </button>
+          {props.why && <span className="turn-composer-intent">{WHY_CHIPS.find((c) => c.key === props.why)?.label}</span>}
+        </div>
+        {props.err && <p className="turn-foot" style={{ color: "#c2302a" }}>{props.err}</p>}
+        <p className="turn-kicker" style={{ marginTop: 16 }}>Shortcuts</p>
         <div className="turn-chips">
           {WHY_CHIPS.map((c) => (
-            <button key={c.key} type="button" className={`turn-chip ${props.why === c.key ? "on" : ""}`} onClick={() => props.onWhy(c.key)}>
+            <button key={c.key} type="button" className={`turn-chip ${props.why === c.key ? "on" : ""}`} disabled={props.busy} onClick={() => props.onWhy(c.key)}>
               {c.label}
             </button>
           ))}
         </div>
-        <div className="turn-tell">
-          <input
-            value={props.text}
-            onChange={(e) => props.onText(e.target.value)}
-            placeholder="he's screaming about the check and nobody calling"
-            disabled={props.busy}
-            onKeyDown={(e) => e.key === "Enter" && !props.busy && props.onTell()}
-          />
-          <button type="button" className="turn-btn" disabled={props.busy} onClick={props.onTell}>
-            {props.busy ? "Reading…" : "Tell me"}
-          </button>
-        </div>
-        {props.err && <p className="turn-foot" style={{ color: "#c2302a" }}>{props.err}</p>}
-        <p className="turn-foot">Bolt-on · JustCall already knows it&apos;s the client if the call is live. You only type when you opened the file yourself.</p>
         <Facts file={props.file} />
-        <p className="turn-foot">Or skip. The full file is still under this. Concierge is a door, not a wall. {SHELL_MARK}.</p>
+        <p className="turn-foot">Answers land in the thread under this box. The file stays below. {SHELL_MARK}.</p>
       </div>
+
+      {props.thread.length > 0 && (
+        <div className="turn-thread">
+          {props.thread.map((turn) => (
+            <ThreadBlock
+              key={turn.id}
+              turn={turn}
+              armed={props.armed}
+              onToggle={props.onToggle}
+              onLand={() => props.onLand(turn.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {props.belowThread}
+
       <ShellLegend />
       <FileShell file={props.file} />
+    </div>
+  );
+}
+
+function ThreadBlock(props: {
+  turn: ConciergeTurn;
+  armed: PlaybookHitId[];
+  onToggle: (id: PlaybookHitId) => void;
+  onLand: () => void;
+}) {
+  const r = props.turn.result;
+  return (
+    <div className="turn-thread-turn">
+      <div className="turn-bubble you">
+        <p className="turn-kicker">You</p>
+        <p>{props.turn.you}</p>
+      </div>
+      <div className="turn-bubble agent">
+        <p className="turn-kicker">ClaimTurn · {r.sourceLabel || r.source}</p>
+        {r.answer && <h3 className="turn-q" style={{ fontSize: 22 }}>{r.answer}</h3>}
+        {r.note && r.note !== r.answer && <p>{r.note}</p>}
+        {!r.answer && <p>{r.note}</p>}
+        <p className="turn-muted">{r.noteMeta}</p>
+        {r.diff.some((d) => d.changed) && (
+          <div style={{ marginTop: 10 }}>
+            {r.diff.filter((d) => d.changed).map((d) => (
+              <div key={d.field} className="turn-row turn-hi">
+                <span className="k">{d.field}</span>
+                <span>{d.before} → {d.after}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {r.hits.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <p className="turn-kicker">Playbook hits · you tap</p>
+            {r.hits.map((h) => (
+              <div key={h.id} className="turn-row">
+                <span>{h.playbook} · {h.label}</span>
+                <button
+                  type="button"
+                  className={`turn-chip ${props.armed.includes(h.id) ? "on" : ""}`}
+                  onClick={() => props.onToggle(h.id)}
+                >{h.button}</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button type="button" className="turn-btn" style={{ marginTop: 14 }} onClick={props.onLand}>Land on file</button>
+      </div>
     </div>
   );
 }
@@ -351,6 +437,7 @@ export function IngestScreen(props: {
 export function KeepScreen(props: {
   file: TurnFile;
   smsNote: string | null;
+  embedded?: boolean;
   onAsk: (key: "chiro" | "contact" | "pd_check", value: string) => void;
   onAssign: (id: string) => void;
   onQueueLor: () => void;
@@ -358,21 +445,24 @@ export function KeepScreen(props: {
 }) {
   const f = storedFacts(props.file);
   const chiro = providerByKind(props.file, "chiro");
-  return (
-    <div>
-      <div className="turn-banner ok">
-        Not MMI. Last treat {f.lastTreat}. Chiro (Valley) last visit {chiro?.lastVisit || "not on file"}. {props.file.nextTreatKind} {f.nextTreat}. Miles from MMI. Agent will not invent a visit. It asks, then it drafts the text, then a human taps send.
-      </div>
-      <div className="turn-wrap">
-        <h1 className="turn-h1">{clientName(props.file)}</h1>
-        <p className="turn-sub">{props.file.phase} · {f.carrier} {f.claimNo} · treating · KEEP {props.file.keep.status}{props.file.landed ? " reset today" : ""}</p>
-        {props.file.notes[0] && (
-          <div className="turn-card" style={{ marginBottom: 14 }}>
-            <p className="turn-kicker">File note</p>
-            <p>{props.file.notes[0].body}</p>
-          </div>
-        )}
-        <div className="turn-cols">
+  const inner = (
+    <>
+      {!props.embedded && (
+        <>
+          <h1 className="turn-h1">{clientName(props.file)}</h1>
+          <p className="turn-sub">{props.file.phase} · {f.carrier} {f.claimNo} · treating · KEEP {props.file.keep.status}{props.file.landed ? " reset today" : ""}</p>
+        </>
+      )}
+      {props.embedded && (
+        <p className="turn-sub" style={{ marginTop: 8 }}>KEEP {props.file.keep.status}{props.file.landed ? " · reset today" : ""} · {f.carrier} {f.claimNo}</p>
+      )}
+      {props.file.notes[0] && (
+        <div className="turn-card" style={{ marginBottom: 14 }}>
+          <p className="turn-kicker">File note</p>
+          <p>{props.file.notes[0].body}</p>
+        </div>
+      )}
+      <div className="turn-cols">
           <div className="turn-card">
             <p className="turn-kicker">Asks you · missing for the playbook</p>
             <div className="turn-ask">
@@ -456,8 +546,15 @@ export function KeepScreen(props: {
             )}
           </div>
         </div>
-        <FileShell file={props.file} />
+      {!props.embedded && <FileShell file={props.file} />}
+    </>
+  );
+  return (
+    <div>
+      <div className="turn-banner ok">
+        Not MMI. Last treat {f.lastTreat}. Chiro (Valley) last visit {chiro?.lastVisit || "not on file"}. {props.file.nextTreatKind} {f.nextTreat}. Miles from MMI. Agent will not invent a visit. It asks, then it drafts the text, then a human taps send.
       </div>
+      {props.embedded ? <div style={{ marginTop: 14 }}>{inner}</div> : <div className="turn-wrap">{inner}</div>}
     </div>
   );
 }

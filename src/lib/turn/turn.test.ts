@@ -8,7 +8,7 @@ import { BOLTON_BUTTON, BOLTONS, SHELL_LINE, SHELL_MARK, SHELL_ROWS, chartswapIs
 import { pulledBrief, mmiFromRows } from "./brief";
 import { returnToProviderRule, smsSendEnabled, selectHits } from "./playbook";
 import { fallbackParse, runFallbackIngest, sanitizePatch, firmNote } from "./ingest";
-import { classifyWhy, detectPulls, isMadClient } from "./classify";
+import { CHIP_ASK, chipSends, classifyWhy, detectPulls, isMadClient } from "./classify";
 import { answerAsk, landFile, queueLorResend, trySendSms } from "./land";
 
 let pass = 0, fail = 0;
@@ -101,6 +101,11 @@ check("pissed check is mad client", isMadClient("he's pissed nobody called about
 check("pissed check classifies client_phone", classifyWhy("he's pissed nobody called about the check", "looking"), "client_phone");
 check("dana lor classifies adjuster", classifyWhy("dana doesn't have the lor, email monday, asked for limits", "looking"), "adjuster");
 check("mmi question is not mad", isMadClient("did we hit mmi yet and whats left to treat"), false);
+check("MMI chip fills a question", CHIP_ASK.mmi.toLowerCase().includes("mmi"), true);
+check("MMI chip sends", chipSends("mmi"), true);
+check("client chip does not auto-send", chipSends("client_phone"), false);
+check("adjuster chip does not auto-send", chipSends("adjuster"), false);
+check("chip MMI text classifies as mmi", classifyWhy(CHIP_ASK.mmi, "mmi"), "mmi");
 
 console.log("\nFALLBACK BRAIN — three live dumps, why=looking as preview sends");
 const mmiQ = runFallbackIngest(file, "looking", "did we hit mmi yet and whats left to treat");

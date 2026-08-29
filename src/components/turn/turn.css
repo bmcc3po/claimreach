@@ -101,6 +101,34 @@
 }
 .turn-chip.on { background: #2a2a2a; color: #fff; border-color: #2a2a2a; }
 
+.turn-composer {
+  background: #fff;
+  border: 2px solid #1c3d32;
+  border-radius: 18px;
+  padding: 20px 22px 18px;
+  box-shadow: 0 8px 28px rgba(28, 61, 50, .08);
+}
+.turn-composer-box {
+  display: block; width: 100%; min-height: 72px; resize: vertical;
+  border: 2px solid #1a2230; background: #fff; color: #141414;
+  border-radius: 12px; padding: 14px 16px; font: inherit;
+  font-size: 16.5px; font-weight: 550; line-height: 1.4;
+}
+.turn-composer-box::placeholder { color: #5c5a54; opacity: 1; }
+.turn-composer-box:focus { outline: 3px solid #1c3d32; outline-offset: 1px; }
+.turn-composer-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.turn-composer-intent {
+  font-size: 13px; font-weight: 650; color: #1c3d32;
+  background: #d7e4df; border-radius: 999px; padding: 6px 12px;
+}
+.turn-thread { display: flex; flex-direction: column; gap: 14px; margin: 18px 0; }
+.turn-thread-turn { display: flex; flex-direction: column; gap: 8px; }
+.turn-bubble { border-radius: 16px; padding: 14px 16px; }
+.turn-bubble.you { background: #1a2230; color: #f4f1ea; }
+.turn-bubble.you .turn-kicker { color: #9aa6b8; }
+.turn-bubble.you p { margin: 0; font-size: 15.5px; font-weight: 550; }
+.turn-bubble.agent { background: #fff; border: 1px solid var(--tn-line); box-shadow: 0 1px 0 rgba(20,20,20,.04); }
+.turn-bubble.agent p { margin: 0 0 8px; }
 .turn-tell { display: flex; gap: 10px; align-items: stretch; }
 .turn-tell input, .turn-tell textarea, .turn-note, .turn-area {
   flex: 1; border: 1px solid var(--tn-line); background: #faf9f6;

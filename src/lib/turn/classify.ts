@@ -46,6 +46,21 @@ export function detectPulls(text: string): PullTopic[] {
   return out;
 }
 
+/** Chip shortcuts. Questions fill the box and send. Call chips only set intent. */
+export const CHIP_ASK: Record<WhyKey, string> = {
+  client_phone: "",
+  adjuster: "",
+  clerk: "any court dates",
+  mmi: "did we hit MMI",
+  left_to_treat: "what's left to treat",
+  records: "how many records are in",
+  looking: "just looking",
+};
+
+export function chipSends(why: WhyKey): boolean {
+  return why === "mmi" || why === "left_to_treat" || why === "records" || why === "clerk" || why === "looking";
+}
+
 export function classifyWhy(text: string, hinted?: WhyKey | null): WhyKey {
   const t = (text || "").trim();
   if (!t) return hinted || "looking";
