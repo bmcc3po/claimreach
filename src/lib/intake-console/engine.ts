@@ -71,6 +71,8 @@ export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers):
     // they say only once they actually signed.
     if (key === "ins_forms_signed") return a.ins_forms === "yes";
     if (key === "ins_forms_said") return a.ins_forms_signed === "yes";
+    // Dual-rep Q2/Q3 are not asked once current representation already ended the file.
+    if (key === "attorney_consult" || key === "pending_legal") return a.attorney !== "yes";
     return true;
   }
   if (caseType === "prem") {
@@ -92,15 +94,26 @@ export function questionApplies(caseType: CaseTypeKey, key: string, a: Answers):
   return true;
 }
 
-// Next unanswered applicable question, or null when the tree is exhausted.
-export function nextQuestionKey(caseType: CaseTypeKey, a: Answers): string | null {
-  for (const q of questionsFor(caseType)) {
+function firstBlank(caseType: CaseTypeKey, a: Answers, rail: "qualify" | "details" | "all"): string | null {
+  for (const q of questionsFor(caseType, rail)) {
     if (!questionApplies(caseType, q.key, a)) continue;
     const v = a[q.key];
     const blank = v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
     if (blank) return q.key;
   }
   return null;
+}
+
+// Next unanswered QUALIFY question. Details never live on this rail — evaluate()
+// uses this, so police report / occupants / how-found cannot block a signature.
+export function nextQuestionKey(caseType: CaseTypeKey, a: Answers): string | null {
+  return firstBlank(caseType, a, caseType === "mva" ? "qualify" : "all");
+}
+
+// Next unanswered DETAILS question. Asked after CONTRACT / signature.
+export function nextDetailQuestionKey(caseType: CaseTypeKey, a: Answers): string | null {
+  if (caseType !== "mva") return null;
+  return firstBlank(caseType, a, "details");
 }
 
 // ---------------------------------------------------------------- injuries
@@ -425,6 +438,8 @@ const LABEL: Record<string, Record<string, string>> = {
   represented: { no: "Not currently represented", yes_satisfied: "Represented and satisfied", yes_unsatisfied: "Represented but unsatisfied" },
   collision_type: { rear_end: "Rear-end collision", head_on: "Head-on collision", side: "Side / T-bone collision", rollover: "Rollover", multi: "Multi-vehicle collision", hit_run: "Hit and run" },
   how_found_us: { ref_attorney: "Source: attorney referral", online: "Source: online search", ai: "Source: AI search", ref_friend: "Source: friend referral", ref_firm: "Source: outside-firm referral", ref_marketing: "Source: marketing", return: "Source: return client", other: "Source: other" },
+  attorney_consult: { yes: "Consulted an attorney on this claim (unsigned)", no: "No prior attorney consult on this claim" },
+  pending_legal: { yes: "Pending lawsuit, legal action, or settlement process", no: "No pending lawsuit or settlement process" },
 };
 
 export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome, firstName?: string): string {
@@ -447,6 +462,8 @@ export function buildSummary(caseType: CaseTypeKey, a: Answers, outcome: Outcome
   }
   if (a.settled === "yes") parts.push("Already settled or signed a release");
   push("represented");
+  push("attorney_consult");
+  push("pending_legal");
   if (a.what_happened) parts.push(`Caller states: ${a.what_happened}`);
   if (a.incident_date) parts.push(`Incident date: ${a.incident_date}`);
   if (a.state) parts.push(`State: ${a.state}`);

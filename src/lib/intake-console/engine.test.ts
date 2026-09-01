@@ -2,7 +2,9 @@
 // Decision-tree checks. These are the routing rules the firm approved, so they
 // get asserted rather than assumed. Run: npx tsx src/lib/intake-console/engine.test.ts
 // ============================================================================
-import { evaluate, nextQuestionKey, questionApplies, modifiersFor, type Answers } from "./engine";
+import { evaluate, nextQuestionKey, nextDetailQuestionKey, questionApplies, modifiersFor, dateBucket, type Answers } from "./engine";
+import { questionsFor, AUTO_QUALIFY_ORDER, AUTO_DETAIL_ORDER } from "./questions";
+import { POST_SIGN_FIELDS, SIGN_SCRIPTS } from "./scripts";
 import { getFirmConfig } from "./config";
 
 const cfg = getFirmConfig("tmt");
@@ -25,7 +27,9 @@ const isoDaysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOStr
 // change the outcome, but they are part of the flow, so a base that omits them
 // never reaches a terminal.
 const base: Answers = {
-  authority: "self", role: "driver", attorney: "no", commercial: "no", injured: "yes",
+  frame: "said",
+  authority: "self", role: "driver", attorney: "no", attorney_consult: "no", pending_legal: "no",
+  commercial: "no", injured: "yes",
   what_happened: "Rear-ended at a light.", agent_read: "yes", incident_city_state: "Nashville, TN",
   police_report: "yes", police_agency: "Metro PD", police_report_number: "25-11234",
   citations: "other", symptoms_ongoing: "yes", incident_time: "7:30 AM",
@@ -35,6 +39,19 @@ const base: Answers = {
   how_found_us: "online", collision_type: "rear_end", treatment_followup: "yes",
   auto_policy_id: "POL-123", others_in_vehicle: "no", ins_forms: "no",
   case_manager_notes: "Standard rear-end, clean liability.",
+};
+
+// Qualify-only answers. No police report, occupants, how-found, collision type,
+// policy ID, or case-manager notes — those are the details rail.
+const qualifyOnly: Answers = {
+  frame: "said",
+  authority: "self", role: "driver", attorney: "no", attorney_consult: "no", pending_legal: "no",
+  commercial: "no", injured: "yes",
+  what_happened: "Rear-ended at a light.", agent_read: "yes", incident_city_state: "Nashville, TN",
+  symptoms_ongoing: "yes",
+  injuries: ["neck_back"], surgery: "no", hosp: "no", fault: "other",
+  settled: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k",
+  ins_other: "yes", ins_own: "yes", ins_uim: "unsure",
 };
 
 console.log("\nAUTO — immediate terminals");
@@ -80,7 +97,48 @@ console.log("\nAUTO — skip logic");
 check("POA only asked when calling for a living person", questionApplies("mva", "poa", { authority: "self" }), false);
 check("injury questions skipped when uninjured", questionApplies("mva", "injuries", { injured: "no" }), false);
 check("willing only asked when never treated", questionApplies("mva", "willing", { injured: "yes", treatment: "still" }), false);
-check("first question is authority", nextQuestionKey("mva", {}), "authority");
+check("first question is the frame", nextQuestionKey("mva", {}), "frame");
+
+console.log("\nAUTO — qualify before sign, details after");
+const qualifyKeys = questionsFor("mva", "qualify").map((q) => q.key);
+const detailKeys = questionsFor("mva", "details").map((q) => q.key);
+check("attorney is on the qualify rail", qualifyKeys.includes("attorney"), true);
+check("attorney is asked before injured", qualifyKeys.indexOf("attorney") < qualifyKeys.indexOf("injured"), true);
+check("attorney_consult follows current-attorney", qualifyKeys.indexOf("attorney_consult"), qualifyKeys.indexOf("attorney") + 1);
+check("pending_legal is the third dual-rep ask", qualifyKeys.indexOf("pending_legal"), qualifyKeys.indexOf("attorney") + 2);
+check("police report is a detail, not qualify", detailKeys.includes("police_report") && !qualifyKeys.includes("police_report"), true);
+check("occupants are details", detailKeys.includes("others_in_vehicle") && !qualifyKeys.includes("others_in_vehicle"), true);
+check("how-found is a detail", detailKeys.includes("how_found_us") && !qualifyKeys.includes("how_found_us"), true);
+check("collision type is a detail", detailKeys.includes("collision_type") && !qualifyKeys.includes("collision_type"), true);
+check("policy ID is a detail", detailKeys.includes("auto_policy_id") && !qualifyKeys.includes("auto_policy_id"), true);
+check("SSN is not a question on either rail",
+  !qualifyKeys.includes("ssn") && !detailKeys.includes("ssn") && POST_SIGN_FIELDS.some((f) => f.key === "ssn"), true);
+check("SSN is not on the identity two-stop", SIGN_SCRIPTS.twoStop.every((l) => !/ssn|social/i.test(l)), true);
+check("sign voice is two stops, not four rungs", SIGN_SCRIPTS.twoStop.length, 2);
+
+check("represented caller DQs on attorney with no injury/treatment/details",
+  disp({ frame: "said", authority: "self", attorney: "yes" }), "DISQUALIFY");
+check("after frame + authority, next qualify ask is attorney (not injury)",
+  nextQuestionKey("mva", { frame: "said", authority: "self" }), "attorney");
+check("dual-rep Q2/Q3 are skipped on current representation",
+  questionApplies("mva", "attorney_consult", { attorney: "yes" }), false);
+check("dual-rep Q3 skipped on current representation",
+  questionApplies("mva", "pending_legal", { attorney: "yes" }), false);
+check("dual-rep Q2 is asked when not currently represented",
+  questionApplies("mva", "attorney_consult", { attorney: "no" }), true);
+
+check("SIGN without police report / occupants / how-found", disp(qualifyOnly), "SIGN");
+check("qualify rail is exhausted without those details", nextQuestionKey("mva", qualifyOnly), null);
+check("details rail still wants police/how-found after SIGN",
+  AUTO_DETAIL_ORDER.includes(nextDetailQuestionKey("mva", qualifyOnly) as string), true);
+check("filling police report is not required for SIGN",
+  disp({ ...qualifyOnly, police_report: undefined, others_in_vehicle: undefined, how_found_us: undefined }), "SIGN");
+
+console.log("\nAUTO — 9-month window unchanged");
+check("273 days is still mid", dateBucket(isoDaysAgo(273)), "mid");
+check("274 days is old (the locked ~9-month cut)", dateBucket(isoDaysAgo(274)), "old");
+check("274-day file refers, not a new window", disp({ ...qualifyOnly, date: isoDaysAgo(274) }), "REFER");
+check("exported qualify order still exists", AUTO_QUALIFY_ORDER[0], "frame");
 
 console.log("\nGENERAL PI");
 const g: Answers = { incident_time: "2:00 PM", presence: "yes", injured: "yes", symptoms_ongoing: "yes", what_happened: "Fell on a wet floor.", agent_read: "yes", incident_city_state: "Nashville, TN", injuries: ["neck_back"], surgery: "no", date: isoDaysAgo(10), treatment: "still", bills: "under_10k", case_manager_notes: "Wet floor, no signage." };

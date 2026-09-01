@@ -6,7 +6,7 @@ import { fieldsToConsoleForm, storedQuestionApplies, nextStoredQuestion, type Co
 import { deriveSubtype } from "@/lib/intake-console/subtype";
 import { routeCall, type CampaignRouting } from "@/lib/intake-console/routing";
 import {
-  evaluate, nextQuestionKey, buildSummary, questionApplies, modifiersFor, dateBucket,
+  evaluate, nextQuestionKey, nextDetailQuestionKey, buildSummary, questionApplies, modifiersFor, dateBucket,
   type Answers, type CaseTypeKey, type CallType, type Outcome,
 } from "@/lib/intake-console/engine";
 import {
@@ -143,6 +143,9 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   // One place that answers "what do I ask next", so the runner cannot drift from
   // the published form.
   function nextKey(ct: CaseTypeKey, ans: Record<string, any>, f: ConsoleForm | null = form): string | null {
+    // MVA pre-sign is the qualify rail in questions.ts. A published form's print
+    // order used to put police / occupants / how-found in front of SIGN math.
+    if (ct === "mva") return nextQuestionKey("mva", ans);
     if (f) return nextStoredQuestion(f, ans, askOrder);
     return nextQuestionKey(ct, ans);
   }
@@ -173,6 +176,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   const [actuallySigned, setActuallySigned] = useState(false);
   const [postSign, setPostSign] = useState<Record<string, string>>({});
   const [ladderDone, setLadderDone] = useState<number[]>([]);
+  const [detailQ, setDetailQ] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
@@ -258,6 +262,13 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     const o = evaluate(ct, next, cfg);
     if (o) { finishWith(o, next); return; }
     setCurrentQ(nextKey(ct, next));
+  }
+
+  function answerDetail(key: string, value: any) {
+    const next = { ...answers, [key]: value };
+    setAnswers(next);
+    persist(next);
+    setDetailQ(nextDetailQuestionKey("mva", next));
   }
 
   async function finishWith(o: Outcome, ans: Answers) {
@@ -373,6 +384,12 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
     setPostSign((ps) => (ps.dob ? ps : { ...ps, dob: client.dob }));
   }, [signStage, client.dob]);
 
+  // Details rail opens only after the contract screen. Qualify already finished.
+  useEffect(() => {
+    if (signStage !== "signed" || caseType !== "mva") return;
+    setDetailQ(nextDetailQuestionKey("mva", answers));
+  }, [signStage, caseType]);
+
   // Close the call on a status the agent picked from the routing step. Same
   // write as finishCall, except the status is stated rather than inferred, which
   // is the whole point: "transferred" and "transfer, no answer" are the same
@@ -433,10 +450,12 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   function reset() { window.location.reload(); }
 
   const q: Question | undefined = currentQ
-    ? (form ? form.questions.find((x) => x.key === currentQ)
-            : (caseType ? questionByKey(caseType, currentQ) : undefined))
+    ? ((form?.questions.find((x) => x.key === currentQ))
+        ?? (caseType ? questionByKey(caseType, currentQ) : undefined))
     : undefined;
-  const applicable = caseType ? questionsFor(caseType).filter((x) => questionApplies(caseType, x.key, answers)).length : 0;
+  const applicable = caseType
+    ? questionsFor(caseType, caseType === "mva" ? "qualify" : "all").filter((x) => questionApplies(caseType, x.key, answers)).length
+    : 0;
   const remaining = Math.max(0, applicable - history.length - 1);
 
   if (done) {
@@ -616,6 +635,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
           ladderDone={ladderDone} setLadderDone={setLadderDone} busy={busy}
           onSend={saveIdentityAndSend} onFinish={finishCall} onBack={back} answers={answers} file={file}
           routing={routing} onStatus={finishWithStatus}
+          detailQ={detailQ} onDetailAnswer={answerDetail} caseType={caseType} form={form}
         />
       )}
 
@@ -627,16 +647,17 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
 // ---------------------------------------------------------------- outcome
 function OutcomeView(p: any) {
   const { outcome, cfg, fill, signStage, setSignStage, client, setClient, sendVia, setSendVia,
-          retainer, sigStatus, postSign, setPostSign, ladderDone, setLadderDone, busy,
+          retainer, sigStatus, postSign, setPostSign, busy,
           actuallySigned, setActuallySigned, retainerOptions, retainerId, setRetainerId,
-          onSend, onFinish, onBack, answers, file, routing, onStatus } = p;
+          onSend, onFinish, onBack, answers, file, routing, onStatus,
+          detailQ, onDetailAnswer, caseType, form } = p;
   const d: string = outcome.disposition;
   // What the agent does with the person still on the line. One place decides
   // it, so the answer is the same on every call and cannot drift.
   const step = routeCall(outcome, routing ?? {});
   const tone = d === "SIGN" ? "sign" : d === "REFER" ? "refer" : d === "DISQUALIFY" ? "dq" : d === "SECONDARY_REVIEW" ? "sr" : "neutral";
   const sr = SECONDARY_REVIEW_SCRIPTS[(outcome.closeKey as keyof typeof SECONDARY_REVIEW_SCRIPTS)] ?? SECONDARY_REVIEW_SCRIPTS.default;
-  const identityReady = client.first_name && client.last_name && client.email;
+  const identityReady = client.first_name && client.last_name && client.phone && client.email;
 
   return (
     <div className={`ic-outcome ${tone}`}>
@@ -720,6 +741,11 @@ function OutcomeView(p: any) {
                 </div>
               </>
             )}
+            <h3 className="ic-h3">Two stops, then send</h3>
+            <Note>{SIGN_SCRIPTS.twoStopNote}</Note>
+            {SIGN_SCRIPTS.twoStop.map((line: string) => (
+              <Spoken key={line}>{fill(line)}</Spoken>
+            ))}
             <h3 className="ic-h3">Send it</h3>
             <Spoken>{fill(SIGN_SCRIPTS.sending)}</Spoken>
             <Note>{SIGN_SCRIPTS.sendingNote}</Note>
@@ -743,27 +769,8 @@ function OutcomeView(p: any) {
                 ? <b>Waiting on signature · {sigStatus.signed_count} of {sigStatus.total} signed</b>
                 : <b>Sent. Waiting on their signature…</b>}
             </div>
-            <Note tone="hard">Stay on the line. Work the buy-in below while they sign. Do not hang up before it is signed.</Note>
-            <h3 className="ic-h3">Insurance buy-in — each line waits for a yes</h3>
-            <Note>{SIGN_SCRIPTS.ladderNote}</Note>
-            {SIGN_SCRIPTS.ladder.map((line: string, i: number) => {
-              const unlocked = i === 0 || ladderDone.includes(i - 1);
-              const doneRung = ladderDone.includes(i);
-              return (
-                <div key={i} className={`ic-rung ${unlocked ? "" : "locked"} ${doneRung ? "done" : ""}`}>
-                  <button className="ic-rung-btn" disabled={!unlocked}
-                    onClick={() => setLadderDone(doneRung ? ladderDone.filter((x: number) => x !== i) : [...ladderDone, i])}>
-                    {doneRung ? "✓" : i + 1}
-                  </button>
-                  <div>
-                    <p>{fill(line)}</p>
-                    {SIGN_SCRIPTS.ladderNotes?.[i] ? <span className="ic-rung-note">{SIGN_SCRIPTS.ladderNotes[i]}</span> : null}
-                  </div>
-                </div>
-              );
-            })}
+            <Note tone="hard">Stay on the line through the signature. Do not hang up before it is signed.</Note>
             <Spoken>{fill(SIGN_SCRIPTS.reassurance)}</Spoken>
-            <Spoken>{fill(SIGN_SCRIPTS.afterSignAsk).replace("[city]", answers.incident_city_state ?? "that area")}</Spoken>
             <button className="ic-btn wide" onClick={() => { setActuallySigned(true); setSignStage("signed"); }}>
               They signed, continue
             </button>
@@ -777,10 +784,28 @@ function OutcomeView(p: any) {
               : <Note tone="hard">Nothing was signed on this call. The file stays unsigned and will not move onto the signed track.</Note>}
             <Spoken>{fill(SIGN_SCRIPTS.closing)}</Spoken>
             <Note>{SIGN_SCRIPTS.closingNote}</Note>
+            <Spoken>{fill(SIGN_SCRIPTS.treatJournal)}</Spoken>
             <h3 className="ic-h3">{actuallySigned ? "After the signature" : "Finish the file"}</h3>
-            {actuallySigned && <Note tone="hard">Only collect this now that it is signed.</Note>}
+            {actuallySigned && <Note tone="hard">SSN only after they have signed. Agency, report number, vehicles, carriers, occupants, photos, how-found, collision type, and policy ID belong here — not before send.</Note>}
+            {detailQ && caseType === "mva" && (() => {
+              const dq = (form?.questions.find((x: Question) => x.key === detailQ)
+                ?? questionByKey("mva", detailQ));
+              if (!dq) return null;
+              return (
+                <GuidedStep
+                  step={{ key: dq.key, kind: dq.kind as any, multiline: dq.multiline, script: dq.script, label: dq.label, note: dq.note, options: dq.options, lookup: dq.lookup, incidentDate: typeof answers.date === "string" ? answers.date : undefined, incidentCityState: typeof answers.incident_city_state === "string" ? answers.incident_city_state : undefined }}
+                  value={answers[dq.key]}
+                  index={0}
+                  remaining={0}
+                  onAnswer={(v: any) => onDetailAnswer(dq.key, v)}
+                />
+              );
+            })()}
+            {(!detailQ || caseType !== "mva") && (
+            <>
+            <Spoken>{fill(SIGN_SCRIPTS.afterSignAsk).replace("[city]", answers.incident_city_state ?? "that area")}</Spoken>
             <div className="ic-idgrid">
-              {POST_SIGN_FIELDS.map((f) => {
+              {(actuallySigned ? POST_SIGN_FIELDS : POST_SIGN_FIELDS.filter((f) => f.key !== "ssn")).map((f) => {
                 const ssnBad = f.verify === "ssn" && !!postSign[f.key] && !isSsn(postSign[f.key]);
                 return (
                 <label key={f.key} className={`ic-postfield ${f.half ? "half" : ""}`}>
@@ -827,6 +852,8 @@ function OutcomeView(p: any) {
             </div>
             {postSign.passenger && <Spoken>{fill(SIGN_SCRIPTS.passengerAsk)}</Spoken>}
             <Spoken>{fill(SIGN_SCRIPTS.beforeHangup)}</Spoken>
+            </>
+            )}
           </>
         )}
 
