@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { composeIntroHint, composeLiveReady, composeResultCopy } from "@/lib/m6-compose-copy";
 
 type Tpl = {
   key: string; stage: string; name: string; kind: string; channel: string;
@@ -16,7 +17,7 @@ const STAGES: Record<string, string> = {
 };
 
 export default function ComposePanel({
-  leadId, isStaff = false,
+  leadId,
 }: {
   leadId: string;
   isStaff?: boolean;
@@ -28,7 +29,8 @@ export default function ComposePanel({
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
-  const [rails, setRails] = useState({ justcall: false, resend: false });
+  // Optimistic until GET /api/m6/compose reports rails — do not flash "keys missing".
+  const [rails, setRails] = useState({ justcall: true, resend: true });
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +41,10 @@ export default function ComposePanel({
         if (cancelled) return;
         if (!r.ok) { setErr(d.error || "Could not load scripts."); return; }
         setTemplates(d.templates ?? []);
-        setRails(d.rails ?? { justcall: false, resend: false });
+        setRails({
+          justcall: d.rails?.justcall !== false,
+          resend: d.rails?.resend === true,
+        });
       } catch {
         if (!cancelled) setErr("Could not load scripts.");
       }
@@ -48,6 +53,8 @@ export default function ComposePanel({
   }, [leadId]);
 
   const selected = useMemo(() => templates.find((t) => t.key === key) ?? null, [templates, key]);
+  const channel = selected?.channel || "sms";
+  const canLive = composeLiveReady(channel, rails);
 
   function pick(next: string) {
     setKey(next);
@@ -67,18 +74,18 @@ export default function ComposePanel({
           lead_id: leadId,
           template_key: key || null,
           body, subject,
-          channel: selected?.channel || "sms",
+          channel,
           live,
         }),
       });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) {
+      if (!r.ok) {
         setErr(d.error || (d.gates?.messages || []).join(" ") || "That did not save.");
         return;
       }
-      if (d.duplicate) setOk("Already on the timeline. Not sent twice.");
-      else if (d.live) setOk("Sent and logged.");
-      else setOk(d.error || "Logged to the timeline. Live send is waiting on keys and Josh.");
+      const result = composeResultCopy(d);
+      if (result.err) setErr(result.err);
+      else setOk(result.ok || "Logged to the timeline.");
     } catch {
       setErr("That did not save. Check your connection and try again.");
     } finally {
@@ -89,11 +96,7 @@ export default function ComposePanel({
   return (
     <section className="m6-card m6-compose">
       <h2>Compose</h2>
-      <p className="m6-hint">
-        Pick a run-sheet script, then log it. Live send stays off until JustCall / Resend
-        are in Pages and Josh approves the words.
-        {!isStaff && " Drafts are visible; they will not send until approved."}
-      </p>
+      <p className="m6-hint">{composeIntroHint(rails, channel)}</p>
       <label className="m6-field">
         <span>Script</span>
         <select value={key} onChange={(e) => pick(e.target.value)}>
@@ -125,10 +128,10 @@ export default function ComposePanel({
         <button
           type="button"
           className="m6-btn"
-          disabled={!!busy || !body.trim() || !selected?.approvedByFirm || (!rails.justcall && !rails.resend)}
+          disabled={!!busy || !body.trim() || !canLive}
           onClick={() => void submit(true)}
         >
-          {busy === "send" ? "Sending" : "Send (when live)"}
+          {busy === "send" ? "Sending" : "Send"}
         </button>
       </div>
     </section>
