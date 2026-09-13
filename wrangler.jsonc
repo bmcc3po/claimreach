@@ -1,0 +1,26 @@
+// Cloudflare Pages project: claimreach (claimreach.com / *.claimreach.pages.dev)
+// Flags only. Do not add `vars` here — dashboard env (NEXT_PUBLIC_*, secrets) stays source of truth.
+// workers/m6-intake-email/wrangler.jsonc is a separate Worker. Do not merge it into this file.
+{
+  "name": "claimreach",
+  "pages_build_output_dir": ".vercel/output/static",
+  "compatibility_date": "2026-08-23",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
+  ],
+  "env": {
+    "preview": {
+      "compatibility_flags": [
+        "nodejs_compat",
+        "nodejs_compat_populate_process_env"
+      ]
+    },
+    "production": {
+      "compatibility_flags": [
+        "nodejs_compat",
+        "nodejs_compat_populate_process_env"
+      ]
+    }
+  }
+}
