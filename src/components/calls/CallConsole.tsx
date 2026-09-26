@@ -308,24 +308,37 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   // Slide the divider to give the call or the panel more room. Remembered per
   // computer; double-click puts it back.
   const deskRef = useRef<HTMLDivElement | null>(null);
-  const DEFAULT_W = 680;
+  const DEFAULT_W = 900;
+  // The width is saved under a new name since the call got its own left rail;
+  // old saved widths were sized for the phone layout.
+  const W_KEY = "cr-desk-call-w2";
   const setCallW = (w: number | null, save = false) => {
     const el = deskRef.current;
     if (!el) return;
     if (w == null) el.style.removeProperty("--call-w");
     else {
       const max = el.getBoundingClientRect().width - 390;
-      const px = Math.round(Math.max(440, Math.min(max, w)));
+      const px = Math.round(Math.max(460, Math.min(max, w)));
       el.style.setProperty("--call-w", `${px}px`);
-      if (save) { try { localStorage.setItem("cr-desk-call-w", String(px)); } catch { /* private mode */ } }
+      if (save) { try { localStorage.setItem(W_KEY, String(px)); } catch { /* private mode */ } }
       return;
     }
-    if (save) { try { localStorage.removeItem("cr-desk-call-w"); } catch { /* private mode */ } }
+    if (save) { try { localStorage.removeItem(W_KEY); } catch { /* private mode */ } }
   };
   useEffect(() => {
     if (!isDesk) return;
-    try { const w = Number(localStorage.getItem("cr-desk-call-w")); if (w > 0) setCallW(w); } catch { /* none saved */ }
+    try { const w = Number(localStorage.getItem(W_KEY)); if (w > 0) setCallW(w); } catch { /* none saved */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesk]);
+  // Wide enough, the call gets a left rail (caller, checks, steps) and the
+  // question gets the middle. Narrow, it keeps the phone layout.
+  useEffect(() => {
+    const el = deskRef.current;
+    const app = el?.querySelector(".cc-app") as HTMLElement | null;
+    if (!isDesk || !el || !app || typeof ResizeObserver === "undefined") { el?.classList.remove("cc-rail"); return; }
+    const ro = new ResizeObserver(() => el.classList.toggle("cc-rail", app.getBoundingClientRect().width >= 760));
+    ro.observe(app);
+    return () => { ro.disconnect(); el.classList.remove("cc-rail"); };
   }, [isDesk]);
   const startSlide = (ev: React.PointerEvent<HTMLDivElement>) => {
     const el = deskRef.current;

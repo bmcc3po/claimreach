@@ -1,30 +1,26 @@
-# ClaimReach deploy: the wide App, INNO MVA, attorney pick, dialer, slidable split, Motel 6 status sync, lead links, text box
+# ClaimReach deploy: the calm site
 
-Upload this zip to the repo root on github.com (Add file, Upload files), let it make a branch and pull request, wait about a minute for the "Unzip upload" check, then merge. No database changes to run. This one includes everything in claimreach_links_and_textbox.zip and claimreach_textbox_fix.zip; skip those.
+Upload this zip to the repo root on github.com (Add file, Upload files), let it make a branch and pull request, wait about a minute for the "Unzip upload" check, then merge. No database changes to run.
 
 ## What changes
 
-The App on a computer is the full workspace. A bar across the top has Home, search any lead (Ctrl K), New call and Full site. The right side has CarCure (with a jump bar across the top for every rebuttal group and line set, plus Ask CaseCure), Texts, Phone (the JustCall dialer), Retainer (live preview), File (status, agreements with the signed copy, notes you can add, documents, history, and what the marketer sent) and Tools (deadline check for any state and date, her local time, which agreement she gets, the split if she insists). Opening an INNO MVA file on the desktop site goes straight here; the classic page is still one click away from the File tab.
+One look across the whole site. One typeface everywhere (Geist, served from ClaimReach itself, nothing from Google), crisp 1px lines that hold up on a PC screen, color only when it means something.
 
-INNO MVA. New call asks "What kind of call?" (INNO MVA) and "Attorney" (Turnbull Moak & Pendergrass is the only one today). The call's Send step shows the attorney above the agreement. On the desktop site, an INNO MVA file shows its attorney in the header, and Case Questions shows what was answered in the App (the old 28-question form is not used for these files), with Open in the App.
+The side menu is navy with the everyday work at the top (Home, Leads, Signed, My queue, QA queue). Calls, AI tools and Admin are sections that fold when you click their heading; More (Reports, Delivery Board, Grievous) starts folded. The button left of the page name shrinks the menu to icons. Your name at the bottom opens Profile, Dark mode, Open the App and Sign out. The top bar has search for any lead (Ctrl K), New call, and notifications.
 
-Dialer. On a desktop, the call screen's right side has a Phone tab with JustCall's own dialer inside it. Sign in to JustCall once. Call her back with one tap; firm lines for a 3-way are listed with Copy. The dialer stays loaded while you switch tabs; Pop out opens it in its own window for long calls. On the phone, the text sheet has a Call section: Call in JustCall, Copy number.
+Home answers five things: Needs you (every file past a deadline, worst first), Slipping (waiting 2+ days for a first call, high tier still open, qualified and waiting on the firm; click a line to open it), Just moved, new leads over the last 14 days, and the team boards. The four numbers across the top link to their lists. Days follow Central time.
 
-Slidable split. Drag the bar between the call and the panel to resize. It remembers per computer; double-click puts it back.
+Leads (and Signed) is one clean table: name and phone, case and what she said, status with any clock under it, lead number, state, when it last moved. Tabs across the top split by where files are (All, Needs action, Intake, In QA, Approved and firm, Closed). Everything else is behind Filters, and each filter in use shows as a line you can click off. Select files and a bar comes up at the bottom for status, stage, assign, firm and archive. Board and Timeline are still one click away.
 
-Motel 6 secondaries. When the LawRuler Motel 6 hook fires, the ClaimReach file now follows LawRuler: Secondary OK Sent To Firm sets Delivered to Firm, Secondary Intake OK COMPLETE sets Approved, Secondary DQ Sent to Firm sets DQ Billable. The LOR turns ready on LawRuler's real wording. Delivered to Firm now counts as billable. Auto firm email stays off for the Motel 6 campaign, so nothing is emailed to TMP. After merging, open claimreach.com/api/webhooks/lawruler/status-sync once while signed in to bring the files LawRuler already sent up to date.
-
-Lead links by lead number on the desktop site and the App: /leads/TMP-1042, /app/TMP-1042, /leads/lr/<LawRuler ID>, /app/lr/<LawRuler ID>. Old links still work.
-
-The App's text box stays white with dark text in dark mode, and the text sheet fits above the keyboard with the newest texts in view.
+The App on a computer uses the whole screen. A navy rail on the left (Home, Calls, Leads, Signed, My queue), the top bar with search and New call. When the call has room it splits: caller, qualifiers and call steps down the left, the question in the middle, CarCure on the right. With a wide CarCure panel the rebuttal groups get an index down its left side that follows you as you scroll, and every group folds. The App home list is full width and New call opens as a centered box. The phone layout does not change. The split between the call and the panel starts fresh at the new default; drag it and it remembers again.
 
 ## Files
 
-    src/lib/lawruler-status.ts (new), src/app/api/webhooks/lawruler/route.ts, status-sync/route.ts (new)
-    src/lib/m6.ts (LOR wording), src/lib/statuses.ts (Delivered billable)
-    src/components/calls/JustCallDialer.tsx (new), DeskPanel.tsx, CallConsole.tsx, CallView.tsx, CallsHome.tsx, calls.css
-    src/lib/mva-call/links.ts, src/app/(calls)/app/[id]/page.tsx
-    src/components/LeadWorkspace.tsx, src/app/(internal)/leads/[id]/page.tsx
-    src/lib/lead-key.ts (new), src/components/CanonicalUrl.tsx (new), src/app/(internal)/leads/lr/[leadid]/page.tsx (new)
-    src/components/calls/KeyboardFit.tsx (new), src/app/(calls)/layout.tsx
-    plus the smaller files listed in git
+    public/fonts/ (new: Geist and Geist Mono, open font license)
+    src/app/clean.css (new), src/app/layout.tsx
+    src/components/SideNav.tsx, NotifyBell.tsx, ui/Icon.tsx
+    src/app/(internal)/layout.tsx, src/app/(firm)/portal/layout.tsx
+    src/app/(internal)/dashboard/page.tsx, src/components/home/HomeView.tsx (new)
+    src/components/LeadsView.tsx, src/lib/case-name.ts (new), src/lib/statuses.ts
+    src/components/calls/calls.css, CallConsole.tsx, DeskPanel.tsx, DeskChrome.tsx, CallsHome.tsx
+    src/app/(calls)/layout.tsx

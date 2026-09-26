@@ -65,7 +65,9 @@ export function resolveStatus(key?: string, live?: StatusDef[]): StatusDef {
     const hit = live.find((s) => s.key === k);
     if (hit) return hit;
   }
-  return DEFAULT_BY_KEY[k] ?? { ...DEFAULT_BY_KEY["new"], key: k || "new", label: key || "New" };
+  // Unknown key: show it in words ("contact_attempted" reads "Contact attempted").
+  const words = String(key || "").replace(/_/g, " ").trim();
+  return DEFAULT_BY_KEY[k] ?? { ...DEFAULT_BY_KEY["new"], key: k || "new", label: words ? words[0].toUpperCase() + words.slice(1) : "New" };
 }
 
 export function statusLabel(key?: string, live?: StatusDef[]): string {

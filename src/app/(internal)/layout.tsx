@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
-import SignOut from "@/components/SignOut";
-import ThemeToggle from "@/components/ThemeToggle";
 import SideNav from "@/components/SideNav";
 import NotifyBell from "@/components/NotifyBell";
 import { resolveFirmHome } from "@/lib/firm-home";
@@ -25,7 +23,7 @@ export default async function InternalLayout({ children }: { children: React.Rea
     <SideNav
       userName={me.full_name ?? "Staff"}
       role={me.role}
-      topRight={<><NotifyBell /><ThemeToggle /><SignOut /></>}
+      topRight={<NotifyBell />}
     >
       {children}
     </SideNav>

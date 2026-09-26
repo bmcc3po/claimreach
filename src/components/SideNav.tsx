@@ -1,58 +1,54 @@
 "use client";
-import { useState } from "react";
-import { usePathname } from "next/navigation";
-import { Logo } from "./Logo";
+// The site shell: a navy side menu and a quiet top bar with search.
+//
+// Everyday work sits at the top of the menu with no heading. Everything else
+// lives in labeled sections that fold away (click the heading); the section
+// holding the page you are on always opens. Screens that exist but are not
+// finished sit in "More", folded by default, so a menu never implies that
+// something works when it does not.
+//
+// The menu can shrink to an icon rail (the button left of the page name), and
+// on a phone it slides in from the left. Both choices are remembered per
+// computer. Search (Ctrl K) finds any lead by name, phone or lead number.
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Icon from "./ui/Icon";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
-// Maturity, marked in the nav so nobody has to remember which screens are real.
-//
-//   live     wired end to end and safe to use on a call
-//   partial  works, but a piece of it is not connected yet
-//   roadmap  the screen exists, the feature behind it does not
-//
-// Anything roadmap moves OUT of the working menus into its own section at the
-// bottom. The point is that a menu should not be able to imply something works.
-type Maturity = "live" | "partial" | "roadmap";
-type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean; staffOnly?: boolean; maturity?: Maturity; why?: string };
-type NavGroup = { id: string; label: string | null; items: NavItem[]; staffOnly?: boolean };
+type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean; staffOnly?: boolean; why?: string };
+type NavGroup = { id: string; label: string | null; items: NavItem[]; staffOnly?: boolean; folded?: boolean };
 
 const STAFF_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
-    { href: "/dashboard", icon: "home", label: "Home", maturity: "live" },
-    { href: "/app", icon: "phone", label: "App (Mobile)", maturity: "live" },
-    { href: "/app?new=1", icon: "plus", label: "Take a call", maturity: "live" },
-    { href: "/leads", icon: "files", label: "Leads", maturity: "live" },
-    { href: "/signed", icon: "files", label: "Signed", maturity: "live" },
-    { href: "/intake", icon: "plus", label: "Add lead", staffOnly: true, maturity: "live" },
-    { href: "/queue", icon: "phone", label: "My queue", maturity: "live" },
-    { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true, maturity: "live" },
+    { href: "/dashboard", icon: "home", label: "Home" },
+    { href: "/leads", icon: "files", label: "Leads" },
+    { href: "/signed", icon: "signed", label: "Signed" },
+    { href: "/queue", icon: "queue", label: "My queue" },
+    { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true },
+  ]},
+  { id: "calls", label: "Calls", items: [
+    { href: "/app", icon: "mobile", label: "App (Mobile)" },
+    { href: "/app?new=1", icon: "headset", label: "Take a call" },
+    { href: "/intake", icon: "userplus", label: "Add lead", staffOnly: true },
   ]},
   { id: "ai", label: "AI tools", items: [
-    { href: "/crissi", icon: "life", label: "Crissi", maturity: "partial",
-      why: "The doctrine and SOP work offline. Live answers need the AI relay up." },
-    { href: "/maverick", icon: "spark", label: "Maverick", maturity: "partial",
-      why: "Coaching needs the AI relay. Blank when it is down." },
+    { href: "/crissi", icon: "life", label: "Crissi", why: "Live answers need the AI relay up." },
+    { href: "/maverick", icon: "spark", label: "Maverick", why: "Coaching needs the AI relay." },
   ]},
-  { id: "admin", label: "Settings", items: [
-    { href: "/team", icon: "people", label: "Team", staffOnly: true, maturity: "live" },
-    { href: "/users", icon: "user", label: "Users", adminOnly: true, maturity: "live" },
-    { href: "/firms", icon: "building", label: "Firms", adminOnly: true, maturity: "live" },
-    { href: "/templates", icon: "layout", label: "Templates", adminOnly: true, maturity: "live" },
-    { href: "/integrations", icon: "plug", label: "Integrations", adminOnly: true, maturity: "partial",
-      why: "API keys, inbound and outbound webhooks, JustCall and e-sign setup all work. Only the timed automations (drips, delayed steps) do not run, because nothing is scheduled to drain the queue." },
-    { href: "/settings", icon: "gear", label: "Settings", staffOnly: true, maturity: "live" },
-    { href: "/profile", icon: "user", label: "Profile", maturity: "live" },
+  { id: "admin", label: "Admin", staffOnly: true, items: [
+    { href: "/team", icon: "people", label: "Team", staffOnly: true },
+    { href: "/users", icon: "user", label: "Users", adminOnly: true },
+    { href: "/firms", icon: "building", label: "Firms", adminOnly: true },
+    { href: "/templates", icon: "layout", label: "Templates", adminOnly: true },
+    { href: "/integrations", icon: "plug", label: "Integrations", adminOnly: true, why: "Timed automations (drips, delayed steps) do not run yet." },
+    { href: "/settings", icon: "gear", label: "Settings", staffOnly: true },
   ]},
   // Screens that exist but are not doing the job their label implies. Kept
-  // reachable on purpose, because hiding them makes them easy to forget, but
-  // out of the working menus so they cannot be mistaken for finished.
-  { id: "roadmap", label: "Roadmap", staffOnly: true, items: [
-    { href: "/reports", icon: "chart", label: "Reports", maturity: "roadmap",
-      why: "Reads live data but the saved views and scheduled sends are not built." },
-    { href: "/board", icon: "chart", label: "Delivery Board", maturity: "roadmap",
-      why: "Renders, but nothing feeds the SLA clocks yet." },
-    { href: "/grievous", icon: "shield", label: "Grievous", maturity: "roadmap",
-      why: "The QA pipeline runs outside the app. This screen does not drive it." },
+  // reachable, folded away so they cannot be mistaken for finished.
+  { id: "more", label: "More", staffOnly: true, folded: true, items: [
+    { href: "/reports", icon: "chart", label: "Reports", why: "Reads live data. Saved views and scheduled sends are not built." },
+    { href: "/board", icon: "chart", label: "Delivery Board", why: "Nothing feeds the clocks yet." },
+    { href: "/grievous", icon: "shield", label: "Grievous", why: "The QA pipeline runs outside the app." },
   ]},
 ];
 
@@ -63,31 +59,33 @@ const FIRM_GROUPS: NavGroup[] = [
     { href: "/portal/reports", icon: "chart", label: "Reports" },
   ]},
   { id: "resources", label: "Resources", items: [
-    { href: "/portal/resources", icon: "toolbox", label: "Resources", maturity: "live" },
-    { href: "/portal/sop", icon: "book", label: "SOP", maturity: "live" },
-    { href: "/portal/crissi", icon: "life", label: "Crissi", maturity: "partial",
-      why: "Doctrine works offline. Live answers need the AI relay up." },
-  ]},
-  { id: "account", label: "Account", items: [
-    { href: "/portal/profile", icon: "user", label: "Profile", maturity: "live" },
-  ]},
-  { id: "roadmap", label: "Roadmap", staffOnly: true, items: [
-    { href: "/portal/reports", icon: "chart", label: "Reports", maturity: "roadmap",
-      why: "Reads live data. Exports and scheduled sends are not built." },
+    { href: "/portal/resources", icon: "toolbox", label: "Resources" },
+    { href: "/portal/sop", icon: "book", label: "SOP" },
+    { href: "/portal/crissi", icon: "life", label: "Crissi" },
   ]},
 ];
 
-function navMatch(pathname: string, href: string) {
-  if (pathname === href) return true;
-  if (href !== "/" && pathname.startsWith(href + "/")) return true;
-  return false;
-}
+// Role titles as people say them. The owner account is the Operator.
+const ROLE_TITLE: Record<string, string> = { owner: "Operator", admin: "Admin", manager: "Manager", qa: "QA", agent: "Agent" };
 
-function bestHref(pathname: string, hrefs: string[]) {
-  const matches = hrefs.filter((h) => navMatch(pathname, h));
-  matches.sort((a, b) => b.length - a.length);
-  return matches[0] ?? "";
+function navMatch(pathname: string, href: string) {
+  const path = href.split("?")[0];
+  if (href.includes("?")) return false;
+  if (pathname === path) return true;
+  return path !== "/" && pathname.startsWith(path + "/");
 }
+function bestHref(pathname: string, hrefs: string[]) {
+  const m = hrefs.filter((h) => navMatch(pathname, h));
+  m.sort((a, b) => b.length - a.length);
+  return m[0] ?? "";
+}
+const initials = (name: string) => (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
+const fmtPhone = (raw?: string | null) => {
+  const d = String(raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(raw || "");
+};
+const read = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const write = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* private window */ } };
 
 export default function SideNav({
   userName, role, topRight, children, variant = "staff",
@@ -99,91 +97,188 @@ export default function SideNav({
   variant?: "staff" | "firm";
 }) {
   const pathname = usePathname() || "";
+  const router = useRouter();
+  const isFirm = variant === "firm";
+  const GROUPS = isFirm ? FIRM_GROUPS : STAFF_GROUPS;
+  const homeHref = isFirm ? "/portal" : "/dashboard";
+  const allItems = GROUPS.flatMap((g) => g.items);
+  const current = bestHref(pathname, allItems.map((n) => n.href));
+  const currentLabel = allItems.find((n) => n.href === current)?.label ?? "";
+
   const [min, setMin] = useState(false);
-  // Mobile: the sidebar is an off-canvas drawer, closed by default, so it never
-  // eats the screen. `open` controls it; on desktop the hamburger still minimizes.
   const [open, setOpen] = useState(false);
-  const GROUPS = variant === "firm" ? FIRM_GROUPS : STAFF_GROUPS;
-  const homeHref = variant === "firm" ? "/portal" : "/dashboard";
-  const allHrefs = GROUPS.flatMap((g) => g.items.map((n) => n.href));
-  const current = bestHref(pathname, allHrefs);
-  // Collapse labeled groups by default; auto-expand the group containing the
-  // active page so you always see where you are.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+  const [menu, setMenu] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [closed, setClosed] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
-    for (const g of GROUPS) {
-      if (!g.label) continue; // unlabeled main group stays open
-      const hasActive = g.items.some((n) => n.href === current);
-      init[g.id] = !hasActive; // collapsed unless it holds the active page
-    }
+    for (const g of GROUPS) if (g.folded) init[g.id] = true;
     return init;
   });
-  const toggleGroup = (id: string) => setCollapsed((c) => ({ ...c, [id]: !c[id] }));
-  // Hamburger: on mobile toggle the drawer; on desktop keep the minimize rail.
-  const onHamburger = () => {
-    if (typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches) setOpen((o) => !o);
-    else setMin((m) => !m);
+
+  // Remembered choices load after the first paint so the server and the
+  // browser draw the same menu first.
+  useEffect(() => {
+    if (read("cr-nav-min") === "1") setMin(true);
+    try {
+      const saved = JSON.parse(read("cr-nav-closed") || "null");
+      if (saved && typeof saved === "object") setClosed((c) => ({ ...c, ...saved }));
+    } catch { /* ignore */ }
+    setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+  }, []);
+  useEffect(() => { setOpen(false); setMenu(false); }, [pathname]);
+
+  const toggleGroup = (id: string) => setClosed((c) => { const n = { ...c, [id]: !c[id] }; write("cr-nav-closed", JSON.stringify(n)); return n; });
+  const toggleMin = () => setMin((m) => { write("cr-nav-min", m ? "0" : "1"); return !m; });
+  const toggleTheme = () => {
+    const next = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    write("cr-theme", next);
   };
+  async function signOut() {
+    try { await supabaseBrowser().auth.signOut(); } finally { router.push(isFirm ? "/firm-login" : "/login"); }
+  }
+
+  const allowed = (n: NavItem) => {
+    if (n.adminOnly && !["owner", "admin"].includes(role)) return false;
+    if (n.qaOnly && !["owner", "admin", "manager", "qa"].includes(role)) return false;
+    if (n.staffOnly && role === "agent") return false;
+    return true;
+  };
+  const roleTitle = isFirm ? role : (ROLE_TITLE[role] ?? role);
 
   return (
-    <div className={`shell ${open ? "nav-open" : ""}`}>
-      <aside className={`sidenav ${min ? "min" : ""}`}>
-        <div className="brandrow">
-          <a href={homeHref} aria-label="Home" style={{ lineHeight: 0 }}>
-            <Logo height={min ? 30 : 32} wordmark={!min} />
-          </a>
-        </div>
-        <nav className="navlinks">
-          {GROUPS.filter((g) => !g.staffOnly || role !== "agent").map((g) => {
-            const items = g.items.filter((n) => {
-              if (n.adminOnly && !["owner", "admin"].includes(role)) return false;
-              if (n.qaOnly && !["owner", "admin", "manager", "qa"].includes(role)) return false;
-              if (n.staffOnly && role === "agent") return false;
-              return true;
-            });
-            if (items.length === 0) return null;
-            const isCollapsed = collapsed[g.id];
+    <div className={`cl-shell${min ? " cl-min" : ""}${open ? " cl-open" : ""}`}>
+      <aside className="cl-side" aria-label="Main menu">
+        <a className="cl-brand" href={homeHref} aria-label="ClaimReach home">
+          <span className="cl-mark">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/cr-mark.png" alt="" />
+          </span>
+          <span className="cl-word">Claim<b>Reach</b></span>
+        </a>
+        <nav className="cl-nav">
+          {GROUPS.filter((g) => !(g.staffOnly && (isFirm || role === "agent"))).map((g) => {
+            const items = g.items.filter(allowed);
+            if (!items.length) return null;
+            const holdsCurrent = items.some((n) => n.href === current);
+            const isClosed = !!g.label && !!closed[g.id] && !holdsCurrent && !min;
             return (
-              <div key={g.id} className="navgroup">
-                {g.label && !min && (
-                  <button className="navgroup-head" onClick={() => toggleGroup(g.id)}>
+              <div key={g.id} className="cl-sec">
+                {g.label && (
+                  <button className={`cl-sec-h${isClosed ? " cl-closed" : ""}`} onClick={() => toggleGroup(g.id)} aria-expanded={!isClosed}>
                     <span>{g.label}</span>
-                    <span className={`navgroup-chev ${isCollapsed ? "closed" : ""}`}>⌄</span>
+                    <Icon name="chevron" size={14} />
                   </button>
                 )}
-                {!isCollapsed && items.map((n) => (
-                  <a key={n.href} href={n.href}
-                     className={`nl ${current === n.href ? "active" : ""} ${n.maturity && n.maturity !== "live" ? "nl-" + n.maturity : ""}`}
-                     title={n.why ? `${n.label}: ${n.why}` : n.label}
-                     onClick={() => setOpen(false)}>
-                    <span className="ico"><Icon name={n.icon} /></span>
-                    <span className="nl-label">{n.label}</span>
-                    {n.maturity === "partial" && <span className="nl-tag nl-tag-partial" title={n.why}>partial</span>}
-                    {n.maturity === "roadmap" && <span className="nl-tag nl-tag-roadmap" title={n.why}>not wired</span>}
+                {!isClosed && items.map((n) => (
+                  <a key={n.href} href={n.href} className={`cl-nl${current === n.href ? " cl-on" : ""}`}
+                    title={n.why ? `${n.label}. ${n.why}` : n.label} aria-current={current === n.href ? "page" : undefined}>
+                    <span className="cl-ico"><Icon name={n.icon} /></span>
+                    <span className="cl-nl-l">{n.label}</span>
                   </a>
                 ))}
               </div>
             );
           })}
         </nav>
-        <div className="navfoot">
-          <button className="minbtn" onClick={() => setMin(!min)} aria-label="Toggle menu">
-            {min ? "»" : "« Minimize"}
+        <div className="cl-side-foot">
+          {menu && (
+            <div className="cl-menu" role="menu">
+              <a role="menuitem" href={isFirm ? "/portal/profile" : "/profile"}><Icon name="user" size={16} />Profile</a>
+              <button role="menuitem" onClick={toggleTheme}><Icon name={theme === "light" ? "moon" : "sun"} size={16} />{theme === "light" ? "Dark mode" : "Light mode"}</button>
+              {!isFirm && <a role="menuitem" href="/app"><Icon name="mobile" size={16} />Open the App</a>}
+              <div className="cl-menu-sep" />
+              <button role="menuitem" onClick={signOut}><Icon name="logout" size={16} />Sign out</button>
+            </div>
+          )}
+          <button className="cl-me-b" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-label="Your account">
+            <span className="cl-av">{initials(userName)}</span>
+            <span className="cl-me-t"><span className="cl-me-n">{userName}</span><span className="cl-me-r">{roleTitle}</span></span>
+            <Icon name="updown" size={14} />
           </button>
         </div>
       </aside>
+      <div className="cl-scrim" onClick={() => setOpen(false)} />
 
-      {open && <div className="nav-backdrop" onClick={() => setOpen(false)} />}
-
-      <div className="shell-main">
-        <div className="topstrip">
-          <button className="minbtn" onClick={onHamburger} aria-label="Toggle menu" style={{ fontSize: 18 }}>☰</button>
-          <div style={{ flex: 1 }} />
-          <span className="muted" style={{ fontSize: 13 }}>{userName} · {role}</span>
-          {topRight}
-        </div>
-        <div className="shell-body">{children}</div>
+      <div className="cl-main">
+        <header className="cl-top">
+          <button className="cl-iconbtn cl-burger" onClick={() => setOpen((o) => !o)} aria-label="Open the menu"><Icon name="menu" size={20} /></button>
+          <button className="cl-iconbtn cl-collapse" onClick={toggleMin} aria-label={min ? "Show the full menu" : "Shrink the menu"} title={min ? "Show the full menu" : "Shrink the menu"}><Icon name="sidebar" size={18} /></button>
+          <span className="cl-crumb">{currentLabel}</span>
+          {!isFirm ? <LeadSearch /> : <span style={{ flex: 1 }} />}
+          <div className="cl-top-r">
+            {!isFirm && role !== "firm" && (
+              <a className="cl-btn cl-gold" href="/app?new=1"><Icon name="headset" size={16} /><span className="cl-hide-sm">New call</span></a>
+            )}
+            {topRight}
+          </div>
+        </header>
+        <main className="cl-body">{children}</main>
       </div>
+    </div>
+  );
+}
+
+function LeadSearch() {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<any[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState(0);
+  const box = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setHits(null); return; }
+    let alive = true;
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/calls/search?q=${encodeURIComponent(term)}`);
+        const d = await r.json();
+        if (alive) { setHits(d.results || []); setSel(0); }
+      } catch { if (alive) setHits([]); }
+    }, 200);
+    return () => { alive = false; clearTimeout(t); };
+  }, [q]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); box.current?.focus(); box.current?.select(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const go = (r: any) => { window.location.href = `/leads/${encodeURIComponent(r.lead_no || r.id)}`; };
+  return (
+    <div className="cl-search">
+      <Icon name="search" size={16} />
+      <input ref={box} type="search" placeholder="Search leads by name, phone or lead number" aria-label="Search leads"
+        value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { setOpen(false); box.current?.blur(); return; }
+          if (!hits?.length) return;
+          if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(hits.length - 1, s + 1)); }
+          if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
+          if (e.key === "Enter") { e.preventDefault(); go(hits[sel]); }
+        }} />
+      <span className="cl-kbd">Ctrl K</span>
+      {open && hits && (
+        <div className="cl-hits" role="listbox" aria-label="Matching leads">
+          {hits.length === 0 && <div className="cl-hit-empty">Nothing matches that.</div>}
+          {hits.slice(0, 10).map((r, i) => (
+            <button key={r.id} role="option" aria-selected={i === sel} className={`cl-hit${i === sel ? " cl-on" : ""}`}
+              onMouseDown={(e) => e.preventDefault()} onClick={() => go(r)} onMouseEnter={() => setSel(i)}>
+              <span style={{ minWidth: 0 }}>
+                <span className="cl-hit-n">{r.claimant_name || "No name yet"}</span>
+                <span className="cl-hit-s" style={{ display: "block" }}>{[fmtPhone(r.phone), r.campaign].filter(Boolean).join("   ")}</span>
+              </span>
+              <span className="cl-mono">{r.archived_at ? "Archived" : r.lead_no}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

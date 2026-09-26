@@ -1,9 +1,10 @@
 import "./globals.css";
 import "./ios.css";
+import "./clean.css";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "ClaimReach — Claim Console",
+  title: "ClaimReach",
   description: "Intake and case management",
   manifest: "/manifest.json",
   appleWebApp: { capable: true, title: "ClaimReach", statusBarStyle: "black-translucent" },
