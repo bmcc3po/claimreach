@@ -1,54 +1,35 @@
-# ClaimReach deploy — m6 client care + LawRuler ingest fixes
+# ClaimReach deploy: MVA call console + signed-docs lockdown
 
-Unzip over the repo root, replacing files. Then commit and push.
+Upload everything in this zip to GitHub (main), keeping the folders. Cloudflare deploys on its own.
 
-    unzip -o claimreach_LATEST_deploy_this.zip
-    cd claimreach
-    git add -A
-    git commit -m "m6 client care app + lawruler ingest fixes"
-    git push
+## Before upload (done 2026-09-26)
 
-Cloudflare auto-deploys. Then open https://claimreach.com/m6
+Migration 0095 and 0097 are applied. Env vars in Cloudflare: DOCUSEAL_API_KEY, DOCUSEAL_WEBHOOK_SECRET, RESEND_API_KEY, EMAIL_FROM, JUSTCALL_API_KEY, JUSTCALL_API_SECRET, JUSTCALL_DEFAULT_FROM.
 
-## New: the m6 client care app
+## After it is live
 
-    src/app/(m6)/m6/layout.tsx          auth gate, both firms
-    src/app/(m6)/m6/page.tsx            Today
-    src/app/(m6)/m6/cases/page.tsx      Cases
-    src/app/(m6)/m6/cases/[id]/page.tsx Case file
-    src/components/m6/M6Nav.tsx
-    src/components/m6/CaseList.tsx
-    src/components/m6/CaseFile.tsx
-    src/lib/m6.ts                       shared vocabulary
-    src/app/api/m6/touch/route.ts       log a touch
-    src/app/api/m6/note/route.ts        shared note thread
-    src/app/api/m6/schedule/route.ts    schedule a call
-    src/app/api/m6/contact-point/route.ts
+Run 0096 (signed-docs private) from RUN_THESE_MIGRATIONS.sql.
+Open claimreach.com/calls as an owner and tap Set up agreements. That makes the TX, FL and AL/GA templates in DocuSeal.
+In DocuSeal, add a webhook to https://claimreach.com/api/esign/docuseal with a secret header named X-CR-Secret set to the DOCUSEAL_WEBHOOK_SECRET value.
 
-## Changed
+## What is new
 
-    src/middleware.ts       /m6 sends unauthenticated users to /firm-login
-    src/app/globals.css     m6 styles appended at the end
-    src/lib/webhooks.ts     mail_address1 was a phantom column, now mail_addr1
-    src/app/api/hooks/in/[key_id]/route.ts   same phantom column, plus a
-                                             phantom `status` column on leads
-    src/app/api/webhooks/lawruler/route.ts   LawRuler ingest
+The call console at /calls: home (open, call backs, signing, done, search, new call) and /calls/[id] (Guided, Freestyle, Q&A, Help with rebuttals and lines, texting through JustCall with calls and recordings, DocuSeal e-sign, dispo). Agents land on /calls. First sign-in makes a new password.
 
-## Migrations
+    src/app/(calls)/layout.tsx, calls/page.tsx, calls/[id]/page.tsx, calls/[id]/print/page.tsx
+    src/app/set-password/page.tsx
+    src/components/calls/*            CallView (from the approved canvas), CallConsole, CallsHome, PrintActions, calls.css
+    src/lib/mva-call/*                engine (ported from the canvas), dispo, state, server, esign, tests
+    src/lib/docuseal.ts, src/lib/esign-packets/tmp-mva.ts, src/lib/password-rules.ts
+    public/esign-src/...              blank TMP retainer PDFs DocuSeal fetches once at setup
+    src/app/api/calls/*               save, dispo, text, comms, search, new, email, esign (+complete, resend), esign-setup
+    src/app/api/esign/docuseal        DocuSeal webhook (fails closed without the secret)
+    src/app/api/me/password           first sign-in password
+    src/app/api/v1/leads              POST to create leads; GET fixed
 
-    supabase/migrations/0082_m6_retention.sql    ALREADY APPLIED to Supabase
-    supabase/migrations/0083_lead_no_trigger.sql ALREADY APPLIED to Supabase
+## Auth and access changes (flagged per AGENTS.md)
 
-Both are in the zip so the repo matches the database. Do not re-run them;
-they are idempotent, but there is no reason to.
-
-## Still parked
-
-  * Dedicated Motel 6 sending number. retention_settings.sending_number is
-    NULL, which disables sending, so nothing can text a client from an
-    agent's line and burn the number the run sheet tells them to save.
-  * JustCall API key, secret, and webhook from Yvette, to ingest TMP's calls.
-  * LawRuler is posting urlencoded, which cannot carry files. The intake form
-    will not arrive until the attach-documents toggle flips it to multipart.
-  * LawRuler status -> pipeline_stage mapping. Status is currently recorded to
-    the activity feed only, on purpose: the two vocabularies do not match yet.
+    /api/v1/leads now needs the key secret as well as the key id (Authorization: Bearer <secret>). The key id alone sits in vendor webhook URLs. GET was returning 500 before (it asked for a status column leads does not have), so nothing that works today breaks.
+    (internal)/layout.tsx and (calls)/layout.tsx send anyone flagged must_change_password to /set-password.
+    middleware.ts lets /esign-src/*.pdf through without a login (blank forms only).
+    Dashboard sends agents to /calls.

@@ -14,6 +14,7 @@ import { retainerTokens, fillTemplate } from "@/lib/retainer-tokens";
 import { loadIntakeBundle, buildIntakePdf, buildIntakeCsvSingle } from "@/lib/intake-render";
 import { buildCertificatePdf } from "@/lib/certificate";
 import { recordAudit } from "@/lib/audit";
+import { downloadSignedDoc } from "@/lib/signed-docs";
 
 interface Attachment { filename: string; content: string; kind: string; } // content = base64
 
@@ -119,15 +120,27 @@ export async function deliverLeadToFirm(opts: {
       .select("*").eq("lead_id", opts.leadId).eq("status", "signed").order("packet_seq");
     for (const d of docs ?? []) {
       // Signed retainer PDF (fetch the completed file bytes).
-      if (wantRetainer && d.completed_pdf_url) {
+      if (wantRetainer && (d.completed_pdf_path || d.completed_pdf_url)) {
         try {
-          const r = await fetch(d.completed_pdf_url);
-          if (r.ok) {
-            const buf = new Uint8Array(await r.arrayBuffer());
+          // Our own signed files are read straight from the private bucket.
+          // Only an external provider link (SignWell) is fetched over HTTP.
+          let buf: Uint8Array | null = null;
+          if (d.completed_pdf_path) {
+            buf = await downloadSignedDoc(admin, d.completed_pdf_path);
+          } else if (/^https?:\/\//.test(d.completed_pdf_url)) {
+            const r = await fetch(d.completed_pdf_url);
+            if (r.ok) buf = new Uint8Array(await r.arrayBuffer());
+            else console.error(`firm delivery: signed PDF fetch ${r.status} for signable ${d.id}`);
+          }
+          if (buf) {
             const label = safeName(d.title || "retainer");
             attachments.push({ filename: `${nameBase}_${label}_signed.pdf`, content: toB64(buf), kind: "retainer" });
+          } else {
+            console.error(`firm delivery: signed PDF missing for signable ${d.id}`);
           }
-        } catch {}
+        } catch (e: any) {
+          console.error(`firm delivery: signed PDF failed for signable ${d.id}: ${e?.message ?? e}`);
+        }
       }
       // Certificate of signature (generate from the audit fields on the row).
       if (wantCert) {

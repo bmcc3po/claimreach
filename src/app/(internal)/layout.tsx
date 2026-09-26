@@ -10,6 +10,8 @@ export default async function InternalLayout({ children }: { children: React.Rea
   const sb = await supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect("/login");
+  // First sign-in: the starter password has to be replaced before anything else.
+  if ((user.app_metadata as any)?.must_change_password) redirect("/set-password");
 
   const { data: me } = await sb.from("app_users")
     .select("role, full_name, firm_id").eq("id", user.id).maybeSingle();

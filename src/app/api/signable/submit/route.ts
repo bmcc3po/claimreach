@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { signedDocPath, signedDocLink, uploadSignedDoc } from "@/lib/signed-docs";
 export const runtime = "edge";
 
 function clientIp(req: NextRequest): string {
@@ -92,16 +93,18 @@ export async function POST(req: NextRequest) {
               signaturePng: b.signature_data || null, signerName: b.signed_name || doc.signer_name || "Client",
               signedDate, tokens,
             });
-            const cpath = `${doc.firm_id || "master"}/signed-${doc.envelope_id}.pdf`;
-            const up = await admin.storage.from("signed-docs").upload(cpath, stamped, { contentType: "application/pdf", upsert: true });
-            if (!up.error) {
-              const { data: pub } = admin.storage.from("signed-docs").getPublicUrl(cpath);
-              completedUrl = pub?.publicUrl || null;
-              if (completedUrl) await admin.from("signable_documents").update({ completed_pdf_url: completedUrl }).eq("id", b.id);
-            }
+            const cpath = await uploadSignedDoc(admin, signedDocPath(doc.firm_id, doc.envelope_id, "signed"), stamped);
+            completedUrl = signedDocLink(b.id, "signed");
+            const { error: uErr } = await admin.from("signable_documents")
+              .update({ completed_pdf_path: cpath, completed_pdf_url: completedUrl }).eq("id", b.id);
+            if (uErr) throw new Error(`saving signed PDF link failed: ${uErr.message}`);
           }
         }
-      } catch { /* stamping best-effort; signature already recorded */ }
+      } catch (e: any) {
+        // Signature is already recorded; the stamped PDF is what failed. Say so loudly.
+        completedUrl = null;
+        console.error(`signable ${b.id}: signed PDF not saved: ${e?.message ?? e}`);
+      }
     }
     let certUrl: string | null = null;
     try {
@@ -116,15 +119,16 @@ export async function POST(req: NextRequest) {
           sentAt: full.sent_at, viewedAt: full.viewed_at, consentAt: full.consent_at,
           signedAt: full.signed_at, docHash: full.doc_hash, signatureType: full.signature_type,
         });
-        const path = `${full.firm_id || "master"}/cert-${full.envelope_id}.pdf`;
-        const up = await admin.storage.from("signed-docs").upload(path, bytes, { contentType: "application/pdf", upsert: true });
-        if (!up.error) {
-          const { data: pub } = admin.storage.from("signed-docs").getPublicUrl(path);
-          certUrl = pub?.publicUrl || null;
-          if (certUrl) await admin.from("signable_documents").update({ cert_pdf_url: certUrl }).eq("id", b.id);
-        }
+        const path = await uploadSignedDoc(admin, signedDocPath(full.firm_id, full.envelope_id, "cert"), bytes);
+        certUrl = signedDocLink(b.id, "cert");
+        const { error: uErr } = await admin.from("signable_documents")
+          .update({ cert_pdf_path: path, cert_pdf_url: certUrl }).eq("id", b.id);
+        if (uErr) throw new Error(`saving certificate link failed: ${uErr.message}`);
       }
-    } catch { /* cert is best-effort; signing already recorded */ }
+    } catch (e: any) {
+      certUrl = null;
+      console.error(`signable ${b.id}: certificate not saved: ${e?.message ?? e}`);
+    }
 
     // If this was a retainer, advance the retainer + lead. New status model:
     // a client signature enters the QA pipeline at signed_grievous.
