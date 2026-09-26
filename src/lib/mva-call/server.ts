@@ -4,6 +4,7 @@
 // ============================================================================
 import { gateUser, type GatedUser } from "@/lib/gate";
 import { isInternalRole } from "@/lib/permissions";
+import { leadKeyOf } from "@/lib/lead-key";
 
 /** Staff only. Firm logins never reach the call console. */
 export async function requireStaff(sb: any): Promise<GatedUser | null> {
@@ -157,12 +158,12 @@ ${opts.note ? `<p style="margin:0 0 12px;color:#334155">${esc(opts.note)}</p>` :
  * App (MVA) files first, newest first. Runs as the signed-in user, so RLS
  * decides what they can open.
  */
-export async function findByLawRulerId(sb: any, raw: string): Promise<string | null> {
+export async function findByLawRulerId(sb: any, raw: string): Promise<{ id: string; key: string } | null> {
   const id = String(raw || "").trim();
   if (!/^[\w.-]{1,64}$/.test(id)) return null;
-  const { data } = await sb.from("leads").select("id, case_type, created_at, archived_at")
+  const { data } = await sb.from("leads").select("id, lead_no, case_type, created_at, archived_at")
     .or(`lawruler_ref_no.eq.${id},external_id.eq.${id}`).order("created_at", { ascending: false }).limit(10);
   const rows = (data ?? []).filter((r: any) => !r.archived_at);
   const best = rows.find((r: any) => r.case_type === "mva") || rows[0];
-  return best?.id ?? null;
+  return best ? { id: best.id, key: leadKeyOf(best) } : null;
 }

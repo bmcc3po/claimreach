@@ -222,8 +222,11 @@ export function isLorStatus(v: unknown): v is LorStatus {
   return LOR_STATUSES.some((s) => s.value === v);
 }
 
+// LawRuler's real status reads "Secondary OK Sent To Firm"; the older name is
+// kept so either spelling marks the LOR ready.
+export const LOR_READY_STATUSES = [LOR_READY_STATUS, "secondary ok sent to firm"];
 export function isLorReadyStatus(raw: string | null | undefined): boolean {
-  return (raw ?? "").trim().toLowerCase() === LOR_READY_STATUS;
+  return LOR_READY_STATUSES.includes((raw ?? "").trim().toLowerCase().replace(/\s+/g, " "));
 }
 
 export type LorRow = {

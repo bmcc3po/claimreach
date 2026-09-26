@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { mapInbound, canonicalToLeadColumns, firstNonEmpty } from "@/lib/webhooks";
 import { isLorReadyStatus, isLorStatus, lrAttachmentPlan, mergeLorIngest, type LorStatus } from "@/lib/m6";
 import { normalizeLead, loadCampaigns, chooseCampaign, ingestLead, redactForLog } from "@/lib/lead-ingest";
+import { mapLawRulerStatus, shouldApplyLr } from "@/lib/lawruler-status";
+import { setClaimStatusForLeads } from "@/lib/claim-status";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -353,6 +355,16 @@ export async function POST(req: NextRequest) {
       body: `LawRuler status: ${lrStatus}`,
       meta: { source: "lawruler", status: lrStatus, vendor_lead_id: vendorId },
     });
+    // Secondaries still worked in LawRuler: keep the ClaimReach status in step
+    // so the file reads done or not done here too (src/lib/lawruler-status.ts).
+    const mapped = mapLawRulerStatus(lrStatus);
+    if (mapped) {
+      const { data: cur } = await admin.from("claims").select("status").eq("lead_id", leadId).order("created_at", { ascending: true }).limit(1).maybeSingle();
+      if (shouldApplyLr(cur?.status, mapped)) {
+        const st = await setClaimStatusForLeads({ leadIds: [leadId], status: mapped.status, dqReasonKey: mapped.dqReasonKey ?? null, dqNote: mapped.dqNote ?? null, actorName: "LawRuler" });
+        if (!st.ok) await log(admin, firmId, "failed", 500, { lead_id: leadId, lawruler_status: lrStatus }, `status: ${st.error}`);
+      }
+    }
   }
 
   await log(admin, firmId, created ? "received" : "received", 200,

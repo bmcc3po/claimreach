@@ -4,6 +4,8 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import { isInternalRole } from "@/lib/permissions";
 import "@/components/calls/calls.css";
+import KeyboardFit from "@/components/calls/KeyboardFit";
+import DeskChrome from "@/components/calls/DeskChrome";
 
 // The call console runs full screen on a phone: no side nav, safe areas on.
 export const viewport: Viewport = {
@@ -19,8 +21,8 @@ export default async function CallsLayout({ children }: { children: React.ReactN
   const { data: { user } } = await authUser();
   if (!user) redirect("/login");
   if ((user.app_metadata as any)?.must_change_password) redirect("/set-password");
-  const { data: me } = await sb.from("app_users").select("role").eq("id", user.id).maybeSingle();
+  const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user.id).maybeSingle();
   if (!me) redirect("/firm-login");
   if (!isInternalRole(me.role)) redirect("/portal");
-  return <div className="cc-page">{children}</div>;
+  return <div className="cc-page"><KeyboardFit /><DeskChrome name={me.full_name || ""} role={me.role} />{children}</div>;
 }

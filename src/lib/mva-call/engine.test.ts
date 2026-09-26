@@ -58,6 +58,7 @@ t("every top-level hole in CallView resolves", () => {
   roots.delete("leadId"); // added by CallConsole, not the engine
   roots.delete("previewHref"); // added by CallConsole
   roots.delete("onPreview"); // added by CallConsole
+  roots.delete("phoneRows"); roots.delete("callOut"); roots.delete("copyNum"); // added by CallConsole
   const states: Array<(e: CallEngine) => void> = [
     () => {},
     (e) => e.setState({ phase: "story" }),

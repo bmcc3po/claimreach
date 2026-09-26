@@ -6,11 +6,13 @@ import { LEAD_CALL_COLS, firmSpoken, fmtPhone, canHearRecordings } from "@/lib/m
 import { DEFAULT_CALL_REASONS, MVA_DQ_KEYS, type Reason } from "@/lib/mva-call/dispo";
 import { docusealConfigured } from "@/lib/docuseal";
 import CallConsole from "@/components/calls/CallConsole";
+import CanonicalUrl from "@/components/CanonicalUrl";
+import { resolveLeadKey, leadKeyOf } from "@/lib/lead-key";
 import { readLeadStory, storyTags, prefillFromStory } from "@/lib/mva-call/lead-story";
 import { packetsFor } from "@/lib/mva-call/esign";
 
 export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ text?: string }> }) {
-  const { id } = await params;
+  const { id: key } = await params;
   const { text } = await searchParams;
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
@@ -18,10 +20,13 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   const { data: me } = await sb.from("app_users").select("id, role, full_name").eq("id", user.id).maybeSingle();
   if (!me) redirect("/firm-login");
 
+  // /app/TMP-1042 or the long internal ID.
+  const id = await resolveLeadKey(sb, key);
+  if (!id) notFound();
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", id).maybeSingle();
   if (!lead) notFound();
 
-  const [{ data: firm }, liveRes, mainRes, reasonsRes, dqRes, ownersRes, tplRes, extraRes, lastRes] = await Promise.all([
+  const [{ data: firm }, liveRes, mainRes, reasonsRes, dqRes, ownersRes, tplRes, extraRes, lastRes, routeRes] = await Promise.all([
     sb.from("firms").select("name, slug").eq("id", lead.firm_id).maybeSingle(),
     // Pick up this agent's own open call on this file only if it was touched in
     // the last 30 minutes (a refresh, a dropped signal). Anything older is a new
@@ -37,7 +42,12 @@ export default async function CallPage({ params, searchParams }: { params: Promi
     // then the retry below reads the rest without it.
     sb.from("leads").select("case_description, marketing_source, lawruler_ref_no, vendor_fields").eq("id", lead.id).maybeSingle(),
     sb.from("intake_calls").select("answers").eq("lead_id", lead.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    // Firm lines for a 3-way: routing rules on this firm with a transfer number.
+    sb.from("routing_rules").select("destination_name, transfer_number, case_type").eq("firm_id", lead.firm_id).eq("active", true).not("transfer_number", "is", null),
   ]);
+  const threeWay = (routeRes.data ?? [])
+    .filter((r: any) => !r.case_type || r.case_type === lead.case_type)
+    .map((r: any) => ({ label: r.destination_name || "Firm line", number: String(r.transfer_number) }));
   let extra: any = extraRes.data;
   if (extraRes.error) {
     const { data } = await sb.from("leads").select("case_description, marketing_source, lawruler_ref_no").eq("id", lead.id).maybeSingle();
@@ -82,11 +92,14 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   const from = process.env.JUSTCALL_DEFAULT_FROM || "";
 
   return (
+    <>
+    <CanonicalUrl path={`/app/${leadKeyOf(lead)}`} />
     <CallConsole init={{
       leadId: lead.id,
       callId: liveRes.data?.id ?? null,
       openText: text === "1",
       canPreview: !!packetsFor(firm?.slug, lead.case_type),
+      threeWay,
       startedAt: liveRes.data?.created_at ? Date.parse(liveRes.data.created_at) : Date.now(),
       props: {
         callerName: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "",
@@ -108,5 +121,6 @@ export default async function CallPage({ params, searchParams }: { params: Promi
         },
       },
     }} />
+    </>
   );
 }

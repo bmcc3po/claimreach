@@ -16,6 +16,6 @@ export function safeAppNext(next: string | null | undefined): string | null {
 // What kinds of calls the App takes, by campaign case type. MVA today; a new
 // kind is one line here plus its call screen.
 export const APP_KINDS: { key: string; label: string }[] = [
-  { key: "mva", label: "Car accident (MVA)" },
+  { key: "mva", label: "INNO MVA" },
 ];
 export const APP_CASE_TYPES = APP_KINDS.map((k) => k.key);

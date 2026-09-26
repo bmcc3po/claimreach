@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { leadKeyOf } from "@/lib/lead-key";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, LEAD_CALL_COLS, caseSummaryRows, caseEmailHtml } from "@/lib/mva-call/server";
 import { validateDispo, DISPO_STATUS, DISPO_FIXED_DQ_KEY, DISPO_LABEL, DEFAULT_CALL_REASONS } from "@/lib/mva-call/dispo";
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
       title: `Signed: ${lead.claimant_name || "new client"}`,
       note: `${me.name || "An agent"} signed this file${lead.campaign ? ` on ${lead.campaign}` : ""}.`,
       rows: caseSummaryRows(lead, call?.answers || {}),
-      link: `${origin}/app/${lead.id}`,
+      link: `${origin}/app/${leadKeyOf(lead)}`,
     });
     for (const to of d.notify) {
       const r = await sendEmail({ to, subject: `Signed: ${lead.claimant_name || lead.lead_no || "new client"}`, html });

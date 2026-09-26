@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { normalizeLead, chooseCampaign, isSensitiveKey, redactForLog, type CampaignRow } from "./lead-ingest";
 import { readLeadStory, storyTags, prefillFromStory, isoDate } from "./mva-call/lead-story";
 import { safeAppNext } from "./mva-call/links";
+import { resolveLeadKey, leadKeyOf } from "./lead-key";
+import { mapLawRulerStatus, shouldApplyLr } from "./lawruler-status";
+import { isLorReadyStatus } from "./m6";
 
 let pass = 0;
 function t(name: string, fn: () => void) { fn(); pass++; console.log("ok", name); }
@@ -106,4 +109,41 @@ t("sign-in only returns people to App links", () => {
   assert.equal(safeAppNext("/dashboard"), null);
 });
 
-console.log(`${pass} passed`);
+t("Motel 6 secondaries: LawRuler status sets the ClaimReach status", () => {
+  assert.equal(mapLawRulerStatus("Secondary OK Sent To Firm")?.status, "delivered");
+  assert.equal(mapLawRulerStatus("Secondary Intake OK COMPLETE")?.status, "approved");
+  const dq = mapLawRulerStatus("Secondary DQ Sent to Firm");
+  assert.equal(dq?.status, "dq_billable"); assert.ok(dq?.dqReasonKey, "a DQ always carries a reason");
+  assert.equal(mapLawRulerStatus("Contact Attempted"), null);
+  assert.equal(mapLawRulerStatus("{{default96}}-Status"), null);
+  assert.equal(shouldApplyLr("new", mapLawRulerStatus("Secondary OK Sent To Firm")!), true);
+  assert.equal(shouldApplyLr("delivered", mapLawRulerStatus("Secondary OK Sent To Firm")!), false, "no repeat write");
+  assert.equal(shouldApplyLr("delivered", mapLawRulerStatus("Secondary Intake OK COMPLETE")!), false, "never pulled back from delivered");
+  assert.equal(isLorReadyStatus("Secondary OK Sent To Firm"), true, "the LOR flips on LawRuler's real wording");
+  assert.equal(isLorReadyStatus("Secondary intake OK sent to firm"), true);
+});
+
+// A tiny stand-in for the database: leads by lead number.
+function fakeSb(rows: any[]) {
+  return { from: () => { let want = ""; const q: any = {
+    select: () => q, eq: (_c: string, v: string) => { want = v; return q; }, order: () => q,
+    limit: async () => ({ data: rows.filter((r) => r.lead_no === want).sort((a, b) => b.created_at.localeCompare(a.created_at)) }),
+  }; return q; } };
+}
+
+async function lk() {
+  const sb = fakeSb([
+    { id: "tmt-old", lead_no: "TMP-1037", archived_at: "2026-09-26", created_at: "2026-09-02" },
+    { id: "tmp-live", lead_no: "TMP-1037", archived_at: null, created_at: "2026-08-30" },
+    { id: "roth", lead_no: "ROTH-1048", archived_at: null, created_at: "2026-08-01" },
+  ]);
+  assert.equal(await resolveLeadKey(sb, "3f2a9c1e-1111-4a2b-8c3d-1234567890ab"), "3f2a9c1e-1111-4a2b-8c3d-1234567890ab");
+  assert.equal(await resolveLeadKey(sb, "TMP-1037"), "tmp-live", "open file wins over an archived twin");
+  assert.equal(await resolveLeadKey(sb, "roth-1048"), "roth", "any capitalization");
+  assert.equal(await resolveLeadKey(sb, "TMP-9999"), null);
+  assert.equal(await resolveLeadKey(sb, "'; drop table leads"), null);
+  assert.equal(leadKeyOf({ id: "x", lead_no: "TMP-1042" }), "TMP-1042");
+  assert.equal(leadKeyOf({ id: "x", lead_no: null }), "x");
+  pass++; console.log("ok lead URLs: /app/TMP-1042 and /leads/TMP-1042 find the file");
+}
+lk().then(() => console.log(`${pass} passed`));
