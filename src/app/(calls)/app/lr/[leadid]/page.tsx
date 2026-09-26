@@ -12,6 +12,6 @@ export default async function LawRulerLink({ params }: { params: Promise<{ leadi
   const id = decodeURIComponent(leadid || "").trim();
   const sb = await supabaseServer();
   const found = await findByLawRulerId(sb, id);
-  if (found) redirect(`/app/${found}`);
+  if (found) redirect(`/app/${found.key}`);
   return <LrWait id={id} />;
 }

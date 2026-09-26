@@ -40,8 +40,9 @@ const TABS_HELP = "tabs are computed once in file-fence.ts";
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
   fence = INTERNAL_STAFF_FENCE, headerActions, retainers, signables, identified = [], lor = null,
-  points = [], lastComm = null,
+  points = [], lastComm = null, appCall = null,
 }: {
+  appCall?: { rows: { k: string; v: string }[]; answered: number; href: string; hasOld: boolean; when: string | null; agent: string | null; dispo: string | null } | null;
   lead: any;
   claims: Claim[];
   activity: any[];
@@ -61,6 +62,7 @@ export default function LeadWorkspace({
   points?: { id: string; kind: string; value: string; label?: string | null; status: string }[];
   lastComm?: { channel?: string; direction?: string; occurred_at?: string; outcome?: string; body?: string; agent_name?: string } | null;
 }) {
+  const [showOldForm, setShowOldForm] = useState(false);
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
   );
@@ -90,6 +92,7 @@ export default function LeadWorkspace({
         <span className="lh-file">{lead.lead_no}</span>
         <span className="leadhead-dot">·</span>
         <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={lead.current_user_role} />
+        {appCall && lead.firm_name && <span className="leadhead-campaign" style={{ opacity: 0.85 }} title="The attorney this case signs with">Attorney: {lead.firm_name}</span>}
         <span className="leadhead-dot">·</span>
         <span className="muted lh-date">{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : ""}</span>
         <span className="lh-spacer" />
@@ -144,8 +147,12 @@ export default function LeadWorkspace({
             {tab === "Overview" && (
               <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} onGo={(t) => { setTab(t); setEditMode(false); }} />
             )}
-            {tab === "Case Questions" && activeClaim && (
+            {tab === "Case Questions" && appCall && !showOldForm && (
+              <AppAnswers call={appCall} onShowOld={appCall.hasOld ? () => setShowOldForm(true) : undefined} />
+            )}
+            {tab === "Case Questions" && activeClaim && (!appCall || showOldForm) && (
               <div>
+                {appCall && <button className="btn ghost sm" style={{ marginBottom: 12 }} onClick={() => setShowOldForm(false)}>Back to the App answers</button>}
                 {canEdit && (
                   <div className="gate" style={{ marginBottom: 16 }}>
                     <span className="tag">Compliance notice</span>
@@ -412,5 +419,42 @@ function SendToFirmButton({ leadId }: { leadId: string }) {
       </button>
       {msg && <span className="muted" style={{ fontSize: 11.5 }}>{msg}</span>}
     </span>
+  );
+}
+
+
+// Case Questions for a file worked in the App: the App's answers, read only,
+// with a way into the App to keep going. Same rows as the printed case.
+function AppAnswers({ call, onShowOld }: {
+  call: { rows: { k: string; v: string }[]; answered: number; href: string; when: string | null; agent: string | null; dispo: string | null };
+  onShowOld?: () => void;
+}) {
+  const when = call.when ? new Date(call.when).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  return (
+    <div>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 600 }}>Answered in the App</div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            {call.answered ? `${call.answered} answers` : "Nothing answered yet"}{when ? `, last saved ${when}` : ""}{call.agent ? ` by ${call.agent}` : ""}{call.dispo ? `. Dispo: ${call.dispo}` : ""}
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          {onShowOld && <button className="btn ghost sm" onClick={onShowOld}>Show the old intake form</button>}
+          <a className="btn sm" href={call.href}>Open in the App</a>
+        </div>
+      </div>
+      {call.rows.length === 0 ? (
+        <p className="muted">No call on this file yet. Open it in the App to take the call.</p>
+      ) : (
+        <table className="docket" style={{ width: "100%" }}>
+          <tbody>
+            {call.rows.map((r) => (
+              <tr key={r.k}><td className="muted" style={{ width: 200, verticalAlign: "top" }}>{r.k}</td><td style={{ fontWeight: 500 }}>{r.v}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }

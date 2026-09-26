@@ -6,7 +6,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CallView from "./CallView";
-import DeskPanel, { type DeskTab, type PreviewInfo } from "./DeskPanel";
+import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
+import { popOutDialer } from "./JustCallDialer";
 import { stateCodeOf } from "@/lib/mva-call/state";
 import { CallEngine, type CallApi, type CallProps } from "@/lib/mva-call/engine";
 import { callbackAt } from "@/lib/mva-call/dispo";
@@ -19,6 +20,8 @@ export interface ConsoleInit {
   openText?: boolean;
   /** This campaign has an agreement packet the preview can draw. */
   canPreview?: boolean;
+  /** Firm lines for a 3-way (routing rules with a transfer number). */
+  threeWay?: { label: string; number: string }[];
   props: Omit<CallProps, "startedAt" | "now">;
 }
 
@@ -254,6 +257,14 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.text.open]);
 
+  // The text sheet opens on the newest text and follows new ones in.
+  const threadLen = s.text.thread.length;
+  useEffect(() => {
+    if (!s.text.open) return;
+    const body = document.querySelector(".cc-sheet .cc-compose")?.closest(".cc-sheet")?.querySelector(".cc-sheet-b") as HTMLElement | null;
+    if (body) body.scrollTop = body.scrollHeight;
+  }, [s.text.open, threadLen]);
+
   // Desktop or phone. The panel only mounts on a wide screen.
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1180px)");
@@ -294,15 +305,82 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     view.onPreview = (ev: any) => { ev.preventDefault(); setDeskTab("retainer"); };
     view.textBadge = false;
   }
+  // Slide the divider to give the call or the panel more room. Remembered per
+  // computer; double-click puts it back.
+  const deskRef = useRef<HTMLDivElement | null>(null);
+  const DEFAULT_W = 680;
+  const setCallW = (w: number | null, save = false) => {
+    const el = deskRef.current;
+    if (!el) return;
+    if (w == null) el.style.removeProperty("--call-w");
+    else {
+      const max = el.getBoundingClientRect().width - 390;
+      const px = Math.round(Math.max(440, Math.min(max, w)));
+      el.style.setProperty("--call-w", `${px}px`);
+      if (save) { try { localStorage.setItem("cr-desk-call-w", String(px)); } catch { /* private mode */ } }
+      return;
+    }
+    if (save) { try { localStorage.removeItem("cr-desk-call-w"); } catch { /* private mode */ } }
+  };
+  useEffect(() => {
+    if (!isDesk) return;
+    try { const w = Number(localStorage.getItem("cr-desk-call-w")); if (w > 0) setCallW(w); } catch { /* none saved */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesk]);
+  const startSlide = (ev: React.PointerEvent<HTMLDivElement>) => {
+    const el = deskRef.current;
+    if (!el) return;
+    ev.preventDefault();
+    const handle = ev.currentTarget;
+    handle.setPointerCapture(ev.pointerId);
+    el.classList.add("cc-sliding");
+    const left = el.getBoundingClientRect().left;
+    let last = 0;
+    const move = (e: PointerEvent) => { last = e.clientX - left; setCallW(last); };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      el.classList.remove("cc-sliding");
+      if (last) setCallW(last, true);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  };
+  const nudgeSlide = (ev: React.KeyboardEvent<HTMLDivElement>) => {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    ev.preventDefault();
+    const cur = deskRef.current?.querySelector(".cc-app")?.getBoundingClientRect().width || DEFAULT_W;
+    setCallW(cur + (ev.key === "ArrowRight" ? 32 : -32), true);
+  };
+
+  // Numbers for the dialer: her number first, then the firm lines for a 3-way.
+  const herPhone = String(engine.state.send.phone || init.props.callerPhone || "").trim();
+  const phones: PhoneRow[] = [
+    ...(herPhone ? [{ label: v.callerFirst || "Caller", number: herPhone, pretty: prettyPhone(herPhone), kind: "caller" as const }] : []),
+    ...(init.threeWay || []).map((t) => ({ label: t.label, number: t.number, pretty: prettyPhone(t.number), kind: "threeway" as const })),
+  ];
+  // Phone: the JustCall section at the top of the text sheet.
+  view.phoneRows = phones;
+  view.callOut = (n: string) => popOutDialer(n);
+  view.copyNum = (n: string) => { try { navigator.clipboard.writeText(n); } catch { /* copy by hand */ } };
+
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
   const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
   return (
-    <div className={`cc-desk${isDesk ? " cc-desk-on" : ""}`}>
+    <div ref={deskRef} className={`cc-desk${isDesk ? " cc-desk-on" : ""}`}>
       <CallView v={view} />
+      {isDesk && (
+        <div className="cc-split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the call and the panel" tabIndex={0}
+          title="Drag to resize. Double-click to reset."
+          onPointerDown={startSlide} onKeyDown={nudgeSlide} onDoubleClick={() => setCallW(null, true)} />
+      )}
       {isDesk && (
         <DeskPanel v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
           preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
-          focusLines={focusLines} />
+          focusLines={focusLines} phones={phones} leadId={init.leadId}
+          story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />
       )}
     </div>
   );

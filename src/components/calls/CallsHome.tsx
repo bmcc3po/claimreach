@@ -95,7 +95,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
   const dueNow = useMemo(() => data.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.callbacks, now]);
 
   async function startCall() {
-    if (!camp) { setErr("Pick the line this call came in on."); return; }
+    if (!camp) { setErr("Pick the attorney."); return; }
     setBusy(true); setErr("");
     try {
       const r = await fetch("/api/calls/new", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ campaign_id: camp, phone, name }) });
@@ -218,19 +218,17 @@ export default function CallsHome({ data }: { data: HomeData }) {
                   </button>
                 ))}
               </div>
-              {lines.length > 1 && (
-                <>
-                  <div className="cc-sec-h">Line</div>
-                  <div className="cc-grp">
-                    {lines.map((c, i) => (
-                      <button key={c.id} className={`cc-drow${camp === c.id ? " cc-on" : ""}${i === lines.length - 1 ? " cc-end" : ""}`} onClick={() => setCamp(c.id)}>
-                        <span>{c.name}</span>
-                        {camp === c.id && <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg>}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+              {/* The attorney the case signs with. TMP is the only one today. */}
+              <div className="cc-sec-h">Attorney</div>
+              <div className="cc-grp">
+                {lines.map((c, i) => (
+                  <button key={c.id} className={`cc-drow${camp === c.id ? " cc-on" : ""}${i === lines.length - 1 ? " cc-end" : ""}`} onClick={() => setCamp(c.id)}>
+                    <span>{c.firm || c.name}</span>
+                    {camp === c.id && <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg>}
+                  </button>
+                ))}
+                {lines.length === 0 && <div className="cc-drow cc-end"><span className="cc-cue" style={{ marginTop: 0 }}>No attorney is set up for this kind of call.</span></div>}
+              </div>
               {data.campaigns.length === 0 && <div className="cc-cue cc-red">No active car accident campaign. An admin turns one on in Settings.</div>}
               <div className="cc-sec-h">Caller</div>
               <input className="cc-field" type="tel" inputMode="tel" placeholder="Phone number" aria-label="Caller phone" value={phone} onChange={(e) => setPhone(e.target.value)} />

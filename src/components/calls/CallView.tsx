@@ -270,6 +270,7 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-say-label">Say</div>
 <div className="cc-say-line cc-sm">Here's what I'm going to do. I'm sending your agreement over right now so we can get this open today and start pulling that report for you. Are you better by text or by email?</div>
 </div>
+<div className="cc-agr"><span>Attorney</span><b>{v.firmSpoken}</b></div>
 <div className="cc-agr"><span>Agreement</span><b>{v.agreement}</b></div>
 <div>
 <div className="cc-lab">SIGNER</div>
@@ -456,12 +457,21 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-sheet-h"><span className="cc-card-h">Text {v.callerFirst}</span><button className="cc-x" onClick={v.closeText} aria-label="Close texting">Close</button></div>
 <div className="cc-sheet-b" style={{gap: "8px"}}>
 <div className="cc-cue" style={{margin: "0 4px 6px"}}>From {v.textFrom} through JustCall. It lands in the same thread in the JustCall app, and every text saves to her file.</div>
-{!!(v.textEmpty) && (<><div className="cc-cue" style={{textAlign: "center", margin: "28px 0"}}>No texts with {v.callerFirst} yet.</div></>)}
-{(v.texts || []).map((m: any, i44: number) => (<Fragment key={i44}><div className={cx(m.cls)}><div>{m.body}</div>{!!(m.hasStatus) && (<><div className="cc-bub-s">{m.status}</div></>)}</div></Fragment>))}
-{!!(v.canResend) && (<><div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div></>)}
-{!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.textError}</div></div>}
+{!!(v.phoneRows && v.phoneRows.length) && (<>
+<div className="cc-sec-h" style={{paddingTop: "4px"}}>Call</div>
+<div className="cc-grp">
+{(v.phoneRows || []).map((p: any, ip: number) => (<div key={ip} className="cc-callrow cc-phonerow">
+<div className="cc-callrow-t"><span>{p.label}</span><span className="cc-done-k">{p.pretty}</span></div>
+<div className="cc-chips cc-list" style={{marginTop: "8px"}}>
+{p.kind === "caller" && <button className="cc-chip cc-go" onClick={() => v.callOut(p.number)}>Call in JustCall</button>}
+<button className="cc-chip" onClick={() => v.copyNum(p.number)}>Copy number</button>
+</div>
+</div>))}
+</div>
+<div className="cc-cue" style={{margin: "0 4px"}}>Always call from JustCall so it comes from the firm's line and records. For a 3-way, tap add call in JustCall and paste the firm's number.</div>
+</>)}
 {!!v.hasCalls && (<>
-<div className="cc-sec-h" style={{paddingTop: "14px"}}>Calls</div>
+<div className="cc-sec-h" style={{paddingTop: "4px"}}>Calls</div>
 <div className="cc-grp">
 {(v.callsList || []).map((c: any, ic: number) => (<div key={ic} className="cc-callrow">
 <div className="cc-callrow-t"><span>{c.what}</span><span className="cc-done-k">{c.when}</span></div>
@@ -470,7 +480,12 @@ export default function CallView({ v }: { v: any }) {
 {!!c.hasSummary && <div className="cc-cue">{c.summary}</div>}
 </div>))}
 </div>
+<div className="cc-sec-h" style={{paddingTop: "14px"}}>Texts</div>
 </>)}
+{!!(v.textEmpty) && (<><div className="cc-cue" style={{textAlign: "center", margin: "28px 0"}}>No texts with {v.callerFirst} yet.</div></>)}
+{(v.texts || []).map((m: any, i44: number) => (<Fragment key={i44}><div className={cx(m.cls)}><div>{m.body}</div>{!!(m.hasStatus) && (<><div className="cc-bub-s">{m.status}</div></>)}</div></Fragment>))}
+{!!(v.canResend) && (<><div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div></>)}
+{!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.textError}</div></div>}
 </div>
 <div className="cc-compose">
 <textarea className="cc-area" rows={1} placeholder="Text message" aria-label="Text message" value={v.textDraft.value ?? ""} onChange={v.textDraft.set}></textarea>

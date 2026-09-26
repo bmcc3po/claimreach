@@ -3,12 +3,16 @@ import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { LEAD_CALL_COLS, caseSummaryRows } from "@/lib/mva-call/server";
 import PrintActions from "@/components/calls/PrintActions";
+import CanonicalUrl from "@/components/CanonicalUrl";
+import { resolveLeadKey, leadKeyOf } from "@/lib/lead-key";
 
 // The case on one page: print it from the phone (Share, Print) or email it.
 // No SSN on this page, ever.
 export default async function PrintCase({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+  const { id: key } = await params;
   const sb = await supabaseServer();
+  const id = await resolveLeadKey(sb, key);
+  if (!id) notFound();
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", id).maybeSingle();
   if (!lead) notFound();
   const { data: call } = await sb.from("intake_calls").select("answers, disposition, reason, agent_name, updated_at")
@@ -20,7 +24,8 @@ export default async function PrintCase({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="cc-print">
-      <a className="cc-home-link cc-noprint" href={`/app/${id}`}>Back to the call</a>
+      <CanonicalUrl path={`/app/${leadKeyOf(lead)}/print`} />
+      <a className="cc-home-link cc-noprint" href={`/app/${leadKeyOf(lead)}`}>Back to the call</a>
       <h1>{lead.claimant_name || "Case summary"}</h1>
       <div className="cc-cue" style={{ marginTop: 0 }}>{lead.campaign || ""}{lead.lead_no ? `  ${lead.lead_no}` : ""}</div>
       <table><tbody>{rows.map((r) => <tr key={r.k}><td>{r.k}</td><td>{r.v}</td></tr>)}</tbody></table>

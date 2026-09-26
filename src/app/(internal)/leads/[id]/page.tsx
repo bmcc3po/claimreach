@@ -1,17 +1,28 @@
 export const runtime = "edge";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import LeadWorkspace from "@/components/LeadWorkspace";
 import { loadIdentifiedForLead } from "@/lib/property-ops";
 import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
+import { resolveLeadKey, leadKeyOf } from "@/lib/lead-key";
+import CanonicalUrl from "@/components/CanonicalUrl";
+import { APP_CASE_TYPES } from "@/lib/mva-call/links";
+import { caseSummaryRows } from "@/lib/mva-call/server";
 
-export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ classic?: string }> }) {
+  const { id: key } = await params;
+  const { classic } = await searchParams;
   const sb = await supabaseServer();
+  // /leads/TMP-1042 or the long internal ID.
+  const id = await resolveLeadKey(sb, key);
+  if (!id) notFound();
 
   const { data: lead } = await sb.from("leads").select("*").eq("id", id).maybeSingle();
   if (!lead) notFound();
+  // INNO MVA files are worked in the App, wide on a computer. The classic page
+  // is still one click away (?classic=1) for status, QA, lock and send to firm.
+  if (APP_CASE_TYPES.includes(String(lead.case_type || "")) && classic !== "1") redirect(`/app/${leadKeyOf(lead)}`);
 
   let { data: claims } = await sb.from("claims").select("*")
     .eq("lead_id", id).order("created_at");
@@ -87,22 +98,47 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     if (resolved !== intakeForType(ct)) formsByType[ct] = resolved;
   }
 
+  // Files worked in the App (car accidents today): Case Questions shows the
+  // App's answers, the one place those questions are asked. The old form only
+  // shows when a file has answers from it.
+  let appCall: { rows: { k: string; v: string }[]; answered: number; href: string; hasOld: boolean; when: string | null; agent: string | null; dispo: string | null } | null = null;
+  if (APP_CASE_TYPES.includes(String(lead.case_type || ""))) {
+    const { data: firmRow } = await sb.from("firms").select("name").eq("id", lead.firm_id).maybeSingle();
+    (lead as any).firm_name = firmRow?.name ?? null;
+    const { data: lastCall } = await sb.from("intake_calls").select("answers, agent_name, updated_at, disposition")
+      .eq("lead_id", id).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    const firstClaim: any = (claims ?? [])[0];
+    const a = lastCall?.answers || firstClaim?.answers?.mva_call || {};
+    const contact = new Set(["Name", "Lead", "Phone", "Email", "Date of birth"]);
+    const rows = caseSummaryRows(lead, a);
+    const oldKeys = Object.keys(firstClaim?.answers || {}).filter((k) => k !== "mva_call" && k !== "__meta");
+    appCall = {
+      rows, answered: rows.filter((r) => !contact.has(r.k)).length,
+      href: `/app/${leadKeyOf(lead)}`, hasOld: oldKeys.length > 0,
+      when: lastCall?.updated_at ?? null, agent: lastCall?.agent_name ?? null, dispo: lastCall?.disposition ?? null,
+    };
+  }
+
   return (
-    <LeadWorkspace
-      lead={lead}
-      claims={claims ?? []}
-      activity={activity ?? []}
-      stats={stats}
-      claimProperties={claimProperties}
-      audit={audit ?? []}
-      notes={notes ?? []}
-      callLogs={callLogs ?? []}
-      staff={staff ?? []}
-      formsByType={formsByType}
-      identified={identified}
-      lor={lor ?? null}
-      points={(points ?? []) as any}
-      lastComm={lastComms?.[0] ?? null}
-    />
+    <>
+      <CanonicalUrl path={`/leads/${leadKeyOf(lead)}`} />
+      <LeadWorkspace
+        lead={lead}
+        appCall={appCall}
+        claims={claims ?? []}
+        activity={activity ?? []}
+        stats={stats}
+        claimProperties={claimProperties}
+        audit={audit ?? []}
+        notes={notes ?? []}
+        callLogs={callLogs ?? []}
+        staff={staff ?? []}
+        formsByType={formsByType}
+        identified={identified}
+        lor={lor ?? null}
+        points={(points ?? []) as any}
+        lastComm={lastComms?.[0] ?? null}
+      />
+    </>
   );
 }

@@ -13,7 +13,7 @@
 // React wrapper and the API routes meet it.
 // @ts-nocheck
 /* eslint-disable */
-import { SOL, stateCodeOf } from './state';
+import { SOL, stateCodeOf, injuryYears as injuryYearsFor } from './state';
 export { SOL };
 export const REBS: any[] = [
   { id: 'report', phase: 'open', group: 'Opening', title: "I was just checking on my police report.", text: "Got it, and that's exactly why we have you. When that report gets requested it comes over to us too. We're the intake center for {FIRM}, and I was reaching out to see what kind of pain you've been dealing with since the accident. Tell me what happened out there." },
@@ -370,12 +370,7 @@ export class CallEngine {
     return new Date(t.getTime() - d * 86400000);
   }
 
-  injuryYears(code: any, when: any) {
-    if (code === 'FL') return when && when < new Date('2023-03-24T00:00:00') ? 4 : 2;
-    if (code === 'LA') return when && when < new Date('2024-07-01T00:00:00') ? 1 : 2;
-    var r = SOL.find((x) => x[0] === code);
-    return r ? r[2] : null;
-  }
+  injuryYears(code: any, when: any) { return injuryYearsFor(code, when); }
 
   // The SOL light: which state, how many years, how many days left.
   sol() {

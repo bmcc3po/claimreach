@@ -27,3 +27,37 @@ export function stateCodeOf(city: string | null | undefined): string | null {
   if (!hit) hit = SOL.find((r) => tail.endsWith(" " + r[0]) || tail.endsWith(r[1].toUpperCase()));
   return hit ? hit[0] : null;
 }
+
+
+/** Years to file an injury claim in a state, for a crash on this date. Florida and Louisiana changed their rules. */
+export function injuryYears(code: string | null | undefined, when: Date | null | undefined): number | null {
+  if (code === "FL") return when && when < new Date("2023-03-24T00:00:00") ? 4 : 2;
+  if (code === "LA") return when && when < new Date("2024-07-01T00:00:00") ? 1 : 2;
+  const r = SOL.find((x) => x[0] === code);
+  return r ? r[2] : null;
+}
+
+/** The deadline and days left, or null when the state or date is missing. */
+export function injuryDeadline(code: string | null | undefined, when: Date | null | undefined, now: number = Date.now()): { years: number; deadline: Date; daysLeft: number } | null {
+  if (!code || !when) return null;
+  const years = injuryYears(code, when);
+  if (years == null) return null;
+  const deadline = new Date(when.getTime()); deadline.setFullYear(deadline.getFullYear() + years);
+  return { years, deadline, daysLeft: Math.floor((deadline.getTime() - now) / 86400000) };
+}
+
+// Main time zone for each state, for "what time is it for her". A few states
+// span two zones; this is the one most of the state is in.
+export const STATE_TZ: Record<string, string> = {
+  AL: "America/Chicago", AK: "America/Anchorage", AZ: "America/Phoenix", AR: "America/Chicago", CA: "America/Los_Angeles",
+  CO: "America/Denver", CT: "America/New_York", DE: "America/New_York", DC: "America/New_York", FL: "America/New_York",
+  GA: "America/New_York", HI: "Pacific/Honolulu", ID: "America/Boise", IL: "America/Chicago", IN: "America/Indiana/Indianapolis",
+  IA: "America/Chicago", KS: "America/Chicago", KY: "America/New_York", LA: "America/Chicago", ME: "America/New_York",
+  MD: "America/New_York", MA: "America/New_York", MI: "America/Detroit", MN: "America/Chicago", MS: "America/Chicago",
+  MO: "America/Chicago", MT: "America/Denver", NE: "America/Chicago", NV: "America/Los_Angeles", NH: "America/New_York",
+  NJ: "America/New_York", NM: "America/Denver", NY: "America/New_York", NC: "America/New_York", ND: "America/Chicago",
+  OH: "America/New_York", OK: "America/Chicago", OR: "America/Los_Angeles", PA: "America/New_York", RI: "America/New_York",
+  SC: "America/New_York", SD: "America/Chicago", TN: "America/Chicago", TX: "America/Chicago", UT: "America/Denver",
+  VT: "America/New_York", VA: "America/New_York", WA: "America/Los_Angeles", WV: "America/New_York", WI: "America/Chicago",
+  WY: "America/Denver",
+};

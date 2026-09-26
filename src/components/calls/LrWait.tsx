@@ -18,7 +18,7 @@ export default function LrWait({ id }: { id: string }) {
         const r = await fetch(`/api/calls/lr?id=${encodeURIComponent(id)}`);
         const d = await r.json();
         if (!alive) return;
-        if (d?.lead_id) { router.replace(`/app/${d.lead_id}`); return; }
+        if (d?.lead_id) { router.replace(`/app/${d.lead_key || d.lead_id}`); return; }
       } catch { /* try again on the next tick */ }
       if (tries >= 35) setGone(true); else setTries((n) => n + 1);
     }, 2500);
