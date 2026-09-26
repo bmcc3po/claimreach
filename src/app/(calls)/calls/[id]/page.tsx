@@ -6,8 +6,9 @@ import { DEFAULT_CALL_REASONS, MVA_DQ_KEYS, type Reason } from "@/lib/mva-call/d
 import { docusealConfigured } from "@/lib/docuseal";
 import CallConsole from "@/components/calls/CallConsole";
 
-export default async function CallPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ text?: string }> }) {
   const { id } = await params;
+  const { text } = await searchParams;
   const sb = await supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect("/login");
@@ -57,6 +58,7 @@ export default async function CallPage({ params }: { params: Promise<{ id: strin
     <CallConsole init={{
       leadId: lead.id,
       callId: liveRes.data?.id ?? null,
+      openText: text === "1",
       startedAt: liveRes.data?.created_at ? Date.parse(liveRes.data.created_at) : Date.now(),
       props: {
         callerName: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "",

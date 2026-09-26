@@ -88,6 +88,31 @@ export default async function CallsHomePage() {
     }));
   }
 
+  // Texts that came in: newest per caller, last three days. A number with no
+  // file yet still shows, so nobody's reply gets lost.
+  const texts: HomeRow[] = [];
+  {
+    const { data, error } = await sb.from("communications")
+      .select("lead_id, phone_raw, phone_norm, body, occurred_at, leads(claimant_name, phone, campaign_id)")
+      .eq("channel", "sms").eq("direction", "inbound")
+      .gte("occurred_at", new Date(Date.now() - 3 * 86400000).toISOString())
+      .order("occurred_at", { ascending: false }).limit(150);
+    if (error) notes.push(`Texts did not load: ${error.message}`);
+    const seen = new Set<string>();
+    for (const r of data ?? []) {
+      const lead = (r as any).leads;
+      if (r.lead_id && lead?.campaign_id && !campIds.includes(lead.campaign_id)) continue;
+      const k = r.lead_id || `p:${r.phone_norm}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      texts.push({
+        id: r.lead_id || "", name: lead?.claimant_name || null, phone: lead?.phone || r.phone_raw,
+        sub: String(r.body || "").slice(0, 90), at: r.occurred_at, tag: r.lead_id ? "Text" : "No file",
+        href: r.lead_id ? `/calls/${r.lead_id}?text=1` : null, newPhone: r.lead_id ? null : (r.phone_raw || r.phone_norm),
+      });
+    }
+  }
+
   // E-sign setup, for owners and admins, per campaign that has agreement files.
   const setup: HomeData["setup"] = [];
   if (["owner", "admin"].includes(me.role)) {
@@ -103,7 +128,7 @@ export default async function CallsHomePage() {
   const data: HomeData = {
     me: { name: me.full_name || "", role: me.role },
     campaigns: campaigns.map((c: any) => ({ id: c.id, name: c.name, firm: (firmById.get(c.firm_id) as any)?.name || "" })),
-    open, callbacks, waiting, done, setup, notes,
+    open, callbacks, waiting, done, texts, setup, notes,
   };
   return <CallsHome data={data} />;
 }
