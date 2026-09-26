@@ -1,11 +1,12 @@
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import BoardCard from "@/components/BoardCard";
 
 export default async function FirmHome() {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("full_name, firm_id, role").eq("id", user!.id).maybeSingle();
   const { data: firm } = await sb.from("firms").select("name").eq("id", me!.firm_id).maybeSingle();
 

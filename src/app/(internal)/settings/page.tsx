@@ -1,11 +1,12 @@
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import DripManager from "@/components/DripManager";
 import DripRulesManager from "@/components/DripRulesManager";
 
 export default async function SettingsPage() {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("full_name, role").eq("id", user!.id).maybeSingle();
   const isAdmin = me && ["owner", "admin"].includes(me.role);
 

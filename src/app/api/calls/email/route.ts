@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   const r = await sendEmail({
     to,
     subject: `Case: ${lead.claimant_name || lead.lead_no || "file"}`,
-    html: caseEmailHtml({ title: lead.claimant_name || "Case summary", rows: caseSummaryRows(lead, call?.answers || {}), link: `${origin}/calls/${lead.id}`, note: `Sent by ${me.name || "ClaimReach"}.` }),
+    html: caseEmailHtml({ title: lead.claimant_name || "Case summary", rows: caseSummaryRows(lead, call?.answers || {}), link: `${origin}/app/${lead.id}`, note: `Sent by ${me.name || "ClaimReach"}.` }),
   });
   if (!r.ok) return NextResponse.json({ error: r.error || "The email did not send." }, { status: 502 });
   await recordAudit({ firm_id: lead.firm_id, lead_id: lead.id, actor: me.id, actor_name: me.name ?? "Staff", category: "contact", description: `Emailed the case summary to ${to}.` });

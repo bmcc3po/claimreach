@@ -151,3 +151,18 @@ ${opts.note ? `<p style="margin:0 0 12px;color:#334155">${esc(opts.note)}</p>` :
 <p style="margin:14px 0 0;color:#94a3b8;font-size:12px">The SSN and the signed agreement stay in ClaimReach. Log in to see them.</p>
 </div>`;
 }
+
+/**
+ * The file behind a LawRuler lead ID (the link in LawRuler's new-lead text).
+ * App (MVA) files first, newest first. Runs as the signed-in user, so RLS
+ * decides what they can open.
+ */
+export async function findByLawRulerId(sb: any, raw: string): Promise<string | null> {
+  const id = String(raw || "").trim();
+  if (!/^[\w.-]{1,64}$/.test(id)) return null;
+  const { data } = await sb.from("leads").select("id, case_type, created_at, archived_at")
+    .or(`lawruler_ref_no.eq.${id},external_id.eq.${id}`).order("created_at", { ascending: false }).limit(10);
+  const rows = (data ?? []).filter((r: any) => !r.archived_at);
+  const best = rows.find((r: any) => r.case_type === "mva") || rows[0];
+  return best?.id ?? null;
+}

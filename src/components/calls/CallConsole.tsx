@@ -6,6 +6,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CallView from "./CallView";
+import DeskPanel, { type DeskTab, type PreviewInfo } from "./DeskPanel";
+import { stateCodeOf } from "@/lib/mva-call/state";
 import { CallEngine, type CallApi, type CallProps } from "@/lib/mva-call/engine";
 import { callbackAt } from "@/lib/mva-call/dispo";
 
@@ -15,6 +17,8 @@ export interface ConsoleInit {
   startedAt: number;
   /** Open the text sheet on arrival (from a text on the home screen). */
   openText?: boolean;
+  /** This campaign has an agreement packet the preview can draw. */
+  canPreview?: boolean;
   props: Omit<CallProps, "startedAt" | "now">;
 }
 
@@ -41,6 +45,12 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   const saving = useRef(false);
   // Inbound texts already seen. Anything newer lights the badge.
   const seenInbound = useRef<number | null>(null);
+  // Desktop: the call on the left, CarCure, texts, agreement and lead on the right.
+  const [isDesk, setIsDesk] = useState(false);
+  const [deskTab, setDeskTabState] = useState<DeskTab>(init.openText ? "texts" : "know");
+  const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
+  const deskTextsOpen = useRef(false);
+  const setDeskTab = (t: DeskTab) => { deskTextsOpen.current = t === "texts"; setDeskTabState(t); if (t === "texts") eng.current?.setState({ textUnread: 0 }); };
 
   if (!eng.current) {
     const e = (): CallEngine => eng.current!;
@@ -116,8 +126,15 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
           e().setState({ saved: true, dispo: { ...e().state.dispo, saving: false, saved: true, error: "", serverNote: note } });
         }).catch((err) => e().setState({ dispo: { ...e().state.dispo, saving: false, error: err.message } }));
       },
-      home() { router.push("/calls"); },
-      ask() { e().setState({ askOut: true }); },
+      home() { router.push("/app"); },
+      ask(text: string) {
+        const q = String(text || "").trim();
+        if (!q) return;
+        e().setState({ askOut: "busy" });
+        post("/api/calls/ask", { lead_id: leadId, question: q, city: e().state.story.city })
+          .then((d) => e().setState({ askOut: { answer: d.answer } }))
+          .catch((err) => e().setState({ askOut: { error: err.message } }));
+      },
     };
     eng.current = new CallEngine({ ...init.props, startedAt: init.startedAt }, api);
     lastSaved.current = JSON.stringify(eng.current.persistable());
@@ -135,9 +152,10 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
       const serverBodies = new Set((d.texts || []).filter((m: any) => m.from === "us").map((m: any) => m.body));
       const pending = cur.thread.filter((m: any) => (m.status === "Sending" || m.status === "Sent") && !serverBodies.has(m.body));
       const inbound = (d.texts || []).filter((m: any) => m.from === "them").length;
-      if (seenInbound.current === null || cur.open) seenInbound.current = inbound;
+      const looking = cur.open || deskTextsOpen.current;
+      if (seenInbound.current === null || looking) seenInbound.current = inbound;
       const unread = Math.max(0, inbound - (seenInbound.current ?? inbound));
-      engine.setState({ text: { ...cur, thread: (d.texts || []).concat(pending) }, calls: d.calls || [], textUnread: cur.open ? 0 : unread });
+      engine.setState({ text: { ...cur, thread: (d.texts || []).concat(pending) }, calls: d.calls || [], textUnread: looking ? 0 : unread });
     } catch { /* the sheet keeps what it had; the next poll tries again */ }
   }
 
@@ -236,6 +254,83 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.text.open]);
 
+  // Desktop or phone. The panel only mounts on a wide screen.
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1180px)");
+    const on = () => setIsDesk(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  useEffect(() => {
+    deskTextsOpen.current = isDesk && deskTab === "texts";
+    // Arriving from a text on a desktop: the thread opens in the panel, not a sheet.
+    if (isDesk && engine.state.text.open) { engine.setState({ text: { ...engine.state.text, open: false } }); setDeskTab("texts"); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesk, deskTab]);
+  // Texts tab on screen: check every 5 seconds, same as the open sheet.
+  useEffect(() => {
+    if (!isDesk || deskTab !== "texts") return;
+    void loadComms();
+    const t = setInterval(() => { void loadComms(); }, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesk, deskTab]);
+  // Reaching Send on a desktop brings up the agreement preview.
+  const phase = s.phase;
+  useEffect(() => {
+    if (isDesk && phase === "send" && init.canPreview) setDeskTab("retainer");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDesk, phase]);
+
   const v = engine.renderVals();
-  return <CallView v={{ ...v, leadId: init.leadId }} />;
+  const preview = previewInfo(engine.state, init);
+  const view: any = { ...v, leadId: init.leadId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined };
+  if (isDesk) {
+    view.openText = () => setDeskTab("texts");
+    view.openSheet = () => setDeskTab("know");
+    view.openCommon = () => { setDeskTab("know"); setFocusLines({ key: "common", n: Date.now() }); };
+    view.openRamble = () => { setDeskTab("know"); setFocusLines({ key: "ramble", n: Date.now() }); };
+    view.onPreview = (ev: any) => { ev.preventDefault(); setDeskTab("retainer"); };
+    view.textBadge = false;
+  }
+  const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
+  const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
+  return (
+    <div className={`cc-desk${isDesk ? " cc-desk-on" : ""}`}>
+      <CallView v={view} />
+      {isDesk && (
+        <DeskPanel v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
+          preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
+          focusLines={focusLines} />
+      )}
+    </div>
+  );
+}
+
+const AGREEMENT_LABEL: Record<string, string> = { TX: "Texas", FL: "Florida" };
+const prettyPhone = (raw: string) => { const d = raw.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, ""); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : raw; };
+
+// What the agreement will say, from the call so far. The same values the Send
+// button hands DocuSeal, so the preview cannot disagree with what goes out.
+function previewInfo(s: any, init: ConsoleInit): PreviewInfo {
+  const signer = String(s.send.client || "").trim();
+  const injured = s.send.who === "Someone else" ? String(s.send.injured || "").trim() : signer;
+  const city = String(s.story.city || "").trim();
+  const code = stateCodeOf(city);
+  const today = todayMDY();
+  const agreement = code ? (AGREEMENT_LABEL[code] || "All other states (AL/GA)") : "";
+  const viaText = s.send.via !== "Email";
+  const to = viaText ? String(s.send.phone || "").trim() : String(s.send.email || "").trim();
+  const checks: PreviewInfo["checks"] = [
+    { label: "Agreement", value: agreement ? `${agreement}${code && !AGREEMENT_LABEL[code] ? `, wreck in ${code}` : ""}` : "Add the city and state on Story", ok: !!agreement },
+    { label: "Signer", value: signer || "Add her full name on Send", ok: signer.split(/\s+/).filter(Boolean).length >= 2 },
+    { label: "Injured person", value: injured || "Add the injured person's full name", ok: injured.split(/\s+/).filter(Boolean).length >= 2 },
+    { label: "Signing date", value: today, ok: true },
+    { label: viaText ? "Text to" : "Email to", value: to ? (viaText ? prettyPhone(to) : to) : (viaText ? "Add her cell" : "Add her email"), ok: viaText ? to.replace(/\D/g, "").length >= 10 : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) },
+    { label: "DOB and SSN", value: "Intake adds these after she signs", ok: false, later: true },
+  ];
+  if (!code || !signer) return { href: null, checks };
+  const q = new URLSearchParams({ lead_id: init.leadId, signer, injured: injured || signer, city, today });
+  return { href: `/api/calls/esign/preview?${q}`, checks };
 }

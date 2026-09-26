@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import SignOut from "@/components/SignOut";
 import ThemeToggle from "@/components/ThemeToggle";
 import SideNav from "@/components/SideNav";
@@ -8,7 +9,7 @@ import { resolveFirmHome } from "@/lib/firm-home";
 
 export default async function InternalLayout({ children }: { children: React.ReactNode }) {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
   if (!user) redirect("/login");
   // First sign-in: the starter password has to be replaced before anything else.
   if ((user.app_metadata as any)?.must_change_password) redirect("/set-password");
