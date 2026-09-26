@@ -2,169 +2,137 @@ export const runtime = "edge";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
-import BoardCard from "@/components/BoardCard";
-import DailyRail from "@/components/DailyRail";
-import { computeAlerts } from "@/lib/alerts";
+import { computeAlerts, type Alert } from "@/lib/alerts";
+import { resolveStatus } from "@/lib/statuses";
+import { caseName, prettyPhone } from "@/lib/case-name";
+import HomeView, { type HomeData } from "@/components/home/HomeView";
+
+// Days, "today" and the greeting follow the office clock, not the server's.
+const TZ = "America/Chicago";
+const dayKey = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+const WHY: Record<Alert["kind"], string> = {
+  no_contact: "No contact yet",
+  qa_stuck: "Stuck in QA",
+  signed_unreviewed: "Signed, not reviewed",
+  stage_stale: "No movement",
+};
 
 export default async function Dashboard() {
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user!.id).maybeSingle();
   const role = me?.role ?? "agent";
-  // Agents work from the call console. Everyone else keeps this dashboard.
+  // Agents work from the App. Everyone else lands here.
   if (role === "agent") redirect("/app");
 
-  // Everything below is independent, so it loads side by side instead of one
-  // query after another.
-  const dayAgo = new Date(Date.now() - 86400000).toISOString();
-  const twoDayAgo = new Date(Date.now() - 2 * 86400000).toISOString();
+  const now = new Date();
+  const dayAgo = new Date(now.getTime() - 86400000).toISOString();
+  const twoDayAgo = new Date(now.getTime() - 2 * 86400000).toISOString();
+  const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString();
+  const since = new Date(now.getTime() - 15 * 86400000).toISOString();
+
+  // Everything below is independent, so it loads side by side.
   const [
     alerts,
-    { count: newLeads },
     { count: openClaims },
+    signedWeek,
+    { data: created },
+    { data: recent },
+    { data: statuses },
     { data: boards },
     { data: bulletins },
     { data: flagged },
-    { data: idle },
     { data: agingIntake },
     { data: highTier },
     { data: awaitingFirm },
   ] = await Promise.all([
-    // SLA alerts (dragging files), internal roles only.
-    role === "firm" ? Promise.resolve([] as Awaited<ReturnType<typeof computeAlerts>>) : computeAlerts().catch(() => []),
-    // Counters (new status model: pre-QA intake statuses).
-    sb.from("leads").select("id", { count: "exact", head: true }),
+    computeAlerts().catch(() => [] as Alert[]),
     sb.from("claims").select("id", { count: "exact", head: true }).in("status", ["new", "contacting"]),
-    // Boards + posts
+    sb.from("leads").select("id", { count: "exact", head: true }).gte("signed_at", weekAgo).is("archived_at", null),
+    sb.from("leads").select("created_at").gte("created_at", since).is("archived_at", null).limit(5000),
+    sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, claims(status, campaign)")
+      .is("archived_at", null).order("updated_at", { ascending: false }).limit(8),
+    sb.from("statuses").select("*").eq("active", true),
     sb.from("boards").select("*").order("sort_order"),
     sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60),
-    // Needs Attention feed: supervisor-flagged claims + stale in-progress.
-    sb.from("claims").select("id, lead_id, campaign, supervisor_flag, status, updated_at, leads(claimant_name)")
-      .eq("supervisor_flag", true).limit(10),
-    sb.from("claims").select("id, lead_id, campaign, status, updated_at, leads(claimant_name)")
-      .in("status", ["new", "contacting"]).lt("updated_at", dayAgo).limit(10),
-    // Holes in the boat (the four priorities): aging intake, high-tier needing
-    // action, aging at any stage, qualified-but-firm-hasn't-reached-out.
-    sb.from("claims").select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
-      .in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).limit(12),
-    sb.from("claims").select("lead_id, tier, tier_letter, tier_number, status, leads(claimant_name, lead_no)")
+    sb.from("claims").select("lead_id, campaign, leads(claimant_name, lead_no)").eq("supervisor_flag", true).limit(10),
+    sb.from("claims").select("lead_id, updated_at, leads(claimant_name, lead_no)")
+      .in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).order("updated_at", { ascending: true }).limit(12),
+    sb.from("claims").select("lead_id, tier, tier_letter, tier_number, leads(claimant_name, lead_no)")
       .in("tier_letter", ["A", "B"]).in("status", ["new", "contacting", "qa", "signed_qa", "approved"]).limit(12),
-    sb.from("claims").select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
-      .in("status", ["approved", "signed_approved"]).lt("updated_at", dayAgo).limit(12),
+    sb.from("claims").select("lead_id, updated_at, leads(claimant_name, lead_no)")
+      .in("status", ["approved", "signed_approved"]).lt("updated_at", dayAgo).order("updated_at", { ascending: true }).limit(12),
   ]);
+
+  // New leads per day for the last 14 office days.
+  const perDay: Record<string, number> = {};
+  for (const r of created ?? []) { const k = dayKey(new Date(r.created_at)); perDay[k] = (perDay[k] ?? 0) + 1; }
+  const series: HomeData["series"] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000);
+    series.push({
+      label: d.toLocaleDateString("en-US", { timeZone: TZ, month: "short", day: "numeric" }),
+      n: perDay[dayKey(d)] ?? 0,
+      today: i === 0,
+    });
+  }
+  const newToday = series[13]?.n ?? 0;
+  const newYesterday = series[12]?.n ?? 0;
+
+  const leadKey = (l: any, id: string) => l?.lead_no || id;
+  const nameOf = (l: any) => l?.claimant_name || "No name yet";
+  const hrs = (ts?: string | null) => (ts ? Math.max(0, Math.round((now.getTime() - new Date(ts).getTime()) / 3600000)) : 0);
+  const waited = (ts?: string | null) => { const h = hrs(ts); return h >= 48 ? `${Math.round(h / 24)} days` : `${h}h`; };
+
+  const needs: HomeData["needs"] = [
+    ...(flagged ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), why: "Flagged for a supervisor", tone: "bad" as const })),
+    ...alerts.map((a) => {
+      const name = String(a.title || "").split(/\s+[—-]\s+/).slice(1).join(" ") || a.lead_no || "File";
+      return { key: a.lead_no || a.lead_id, name, why: `${WHY[a.kind] ?? "Needs a look"}, ${a.hours >= 48 ? `${Math.round(a.hours / 24)} days` : `${a.hours}h`}`, tone: a.severity === "bad" ? "bad" as const : "warn" as const };
+    }),
+  ];
+
+  const folds: HomeData["folds"] = [
+    { id: "aging", title: "Waiting 2+ days for a first call", sub: "New or being contacted, nothing has moved",
+      rows: (agingIntake ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), right: waited(c.updated_at) })) },
+    { id: "tier", title: "High tier, still open", sub: "Tier A and B files that are not signed yet",
+      rows: (highTier ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), right: c.tier || [c.tier_letter, c.tier_number].filter(Boolean).join("") })) },
+    { id: "firm", title: "Qualified, waiting on the firm", sub: "Approved more than a day ago",
+      rows: (awaitingFirm ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), right: waited(c.updated_at) })) },
+  ];
+
+  const recentRows: HomeData["recent"] = (recent ?? []).map((l: any) => {
+    const c = (l.claims ?? [])[0] ?? {};
+    const def = resolveStatus(c.status || "new", (statuses ?? []) as any);
+    return {
+      key: l.lead_no || l.id,
+      name: l.claimant_name || "No name yet",
+      sub: [caseName(c.campaign, l.case_type), prettyPhone(l.phone), l.lead_no].filter(Boolean).join("   "),
+      status: def.label,
+      tone: def.tone,
+      updated: l.updated_at,
+    };
+  });
+
   const byBoard: Record<string, any[]> = {};
   for (const b of bulletins ?? []) (byBoard[b.board_id] ||= []).push(b);
 
-  const attention: { icon: string; title: string; sub: string; lead_id: string }[] = [];
-  for (const c of flagged ?? []) attention.push({
-    icon: "⚑", title: `Supervisor flag — ${(c as any).leads?.claimant_name ?? "claim"}`,
-    sub: `${c.campaign ?? "claim"} flagged for review.`, lead_id: c.lead_id,
-  });
-  for (const c of idle ?? []) attention.push({
-    icon: "⏳", title: `Idle over 24h — ${(c as any).leads?.claimant_name ?? "claim"}`,
-    sub: `Still ${c.status.replace("_", " ")}, no movement in a day.`, lead_id: c.lead_id,
-  });
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", hourCycle: "h23" }).format(now));
+  const data: HomeData = {
+    greeting: hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening",
+    first: (me?.full_name || "").split(" ")[0] || "",
+    dateLabel: now.toLocaleDateString("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }),
+    kpis: { newToday, newYesterday, open: openClaims ?? 0, signed7: signedWeek.error ? 0 : (signedWeek.count ?? 0), needs: needs.length },
+    series,
+    needs,
+    folds,
+    recent: recentRows,
+    boards: (boards ?? []).map((b: any) => ({
+      id: b.id, title: b.title, description: b.description ?? null,
+      canPost: Array.isArray(b.post_roles) && b.post_roles.includes(role),
+      posts: byBoard[b.id] ?? [],
+    })),
+  };
 
-  const holes = [
-    { n: (agingIntake ?? []).length, label: "Aging intake (2+ days)", tone: "flag", items: agingIntake ?? [] },
-    { n: (highTier ?? []).length, label: "High-tier needing action", tone: "danger", items: highTier ?? [] },
-    { n: (awaitingFirm ?? []).length, label: "Qualified, awaiting firm", tone: "danger", items: awaitingFirm ?? [] },
-  ];
-
-  // Live counts only. Fake rates/times (call length, success %, pickup %) stay hidden
-  // until they are wired to real data.
-  const kpis = [
-    { v: newLeads ?? 0, l: "New leads", sub: "in pipeline" },
-    { v: openClaims ?? 0, l: "Waiting to complete", sub: "active claims" },
-  ];
-
-  return (
-    <div>
-      <h1 style={{ margin: "0 0 4px" }}>Welcome back{me?.full_name ? `, ${me.full_name.split(" ")[0]}` : ""}</h1>
-      <p className="muted" style={{ marginTop: 0 }}>{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
-      <DailyRail />
-
-      {alerts.length > 0 && (
-        <div style={{ marginBottom: 18 }}>
-          <div className="row" style={{ marginBottom: 8 }}>
-            <h3 style={{ margin: 0 }}>Needs attention now</h3>
-            <span className="badge dq" style={{ marginLeft: 8 }}>{alerts.length}</span>
-          </div>
-          <div className="alert-grid">
-            {alerts.slice(0, 12).map((a, i) => (
-              <a key={i} href={`/leads/${a.lead_id}`} className={`alert-card ${a.severity}`}>
-                <div className="alert-title">{a.title}</div>
-                <div className="alert-sub">{a.sub}</div>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="dash-grid">
-        {kpis.map((k) => (
-          <div key={k.l} className="kpi"><div className="kv">{k.v}</div><div className="kl">{k.l}</div><div className="ksub">{k.sub}</div></div>
-        ))}
-      </div>
-
-      <div className="board" style={{ marginBottom: 16 }}>
-        <div className="board-h"><h3>Holes in the boat</h3>
-          <a href="/leads" className="btn ghost sm" style={{ marginLeft: "auto" }}>All leads →</a>
-        </div>
-        <div className="board-body">
-          {holes.every((h) => h.n === 0) && <p className="muted">All clear. Nothing slipping.</p>}
-          <div className="holes-grid">
-            {holes.filter((h) => h.n > 0).map((h) => (
-              <div key={h.label} className="hole-col">
-                <div className="row" style={{ marginBottom: 8 }}>
-                  <span className={`badge ${h.tone}`}>{h.n}</span>
-                  <strong style={{ fontSize: 13.5 }}>{h.label}</strong>
-                </div>
-                {h.items.slice(0, 5).map((c: any, i: number) => (
-                  <a key={i} href={`/leads/${c.lead_id}`} className="post" style={{ display: "flex", gap: 8, textDecoration: "none", color: "inherit", padding: "6px 0" }}>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{c.leads?.lead_no ?? "—"}</span>
-                    <span className="muted" style={{ fontSize: 13 }}>{c.leads?.claimant_name ?? "—"}</span>
-                    {c.tier && <span className="spacer" />}
-                    {c.tier && <span className="badge gold" style={{ fontSize: 10 }}>{c.tier}</span>}
-                  </a>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="dash-cols">
-        <div>
-          {(boards ?? []).map((b) => (
-            <BoardCard key={b.id} board={b} posts={byBoard[b.id] ?? []} canPost={b.post_roles.includes(role)} />
-          ))}
-        </div>
-        <div>
-          <div className="board">
-            <div className="board-h"><h3>Needs attention</h3>
-              {attention.length > 0 && <span className="badge dq" style={{ marginLeft: "auto" }}>{attention.length}</span>}
-            </div>
-            <div className="board-body">
-              {attention.length === 0 && <p className="muted">All clear. Nothing flagged.</p>}
-              {attention.map((a, i) => (
-                <a key={i} href={`/leads/${a.lead_id}`} className="post" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
-                  <strong>{a.icon} {a.title}</strong>
-                  <div className="pmeta">{a.sub}</div>
-                </a>
-              ))}
-            </div>
-          </div>
-          <div className="board">
-            <div className="board-h"><h3>Quick links</h3></div>
-            <div className="board-body">
-              <div className="post"><a href="/leads">View all leads →</a></div>
-              <div className="post"><a href="/intake">Add a new lead →</a></div>
-              <div className="post"><a href="/grievous">Open Grievous →</a></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <HomeView data={data} />;
 }

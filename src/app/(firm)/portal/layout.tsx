@@ -2,8 +2,6 @@ export const runtime = "edge";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
-import SignOut from "@/components/SignOut";
-import ThemeToggle from "@/components/ThemeToggle";
 import SideNav from "@/components/SideNav";
 import NotifyBell from "@/components/NotifyBell";
 
@@ -24,7 +22,7 @@ export default async function FirmLayout({ children }: { children: React.ReactNo
       variant="firm"
       userName={me.full_name ?? "Firm"}
       role={firm?.name ?? "Firm"}
-      topRight={<><NotifyBell /><ThemeToggle /><SignOut /></>}
+      topRight={<NotifyBell />}
     >
       {children}
     </SideNav>

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import Icon from "./ui/Icon";
 
 export default function NotifyBell() {
   const [open, setOpen] = useState(false);
@@ -42,43 +43,55 @@ export default function NotifyBell() {
     setBody(""); setComposing(false); load();
   }
 
+  // Files dragging past their deadline show by name and reason; the engine's
+  // titles read "Reason, Name", so they are split for the two lines.
+  const split = (t: string) => { const m = String(t || "").split(/\s+[\u2014-]\s+/); return m.length > 1 ? { name: m.slice(1).join(" "), why: m[0] } : { name: t, why: "" }; };
+  const when = (ts: string) => new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
   return (
     <div style={{ position: "relative" }}>
-      <button className="minbtn" onClick={() => setOpen(!open)} style={{ fontSize: 18, position: "relative" }} aria-label="Notifications">
-        🔔
-        {unread > 0 && <span style={{ position: "absolute", top: -2, right: -2, background: "var(--danger)", color: "#fff", borderRadius: 10, fontSize: 10, fontWeight: 800, padding: "0 5px" }}>{unread}</span>}
+      <button className="cl-iconbtn" onClick={() => setOpen(!open)} aria-label={unread ? `${unread} notifications` : "Notifications"} aria-expanded={open}>
+        <Icon name="bell" size={19} />
+        {unread > 0 && <span className="cl-dotn">{unread > 99 ? "99+" : unread}</span>}
       </button>
       {open && (
-        <div style={{ position: "absolute", right: 0, top: 38, width: 320, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, boxShadow: "0 14px 40px rgba(0,0,0,.2)", zIndex: 90, overflow: "hidden" }}>
-          <div className="board-h">
-            <h3 style={{ margin: 0, fontSize: 14 }}>Notifications</h3>
-            <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => setComposing(!composing)}>{composing ? "Cancel" : "Notify staff"}</button>
+        <div className="cl-pop" role="dialog" aria-label="Notifications">
+          <div className="cl-ph">
+            <span className="cl-ph-t">Notifications</span>
+            <span className="cl-ph-r"><button className="cl-link" onClick={() => setComposing(!composing)}>{composing ? "Cancel" : "Notify staff"}</button></span>
           </div>
           {composing && (
-            <div style={{ padding: 12, borderBottom: "1px solid var(--line)" }}>
-              <textarea rows={3} placeholder="Message to all staff…" value={body} onChange={(e) => setBody(e.target.value)} />
-              <button className="btn" style={{ marginTop: 8 }} onClick={send}>Send to all</button>
+            <div className="cl-compose">
+              <textarea className="cl-area" rows={3} placeholder="Message to all staff" value={body} onChange={(e) => setBody(e.target.value)} />
+              <div className="cl-acts"><button className="cl-btn cl-gold cl-sm" onClick={send} disabled={!body.trim()}>Send to all</button></div>
             </div>
           )}
-          <div style={{ maxHeight: 360, overflowY: "auto", padding: "4px 12px 10px" }}>
+          <div className="cl-pop-b">
             {alerts.length > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".06em", padding: "8px 0 4px" }}>Dragging files</div>
-                {alerts.map((a, i) => (
-                  <a key={i} href={`/leads/${a.lead_id}`} style={{ display: "block", padding: "6px 0", textDecoration: "none", color: "inherit", borderBottom: "1px solid var(--line-soft)" }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.title}</div>
-                    <div className="muted" style={{ fontSize: 12 }}>{a.sub}</div>
-                  </a>
-                ))}
-              </div>
+              <>
+                <div className="cl-pop-sec">Dragging files</div>
+                {alerts.map((a, i) => {
+                  const t = split(a.title);
+                  return (
+                    <a key={i} href={`/leads/${a.lead_no || a.lead_id}`} className="cl-row">
+                      <span className={`cl-dot ${a.severity === "bad" ? "cl-bad" : "cl-warn"}`} />
+                      <span className="cl-row-m"><span className="cl-t1">{t.name}</span><span className="cl-t2">{t.why ? `${t.why}. ` : ""}{a.sub}</span></span>
+                    </a>
+                  );
+                })}
+              </>
             )}
-            {items.length === 0 && <p className="muted" style={{ padding: "10px 0" }}>No notifications.</p>}
+            {(items.length > 0 || alerts.length > 0) && <div className="cl-pop-sec">From the team</div>}
+            {items.length === 0 && <div className="cl-empty">Nothing new.</div>}
             {items.map((n) => (
-              <div key={n.id} className="post" onClick={() => !n.read_at && markRead(n.id)}
-                style={{ cursor: n.read_at ? "default" : "pointer", opacity: n.read_at ? 0.6 : 1 }}>
-                <div style={{ fontSize: 13 }}>{n.body}</div>
-                <div className="pmeta">{n.sender_name} · {new Date(n.created_at).toLocaleString()}{!n.read_at && " · tap to mark read"}</div>
-                {n.lead_id && <a href={`/leads/${n.lead_id}`} style={{ fontSize: 12 }}>Open file →</a>}
+              <div key={n.id} className="cl-row" onClick={() => !n.read_at && markRead(n.id)}
+                style={{ cursor: n.read_at ? "default" : "pointer", opacity: n.read_at ? 0.6 : 1, alignItems: "flex-start" }}>
+                <span className={`cl-dot ${n.read_at ? "" : "cl-info"}`} style={{ marginTop: 6 }} />
+                <span className="cl-row-m">
+                  <span style={{ fontSize: 14, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{n.body}</span>
+                  <span className="cl-t2">{n.sender_name}, {when(n.created_at)}{!n.read_at ? ". Click to mark read" : ""}</span>
+                  {n.lead_id && <a className="cl-link" href={`/leads/${n.lead_id}`} style={{ marginTop: 4 }}>Open the file</a>}
+                </span>
               </div>
             ))}
           </div>

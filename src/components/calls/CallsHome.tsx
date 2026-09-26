@@ -125,7 +125,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
   }
   const first = (data.me.name || "").split(" ")[0];
   return (
-    <div className="cc-app">
+    <div className="cc-app cc-homeapp">
       <div className="cc-top">
         <div className="cc-home-h">
           <div>

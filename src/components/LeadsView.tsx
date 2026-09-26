@@ -3,15 +3,21 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
 import TierBadge from "./TierBadge";
-import StatusBadge from "./ui/StatusBadge";
-import RowActions from "./ui/RowActions";
-import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, type StatusDef, type DqReason } from "@/lib/statuses";
+import Icon from "./ui/Icon";
+import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, resolveStatus, type StatusDef, type DqReason } from "@/lib/statuses";
 import { primaryClock } from "@/lib/sla-clocks";
+import { tierLabel } from "@/lib/tiers";
+import { caseName, ago, prettyPhone } from "@/lib/case-name";
 
 type Row = any;
+type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
 
-// Shared leads surface used by BOTH staff and firm. Three views:
-// Table (dense, default), Board (Monday lanes, group-by toggle), Gantt (stages over time).
+// Shared leads surface used by staff (Leads, Signed) and firms (Cases). The
+// table is the default: one row per file, name and phone on the left, what the
+// case is and what she told us, where it stands, and when it last moved. Tabs
+// across the top split the list by where files are in the pipe; everything
+// else that narrows it sits behind Filters. Board and Timeline stay one click
+// away.
 export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, statuses = [], dqReasons = [], variant = "staff" }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[]; variant?: "staff" | "firm" }) {
   const isFirm = variant === "firm";
   const showBulk = canBulk && !isFirm;
@@ -20,6 +26,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const [q, setQ] = useState("");
   const [view, setView] = useState<"table" | "board" | "gantt">("table");
   const [groupBy, setGroupBy] = useState<"status" | "stage" | "tier">("status");
+  const [phase, setPhase] = useState<Phase>("all");
   const [fType, setFType] = useState("all");
   const [fState, setFState] = useState("all");
   const [fStatus, setFStatus] = useState("all");
@@ -30,9 +37,6 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const [bulkMsg, setBulkMsg] = useState("");
   const [bulkErr, setBulkErr] = useState(false);
 
-  // Extended filters sit behind a toggle so the default bar stays quiet. Each one
-  // answers a question people actually ask this list: which firm, which
-  // campaign, where, and when.
   const [showMore, setShowMore] = useState(false);
   const [fFirm, setFFirm] = useState("all");
   const [fCampaign, setFCampaign] = useState("all");
@@ -42,25 +46,31 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const [fSignedFrom, setFSignedFrom] = useState("");
   const [fSignedTo, setFSignedTo] = useState("");
 
-  const rows = useMemo(() => {
+  const phaseOf = (statusKey: string) => (statusList.find((s) => s.key === statusKey)?.phase) ?? "pre_qa";
+
+  // Every filter except the tabs. The tab counts come from this, so a count
+  // always says what clicking that tab will show.
+  const base = useMemo(() => {
     let r = leads.map((l) => {
       const c = (l.claims ?? [])[0] ?? {};
       const status = c.status ?? "new";
-      const statusDef = statuses.find((s) => s.key === status);
+      const def = resolveStatus(status, statusList);
       const clock = primaryClock({
         signed_at: l.signed_at, firm_sent_at: l.firm_sent_at,
         esign_sent_at: l.esign_sent_at, esign_status: null,
-        current_status: status, statusLabel: statusDef?.label ?? status,
+        current_status: status, statusLabel: def.label ?? status,
       });
       return {
-        id: l.id, lead_no: l.lead_no, firm_ref: l.firm_ref_no ?? "",
-        name: l.claimant_name ?? "—", phone: l.phone ?? "—",
-        loc: l.address ?? "—", state: l.mail_state ?? l.state ?? "",
+        id: l.id, lead_no: l.lead_no, key: isFirm ? l.id : (l.lead_no || l.id), firm_ref: l.firm_ref_no ?? "",
+        name: l.claimant_name ?? "", phone: l.phone ?? "",
+        loc: l.address ?? "", state: l.mail_state ?? l.state ?? "",
         city: l.mail_city ?? "", firm_id: l.firm_id ?? "", signed_at: l.signed_at ?? null,
-        type: l.case_type ?? c.claim_type ?? "—", campaign: c.campaign ?? "—",
-        status, stage: l.stage ?? "referral_received",
+        type: l.case_type ?? c.claim_type ?? "", campaign: c.campaign ?? "",
+        caseLabel: caseName(c.campaign, l.case_type ?? c.claim_type),
+        status, statusLabel: def.label, tone: def.tone, phase: def.phase ?? phaseOf(status),
+        stage: l.stage ?? "referral_received",
         tier: c.tier ?? "", tier_letter: c.tier_letter, tier_number: c.tier_number,
-        summary: c.case_summary ?? "—", created: l.created_at, updated: l.updated_at,
+        summary: c.case_summary ?? "", created: l.created_at, updated: l.updated_at,
         flag: l.supervisor_flag, clock,
         needsAction: status === "new" || status === "contact_attempted" || l.supervisor_flag,
       };
@@ -71,21 +81,35 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     if (fFirm !== "all") r = r.filter((x) => x.firm_id === fFirm);
     if (fCampaign !== "all") r = r.filter((x) => x.campaign === fCampaign);
     if (fCity !== "all") r = r.filter((x) => x.city === fCity);
-    // Compare on the calendar day, so "from the 9th" includes the whole 9th
-    // rather than only what landed after midnight UTC.
+    // Compare on the calendar day, so "from the 9th" includes the whole 9th.
     const day = (v: any) => (v ? String(v).slice(0, 10) : "");
     if (fCreatedFrom) r = r.filter((x) => day(x.created) >= fCreatedFrom);
     if (fCreatedTo) r = r.filter((x) => day(x.created) <= fCreatedTo);
     if (fSignedFrom) r = r.filter((x) => day(x.signed_at) && day(x.signed_at) >= fSignedFrom);
     if (fSignedTo) r = r.filter((x) => day(x.signed_at) && day(x.signed_at) <= fSignedTo);
     if (q.trim()) {
-      const t = q.toLowerCase();
-      r = r.filter((x) => x.name.toLowerCase().includes(t) || x.phone.includes(t) ||
-        String(x.lead_no).toLowerCase().includes(t) || x.campaign.toLowerCase().includes(t) || x.summary.toLowerCase().includes(t));
+      const t = q.toLowerCase().trim();
+      const digits = t.replace(/\D/g, "");
+      r = r.filter((x) => x.name.toLowerCase().includes(t) || (digits.length >= 3 && x.phone.replace(/\D/g, "").includes(digits)) ||
+        String(x.lead_no ?? "").toLowerCase().includes(t) || x.caseLabel.toLowerCase().includes(t) || x.summary.toLowerCase().includes(t));
     }
-    r.sort((a: any, b: any) => { const av = a[sort.k] ?? "", bv = b[sort.k] ?? ""; return (av > bv ? 1 : av < bv ? -1 : 0) * sort.dir; });
     return r;
-  }, [leads, q, fType, fState, fStatus, fFirm, fCampaign, fCity, fCreatedFrom, fCreatedTo, fSignedFrom, fSignedTo, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, q, fType, fState, fStatus, fFirm, fCampaign, fCity, fCreatedFrom, fCreatedTo, fSignedFrom, fSignedTo, statuses]);
+
+  const counts = useMemo(() => {
+    const c: Record<Phase, number> = { all: base.length, action: 0, pre_qa: 0, in_qa: 0, post_qa: 0, terminal: 0 };
+    for (const r of base) { if (r.needsAction) c.action++; c[r.phase as Phase] = (c[r.phase as Phase] ?? 0) + 1; }
+    return c;
+  }, [base]);
+
+  const rows = useMemo(() => {
+    let r = base;
+    if (phase === "action") r = r.filter((x) => x.needsAction);
+    else if (phase !== "all") r = r.filter((x) => x.phase === phase);
+    const key = (x: any) => sort.k === "case" ? x.caseLabel : sort.k === "status" ? x.statusLabel : x[sort.k];
+    return [...r].sort((a: any, b: any) => { const av = key(a) ?? "", bv = key(b) ?? ""; return (av > bv ? 1 : av < bv ? -1 : 0) * sort.dir; });
+  }, [base, phase, sort]);
 
   const types = Array.from(new Set(leads.map((l) => l.case_type ?? l.claims?.[0]?.claim_type).filter(Boolean)));
   // Built from the UNFILTERED set, so choosing one filter never empties another.
@@ -98,9 +122,19 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const campaignList = Array.from(new Set(allRows.map((r) => r.campaign).filter(Boolean))).sort();
   const firmById = new Map((firms ?? []).map((f: any) => [f.id, f.name ?? f.slug]));
   const firmIds = Array.from(new Set(allRows.map((r) => r.firm_id).filter(Boolean)));
-  const activeFilterCount =
-    [fType, fState, fStatus, fFirm, fCampaign, fCity].filter((v) => v !== "all").length +
-    [fCreatedFrom, fCreatedTo, fSignedFrom, fSignedTo].filter(Boolean).length;
+
+  // What is narrowing the list right now, each one removable on its own.
+  const active: { label: string; value: string; clear: () => void }[] = [];
+  if (fStatus !== "all") active.push({ label: "Status", value: resolveStatus(fStatus, statusList).label, clear: () => setFStatus("all") });
+  if (fType !== "all") active.push({ label: "Case type", value: caseName(null, fType), clear: () => setFType("all") });
+  if (fFirm !== "all") active.push({ label: "Firm", value: String(firmById.get(fFirm) ?? fFirm), clear: () => setFFirm("all") });
+  if (fCampaign !== "all") active.push({ label: "Campaign", value: caseName(fCampaign, null), clear: () => setFCampaign("all") });
+  if (fState !== "all") active.push({ label: "State", value: fState, clear: () => setFState("all") });
+  if (fCity !== "all") active.push({ label: "City", value: fCity, clear: () => setFCity("all") });
+  if (fCreatedFrom) active.push({ label: "Created from", value: fCreatedFrom, clear: () => setFCreatedFrom("") });
+  if (fCreatedTo) active.push({ label: "Created to", value: fCreatedTo, clear: () => setFCreatedTo("") });
+  if (fSignedFrom) active.push({ label: "Signed from", value: fSignedFrom, clear: () => setFSignedFrom("") });
+  if (fSignedTo) active.push({ label: "Signed to", value: fSignedTo, clear: () => setFSignedTo("") });
   function clearFilters() {
     setFType("all"); setFState("all"); setFStatus("all"); setFFirm("all");
     setFCampaign("all"); setFCity("all");
@@ -124,20 +158,22 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     setAllMatching(false);
   }
   function clearSel() { setSel(new Set()); setAllMatching(false); }
-  // effective target ids: if "all matching" chosen, every filtered row; else the checked set
   const targetIds = allMatching ? pageIds : Array.from(sel);
   const selCount = targetIds.length;
 
   async function runBulk(body: any) {
     if (selCount === 0) return;
     setBusy(true); setBulkMsg(""); setBulkErr(false);
-    const r = await fetch("/api/leads/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, ids: targetIds }) });
-    const d = await r.json();
-    setBusy(false);
-    if (!r.ok) { setBulkErr(true); setBulkMsg(d.error || "Bulk action failed"); return; }
-    setBulkMsg(`Done: ${d.count} updated. Refreshing…`);
-    setTimeout(() => window.location.reload(), 700);
+    try {
+      const r = await fetch("/api/leads/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, ids: targetIds }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setBulkErr(true); setBulkMsg(d.error || "That did not go through. Nothing was changed."); return; }
+      setBulkMsg(`Done: ${d.count} updated. Refreshing.`);
+      setTimeout(() => window.location.reload(), 700);
+    } catch {
+      setBulkErr(true); setBulkMsg("Could not reach the server. Nothing was changed.");
+    } finally { setBusy(false); }
   }
 
   async function runBulkStatus(statusKey: string) {
@@ -149,7 +185,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       let pick: string | null = null;
       while (!dq_reason_key) {
         pick = window.prompt(`Disqualification reason (required) for "${def.label}":\n${choices}\n\nEnter the number:`);
-        if (pick === null) return; // they hit cancel; abort the whole status change
+        if (pick === null) return; // cancel aborts the whole status change
         const idx = parseInt(pick.trim(), 10) - 1;
         if (idx >= 0 && idx < dqList.length) dq_reason_key = dqList[idx].key;
       }
@@ -157,12 +193,15 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     runBulk({ op: "set_status", status: statusKey, dq_reason_key });
   }
 
-  function statusBadge(s: string) {
-    return <StatusBadge status={s} live={statusList} />;
-  }
-
-  function th(k: string, label: string) {
-    return <th onClick={() => setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : 1 }))} style={{ cursor: "pointer", whiteSpace: "nowrap" }}>{label}{sort.k === k ? (sort.dir === 1 ? " ▲" : " ▼") : ""}</th>;
+  function th(k: string, label: string, cls = "") {
+    const on = sort.k === k;
+    return (
+      <th className={`${cls}${on ? " cl-sorted" : ""}`} aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
+        <button onClick={() => setSort((s) => ({ k, dir: s.k === k ? (s.dir === 1 ? -1 : 1) : (k === "updated" || k === "created" ? -1 : 1) }))}>
+          {label}{on && <span aria-hidden="true">{sort.dir === 1 ? "↑" : "↓"}</span>}
+        </button>
+      </th>
+    );
   }
 
   // ---- BOARD lanes ----
@@ -174,11 +213,8 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       { key: "terminal", label: "Closed", tone: "#c0392f" },
     ];
     if (groupBy === "stage") return STAGES.map((s) => ({ key: s, label: STAGE_LABELS[s] ?? s, tone: "#16324f" }));
-    // tier
     return ["A", "B", "C", "D", "E", "F", "untiered"].map((t) => ({ key: t, label: t === "untiered" ? "Untiered" : `Tier ${t}`, tone: "#d9982a" }));
   }, [groupBy]);
-
-  const phaseOf = (statusKey: string) => (statusList.find((s) => s.key === statusKey)?.phase) ?? "pre_qa";
 
   function laneOf(r: any) {
     if (groupBy === "status") return phaseOf(r.status);
@@ -189,176 +225,224 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   // ---- GANTT ----
   const stageIndex = (s: string) => Math.max(0, (STAGES as readonly string[]).indexOf(s));
 
+  const TABS: { k: Phase; label: string }[] = [
+    { k: "all", label: "All" },
+    { k: "action", label: "Needs action" },
+    { k: "pre_qa", label: "Intake" },
+    { k: "in_qa", label: "In QA" },
+    { k: "post_qa", label: "Approved and firm" },
+    { k: "terminal", label: "Closed" },
+  ];
+  const open = (r: any) => { window.location.href = `${basePath}/${encodeURIComponent(r.key)}`; };
+  const clockTone = (t: string) => (t === "overdue" ? "cl-tone-bad" : t === "urgent" || t === "warn" ? "cl-tone-warn" : "cl-tone-good");
+  const colCount = (showBulk ? 1 : 0) + 7;
+
   return (
     <div>
-      {showBulk && selCount > 0 && (
-        <div className="bulk-bar">
-          <span className="bulk-count">{selCount} selected</span>
-          {!allMatching && allPageSelected && rows.length > sel.size && (
-            <button className="btn ghost sm" onClick={() => setAllMatching(true)}>Select all {rows.length} matching</button>
-          )}
-          {allMatching && <span className="muted" style={{ fontSize: 12 }}>All {rows.length} matching selected</span>}
-          <span className="bulk-sep" />
-          <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulkStatus(e.target.value); e.target.value = ""; } }}>
-            <option value="">Change status…</option>
-            {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-          </select>
-          <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_stage", stage: e.target.value }); e.target.value = ""; } }}>
-            <option value="">Change stage…</option>
-            {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s] ?? s}</option>)}
-          </select>
-          {agents.length > 0 && (
-            <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "assign", agentId: e.target.value === "_none" ? null : e.target.value }); e.target.value = ""; } }}>
-              <option value="">Assign to…</option>
-              <option value="_none">Unassign</option>
-              {agents.map((a) => <option key={a.id} value={a.id}>{a.full_name}</option>)}
-            </select>
-          )}
-          {firms.length > 1 && (
-            <select className="sm" defaultValue="" onChange={(e) => { if (e.target.value) { runBulk({ op: "move_firm", firmId: e.target.value }); e.target.value = ""; } }}>
-              <option value="">Move to firm…</option>
-              {firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          )}
-          <button className="btn ghost sm danger" onClick={() => { if (confirm(`Archive ${sel.size} file(s)? They stay recoverable for 90 days and only the owner can delete them permanently.`)) runBulk({ op: "delete" }); }}>Archive</button>
-          <span className="bulk-sep" />
-          <button className="btn ghost sm" onClick={clearSel}>Clear</button>
-          {busy && <span className="muted" style={{ fontSize: 12 }}>Working…</span>}
-          {bulkMsg && (
-            <span style={{ fontSize: 12.5, fontWeight: bulkErr ? 700 : 400,
-              color: bulkErr ? "#fecaca" : undefined, maxWidth: 460, lineHeight: 1.4 }}>
-              {bulkMsg}
-            </span>
-          )}
+      <div className="cl-head">
+        <div>
+          <h1 className="cl-h1">{title}<small>{rows.length}{rows.length !== leads.length ? ` of ${leads.length}` : ""}</small></h1>
         </div>
-      )}
-      {/* Title and the actions that create or export. These are not filters, and
-          sitting them in the same row as the filters is what made the page feel
-          like loose controls hovering above a table. */}
-      <div className="leads-head">
-        <div className="leads-head-title">
-          <h1>{title}</h1>
-          <span className="leads-count">{rows.length}{rows.length !== leads.length ? ` of ${leads.length}` : ""}</span>
-        </div>
-        <div className="leads-head-actions">
+        <div className="cl-acts">
           {!isFirm && (
-            <div className="seg-toggle">
+            <div className="seg-toggle" role="tablist" aria-label="View">
               <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Table</button>
               <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>Board</button>
               <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>
             </div>
           )}
-          {!isFirm && <a className="btn ghost" href="/api/export?format=neos">Export</a>}
-          {!isFirm && addPath && addPath !== basePath && <Link className="btn" href={addPath}>Add lead</Link>}
+          {!isFirm && <a className="cl-btn" href="/api/export?format=neos"><Icon name="download" size={16} />Export</a>}
+          {!isFirm && addPath && addPath !== basePath && <Link className="cl-btn" href={addPath}><Icon name="userplus" size={16} />Add lead</Link>}
         </div>
       </div>
 
-      {/* One contained panel for everything that narrows the list. */}
-      <div className="leads-filters">
-        <div className="leads-filters-row">
-          <input className="leads-search" placeholder="Search name, phone, lead id, campaign"
-            value={q} onChange={(e) => setQ(e.target.value)} />
-          <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-            <option value="all">Any status</option>
-            {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-          </select>
-          <select value={fType} onChange={(e) => setFType(e.target.value)}>
-            <option value="all">Any case type</option>
-            {types.map((t) => <option key={String(t)} value={String(t)}>{String(t)}</option>)}
-          </select>
-          <select value={fFirm} onChange={(e) => setFFirm(e.target.value)}>
-            <option value="all">Any firm</option>
-            {firmIds.map((id) => <option key={String(id)} value={String(id)}>{firmById.get(id) ?? String(id)}</option>)}
-          </select>
-          <button className={`btn ghost leads-more ${showMore ? "on" : ""}`} onClick={() => setShowMore((v) => !v)}>
-            More filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+      <div className="cl-tabs" role="tablist" aria-label="Where the files are">
+        {TABS.filter((t) => t.k === "all" || counts[t.k] > 0 || phase === t.k).map((t) => (
+          <button key={t.k} role="tab" aria-selected={phase === t.k} className={`cl-tab${phase === t.k ? " cl-on" : ""}`} onClick={() => setPhase(t.k)}>
+            {t.label}<span>{counts[t.k]}</span>
           </button>
-          {(activeFilterCount > 0 || q) && (
-            <button className="btn ghost leads-clear" onClick={clearFilters}>Clear</button>
-          )}
-          {!isFirm && view === "board" && (
-            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as any)}>
-              <option value="status">Group: Status</option>
-              <option value="stage">Group: Stage</option>
-              <option value="tier">Group: Tier</option>
-            </select>
-          )}
-        </div>
+        ))}
+      </div>
 
-        {showMore && (
-          <div className="leads-filters-more">
-            <label>Campaign
-              <select value={fCampaign} onChange={(e) => setFCampaign(e.target.value)}>
-                <option value="all">Any campaign</option>
-                {campaignList.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label>State
-              <select value={fState} onChange={(e) => setFState(e.target.value)}>
-                <option value="all">Any state</option>
-                {states.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </label>
-            <label>City
-              <select value={fCity} onChange={(e) => setFCity(e.target.value)}>
-                <option value="all">Any city</option>
-                {cities.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label>Created from
-              <input type="date" value={fCreatedFrom} onChange={(e) => setFCreatedFrom(e.target.value)} />
-            </label>
-            <label>Created to
-              <input type="date" value={fCreatedTo} onChange={(e) => setFCreatedTo(e.target.value)} />
-            </label>
-            <label>Signed from
-              <input type="date" value={fSignedFrom} onChange={(e) => setFSignedFrom(e.target.value)} />
-            </label>
-            <label>Signed to
-              <input type="date" value={fSignedTo} onChange={(e) => setFSignedTo(e.target.value)} />
-            </label>
-          </div>
+      <div className="cl-tools">
+        <label className="cl-find">
+          <Icon name="search" size={16} />
+          <input className="cl-input" type="search" placeholder="Find by name, phone, lead number or what she said" aria-label="Find in this list"
+            value={q} onChange={(e) => setQ(e.target.value)} />
+        </label>
+        <button className="cl-btn" onClick={() => setShowMore((v) => !v)} aria-expanded={showMore}>
+          <Icon name="filter" size={15} />Filters{active.length ? ` (${active.length})` : ""}
+        </button>
+        {(active.length > 0 || q) && <button className="cl-btn cl-ghost" onClick={clearFilters}>Clear all</button>}
+        {!isFirm && view === "board" && (
+          <select className="cl-select" value={groupBy} onChange={(e) => setGroupBy(e.target.value as any)} aria-label="Group the board by">
+            <option value="status">Group by status</option>
+            <option value="stage">Group by stage</option>
+            <option value="tier">Group by tier</option>
+          </select>
         )}
       </div>
 
+      {showMore && (
+        <div className="cl-filters">
+          <label className="cl-lab">Status
+            <select className="cl-select" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+              <option value="all">Any status</option>
+              {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          </label>
+          <label className="cl-lab">Case type
+            <select className="cl-select" value={fType} onChange={(e) => setFType(e.target.value)}>
+              <option value="all">Any case type</option>
+              {types.map((t) => <option key={String(t)} value={String(t)}>{caseName(null, String(t))}</option>)}
+            </select>
+          </label>
+          <label className="cl-lab">Campaign
+            <select className="cl-select" value={fCampaign} onChange={(e) => setFCampaign(e.target.value)}>
+              <option value="all">Any campaign</option>
+              {campaignList.map((c) => <option key={c} value={c}>{caseName(c, null)}</option>)}
+            </select>
+          </label>
+          {!isFirm && firmIds.length > 1 && (
+            <label className="cl-lab">Firm
+              <select className="cl-select" value={fFirm} onChange={(e) => setFFirm(e.target.value)}>
+                <option value="all">Any firm</option>
+                {firmIds.map((id) => <option key={String(id)} value={String(id)}>{firmById.get(id) ?? String(id)}</option>)}
+              </select>
+            </label>
+          )}
+          <label className="cl-lab">State
+            <select className="cl-select" value={fState} onChange={(e) => setFState(e.target.value)}>
+              <option value="all">Any state</option>
+              {states.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label className="cl-lab">City
+            <select className="cl-select" value={fCity} onChange={(e) => setFCity(e.target.value)}>
+              <option value="all">Any city</option>
+              {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label className="cl-lab">Created from<input className="cl-input" type="date" value={fCreatedFrom} onChange={(e) => setFCreatedFrom(e.target.value)} /></label>
+          <label className="cl-lab">Created to<input className="cl-input" type="date" value={fCreatedTo} onChange={(e) => setFCreatedTo(e.target.value)} /></label>
+          <label className="cl-lab">Signed from<input className="cl-input" type="date" value={fSignedFrom} onChange={(e) => setFSignedFrom(e.target.value)} /></label>
+          <label className="cl-lab">Signed to<input className="cl-input" type="date" value={fSignedTo} onChange={(e) => setFSignedTo(e.target.value)} /></label>
+        </div>
+      )}
+
+      {active.length > 0 && (
+        <div className="cl-active">
+          {active.map((a) => (
+            <button key={a.label} className="cl-token" onClick={a.clear} aria-label={`Remove ${a.label} ${a.value}`}>
+              <em>{a.label}</em>{a.value}<Icon name="x" size={14} />
+            </button>
+          ))}
+        </div>
+      )}
+
       {(isFirm || view === "table") && (
-        <div className="table-scroll">
-          <table className="docket leads">
-            <thead><tr>{showBulk && <th style={{ width: 30 }}><input type="checkbox" checked={allPageSelected} onChange={togglePage} title="Select all on page" /></th>}<th></th>{th("lead_no", "Lead ID")}{th("name", "Name")}{th("phone", "Phone")}{th("campaign", "Campaign")}{th("type", "Case type")}{th("tier", "Tier")}{th("status", "Status")}{th("stage", "Stage")}{th("state", "State")}{th("summary", "Case description")}{th("created", "Created")}{th("updated", "Updated")}<th style={{ width: 40 }}></th></tr></thead>
+        <div className="cl-tablewrap">
+          <table className="cl-table">
+            <thead>
+              <tr>
+                {showBulk && <th className="cl-c-check"><input className="cl-check" type="checkbox" checked={allPageSelected} onChange={togglePage} aria-label="Select every file shown" /></th>}
+                {th("name", "Name")}
+                {th("case", "Case")}
+                {th("status", "Status")}
+                {th("lead_no", "Lead", "cl-hide-sm")}
+                {th("state", "State", "cl-hide-sm")}
+                {th("updated", "Updated", "cl-hide-sm")}
+                <th className="cl-c-act" aria-label="Actions" />
+              </tr>
+            </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className={`${r.needsAction ? "needs-action" : ""} ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
-                  {showBulk && <td><input type="checkbox" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} /></td>}
-                  <td>{r.needsAction && <span className="dot" title="Needs action" />}</td>
-                  <td><Link href={`${basePath}/${r.id}`}>{r.lead_no}</Link></td>
-                  <td style={{ fontWeight: 600 }}><span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name}{r.clock && <ClockChip clock={r.clock} />}</span></td>
-                  <td style={{ whiteSpace: "nowrap" }}>{r.phone}</td>
-                  <td>{r.campaign && r.campaign !== "—"
-                    ? r.campaign
-                    : <span title="This file has no campaign. It cannot be delivered or papered until one is set." style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11.5, fontWeight:700, padding:"2px 8px", borderRadius:999, background:"#fef2f2", color:"#b91c1c", border:"1px solid #fecaca", whiteSpace:"nowrap" }}>No campaign</span>}</td>
-                  <td style={{ whiteSpace: "nowrap" }}>{r.type}</td>
-                  <td><TierBadge letter={r.tier_letter} number={r.tier_number} claimType={r.type} /></td>
-                  <td>{statusBadge(r.status)}{r.flag && <span className="badge flag" style={{ marginLeft: 4 }}>flag</span>}</td>
-                  <td><span className="badge stage">{STAGE_LABELS[r.stage] ?? r.stage}</span></td>
-                  <td className="muted">{r.state || "—"}</td>
-                  <td className="trunc" title={r.summary}>{r.summary}</td>
-                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{r.created ? new Date(r.created).toLocaleDateString() : "—"}</td>
-                  <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.updated).toLocaleDateString()}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <RowActions actions={[
-                      { label: "Open file", icon: "↗", onClick: () => { window.location.href = `${basePath}/${r.id}`; } },
-                      ...(r.phone ? [{ label: "Call", icon: "☎", onClick: () => { window.location.href = `tel:${r.phone}`; } }] : []),
-                      ...(r.phone ? [{ label: "Text", icon: "✉", onClick: () => { window.location.href = `${basePath}/${r.id}?tab=Messages`; } }] : []),
-                      { label: "—", onClick: () => {} },
-                      { label: "Change status", icon: "●", onClick: () => { window.location.href = `${basePath}/${r.id}`; } },
-                      { label: "Add note", icon: "✎", onClick: () => { window.location.href = `${basePath}/${r.id}?tab=Notes`; } },
-                    ]} />
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && <tr><td colSpan={showBulk ? 14 : 13} className="muted">No leads match.</td></tr>}
+              {rows.map((r) => {
+                const picked = sel.has(r.id) || allMatching;
+                return (
+                  <tr key={r.id} className={picked ? "cl-sel" : ""} onClick={() => open(r)}>
+                    {showBulk && (
+                      <td className="cl-c-check" onClick={(e) => e.stopPropagation()}>
+                        <input className="cl-check" type="checkbox" checked={picked} onChange={() => toggleOne(r.id)} aria-label={`Select ${r.name || "this file"}`} />
+                      </td>
+                    )}
+                    <td>
+                      <div className="cl-cell">
+                        <Link className="cl-t1" href={`${basePath}/${encodeURIComponent(r.key)}`} onClick={(e) => e.stopPropagation()} style={{ color: "var(--ink)", textDecoration: "none" }}>{r.name || "No name yet"}</Link>
+                        <span className="cl-t2">{prettyPhone(r.phone) || "No phone"}</span>
+                      </div>
+                    </td>
+                    <td className="cl-c-case">
+                      <div className="cl-cell">
+                        {r.caseLabel ? <span className="cl-t1" style={{ fontWeight: 500 }}>{r.caseLabel}</span> : <span className="cl-t1 cl-nocamp" title="This file has no campaign. It cannot be delivered or papered until one is set.">No campaign</span>}
+                        <span className="cl-t2" title={r.summary}>{r.summary || (r.campaign ? "" : "Set a campaign before it can be papered")}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="cl-cell">
+                        <span className="cl-status"><span className={`cl-dot cl-${r.tone}`} />{r.statusLabel}{r.tier_letter && tierLabel(r.tier_letter, r.tier_number, r.type) !== "\u2014" ? <span className="cl-mono" title="Tier" style={{ marginLeft: 4 }}>{tierLabel(r.tier_letter, r.tier_number, r.type)}</span> : null}</span>
+                        {r.clock
+                          ? <span className={`cl-t2 ${clockTone(r.clock.tone)}`} title={r.clock.kind === "esign_chase" ? "Agreement sent. Get her back on the line within 72 hours." : "Signed. Deliver to the firm within 72 hours."}>{r.clock.kind === "esign_chase" ? "Agreement out, " : "To the firm, "}{String(r.clock.countdownText).replace(/^OVERDUE/i, "overdue")}</span>
+                          : r.flag ? <span className="cl-flag"><Icon name="flag" size={13} />Flagged</span> : null}
+                      </div>
+                    </td>
+                    <td className="cl-hide-sm"><span className="cl-mono">{r.lead_no || ""}</span></td>
+                    <td className="cl-hide-sm"><span style={{ color: r.state ? "var(--ink)" : "var(--ink-faint)" }}>{r.state || "None"}</span></td>
+                    <td className="cl-hide-sm">
+                      <div className="cl-cell">
+                        <span style={{ fontSize: 13.5 }} suppressHydrationWarning>{ago(r.updated)}</span>
+                        <span className="cl-t2" suppressHydrationWarning>{r.created ? `Came in ${new Date(r.created).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : ""}</span>
+                      </div>
+                    </td>
+                    <td className="cl-c-act" onClick={(e) => e.stopPropagation()}>
+                      <span className="cl-rowacts">
+                        {!isFirm && r.phone && <a href={`${basePath}/${encodeURIComponent(r.key)}?tab=Messages`} title="Text" aria-label={`Text ${r.name}`}><Icon name="message" size={16} /></a>}
+                        <a href={`${basePath}/${encodeURIComponent(r.key)}`} title="Open" aria-label={`Open ${r.name}`}><Icon name="right" size={16} /></a>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr><td colSpan={colCount} style={{ cursor: "default" }}>
+                  <div className="cl-empty"><b>Nothing here</b>{active.length || q ? "No files match what you picked." : "No files yet."}</div>
+                </td></tr>
+              )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showBulk && selCount > 0 && (
+        <div className="cl-bulk" role="region" aria-label="Change the selected files">
+          <span className="cl-bulk-n">{selCount} selected</span>
+          {!allMatching && allPageSelected && rows.length > sel.size && (
+            <button onClick={() => setAllMatching(true)}>Select all {rows.length}</button>
+          )}
+          <select className="cl-select" defaultValue="" aria-label="Change status" onChange={(e) => { if (e.target.value) { runBulkStatus(e.target.value); e.target.value = ""; } }}>
+            <option value="">Change status</option>
+            {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </select>
+          <select className="cl-select" defaultValue="" aria-label="Change stage" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_stage", stage: e.target.value }); e.target.value = ""; } }}>
+            <option value="">Change stage</option>
+            {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s] ?? s}</option>)}
+          </select>
+          {agents.length > 0 && (
+            <select className="cl-select" defaultValue="" aria-label="Assign" onChange={(e) => { if (e.target.value) { runBulk({ op: "assign", agentId: e.target.value === "_none" ? null : e.target.value }); e.target.value = ""; } }}>
+              <option value="">Assign to</option>
+              <option value="_none">Nobody</option>
+              {agents.map((a) => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+            </select>
+          )}
+          {firms.length > 1 && (
+            <select className="cl-select" defaultValue="" aria-label="Move to firm" onChange={(e) => { if (e.target.value) { runBulk({ op: "move_firm", firmId: e.target.value }); e.target.value = ""; } }}>
+              <option value="">Move to firm</option>
+              {firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          )}
+          <button className="cl-danger" onClick={() => { if (confirm(`Archive ${selCount} file(s)? They stay recoverable for 90 days and only the Operator can delete them for good.`)) runBulk({ op: "delete" }); }}>Archive</button>
+          <button onClick={clearSel}>Clear</button>
+          {busy && <span className="cl-bulk-msg">Working</span>}
+          {bulkMsg && <span className={`cl-bulk-msg${bulkErr ? " cl-err" : ""}`} role="status">{bulkMsg}</span>}
         </div>
       )}
 
@@ -379,8 +463,8 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                         <strong style={{ fontSize: 13 }}>{r.lead_no}</strong>
                         <TierBadge letter={r.tier_letter} number={r.tier_number} claimType={r.type} />
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: 14, margin: "3px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name}{r.clock && <ClockChip clock={r.clock} />}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>{r.type}{r.state ? ` · ${r.state}` : ""}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, margin: "3px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name || "No name yet"}{r.clock && <ClockChip clock={r.clock} />}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>{[r.caseLabel, r.state].filter(Boolean).join(", ")}</div>
                       <div className="row" style={{ marginTop: 7, justifyContent: "space-between" }}>
                         <span className="badge stage" style={{ fontSize: 10 }}>{STAGE_LABELS[r.stage] ?? r.stage}</span>
                         <span className="muted" style={{ fontSize: 11 }}>{Math.floor((Date.now() - new Date(r.updated).getTime()) / 86400000)}d</span>
@@ -413,7 +497,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                 <Link key={r.id} href={`${basePath}/${r.id}`} className="gantt-row">
                   <div className="gantt-name-col">
                     <strong style={{ fontSize: 12.5 }}>{r.lead_no}</strong>
-                    <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{r.name}</span>
+                    <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{r.name || "No name yet"}</span>
                   </div>
                   <div className="gantt-track">
                     <div className="gantt-grid">{STAGES.map((s) => <div key={s} className="gantt-cell" />)}</div>
@@ -428,34 +512,20 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
           </div>
         </div>
       )}
+
     </div>
   );
 }
 
-// In-line SLA countdown chip, shown next to a file name the moment it's on a
-// clock (signed & racing to firm, or e-sign sent & needs a callback). In your
-// face, right where you're already looking. Nobody hides.
+// The countdown on a board card: dot and words, colored only when it matters.
 function ClockChip({ clock }: { clock: any }) {
-  const tone: Record<string, { bg: string; fg: string; bd: string }> = {
-    ok:      { bg: "rgba(34,197,94,.10)",  fg: "#15803d", bd: "rgba(34,197,94,.30)" },
-    warn:    { bg: "rgba(245,183,49,.14)", fg: "#a16207", bd: "rgba(245,183,49,.40)" },
-    urgent:  { bg: "rgba(249,115,22,.14)", fg: "#c2410c", bd: "rgba(249,115,22,.45)" },
-    overdue: { bg: "rgba(239,68,68,.14)",  fg: "#b91c1c", bd: "rgba(239,68,68,.55)" },
-  };
-  const t = tone[clock.tone] ?? tone.ok;
-  const icon = clock.kind === "esign_chase" ? "✍️" : "📤";
+  const cls = clock.tone === "overdue" ? "cl-tone-bad" : clock.tone === "urgent" || clock.tone === "warn" ? "cl-tone-warn" : "cl-tone-good";
   const title = clock.kind === "esign_chase"
-    ? "E-sign sent, get them back on the line within 72h"
-    : `Signed, deliver to firm within 72h${clock.stuckStage ? " · " + clock.stuckStage : ""}`;
+    ? "Agreement sent. Get her back on the line within 72 hours."
+    : `Signed. Deliver to the firm within 72 hours${clock.stuckStage ? `. Sitting at ${clock.stuckStage}` : ""}.`;
   return (
-    <span title={title} style={{
-      display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 9px",
-      borderRadius: 999, fontSize: 12, fontWeight: 700, lineHeight: 1.6,
-      background: t.bg, color: t.fg, border: `1px solid ${t.bd}`,
-      fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap",
-    }}>
-      <span style={{ fontSize: 11 }}>{icon}</span>{clock.countdownText}
-      {clock.tone === "overdue" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: t.fg, display: "inline-block" }} />}
+    <span title={title} className={cls} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+      <Icon name="clock" size={13} />{String(clock.countdownText).replace(/^OVERDUE/i, "Overdue")}
     </span>
   );
 }

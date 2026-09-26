@@ -128,55 +128,104 @@ function Knowledge({ v, phase, fill, focusLines }: { v: any; phase: string; fill
     </div>
   );
 
+  // Which group is on screen, so the index on the left can show where you are:
+  // the last section whose top has scrolled up past the top of the panel.
+  const [spy, setSpy] = useState("");
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root) return;
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      const top = root.getBoundingClientRect().top + 72;
+      let cur = "";
+      root.querySelectorAll<HTMLElement>("[data-spy]").forEach((el) => { if (el.getBoundingClientRect().top <= top) cur = el.id; });
+      setSpy(cur || "kn-ask");
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(measure); };
+    measure();
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => { root.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf); };
+  }, [term, phase]);
+
+  // Groups fold on a click of their heading; a search opens everything.
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
+  const isOpen = (id: string) => !!term || !folded[id];
+  const flip = (id: string) => setFolded((f) => ({ ...f, [id]: !f[id] }));
+  const Head = ({ id, label, n, gold }: { id: string; label: string; n: number; gold?: boolean }) => (
+    <button className={`cc-rb-h cc-rb-fold${gold ? " cc-gold" : ""}${isOpen(id) ? "" : " cc-shut"}`} onClick={() => flip(id)} aria-expanded={isOpen(id)}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+      <span>{label}</span><span className="cc-rb-n">{n}</span>
+    </button>
+  );
+  const J = ({ id, label, cls = "" }: { id: string; label: string; cls?: string }) => (
+    <button className={`cc-kn-jump${cls}${spy === id ? " cc-on" : ""}`} onClick={() => { setFolded((f) => ({ ...f, [id]: false })); jump(id); }}>{label}</button>
+  );
+
   return (
     <div className="cc-side-b cc-kn" ref={bodyRef}>
-      {/* Jump straight to a group of rebuttals or lines. */}
+      {/* Jump straight to a group of rebuttals or lines. Across the top when
+          the panel is narrow, down the left side when it is wide. */}
       <nav className="cc-kn-nav" aria-label="Rebuttal groups">
-        {now.length > 0 && <button className="cc-kn-jump cc-gold" onClick={() => jump("kn-now")}>Right now</button>}
-        {REB_GROUPS.map((g: string) => <button key={g} className="cc-kn-jump" onClick={() => jump(slug(g))}>{g}</button>)}
-        {LINES.map((s: any) => <button key={s.head} className="cc-kn-jump cc-line" onClick={() => jump(slug("line " + s.head))}>{s.head}</button>)}
-        <button className="cc-kn-jump" onClick={() => jump("kn-ask")}>Ask CaseCure</button>
+        <J id="kn-ask" label="Ask CaseCure" cls=" cc-ask-j" />
+        {now.length > 0 && <J id="kn-now" label="Right now" cls=" cc-gold" />}
+        <span className="cc-kn-navh">Rebuttals</span>
+        {REB_GROUPS.map((g: string) => <J key={g} id={slug(g)} label={g} />)}
+        <span className="cc-kn-navh">Lines</span>
+        {LINES.map((s: any) => <J key={s.head} id={slug("line " + s.head)} label={s.head} cls=" cc-line" />)}
       </nav>
-      <div className="cc-card cc-kn-ask" id="kn-ask">
-        <span className="cc-card-h">Ask CaseCure</span>
-        <textarea className="cc-area" rows={2} placeholder="What she said, or what happened, in plain words" aria-label="Ask CaseCure" value={v.askField.value ?? ""} onChange={v.askField.set}
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) v.doAsk(); }} />
-        <button className="cc-btn cc-full" disabled={!!v.askBusy || !String(v.askField.value || "").trim()} onClick={v.doAsk}>{v.askBusy ? "Asking" : "Ask"}</button>
-        {!!v.askAnswer && <div className="cc-ask-a">{v.askAnswer}</div>}
-        {!!v.askError && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>{v.askError}</div>}
-      </div>
-
-      <input className="cc-field cc-kn-search" type="search" placeholder="Search rebuttals and lines" aria-label="Search rebuttals and lines" value={q} onChange={(e) => setQ(e.target.value)} />
-
-      {!term && now.length > 0 && (
-        <>
-          <div className="cc-rb-h cc-gold" id="kn-now">Right now, {PHASE_LABEL[phase] || phase}</div>
-          <div className="cc-grp">{now.map((r: any) => <Reb key={r.id} r={r} />)}</div>
-        </>
-      )}
-
-      {groups.map((x: any) => (
-        <div key={x.g} id={slug(x.g)} style={{ scrollMarginTop: 56 }}>
-          <div className="cc-rb-h">{x.g}</div>
-          <div className="cc-grp">{x.items.map((r: any) => <Reb key={r.id} r={r} />)}</div>
-        </div>
-      ))}
-
-      {lineSecs.map((s: any) => (
-        <div key={s.head} id={slug("line " + s.head)} ref={s.i === 0 ? linesRef : s.i === 1 ? rambleRef : undefined} style={{ scrollMarginTop: 56 }}>
-          <div className="cc-rb-h">{s.head}</div>
-          <div className="cc-ln-note">{s.note}</div>
-          <div className="cc-ln-box">
-            {s.items.map((it: any, i: number) => (
-              <div key={i} className={`cc-ln${i === s.items.length - 1 ? " cc-end" : ""}`}>
-                {(i === 0 || s.items[i - 1][0] !== it[0]) && <div className="cc-ln-k">{it[0]}</div>}
-                <div className="cc-ln-t">{fill(it[1])}</div>
-              </div>
-            ))}
+      <div className="cc-kn-body">
+        <div className="cc-card cc-kn-ask" id="kn-ask" data-spy="1">
+          <span className="cc-card-h">Ask CaseCure</span>
+          <textarea className="cc-area" rows={2} placeholder="What she said, or what happened, in plain words" aria-label="Ask CaseCure" value={v.askField.value ?? ""} onChange={v.askField.set}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) v.doAsk(); }} />
+          <div className="cc-kn-ask-row">
+            <span className="cc-cue" style={{ marginTop: 0 }}>Ctrl Enter asks</span>
+            <button className="cc-btn cc-full" disabled={!!v.askBusy || !String(v.askField.value || "").trim()} onClick={v.doAsk}>{v.askBusy ? "Asking" : "Ask"}</button>
           </div>
+          {!!v.askAnswer && <div className="cc-ask-a">{v.askAnswer}</div>}
+          {!!v.askError && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>{v.askError}</div>}
         </div>
-      ))}
-      {term && !groups.length && !lineSecs.length && <div className="cc-cue" style={{ textAlign: "center" }}>Nothing matches. Try Ask CaseCure above.</div>}
+
+        <input className="cc-field cc-kn-search" type="search" placeholder="Search rebuttals and lines" aria-label="Search rebuttals and lines" value={q} onChange={(e) => setQ(e.target.value)} />
+
+        {!term && now.length > 0 && (
+          <div id="kn-now" data-spy="1" className="cc-kn-sec">
+            <Head id="kn-now" label={`Right now, ${PHASE_LABEL[phase] || phase}`} n={now.length} gold />
+            {isOpen("kn-now") && <div className="cc-grp">{now.map((r: any) => <Reb key={r.id} r={r} />)}</div>}
+          </div>
+        )}
+
+        {groups.map((x: any) => (
+          <div key={x.g} id={slug(x.g)} data-spy="1" className="cc-kn-sec">
+            <Head id={slug(x.g)} label={x.g} n={x.items.length} />
+            {isOpen(slug(x.g)) && <div className="cc-grp">{x.items.map((r: any) => <Reb key={r.id} r={r} />)}</div>}
+          </div>
+        ))}
+
+        {lineSecs.map((s: any) => {
+          const id = slug("line " + s.head);
+          return (
+            <div key={s.head} id={id} data-spy="1" className="cc-kn-sec" ref={s.i === 0 ? linesRef : s.i === 1 ? rambleRef : undefined}>
+              <Head id={id} label={s.head} n={s.items.length} />
+              {isOpen(id) && (
+                <>
+                  <div className="cc-ln-note">{s.note}</div>
+                  <div className="cc-ln-box">
+                    {s.items.map((it: any, i: number) => (
+                      <div key={i} className={`cc-ln${i === s.items.length - 1 ? " cc-end" : ""}`}>
+                        {(i === 0 || s.items[i - 1][0] !== it[0]) && <div className="cc-ln-k">{it[0]}</div>}
+                        <div className="cc-ln-t">{fill(it[1])}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+        {term && !groups.length && !lineSecs.length && <div className="cc-cue" style={{ textAlign: "center" }}>Nothing matches. Try Ask CaseCure above.</div>}
+      </div>
     </div>
   );
 }
