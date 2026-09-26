@@ -1,40 +1,59 @@
 export const runtime = "edge";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import BoardCard from "@/components/BoardCard";
 import DailyRail from "@/components/DailyRail";
 import { computeAlerts } from "@/lib/alerts";
 
 export default async function Dashboard() {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user!.id).maybeSingle();
   const role = me?.role ?? "agent";
   // Agents work from the call console. Everyone else keeps this dashboard.
-  if (role === "agent") redirect("/calls");
+  if (role === "agent") redirect("/app");
 
-  // SLA alerts (dragging files) — only for internal roles.
-  const alerts = role === "firm" ? [] : await computeAlerts();
-
-  // Counters (new status model: pre-QA intake statuses).
-  const { count: newLeads } = await sb.from("leads").select("id", { count: "exact", head: true });
-  const { count: openClaims } = await sb.from("claims").select("id", { count: "exact", head: true })
-    .in("status", ["new", "contacting"]);
-
-  // Boards + posts
-  const { data: boards } = await sb.from("boards").select("*").order("sort_order");
-  const { data: bulletins } = await sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60);
+  // Everything below is independent, so it loads side by side instead of one
+  // query after another.
+  const dayAgo = new Date(Date.now() - 86400000).toISOString();
+  const twoDayAgo = new Date(Date.now() - 2 * 86400000).toISOString();
+  const [
+    alerts,
+    { count: newLeads },
+    { count: openClaims },
+    { data: boards },
+    { data: bulletins },
+    { data: flagged },
+    { data: idle },
+    { data: agingIntake },
+    { data: highTier },
+    { data: awaitingFirm },
+  ] = await Promise.all([
+    // SLA alerts (dragging files), internal roles only.
+    role === "firm" ? Promise.resolve([] as Awaited<ReturnType<typeof computeAlerts>>) : computeAlerts().catch(() => []),
+    // Counters (new status model: pre-QA intake statuses).
+    sb.from("leads").select("id", { count: "exact", head: true }),
+    sb.from("claims").select("id", { count: "exact", head: true }).in("status", ["new", "contacting"]),
+    // Boards + posts
+    sb.from("boards").select("*").order("sort_order"),
+    sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60),
+    // Needs Attention feed: supervisor-flagged claims + stale in-progress.
+    sb.from("claims").select("id, lead_id, campaign, supervisor_flag, status, updated_at, leads(claimant_name)")
+      .eq("supervisor_flag", true).limit(10),
+    sb.from("claims").select("id, lead_id, campaign, status, updated_at, leads(claimant_name)")
+      .in("status", ["new", "contacting"]).lt("updated_at", dayAgo).limit(10),
+    // Holes in the boat (the four priorities): aging intake, high-tier needing
+    // action, aging at any stage, qualified-but-firm-hasn't-reached-out.
+    sb.from("claims").select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
+      .in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).limit(12),
+    sb.from("claims").select("lead_id, tier, tier_letter, tier_number, status, leads(claimant_name, lead_no)")
+      .in("tier_letter", ["A", "B"]).in("status", ["new", "contacting", "qa", "signed_qa", "approved"]).limit(12),
+    sb.from("claims").select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
+      .in("status", ["approved", "signed_approved"]).lt("updated_at", dayAgo).limit(12),
+  ]);
   const byBoard: Record<string, any[]> = {};
   for (const b of bulletins ?? []) (byBoard[b.board_id] ||= []).push(b);
-
-  // Needs Attention feed — supervisor-flagged claims + stale in-progress.
-  const { data: flagged } = await sb.from("claims")
-    .select("id, lead_id, campaign, supervisor_flag, status, updated_at, leads(claimant_name)")
-    .eq("supervisor_flag", true).limit(10);
-  const dayAgo = new Date(Date.now() - 86400000).toISOString();
-  const { data: idle } = await sb.from("claims")
-    .select("id, lead_id, campaign, status, updated_at, leads(claimant_name)")
-    .in("status", ["new", "contacting"]).lt("updated_at", dayAgo).limit(10);
 
   const attention: { icon: string; title: string; sub: string; lead_id: string }[] = [];
   for (const c of flagged ?? []) attention.push({
@@ -45,19 +64,6 @@ export default async function Dashboard() {
     icon: "⏳", title: `Idle over 24h — ${(c as any).leads?.claimant_name ?? "claim"}`,
     sub: `Still ${c.status.replace("_", " ")}, no movement in a day.`, lead_id: c.lead_id,
   });
-
-  // Holes in the boat (the four priorities): aging intake, high-tier needing
-  // action, aging at any stage, qualified-but-firm-hasn't-reached-out.
-  const twoDayAgo = new Date(Date.now() - 2 * 86400000).toISOString();
-  const { data: agingIntake } = await sb.from("claims")
-    .select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
-    .in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).limit(12);
-  const { data: highTier } = await sb.from("claims")
-    .select("lead_id, tier, tier_letter, tier_number, status, leads(claimant_name, lead_no)")
-    .in("tier_letter", ["A", "B"]).in("status", ["new", "contacting", "qa", "signed_qa", "approved"]).limit(12);
-  const { data: awaitingFirm } = await sb.from("claims")
-    .select("lead_id, status, updated_at, leads(claimant_name, lead_no)")
-    .in("status", ["approved", "signed_approved"]).lt("updated_at", new Date(Date.now() - 86400000).toISOString()).limit(12);
 
   const holes = [
     { n: (agingIntake ?? []).length, label: "Aging intake (2+ days)", tone: "flag", items: agingIntake ?? [] },

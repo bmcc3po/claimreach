@@ -1,13 +1,14 @@
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import { STAGE_LABELS } from "@/lib/questionnaire";
 
 export default async function QueuePage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const { view } = await searchParams;
   const mode = view === "dial" ? "dial" : view === "fix" ? "fix" : "mine";
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
 
   // "mine" = working stack. "dial" = next to call. "fix" = WIP files QA sent back.
   let leads: any[] = [];

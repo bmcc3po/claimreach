@@ -1,6 +1,7 @@
 export const runtime = "edge";
 import { isSignedStatus } from "@/lib/statuses";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import { isInternalRole } from "@/lib/permissions";
 import LeadsView from "@/components/LeadsView";
 
@@ -44,7 +45,7 @@ export default async function LeadsPage() {
   const withClaims = (leads ?? []).map((l) => ({ ...l, claims: claimsByLead[l.id] ?? [] }));
 
   // Who am I + the option lists for bulk actions.
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role, perm_overrides").eq("id", user!.id).maybeSingle();
   const canBulk = isInternalRole(me?.role);
   const { data: agents } = await sb.from("app_users").select("id, full_name").in("role", ["agent", "admin", "owner", "manager"]).order("full_name");

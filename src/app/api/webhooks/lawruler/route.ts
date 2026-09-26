@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { mapInbound, canonicalToLeadColumns, firstNonEmpty } from "@/lib/webhooks";
 import { isLorReadyStatus, isLorStatus, lrAttachmentPlan, mergeLorIngest, type LorStatus } from "@/lib/m6";
+import { normalizeLead, loadCampaigns, chooseCampaign, ingestLead, redactForLog } from "@/lib/lead-ingest";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
   const envelope = {
     content_type: rawNote,
     field_keys: Object.keys(fields),
-    fields,
+    fields: redactForLog(fields),
     attachments: manifest,
   };
   const logId = await log(admin, null, "received", 200, envelope, null);
@@ -153,6 +154,23 @@ export async function POST(req: NextRequest) {
   if (!secretOk(req)) {
     await log(admin, null, "failed", 401, envelope, "bad or missing x-lr-secret");
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // ---- App campaigns (MVA and anything else the App works) ----------------
+  // A hook that names its case type ("INNO MVA", "TMP MVA") goes through the
+  // shared ingest and shows up in the App. Keys match however LawRuler spells
+  // them (LeadID, FirstName, CaseType). The Motel 6 hook (campaign=motel6)
+  // keeps its own path below, unchanged.
+  if ((clean(fields.campaign) || "").toLowerCase() !== "motel6") {
+    const norm = normalizeLead(fields);
+    const camp = chooseCampaign(norm.caseType, await loadCampaigns(admin));
+    if (camp) {
+      const r = await ingestLead(admin, { lead: norm, campaign: camp, via: "lawruler" });
+      await log(admin, camp.firm_id, r.ok ? "received" : "failed", r.ok ? 200 : (r.status || 500),
+        { vendor_lead_id: norm.leadId, lead_no: r.lead_no ?? null, created: !!r.created, campaign: camp.name }, r.error ?? null);
+      if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status || 500 });
+      return NextResponse.json({ ok: true, lead_id: r.lead_id, lead_no: r.lead_no, created: r.created, updated: !r.created, campaign: camp.name, log_id: logId, ...(r.error ? { warning: r.error } : {}) });
+    }
   }
 
   const vendorId = clean(fields.leadid) || clean(fields.external_id) || clean(fields.id);

@@ -1,6 +1,7 @@
 export const runtime = "edge";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import LeadWorkspace from "@/components/LeadWorkspace";
 import { loadIdentifiedForLead } from "@/lib/property-ops";
 import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
@@ -67,7 +68,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const nameOf = new Map((staff ?? []).map((u: any) => [u.id, u.full_name || ""]));
   const notes = mergeFileNotes(fileNotesRaw.notes, fileNotesRaw.deskNotes, nameOf);
 
-  const { data: { user: cur } } = await sb.auth.getUser();
+  const { data: { user: cur } } = await authUser();
   const { data: meRow } = await sb.from("app_users").select("role, full_name").eq("id", cur!.id).maybeSingle();
   (lead as any).current_user_role = meRow?.role ?? null;
   (lead as any).current_user_name = meRow?.full_name ?? "Staff";

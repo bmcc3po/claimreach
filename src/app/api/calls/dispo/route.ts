@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
       title: `Signed: ${lead.claimant_name || "new client"}`,
       note: `${me.name || "An agent"} signed this file${lead.campaign ? ` on ${lead.campaign}` : ""}.`,
       rows: caseSummaryRows(lead, call?.answers || {}),
-      link: `${origin}/calls/${lead.id}`,
+      link: `${origin}/app/${lead.id}`,
     });
     for (const to of d.notify) {
       const r = await sendEmail({ to, subject: `Signed: ${lead.claimant_name || lead.lead_no || "new client"}`, html });

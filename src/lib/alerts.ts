@@ -33,22 +33,53 @@ export async function loadSla(): Promise<Sla> {
   return data ? { ...DEFAULT_SLA, ...data } : DEFAULT_SLA;
 }
 
-export async function computeAlerts(): Promise<Alert[]> {
+// Which of these leads have at least one outbound text or call. Batches of 25
+// run side by side; each lookup is one indexed probe per lead, capped at one
+// row per lead so a chatty file cannot blow the row limit.
+export async function leadsWithOutbound(admin: any, ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  const probe = async (id: string) => {
+    const { data } = await admin.from("communications").select("lead_id").eq("lead_id", id).eq("direction", "outbound").limit(1);
+    if (data?.length) out.add(id);
+  };
+  for (let i = 0; i < ids.length; i += 25) {
+    await Promise.all(ids.slice(i, i + 25).map(probe));
+  }
+  return out;
+}
+
+// Alerts are the same for every staff login, and the bell asks every minute
+// from every open tab. Hold the answer for 30 seconds per server instance.
+let cached: { at: number; p: Promise<Alert[]> } | null = null;
+export function computeAlerts(): Promise<Alert[]> {
+  if (cached && Date.now() - cached.at < 30000) return cached.p;
+  const p = computeAlertsFresh().catch((e) => { cached = null; throw e; });
+  cached = { at: Date.now(), p };
+  return p;
+}
+
+async function computeAlertsFresh(): Promise<Alert[]> {
   const admin = supabaseAdmin();
   const sla = await loadSla();
   const alerts: Alert[] = [];
 
   // 1) New leads with no outbound contact within the window.
+  // This used to ask the database once PER LEAD whether it had an outbound
+  // text or call: up to 200 round trips in a row, 15 to 30 seconds, on every
+  // dashboard load and every bell poll. That was the whole site feeling slow.
+  // Now it is one query for the candidates and a few batched lookups in parallel.
   const noContactCut = new Date(Date.now() - sla.no_contact_hours * 3600000).toISOString();
   const { data: newLeads } = await admin.from("leads")
     .select("id, lead_no, claimant_name, created_at, claims(status)")
-    .lt("created_at", noContactCut).limit(200);
-  for (const l of newLeads ?? []) {
-    const status = (l as any).claims?.[0]?.status ?? "new";
-    if (status !== "new" && status !== "contacting") continue;
-    // any outbound comm clears it
-    const { data: comm } = await admin.from("communications").select("id").eq("lead_id", l.id).eq("direction", "outbound").limit(1).maybeSingle();
-    if (comm) continue;
+    .lt("created_at", noContactCut).is("archived_at", null)
+    .order("created_at", { ascending: false }).limit(200);
+  const open = (newLeads ?? []).filter((l: any) => {
+    const status = l.claims?.[0]?.status ?? "new";
+    return status === "new" || status === "contacting";
+  });
+  const contacted = await leadsWithOutbound(admin, open.map((l: any) => l.id));
+  for (const l of open) {
+    if (contacted.has(l.id)) continue;
     const h = hoursSince(l.created_at);
     alerts.push({ kind: "no_contact", severity: h > sla.no_contact_hours * 2 ? "bad" : "warn",
       title: `No contact — ${l.claimant_name || l.lead_no}`, sub: `New lead, no outreach in ${h}h.`, lead_id: l.id, lead_no: l.lead_no, hours: h });

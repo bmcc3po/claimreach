@@ -20,7 +20,15 @@ export default function NotifyBell() {
       setAlerts(ad.alerts ?? []);
     } catch { /* ignore */ }
   }
-  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, []);
+  // Poll only while this tab is on screen. A dozen background tabs each asking
+  // every minute is load for nothing.
+  useEffect(() => {
+    load();
+    const t = setInterval(() => { if (document.visibilityState === "visible") load(); }, 60000);
+    const onShow = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onShow); };
+  }, []);
 
   const unread = items.filter((i) => !i.read_at).length + alerts.length;
 

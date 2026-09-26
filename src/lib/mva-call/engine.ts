@@ -158,6 +158,8 @@ export interface CallProps {
   reasons: { esign: Reason[]; dq: Reason[]; callback: Reason[]; ni: Reason[] };
   notifyDefaults: { who: string; how: string }[];
   esign: { status: string; configured: boolean; pax: Record<string, string> };
+  /** What the marketer sent, shown on Story so the agent confirms instead of re-asking. */
+  lead?: { from: string; said: string; tags: string[] } | null;
   now?: number;
 }
 export interface Reason { key: string; label: string }
@@ -830,6 +832,10 @@ export class CallEngine {
       f: f,
       // TMP's split, straight from each agreement's paragraph 3. Only said when she insists.
       showFees: !!this.props.showFees,
+      hasLead: !!(this.props.lead && (this.props.lead.said || this.props.lead.tags.length || this.props.lead.from)),
+      leadFrom: this.props.lead?.from || '',
+      leadSaid: this.props.lead?.said || '',
+      leadTags: (this.props.lead?.tags || []).map((t) => ({ label: t })),
       fees: agreement === 'Florida'
         ? [{ k: 'Before they answer a lawsuit', v: '33 1/3%' }, { k: 'After they answer', v: '40%' }]
         : [{ k: 'First 90 days', v: '33 1/3%' }, { k: 'After 90 days, or suit or mediation', v: '40%' }, { k: 'From 90 days before trial', v: '45%' }],
@@ -994,6 +1000,9 @@ export class CallEngine {
       askField: { value: s.askText, set: (e: any) => this.setState({ askText: e.target.value, askOut: null }) },
       doAsk: () => this.api.ask(String(this.state.askText || '')),
       asked: !!s.askOut,
+      askBusy: s.askOut === 'busy',
+      askAnswer: s.askOut && typeof s.askOut === 'object' && s.askOut.answer ? s.askOut.answer : '',
+      askError: s.askOut && typeof s.askOut === 'object' && s.askOut.error ? s.askOut.error : '',
       openSheet: () => this.setState({ sheet: true, reb: null }),
       closeSheet: () => this.setState({ sheet: false, reb: null }),
       clearPick: () => this.setState({ reb: null }),

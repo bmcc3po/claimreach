@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { Logo } from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
+import { safeAppNext } from "@/lib/mva-call/links";
 
 function quietSignInError(raw: string) {
   const m = (raw || "").toLowerCase();
@@ -29,7 +30,9 @@ export default function Login() {
     const { error } = await sb.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (error) { setErr(quietSignInError(error.message)); return; }
-    router.push("/dashboard");
+    // Came from a lead link in a text: go straight back to that lead.
+    const next = typeof window !== "undefined" ? safeAppNext(new URLSearchParams(window.location.search).get("next")) : null;
+    router.push(next || "/dashboard");
   }
 
   return (

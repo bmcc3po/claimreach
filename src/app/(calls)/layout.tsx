@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Viewport } from "next";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import { isInternalRole } from "@/lib/permissions";
 import "@/components/calls/calls.css";
 
@@ -15,7 +16,7 @@ export const viewport: Viewport = {
 
 export default async function CallsLayout({ children }: { children: React.ReactNode }) {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
   if (!user) redirect("/login");
   if ((user.app_metadata as any)?.must_change_password) redirect("/set-password");
   const { data: me } = await sb.from("app_users").select("role").eq("id", user.id).maybeSingle();

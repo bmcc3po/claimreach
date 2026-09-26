@@ -56,6 +56,8 @@ t("every top-level hole in CallView resolves", () => {
   const src = readFileSync(new URL("../../components/calls/CallView.tsx", import.meta.url), "utf8");
   const roots = new Set(Array.from(src.matchAll(/\bv\.([A-Za-z_]\w*)/g)).map((m) => m[1]));
   roots.delete("leadId"); // added by CallConsole, not the engine
+  roots.delete("previewHref"); // added by CallConsole
+  roots.delete("onPreview"); // added by CallConsole
   const states: Array<(e: CallEngine) => void> = [
     () => {},
     (e) => e.setState({ phase: "story" }),

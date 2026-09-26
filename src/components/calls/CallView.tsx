@@ -3,6 +3,7 @@
 // port/convert.py, then checked in. The prototype is the source of truth for
 // layout; `v` comes from CallEngine.renderVals() so markup and logic stay 1:1.
 import { Fragment } from "react";
+import PlaceField from "./PlaceField";
 
 export function cx(cls: string | null | undefined): string {
   return String(cls || "").split(/\s+/).filter(Boolean).map((t) => "cc-" + t).join(" ");
@@ -13,15 +14,15 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-app">
 <div className="cc-top">
 <div className="cc-nav">
-<div className="cc-nav-l"><a className="cc-navback" href="/calls" aria-label="All calls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a><button className="cc-mode" onClick={v.toggleModeMenu} aria-label="Change view" aria-expanded={!!v.modeMenuOpen}>{v.modeLabel}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div>
+<div className="cc-nav-l"><a className="cc-navback" href="/app" aria-label="All calls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a><button className="cc-mode" onClick={v.toggleModeMenu} aria-label="Change view" aria-expanded={!!v.modeMenuOpen}>{v.modeLabel}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div>
 <div className="cc-who"><span className="cc-caller">{v.callerName}</span><span className={cx(v.clockCls)}>{v.clockText}</span>{!!v.saveBad && <span className="cc-savebad" role="status">{v.saveError}</span>}</div>
 <div className="cc-nav-r"><button className="cc-circ cc-txt" onClick={v.openText} aria-label={v.textBadge ? `${v.textUnread} new texts from ${v.callerFirst}` : `Text ${v.callerFirst}`}>{!!v.textBadge && <span className="cc-badge">{v.textUnread}</span>}<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3C6.48 3 2 6.58 2 11c0 2.4 1.32 4.55 3.4 6.02L4.6 21l4.33-2.3c.99.2 2.02.3 3.07.3 5.52 0 10-3.58 10-8s-4.48-8-10-8z"></path></svg></button><button className="cc-circ cc-end" onClick={v.openDispo} aria-label="Call ended"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.99.99 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67a.99.99 0 0 1 0 1.41l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85a1 1 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"></path></svg></button></div>
 </div>
 {!!(v.modeMenuOpen) && (<>
 <div className="cc-menu" role="menu">
 {(v.modes || []).map((m: any, i1: number) => (<Fragment key={i1}><button className={cx(m.cls)} role="menuitemradio" aria-checked={!!m.on} onClick={m.go}><span>{m.label}</span>{!!(m.on) && (<><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></>)}</button></Fragment>))}
-<a className="cc-menu-b" role="menuitem" href={`/calls/${v.leadId}/print`}>Print or email the case</a>
-<a className="cc-menu-b" role="menuitem" href="/calls">All calls</a>
+<a className="cc-menu-b" role="menuitem" href={`/app/${v.leadId}/print`}>Print or email the case</a>
+<a className="cc-menu-b" role="menuitem" href="/app">All calls</a>
 </div>
 </>)}
 {!!(v.guided) && (<>
@@ -101,6 +102,14 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-say-line">Tell me what happened.</div>
 <div className="cc-cue">Let her run. Tap what you hear.</div>
 </div>
+{!!(v.hasLead) && (<>
+<div className="cc-lead" aria-label="What the marketer sent">
+<div className="cc-lead-h"><span>From the lead</span>{!!(v.leadFrom) && (<span className="cc-lead-from">{v.leadFrom}</span>)}</div>
+{!!(v.leadTags.length) && (<div className="cc-lead-tags">{(v.leadTags || []).map((t: any, i: number) => (<span key={i} className="cc-lead-tag">{t.label}</span>))}</div>)}
+{!!(v.leadSaid) && (<div className="cc-lead-said">{v.leadSaid}</div>)}
+{!!(v.leadTags.length) && (<div className="cc-lead-cue">What she told the marketer. Picked below where it fits; confirm each one with her.</div>)}
+</div>
+</>)}
 <div className="cc-cg">
 <div className="cc-cg-t"><b>Common ground</b> before the signature. One line about her car, her city, or her name, then back to work.</div>
 <div className="cc-chips cc-list"><button className="cc-chip cc-go" onClick={v.openCommon}>Common ground lines</button><button className="cc-chip cc-go" onClick={v.openRamble}>She won't stop talking</button></div>
@@ -127,7 +136,7 @@ export default function CallView({ v }: { v: any }) {
 </div>
 <div style={{display: "flex", flexDirection: "column", gap: "8px"}}>
 <div className={cx(v.labCls.city)} style={{marginBottom: "0"}}>WHERE</div>
-<input className="cc-field" type="text" placeholder="City, State" aria-label="City and state" value={v.f.city.value ?? ""} onChange={v.f.city.set} />
+<PlaceField kind="city" label="City and state" placeholder="City, State" value={v.f.city.value ?? ""} onChange={(t: string) => v.f.city.set({ target: { value: t } })} />
 </div>
 {!!(v.solHas) && (<><div className={cx(v.solCls)}>{v.solText}</div></>)}
 {!!(v.solClose) && (<><div className="cc-cue cc-red">Inside 90 days. Get a supervisor before you sign or decline.</div></>)}
@@ -278,6 +287,7 @@ export default function CallView({ v }: { v: any }) {
 {!!v.viaText && <input className="cc-field" style={{marginTop: "8px"}} type="tel" inputMode="tel" placeholder="Her cell" aria-label="Her cell number" value={v.f.phone.value ?? ""} onChange={v.f.phone.set} />}
 {!!v.viaEmail && <input className="cc-field" style={{marginTop: "8px"}} type="email" inputMode="email" autoComplete="off" placeholder="Her email" aria-label="Her email" value={v.f.email.value ?? ""} onChange={v.f.email.set} />}
 </div>
+{!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener" onClick={v.onPreview}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>Preview the agreement before you send it</a>}
 {!!v.hasSendError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.sendError}</div></div>}
 {!!(v.sendWarn) && (<><div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.sendWarnText}</div></div></>)}
 </>)}
@@ -331,7 +341,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.fsInfo) && (<>
 <div className="cc-card">
 <span className="cc-card-h">Her info</span>
-<div><div className="cc-lab">HOME ADDRESS</div><input className="cc-field" type="text" placeholder="Start typing, pick the match" aria-label="Home address" value={v.f.addr.value ?? ""} onChange={v.f.addr.set} /><div className="cc-cue">Paste works here.</div></div>
+<div><div className="cc-lab">HOME ADDRESS</div><PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} /><div className="cc-cue">Paste works here.</div></div>
 <div><div className="cc-lab">DRIVER'S LICENSE</div><input className="cc-field" type="text" aria-label="Driver's license number" value={v.f.dl.value ?? ""} onChange={v.f.dl.set} /></div>
 <div><div className="cc-lab">EMERGENCY CONTACT</div>
 <div style={{display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px"}}><input className="cc-field" type="text" placeholder="Name" aria-label="Emergency contact name" value={v.f.ecName.value ?? ""} onChange={v.f.ecName.set} /><input className="cc-field" type="tel" placeholder="Phone" aria-label="Emergency contact phone" value={v.f.ecPhone.value ?? ""} onChange={v.f.ecPhone.set} /></div>
@@ -404,8 +414,9 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.isAsk) && (<>
 <div className="cc-cue" style={{marginTop: "0"}}>Describe the wreck in plain words. CaseCure tells you what to ask next and whether it looks like it qualifies.</div>
 <textarea className="cc-area" rows={3} placeholder="What happened, in plain words" aria-label="Describe the wreck" value={v.askField.value ?? ""} onChange={v.askField.set}></textarea>
-<button className="cc-btn cc-full" onClick={v.doAsk}>Ask CaseCure</button>
-{!!(v.asked) && (<><div className="cc-cue">In the live console this goes to the CaseCure bot with the call so far.</div></>)}
+<button className="cc-btn cc-full" disabled={!!v.askBusy} onClick={v.doAsk}>{v.askBusy ? "Asking" : "Ask CaseCure"}</button>
+{!!(v.askAnswer) && (<><div className="cc-ask-a">{v.askAnswer}</div></>)}
+{!!(v.askError) && (<><div className="cc-cue cc-red">{v.askError}</div></>)}
 </>)}
 
 {!!(v.isRebTab) && (<>

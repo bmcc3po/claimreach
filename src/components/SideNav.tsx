@@ -19,8 +19,8 @@ type NavGroup = { id: string; label: string | null; items: NavItem[]; staffOnly?
 const STAFF_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
     { href: "/dashboard", icon: "home", label: "Home", maturity: "live" },
-    { href: "/calls", icon: "phone", label: "Calls (MVA)", maturity: "live" },
-    { href: "/console", icon: "phone", label: "Take a call", maturity: "live" },
+    { href: "/app", icon: "phone", label: "App (Mobile)", maturity: "live" },
+    { href: "/app?new=1", icon: "plus", label: "Take a call", maturity: "live" },
     { href: "/leads", icon: "files", label: "Leads", maturity: "live" },
     { href: "/signed", icon: "files", label: "Signed", maturity: "live" },
     { href: "/intake", icon: "plus", label: "Add lead", staffOnly: true, maturity: "live" },

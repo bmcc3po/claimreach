@@ -1,6 +1,7 @@
 export const runtime = "edge";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 import SignOut from "@/components/SignOut";
 import ThemeToggle from "@/components/ThemeToggle";
 import SideNav from "@/components/SideNav";
@@ -8,7 +9,7 @@ import NotifyBell from "@/components/NotifyBell";
 
 export default async function FirmLayout({ children }: { children: React.ReactNode }) {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
   if (!user) redirect("/firm-login");
 
   const { data: me } = await sb.from("app_users")

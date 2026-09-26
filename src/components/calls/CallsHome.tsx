@@ -4,11 +4,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { APP_KINDS } from "@/lib/mva-call/links";
 
 export interface HomeRow { id: string; name?: string | null; phone?: string | null; sub?: string | null; at?: string | null; due?: string | null; tag?: string | null; href?: string | null; newPhone?: string | null }
 export interface HomeData {
   me: { name: string; role: string };
-  campaigns: { id: string; name: string; firm: string }[];
+  campaigns: { id: string; name: string; firm: string; kind: string }[];
   open: HomeRow[]; callbacks: HomeRow[]; waiting: HomeRow[]; done: HomeRow[]; texts: HomeRow[];
   setup: { campaignId: string; name: string; have: number; need: number; docuseal: boolean }[];
   notes: string[];
@@ -50,6 +51,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
   const [searchErr, setSearchErr] = useState("");
   const [sheet, setSheet] = useState(false);
   const [camp, setCamp] = useState<string>("");
+  const [kind, setKind] = useState<string>(() => data.campaigns[0]?.kind || APP_KINDS[0].key);
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,9 +60,18 @@ export default function CallsHome({ data }: { data: HomeData }) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
+  // "Take a call" in the side menu lands here with ?new=1 (and ?phone= from a text).
   useEffect(() => {
-    try { const last = localStorage.getItem("cr-call-campaign"); if (last && data.campaigns.some((c) => c.id === last)) setCamp(last); else if (data.campaigns[0]) setCamp(data.campaigns[0].id); }
-    catch { if (data.campaigns[0]) setCamp(data.campaigns[0].id); }
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get("phone")) setPhone(p.get("phone") || "");
+      if (p.get("new") === "1" || p.get("phone")) { setSheet(true); window.history.replaceState(null, "", "/app"); }
+    } catch { /* old browser: they tap New call */ }
+  }, []);
+  useEffect(() => {
+    const use = (id: string) => { const c = data.campaigns.find((x) => x.id === id); if (c) { setCamp(c.id); setKind(c.kind); } };
+    try { const last = localStorage.getItem("cr-call-campaign"); if (last && data.campaigns.some((c) => c.id === last)) use(last); else if (data.campaigns[0]) use(data.campaigns[0].id); }
+    catch { if (data.campaigns[0]) use(data.campaigns[0].id); }
   }, [data.campaigns]);
 
   // Search any file, open or done.
@@ -91,7 +102,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
       const d = await r.json();
       if (!r.ok || d.error) throw new Error(d.error || "Could not start the call.");
       try { localStorage.setItem("cr-call-campaign", camp); } catch { /* private mode */ }
-      router.push(`/calls/${d.lead_id}`);
+      router.push(`/app/${d.lead_id}`);
     } catch (e: any) { setErr(e.message); setBusy(false); }
   }
 
@@ -106,13 +117,19 @@ export default function CallsHome({ data }: { data: HomeData }) {
     } catch (e: any) { setSetupMsg((m) => ({ ...m, [campaignId]: e.message })); }
   }
 
+  const kinds = APP_KINDS.filter((k) => data.campaigns.some((c) => c.kind === k.key));
+  const lines = data.campaigns.filter((c) => c.kind === kind);
+  function pickKind(k: string) {
+    setKind(k);
+    if (!data.campaigns.some((c) => c.id === camp && c.kind === k)) setCamp(data.campaigns.find((c) => c.kind === k)?.id || "");
+  }
   const first = (data.me.name || "").split(" ")[0];
   return (
     <div className="cc-app">
       <div className="cc-top">
         <div className="cc-home-h">
           <div>
-            <div className="cc-home-hi">{first ? `Hi, ${first}` : "Calls"}</div>
+            <div className="cc-home-hi">{first ? `Hi, ${first}` : "App"}</div>
             <div className="cc-home-sub">{dueNow ? `${dueNow} call back${dueNow === 1 ? "" : "s"} due now` : `${data.open.length} open`}</div>
           </div>
           {data.me.role === "agent"
@@ -150,7 +167,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
             {results.length > 0 && (
               <div className="cc-grp">
                 {results.map((r) => (
-                  <a key={r.id} className="cc-lrow" href={`/calls/${r.id}`}>
+                  <a key={r.id} className="cc-lrow" href={`/app/${r.id}`}>
                     <span className="cc-lrow-main"><span className="cc-lrow-n">{r.claimant_name || "No name yet"}</span><span className="cc-lrow-s">{[fmtPhone(r.phone), r.lead_no, r.campaign].filter(Boolean).join("  ")}</span></span>
                     <span className="cc-lrow-t">{r.archived_at ? "Archived" : statusText(r.status)}</span>
                   </a>
@@ -167,7 +184,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
             {rows.map((r, i) => {
               const late = tab === "callbacks" && r.due && Date.parse(r.due) <= now;
               return (
-                <a key={r.id + i} className="cc-lrow" href={r.href || (r.id ? `/calls/${r.id}` : "#")}
+                <a key={r.id + i} className="cc-lrow" href={r.href || (r.id ? `/app/${r.id}` : "#")}
                   onClick={(ev) => { if (r.newPhone) { ev.preventDefault(); setPhone(r.newPhone); setName(""); setErr(""); setSheet(true); } }}>
                   <span className="cc-lrow-main">
                     <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}</span>
@@ -192,12 +209,21 @@ export default function CallsHome({ data }: { data: HomeData }) {
             <div className="cc-grab"></div>
             <div className="cc-sheet-h"><span className="cc-card-h">New call</span><button className="cc-x" onClick={() => setSheet(false)}>Close</button></div>
             <div className="cc-sheet-b" style={{ gap: 10, paddingBottom: 28 }}>
-              {data.campaigns.length > 1 && (
+              <div className="cc-sec-h" style={{ paddingTop: 0 }}>What kind of call?</div>
+              <div className="cc-grp">
+                {(kinds.length ? kinds : APP_KINDS).map((k, i, all) => (
+                  <button key={k.key} className={`cc-drow${kind === k.key ? " cc-on" : ""}${i === all.length - 1 ? " cc-end" : ""}`} onClick={() => pickKind(k.key)}>
+                    <span>{k.label}</span>
+                    {kind === k.key && <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg>}
+                  </button>
+                ))}
+              </div>
+              {lines.length > 1 && (
                 <>
-                  <div className="cc-sec-h" style={{ paddingTop: 0 }}>Line</div>
+                  <div className="cc-sec-h">Line</div>
                   <div className="cc-grp">
-                    {data.campaigns.map((c, i) => (
-                      <button key={c.id} className={`cc-drow${camp === c.id ? " cc-on" : ""}${i === data.campaigns.length - 1 ? " cc-end" : ""}`} onClick={() => setCamp(c.id)}>
+                    {lines.map((c, i) => (
+                      <button key={c.id} className={`cc-drow${camp === c.id ? " cc-on" : ""}${i === lines.length - 1 ? " cc-end" : ""}`} onClick={() => setCamp(c.id)}>
                         <span>{c.name}</span>
                         {camp === c.id && <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg>}
                       </button>

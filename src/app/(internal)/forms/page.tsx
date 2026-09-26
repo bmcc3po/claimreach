@@ -1,10 +1,11 @@
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
+import { authUser } from "@/lib/auth-user";
 
 export default async function FormsPage() {
   const sb = await supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
+  const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role").eq("id", user!.id).maybeSingle();
   if (!me || !["owner", "admin"].includes(me.role)) {
     return <div className="card" style={{ padding: 20 }}><h2>Forms</h2><p className="muted">Only admins can build intake forms.</p></div>;

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveFirmHome } from "@/lib/firm-home";
 import { bouncePath, isSafeFirmNext } from "@/lib/m6";
+import { safeAppNext } from "@/lib/mva-call/links";
+import { isInternalRole } from "@/lib/permissions";
 
 function isAuthPage(path: string) {
   return path === "/login" || path === "/firm-login" || path.startsWith("/auth");
@@ -63,6 +65,10 @@ export async function middleware(req: NextRequest) {
       const keep = isSafeFirmNext(path);
       if (keep) url.searchParams.set("next", keep);
     }
+    // A lead link from a text (/app/lr/<id>, /app/<id>) comes back to that
+    // lead after sign-in instead of dropping them on the home screen.
+    const appNext = safeAppNext(path + (req.nextUrl.search || ""));
+    if (appNext) url.searchParams.set("next", appNext);
     return NextResponse.redirect(url);
   }
 
@@ -76,8 +82,9 @@ export async function middleware(req: NextRequest) {
         email: user.email,
         requestedNext: onLogin ? req.nextUrl.searchParams.get("next") : null,
       });
+      const appNext = onLogin && isInternalRole(me?.role) ? safeAppNext(req.nextUrl.searchParams.get("next")) : null;
       const dest = onLogin
-        ? home
+        ? (appNext || home)
         : bouncePath(path, {
             signedIn: true,
             role: me?.role ?? null,
