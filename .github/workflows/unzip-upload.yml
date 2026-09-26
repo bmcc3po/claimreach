@@ -1,0 +1,32 @@
+name: Unzip upload
+on:
+  push:
+    branches-ignore: [main]
+    paths: ['*.zip', 'deploy/*.zip']
+permissions:
+  contents: write
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack the zip into the repo
+        run: |
+          set -e
+          mkdir -p /tmp/up
+          for z in *.zip deploy/*.zip; do
+            [ -f "$z" ] || continue
+            unzip -o -q "$z" -d /tmp/up
+            git rm -q "$z"
+          done
+          src=/tmp/up; [ -d /tmp/up/claimreach ] && src=/tmp/up/claimreach
+          if [ -f "$src/DELETE_THESE.txt" ]; then
+            while IFS= read -r f; do [ -n "$f" ] && git rm -rq --ignore-unmatch -- "$f"; done < "$src/DELETE_THESE.txt"
+            rm "$src/DELETE_THESE.txt"
+          fi
+          cp -a "$src/." .
+          git config user.name "unzip-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Unpack uploaded zip"
+          git push
