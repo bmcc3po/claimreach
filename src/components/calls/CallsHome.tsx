@@ -3,17 +3,18 @@
 // thumb zone. Tapping any row opens that file's call screen.
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
-export interface HomeRow { id: string; name?: string | null; phone?: string | null; sub?: string | null; at?: string | null; due?: string | null; tag?: string | null }
+export interface HomeRow { id: string; name?: string | null; phone?: string | null; sub?: string | null; at?: string | null; due?: string | null; tag?: string | null; href?: string | null; newPhone?: string | null }
 export interface HomeData {
   me: { name: string; role: string };
   campaigns: { id: string; name: string; firm: string }[];
-  open: HomeRow[]; callbacks: HomeRow[]; waiting: HomeRow[]; done: HomeRow[];
+  open: HomeRow[]; callbacks: HomeRow[]; waiting: HomeRow[]; done: HomeRow[]; texts: HomeRow[];
   setup: { campaignId: string; name: string; have: number; need: number; docuseal: boolean }[];
   notes: string[];
 }
 
-type Tab = "open" | "callbacks" | "waiting" | "done";
+type Tab = "open" | "callbacks" | "texts" | "waiting" | "done";
 
 function fmtPhone(raw?: string | null) {
   const d = String(raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
@@ -77,8 +78,8 @@ export default function CallsHome({ data }: { data: HomeData }) {
     return () => clearTimeout(t);
   }, [q]);
 
-  const lists: Record<Tab, HomeRow[]> = { open: data.open, callbacks: data.callbacks, waiting: data.waiting, done: data.done };
-  const tabs: [Tab, string][] = [["open", "Open"], ["callbacks", "Call backs"], ["waiting", "Signing"], ["done", "Done"]];
+  const lists: Record<Tab, HomeRow[]> = { open: data.open, callbacks: data.callbacks, texts: data.texts, waiting: data.waiting, done: data.done };
+  const tabs: [Tab, string][] = [["open", "Open"], ["callbacks", "Call backs"], ["texts", "Texts"], ["waiting", "Signing"], ["done", "Done"]];
   const rows = lists[tab];
   const dueNow = useMemo(() => data.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.callbacks, now]);
 
@@ -114,7 +115,9 @@ export default function CallsHome({ data }: { data: HomeData }) {
             <div className="cc-home-hi">{first ? `Hi, ${first}` : "Calls"}</div>
             <div className="cc-home-sub">{dueNow ? `${dueNow} call back${dueNow === 1 ? "" : "s"} due now` : `${data.open.length} open`}</div>
           </div>
-          <a className="cc-home-link" href="/dashboard">Full app</a>
+          {data.me.role === "agent"
+            ? <button className="cc-home-link" style={{ border: "none", background: "none", fontFamily: "inherit", cursor: "pointer" }} onClick={async () => { try { await supabaseBrowser().auth.signOut(); } finally { window.location.href = "/login"; } }}>Sign out</button>
+            : <a className="cc-home-link" href="/dashboard">Full app</a>}
         </div>
         <input className="cc-field cc-search" type="search" inputMode="search" placeholder="Search name, phone or lead number" aria-label="Search files" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
@@ -157,20 +160,21 @@ export default function CallsHome({ data }: { data: HomeData }) {
           </>
         ) : rows.length === 0 ? (
           <div className="cc-cue" style={{ textAlign: "center", marginTop: 28 }}>
-            {tab === "open" ? "No open files. New calls show up here." : tab === "callbacks" ? "No call backs scheduled." : tab === "waiting" ? "Nothing out for signature." : "Nothing finished in the last two days."}
+            {tab === "open" ? "No open files. New calls show up here." : tab === "callbacks" ? "No call backs scheduled." : tab === "texts" ? "No texts in the last three days." : tab === "waiting" ? "Nothing out for signature." : "Nothing finished in the last two days."}
           </div>
         ) : (
           <div className="cc-grp">
             {rows.map((r, i) => {
               const late = tab === "callbacks" && r.due && Date.parse(r.due) <= now;
               return (
-                <a key={r.id + i} className="cc-lrow" href={`/calls/${r.id}`}>
+                <a key={r.id + i} className="cc-lrow" href={r.href || (r.id ? `/calls/${r.id}` : "#")}
+                  onClick={(ev) => { if (r.newPhone) { ev.preventDefault(); setPhone(r.newPhone); setName(""); setErr(""); setSheet(true); } }}>
                   <span className="cc-lrow-main">
                     <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}</span>
                     <span className="cc-lrow-s">{[r.name ? fmtPhone(r.phone) : "", r.sub].filter(Boolean).join("  ")}</span>
                   </span>
                   <span className={`cc-lrow-t${late ? " cc-late" : ""}`}>
-                    {tab === "callbacks" ? (late ? `Due ${ago(r.due, now)}` : clock(r.due)) : <><b>{r.tag}</b><br />{ago(r.at, now)}</>}
+                    {tab === "callbacks" ? (late ? `Due ${ago(r.due, now)}` : clock(r.due)) : tab === "texts" ? ago(r.at, now) : <><b>{r.tag}</b><br />{ago(r.at, now)}</>}
                   </span>
                 </a>
               );

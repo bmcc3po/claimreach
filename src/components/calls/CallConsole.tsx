@@ -13,6 +13,8 @@ export interface ConsoleInit {
   leadId: string;
   callId: string | null;
   startedAt: number;
+  /** Open the text sheet on arrival (from a text on the home screen). */
+  openText?: boolean;
   props: Omit<CallProps, "startedAt" | "now">;
 }
 
@@ -37,6 +39,8 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   const lastSaved = useRef("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saving = useRef(false);
+  // Inbound texts already seen. Anything newer lights the badge.
+  const seenInbound = useRef<number | null>(null);
 
   if (!eng.current) {
     const e = (): CallEngine => eng.current!;
@@ -130,7 +134,10 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
       const cur = engine.state.text;
       const serverBodies = new Set((d.texts || []).filter((m: any) => m.from === "us").map((m: any) => m.body));
       const pending = cur.thread.filter((m: any) => (m.status === "Sending" || m.status === "Sent") && !serverBodies.has(m.body));
-      engine.setState({ text: { ...cur, thread: (d.texts || []).concat(pending) }, calls: d.calls || [] });
+      const inbound = (d.texts || []).filter((m: any) => m.from === "them").length;
+      if (seenInbound.current === null || cur.open) seenInbound.current = inbound;
+      const unread = Math.max(0, inbound - (seenInbound.current ?? inbound));
+      engine.setState({ text: { ...cur, thread: (d.texts || []).concat(pending) }, calls: d.calls || [], textUnread: cur.open ? 0 : unread });
     } catch { /* the sheet keeps what it had; the next poll tries again */ }
   }
 
@@ -213,7 +220,14 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   }, [s.send.status, paxKey]);
 
   // Texts: load once, then every 5 seconds while the sheet is open.
-  useEffect(() => { void loadComms(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    if (init.openText) engine.setState({ text: { ...engine.state.text, open: true } });
+    void loadComms();
+    // While the sheet is closed, check every 15 seconds so a text from her lights the badge.
+    const t = setInterval(() => { if (!engine.state.text.open) void loadComms(); }, 15000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (!s.text.open) return;
     void loadComms();
