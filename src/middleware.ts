@@ -16,6 +16,9 @@ function isPublicPath(path: string) {
   if (isAuthPage(path)) return true;
   if (path.startsWith("/sign")) return true; // claimant e-sign stays public
   if (path.startsWith("/tools")) return true; // LawRuler property tool; page fail-closes on ?k=
+  // Blank retainer PDFs DocuSeal fetches once during e-sign setup. Unguessable
+  // folder, no client data. See src/lib/esign-packets.
+  if (path.startsWith("/esign-src/") && path.endsWith(".pdf")) return true;
   if (isPublicAsset(path)) return true;
   return false;
 }

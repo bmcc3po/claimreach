@@ -1,4 +1,5 @@
 export const runtime = "edge";
+import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import BoardCard from "@/components/BoardCard";
 import DailyRail from "@/components/DailyRail";
@@ -9,6 +10,8 @@ export default async function Dashboard() {
   const { data: { user } } = await sb.auth.getUser();
   const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user!.id).maybeSingle();
   const role = me?.role ?? "agent";
+  // Agents work from the call console. Everyone else keeps this dashboard.
+  if (role === "agent") redirect("/calls");
 
   // SLA alerts (dragging files) — only for internal roles.
   const alerts = role === "firm" ? [] : await computeAlerts();

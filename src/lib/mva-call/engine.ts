@@ -1,0 +1,1007 @@
+// ============================================================================
+// MVA call console engine. Ported from the approved Design-canvas prototype
+// (ClaimReach MVA Call Console) so the logic Brett signed off on runs as-is:
+// the six lights, branching, completeness, dispo rules and script copy.
+//
+// One definition: every screen of the call (Guided, Freestyle, Q&A) reads
+// renderVals(). The React wrapper (CallConsole) owns the network; this file
+// never fetches. Anything that used to be simulated goes through `api`.
+// ============================================================================
+// Type checking is off for this file on purpose: it is a line-for-line port of
+// plain JS that was tested in the prototype harness, and engine.test.ts drives
+// every flow. The boundary (CallProps, CallApi, renderVals) is typed where the
+// React wrapper and the API routes meet it.
+// @ts-nocheck
+/* eslint-disable */
+import { SOL, stateCodeOf } from './state';
+export { SOL };
+export const REBS: any[] = [
+  { id: 'report', phase: 'open', group: 'Opening', title: "I was just checking on my police report.", text: "Got it, and that's exactly why we have you. When that report gets requested it comes over to us too. We're the intake center for {FIRM}, and I was reaching out to see what kind of pain you've been dealing with since the accident. Tell me what happened out there." },
+  { id: 'info', phase: 'open', group: 'Opening', title: "How did you get my information?", text: "You filled out an accident form, and that comes straight to us here at the firm's intake center. That's all it is. Tell me what happened." },
+  { id: 'atwork', phase: 'open', group: 'Opening', title: "I'm at work right now.", text: "Totally understand, I'll be quick, this is a couple of minutes and then I'm out of your hair. Walk me through what happened." },
+  { id: 'soreness', phase: 'body', group: 'Minimizing', title: "It's just soreness. It was low impact. I'm fine.", note: "The single most important rebuttal on this campaign.", text: "I hear you, and I'm glad it wasn't worse. Here's the thing though, most of the people we represent are exactly where you are. It's soreness in the neck and back. It's not broken bones and hospital stays. That's the normal file here, not the exception, and soreness after a wreck has a way of showing up worse on day four than it did on day one. So tell me where it's sitting right now, is it the neck, the back, or both?" },
+  { id: 'doctor', phase: 'body', group: 'Medical', title: "I haven't been to a doctor.", text: "That's actually pretty common, adrenaline covers a lot for the first few days. We can get you in with somebody local just to get looked at, nothing out of your pocket, and if everything's clean then it's clean and you've got it in writing. What's been bothering you the most since it happened?" },
+  { id: 'chiro', phase: 'body', group: 'Medical', title: "I'm not sure I can get to a chiropractor.", text: "Okay, that's fair, let's not pretend your schedule isn't real. The coordinator works around you, evenings and near your work if that's easier, and it's usually one visit to get looked at. If she finds something close to you, are you able to go?" },
+  { id: 'offered', phase: 'body', group: 'Insurance', title: "Their insurance already called me. They offered me something.", text: "I'm really glad you didn't take it. That first offer comes fast on purpose, before anybody knows what's actually wrong with you. Once we're on it they talk to us instead of you and you're done taking those calls. Did you give them a statement, or just talk to them?" },
+  { id: 'nolicense', phase: 'story', group: 'Insurance', title: "The other driver had no license. I don't think they had insurance.", text: "I'm glad you told me, and I'm not going to pretend that's nothing. It's also very much the kind of thing we deal with, and it's honestly the best reason to have somebody digging into it instead of you making phone calls trying to figure out who this person is. That's ours now, not yours. What insurance company came up on the paperwork, if any?" },
+  { id: 'nolawyer', phase: 'story', group: 'Minimizing', title: "I don't need a lawyer for this.", text: "Fair enough, and nobody's telling you that you have to have one. What I'd say is the other side already has one, and their adjuster's job is to close this cheap and fast. Ours is to make sure nobody hands you a bill for a wreck you didn't cause. Were you the one driving?" },
+  { id: 'cost', phase: 'money', group: 'Money', title: "What's this going to cost me?", text: "Nothing out of your pocket, not today and not later. We only get paid at the end out of the settlement, and the exact terms are laid out right in the agreement so you can read it yourself. Are you better by text or email?" },
+  { id: 'later', phase: 'send', group: 'Stalls', title: "Just send me the information and I'll look at it later.", note: "This is the call killer. Do not accept it.", text: "I can absolutely send it. The only reason I'd rather stay on with you for two minutes is that it's two signatures and I can answer anything that looks funny while you've got me. Otherwise it sits in your texts and that report we're trying to pull gets a week older. Go ahead and put me on speaker, I'll be quick." },
+  { id: 'think', phase: 'send', group: 'Stalls', title: "I want to think about it. / Let me talk to my husband.", text: "Of course, and you should. All I'm doing right now is getting it in front of you so you have it, nobody's signing anything they haven't read. Put him on speaker with us if he's there. Is he around?" },
+  { id: 'sue', phase: 'send', group: 'Minimizing', title: "I don't want to sue anybody.", text: "Nobody's suing anybody today. This goes to an insurance company, not to that woman's living room. It's her insurance carrier's job to cover exactly this, it's what she pays them for. What I'm doing is getting your file open so those bills don't land on you. What's your date of birth?" },
+  { id: 'legit', phase: 'any', group: 'Trust', title: "How do I know you're legit?", text: "Good instinct, you should ask that. {FIRM}, you can look the firm up while we're on the phone, I'll wait. The agreement I'm sending comes from the firm's name, not mine. Want me to send it so you can see it?" },
+  { id: 'lawyerq', phase: 'any', group: 'Trust', title: "Are you a lawyer?", text: "No ma'am, I'm the intake center for the firm. I get your file open and get you to your attorney. Anything legal, that's them, and you'll have them on the phone this week. Now tell me about that pain." },
+  { id: 'terrible', phase: 'body', group: 'Already has a lawyer', title: "I've got a lawyer already but they've been terrible.", note: "Only after she raises it. Good case only. A fender bender with low limits gets charged back, so let it go.", text: "That's frustrating and I'm sorry. I'm not going to tell you what to do about your attorney, that's between you and them. What I can do is have one of ours call you so you can ask them straight what your options look like. Nothing happens off that call except you get answers. Do you want me to set that up?" },
+  { id: 'worth', phase: 'money', group: 'Money', title: "What is my case worth?", text: "I get why that is the first thing on your mind. Nobody can put a number on it this early, and anyone who does is guessing. It comes down to your medical records and how your treatment goes, and that has not happened yet. That is actually why I am asking about the treatment. When were you last seen?" },
+  { id: 'lose', phase: 'money', group: 'Money', title: "Do I pay anything if we lose?", note: "Answer this one straight. Ducking it makes you sound like you are hiding something.", text: "No, and I am glad you asked. No recovery, no fee. That is what contingency means and it is in the agreement in writing. Are you on your cell right now, or at a computer?" },
+  { id: 'hidden', phase: 'money', group: 'Money', title: "Are there hidden costs?", text: "Fair thing to ask. It is all in one document and you will have it in front of you in about a minute. Are you on your cell or at a computer?" },
+  { id: 'scam', phase: 'open', group: 'Trust', title: "How do I know this is not a scam?", text: "Completely fair, and I would rather you ask than not. I am not asking you for money or a card number. You are going to get a document from the firm with their information on it, and you can look them up before you sign a thing. What is the best email for you?" },
+  { id: 'neverheard', phase: 'open', group: 'Trust', title: "I have never heard of this firm.", text: "That is alright. Most people have not heard of their doctor before they needed one. What matters is whether they handle cases like yours, and they do. So where are you hurting?" },
+  { id: 'shop', phase: 'send', group: 'Stalls', title: "I want to shop around.", text: "You should feel good about who you go with. The only thing I would say is the other side's insurance company is already working on this. Every day without someone on your side is a head start for them. What would you need to hear to feel good about moving today?" },
+  { id: 'tomorrow', phase: 'send', group: 'Stalls', title: "Can you call me back tomorrow?", note: "Never end a call without a time. An unscheduled callback is a lost file.", text: "I can do that. Most of what is left I already have in front of me. Is first thing in the morning better for you, or right after work?" },
+  { id: 'busy', phase: 'open', group: 'Stalls', title: "I am busy right now.", text: "No problem, I will be quick. Most of this I already have. Were you the driver or the passenger?" },
+  { id: 'fender', phase: 'body', group: 'Minimizing', title: "It was just a fender bender.", text: "A lot of the worst injuries come out of low speed wrecks. What matters is what is going on with you, not what the bumper looks like. Where are you having pain?" },
+  { id: 'court', phase: 'send', group: 'Minimizing', title: "I do not want to go to court.", text: "Understandable. Most of these never see a courtroom, they get worked out with the insurance company. I cannot tell you how yours goes and I will not guess. Have you been seen by a doctor yet?" },
+  { id: 'nicedriver', phase: 'body', group: 'Minimizing', title: "The other driver was nice, I do not want to cause him trouble.", text: "That says something good about him. It does not touch him. His insurance handles it, and that is what he has been paying them for. Did he have insurance, do you know?" },
+  { id: 'nohealth', phase: 'body', group: 'Medical', title: "I have no health insurance so I cannot go.", note: "Do not promise treatment, funding, a letter of protection or a specific provider.", text: "That is the most common reason people put it off. It is also something the firm deals with constantly, and it is worth asking them about once you are signed up. If it turned out not to be a barrier, would you be willing to get looked at?" },
+  { id: 'notime', phase: 'body', group: 'Medical', title: "I do not have time.", text: "I understand, and I will be straight with you. If nobody documents this there is nothing to show for it later. Even one visit puts it on paper. Could you get in this week?" },
+  { id: 'feelfine', phase: 'body', group: 'Medical', title: "I feel fine.", text: "Good. Get looked at anyway. Two days from now is when most people stop feeling fine. Would you be willing to go?" },
+  { id: 'stopped', phase: 'body', group: 'Medical', title: "I already stopped treating.", note: "This is the gap problem happening in front of you. The reask is the whole rebuttal.", text: "Okay, that happens. Things come up and people fall off. If a doctor told you to come back in, would you go?" },
+  { id: 'hatedocs', phase: 'body', group: 'Medical', title: "I hate doctors.", text: "You are not alone. One visit, and if everything is clear you are done. Would you be willing to do that much?" },
+  { id: 'adjnice', phase: 'body', group: 'Insurance', title: "Their adjuster already called and seemed nice.", text: "They usually are. That is the job. The adjuster works for the insurance company, not for you. Whether you hire anybody is entirely your call. Have you signed or given them anything yet?" },
+  { id: 'toldno', phase: 'body', group: 'Insurance', title: "They told me I do not need a lawyer.", text: "You will hear that. The adjuster works for the insurance company. Whether you hire anybody is your decision to make, not theirs. Where are you having pain?" },
+  { id: 'statement', phase: 'body', group: 'Insurance', title: "They want a recorded statement.", note: "Do not tell them to give one and do not tell them to refuse. That is legal advice.", text: "Let me make a note of that for the attorney. That is something they will want to talk with you about directly. Have you given them one yet?" },
+  { id: 'owninsurance', phase: 'body', group: 'Insurance', title: "My own insurance is handling it.", text: "They are handling your car. That is a separate claim from the injury, and your own carrier is not representing you against the other driver. Do you carry uninsured motorist on your policy, do you know?" },
+  { id: 'rates', phase: 'body', group: 'Insurance', title: "Will my rates go up?", text: "Fair thing to worry about. You are claiming on the other driver's policy, not your own. Anything that touches your coverage is something the firm can walk you through. Do you know if you carry uninsured motorist?" },
+  { id: 'nopoint', phase: 'body', group: 'Insurance', title: "The other guy had no insurance so there is no point.", text: "Not necessarily. A lot of policies carry uninsured motorist coverage that steps in for exactly this situation. Do you know if you have that on yours?" },
+  { id: 'howlong', phase: 'send', group: 'Process', title: "How long is this going to take?", text: "Depends on your treatment, and I will not guess at it. Nobody can value it until you are done healing. What I can tell you is it starts moving the day you are signed up. Where are you being treated now?" },
+  { id: 'whatdo', phase: 'send', group: 'Process', title: "What do I have to do?", text: "Not much, honestly. Keep your appointments and send us anything that comes in the mail. That is genuinely it. Are you on your cell or at a computer?" },
+  { id: 'paperwork', phase: 'send', group: 'Process', title: "I do not want a bunch of paperwork.", text: "There is not much. It is a short agreement and it takes about two minutes on your phone. Are you on your cell right now?" },
+  { id: 'noesign', phase: 'send', group: 'Signing', title: "I do not sign things electronically.", text: "I understand that. It is the same as signing on paper and you get your own copy the second you are done. I will stay on the line with you the whole way through. Are you on your cell or at a computer?" },
+  { id: 'readfirst', phase: 'send', group: 'Signing', title: "I want to read it first.", text: "Please do. I have read that contract more times than the hot and cold on my own faucet. Take your time, I will wait. Anything on there that is not clear, I will get you an answer. Do you have it in front of you yet?" },
+  { id: 'ownlawyer', phase: 'send', group: 'Signing', title: "I want my own lawyer to look at it.", text: "You are welcome to have anyone look at it. It is a short agreement and there is nothing buried in it. Is there a part you want me to walk you through?" },
+  { id: 'phone', phase: 'send', group: 'Signing', title: "My phone is acting up.", text: "No problem, I can send it another way. Are you near a computer?" },
+  { id: 'otherfirm', phase: 'body', group: 'Already has a lawyer', title: "I already talked to another firm.", note: "A conversation is not representation. Signed paperwork is.", text: "Okay. Did you sign anything with them, or was it just a conversation?" },
+  { id: 'cousin', phase: 'body', group: 'Already has a lawyer', title: "My cousin is a lawyer.", text: "Good to have. Does he handle car accident cases himself, or would he be referring it out?" }
+];
+export const REB_GROUPS: any[] = ['Opening', 'Trust', 'Money', 'Stalls', 'Minimizing', 'Medical', 'Insurance', 'Process', 'Signing', 'Already has a lawyer'];
+
+// Common ground and rambling lines, from the CarCure training page. {NAME} fills with the caller.
+export const LINES: any[] = [
+  { head: 'Common ground', note: 'It has to be about her. One line, a beat, then back to work. Before the signature only. Never about the accident, never during the injury questions.', items: [
+    ['Her car, reliable', 'Those things run forever. My buddy put two hundred thousand on his and it still would not quit.'],
+    ['Older truck', 'That body style is the good one. They do not build them like that now.'],
+    ['A junker', 'Hey, if you saw some of the junkers I have driven you would feel a lot better about yours.'],
+    ['Something nice', 'Holy smokes, good for you. What a beautiful machine.'],
+    ['Minivan with kid seats', 'The family hauler. How many do you have back there?'],
+    ['A city you do not know', 'I have never been out there. Is it as nice as people say?'],
+    ['Somewhere remote', 'I had to look that one up, I will be honest with you. How long have you been out there?'],
+    ['A team town', 'Rough year for your guys, huh?'],
+    ['A name you like', '{NAME}. That is a good name, you do not hear it much anymore.']
+  ] },
+  { head: 'She will not stop talking', note: 'Turn it at sixty seconds. Say her name, go up in energy, come in on a breath, double the word. Never anyway, never okay so. Always promise to come back to it.', items: [
+    ['Cut in', 'Ope, hang on, hang on, {NAME}, before I forget.'],
+    ['Cut in', '{NAME}, real quick, real quick, I gotta get something down before I lose it.'],
+    ['Cut in', 'Hey, hold that thought, hold that thought, I do not wanna lose that one.'],
+    ['Cut in', 'Ooh, wait, let me ask you this real quick before I forget.'],
+    ['Turn it back', 'Hold that thought for me, I do not wanna lose it. Two quick things and it is all yours.'],
+    ['Turn it back', 'That is exactly the kind of detail the attorney is gonna want. Let me get you locked in first, then we will get all of it down properly.'],
+    ['Turn it back', 'I appreciate that, and we will get every bit of it down. Right now I just need the outline.'],
+    ['Turn it back', 'Man, I could do this all day. Let me knock out a couple things first so I am not keeping you on here forever.']
+  ] },
+  { head: 'Anything legal', note: 'Then reask. Always.', items: [
+    ['Say', 'That is exactly the kind of thing the attorney will go over with you. What I can do is get you in front of them today.']
+  ] }
+];
+
+// Dispositions. One per call, and every reason is a button so reports can count them.
+export const DISPOS: any[] = [
+  { code: 'signed', label: 'Signed' },
+  { code: 'esign', label: 'E-sign sent, not signed', whyHead: "Why she didn't sign", when: true, whenHead: 'Follow up',
+    why: ['Tech issue', 'Phone died or dropped', 'Spouse or family', 'Wants to read it (trust)', 'Busy, will sign later', 'Hung up', 'Talking to another firm', 'Other'] },
+  { code: 'dq', label: 'Disqualified', whyHead: 'Why',
+    why: ['At fault', 'No injury', "Won't treat", '30+ day gap', 'Past the deadline', 'No coverage anywhere', 'Already paid for injury', 'Has an attorney', 'Fender bender, low limits', 'Not in the crash', 'Other'] },
+  { code: 'callback', label: 'Call back', whyHead: 'Why', when: true, whenHead: 'When', needWhen: true,
+    why: ['At work', 'Driving', 'Wants spouse on', 'Bad connection', 'Needs her papers', 'Other'] },
+  { code: 'ni', label: 'Not interested', whyHead: 'Why',
+    why: ["Doesn't want a lawyer", 'Handling it herself', 'Not hurt enough', 'Hung up', 'Other'] },
+  { code: 'dnc', label: 'Requested DNC' }
+];
+export const WHEN: any[] = ['In an hour', 'Tonight', 'Tomorrow morning', 'Tomorrow evening', 'Pick a time'];
+
+
+export const BODYQ: any[] = [
+  { key: 'pain', label: 'Pain', multi: true, nextLabel: "That's where it hurts, next", line: "Tell me about the pain you're dealing with from this.", cue: 'Not "were you injured." Not "are you hurt."', opts: ['Neck', 'Back', 'Head', 'Shoulder', 'Arms or hands', 'Knees or legs', 'Chest', "Says she's fine"] },
+  { key: 'seen', label: 'Seen by', multi: true, only: 'Not yet', nextLabel: "That's everywhere she's been, next", line: "Have you been seen by anybody yet, ER, urgent care, your own doctor?", cue: 'Tap every place she went. Not yet goes straight to willing.', opts: ['ER', 'Urgent care', 'Own doctor', 'Chiropractor', 'Not yet'] },
+  { key: 'last', label: 'Last seen', line: "When were you last seen for it?", cue: 'Shows because the wreck was 30+ days ago. Over 30 days since her last visit is a gap. Flag it, do not close it.', opts: ['This week', 'Within 30 days', 'Over 30 days ago'] },
+  { key: 'willing', label: 'Will treat', line: "If we get you in with somebody local this week, are you able to go?", cue: 'The single best predictor of whether the file survives.', opts: ['Yes', 'Maybe', 'No'] },
+  { key: 'work', label: 'Missed work', line: "Have you had to miss any work over this?", cue: '', opts: ['Yes', 'No', 'Not working'] },
+  { key: 'exchanged', label: 'Exchanged info', line: "Did you and the other driver exchange information out there?", cue: 'Never ask "did the other driver have insurance."', opts: ['Yes', 'No', 'Police handled it', 'Hit and run'] },
+  { key: 'coverage', label: 'Her coverage', line: "And do you carry full coverage on your own car, or just liability?", cue: '', opts: ['Full coverage', 'Just liability', 'No insurance', 'Not sure'] },
+  { key: 'uim', label: 'UM/UIM', line: "Do you have uninsured or underinsured motorist coverage on your own policy?", cue: 'Most people do not know. Not sure is not a no. Keep going.', opts: ['Yes', 'No', 'Not sure'] },
+  { key: 'check', label: 'Injury check', line: "Have you accepted any settlement or payment for your injuries? Not for the vehicle, for the injuries.", cue: 'The second sentence is the question. Payment for the car is routine. Payment for the injury closes the claim.', opts: ['No', 'Only for the car', 'Yes, for injuries'] },
+  { key: 'rep', label: 'Signed elsewhere', line: "Has anybody else already had you sign anything on this, another firm or an attorney?", cue: 'Say it flat and warm, same pace as her zip code.', opts: ['No', 'Yes'] }
+];
+
+function fmtPhone(raw) {
+  var d = String(raw || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+  return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : (raw || 'her phone');
+}
+function fmtWhen(iso) {
+  var t = iso ? new Date(iso) : null;
+  if (!t || isNaN(t.getTime())) return '';
+  var h = t.getHours(), m = t.getMinutes();
+  return (t.getMonth() + 1) + '/' + t.getDate() + ' ' + ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' AM' : ' PM');
+}
+export const FINE = "Says she's fine";
+export const SEATS: any[] = ['Driver', 'Passenger', 'Pedestrian', 'Other'];
+// Short single-choice answers render as a segmented control when the words fit; everything else is an iOS check list.
+function chipsCls(opts: any, multi: any) {
+  var room = { 2: 16, 3: 12, 4: 10 }[opts.length];
+  var seg = !multi && !!room && opts.every((o) => o.length <= room);
+  return seg ? 'chips seg' : 'chips list';
+}
+
+
+export interface CallProps {
+  callerName: string;
+  callerPhone?: string;
+  callerEmail?: string;
+  canHear?: boolean;
+  /** TMP's split is only shown on TMP campaigns. */
+  showFees?: boolean;
+  agentName: string;
+  firmSpoken: string;
+  textFrom: string;
+  startedAt: number;
+  saved?: any;
+  reasons: { esign: Reason[]; dq: Reason[]; callback: Reason[]; ni: Reason[] };
+  notifyDefaults: { who: string; how: string }[];
+  esign: { status: string; configured: boolean; pax: Record<string, string> };
+  now?: number;
+}
+export interface Reason { key: string; label: string }
+export interface CallApi {
+  sendAgreement(): void;
+  sendPax(i: number): void;
+  completeAgreement(): void;
+  resendLink(): void;
+  sendText(body: string): void;
+  saveDispo(): void;
+  home(): void;
+  ask(text: string): void;
+}
+
+export class CallEngine {
+  props: CallProps;
+  api: CallApi;
+  state: any;
+  dispos: any[];
+  onChange: (s: any) => void = () => {};
+
+  constructor(props: CallProps, api: CallApi) {
+    this.props = props;
+    this.api = api;
+    this.dispos = DISPOS.map((d: any) => (d.why ? Object.assign({}, d, { why: (props.reasons as any)[d.code] || [] }) : d));
+    this.state = this.seed(props.saved);
+  }
+
+  setState(patch: any) {
+    this.state = Object.assign({}, this.state, patch);
+    this.onChange(this.state);
+  }
+
+  // Swap the firm token in rebuttal copy for the firm on this campaign.
+  firmText(t: string): string {
+    return String(t || '').replace(/\{FIRM\}/g, this.props.firmSpoken);
+  }
+
+  // What autosave keeps. Never the SSN, never screen state like open sheets.
+  persistable() {
+    var s = this.state;
+    var file = Object.assign({}, s.file);
+    delete file.ssn;
+    return {
+      phase: s.phase, free: s.free, bare: s.bare, visited: s.visited,
+      story: s.story, body: s.body, car: s.car,
+      send: { via: s.send.via, client: s.send.client, who: s.send.who, injured: s.send.injured, phone: s.send.phone, email: s.send.email },
+      file: file
+    };
+  }
+
+  seed(saved: any) {
+    var s = {
+      phase: 'open', free: false, bare: false, modeMenu: false, visited: {}, sheet: false, reb: null, openRow: null, elapsed: 0, saved: false,
+      story: { fault: null, seat: null, seatOther: '', police: null, when: null, date: '', city: '', text: '' },
+      helpTab: 'reb', askText: '', askOut: null, lineFocus: 'common',
+      text: { open: false, draft: '', thread: [] },
+      dispo: { open: false, pick: null, list: true, why: [], auto: false, when: null, at: '', note: '', add: '', saved: false, notify: this.props.notifyDefaults.map((n) => ({ who: n.who, how: n.how, on: true })) },
+      body: { pain: [], seen: [], done: {}, last: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
+      car: { justMe: false, people: [] },
+      send: { via: 'Text', status: this.props.esign.status || 'ready', client: this.props.callerName || '', phone: this.props.callerPhone || '', email: this.props.callerEmail || '', error: '', who: 'Same as signer', injured: '' },
+      file: { step: 'agreement', dob: '', ssn: '', agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
+    };
+    if (saved && typeof saved === 'object') {
+      ['phase', 'free', 'bare', 'visited'].forEach((k) => { if (saved[k] != null) s[k] = saved[k]; });
+      ['story', 'body', 'car', 'send', 'file'].forEach((k) => { if (saved[k] && typeof saved[k] === 'object') s[k] = Object.assign({}, s[k], saved[k]); });
+      s.send.status = this.props.esign.status || 'ready';
+      s.file.pax = Object.assign({}, this.props.esign.pax);
+      s.file.ssn = '';
+    }
+    return s;
+  }
+
+  // Call ended: open the dispo screen, guessing the obvious answer from the send status.
+  openDispo() {
+    var s = this.state, st = s.send.status;
+    var pick = s.dispo.pick || (st === 'signed' ? 'signed' : st !== 'ready' ? 'esign' : null);
+    this.setState({ dispo: Object.assign({}, s.dispo, { open: true, pick: pick, list: !pick }), sheet: false, modeMenu: false });
+  }
+
+  // Disqualified pre-checks whatever the red lights already say.
+  dqFromCall() {
+    var g = this.gates(), b = this.state.body, out: string[] = [];
+    var bad = (label: string) => (g.find((x: any) => x.label === label) || { cls: '' }).cls.indexOf('bad') >= 0;
+    [['Fault', 'at_fault'], ['Treat', 'no_treatment'], ['Gap', 'treatment_gap'], ['SOL', 'sol'], ['Ins', 'no_coverage'], ['Check', 'settled']]
+      .forEach((x) => { if (bad(x[0])) out.push(x[1]); });
+    if (b.rep === 'Yes' && !this.repGood(b)) out.push('already_rep');
+    var known = (this.props.reasons.dq || []).map((r) => r.key);
+    return out.filter((k) => known.indexOf(k) >= 0);
+  }
+
+  dispoPick(code: any) {
+    var d = this.state.dispo;
+    // Collapsed to the pick: tapping it opens the full list again.
+    if (!d.list) return this.setState({ dispo: Object.assign({}, d, { list: true }) });
+    if (d.pick === code) return this.setState({ dispo: Object.assign({}, d, { list: false }) });
+    var why = code === 'dq' ? this.dqFromCall() : [];
+    this.setState({ dispo: Object.assign({}, d, { pick: code, list: false, why: why, auto: why.length > 0, when: null, at: '' }) });
+  }
+
+  sendText(body: string) {
+    if (!body) return;
+    this.api.sendText(body);
+  }
+
+
+  set(group: any, key: any, val: any) {
+    var g = Object.assign({}, this.state[group]);
+    g[key] = val;
+    var patch = {};
+    patch[group] = g;
+    this.setState(patch);
+  }
+
+  pick(group: any, key: any, val: any) {
+    this.set(group, key, this.state[group][key] === val ? null : val);
+  }
+
+  toggle(group: any, key: any, val: any) {
+    var arr = (this.state[group][key] || []).slice();
+    var i = arr.indexOf(val);
+    if (i >= 0) arr.splice(i, 1); else arr.push(val);
+    this.set(group, key, arr);
+  }
+
+  chips(group: any, key: any, opts: any, warnVal: any, small: any) {
+    var cur = this.state[group][key];
+    return opts.map((o) => ({
+      label: o,
+      cls: 'chip' + (small ? ' sm' : '') + (o === warnVal ? ' warn' : '') + (cur === o ? ' on' : ''),
+      pick: () => this.pick(group, key, o)
+    }));
+  }
+
+  field(group: any, key: any) {
+    return { value: this.state[group][key] || '', set: (e: any) => this.set(group, key, e.target.value) };
+  }
+
+  go(phase: any) {
+    var visited = Object.assign({}, this.state.visited);
+    visited[this.state.phase] = true;
+    this.setState({ phase: phase, sheet: false, visited: visited });
+  }
+
+  // One definition of "is this part of the call filled in". Tabs, jump links,
+  // body pills, story labels and Q&A rows all read it.
+  sections() {
+    var s = this.state, st = s.story, b = s.body, f = s.file;
+    var gaps = (pairs: any) => pairs.filter((x) => !x[1]).map((x) => x[0]);
+    var live = BODYQ.filter((q) => this.applies(b, q));
+    var open = (keys: any) => live.filter((q) => keys.indexOf(q.key) >= 0 && !this.answered(b, q)).map((q) => q.key);
+    var injKeys = ['pain', 'seen', 'last', 'willing', 'work'], covKeys = ['exchanged', 'coverage', 'uim', 'check', 'rep'];
+    var touched = (keys: any) => keys.some((k) => Array.isArray(b[k]) ? b[k].length > 0 : b[k] != null);
+    var sec = {
+      story: { missing: gaps([['fault', st.fault], ['seat', st.seat && (st.seat !== 'Other' || st.seatOther)], ['police', st.police], ['when', st.when && (st.when !== 'Pick a date' || st.date)], ['city', st.city]]),
+               started: !!(st.fault || st.seat || st.police || st.when || st.city) },
+      injury: { missing: open(injKeys), started: touched(injKeys) },
+      cover: { missing: open(covKeys), started: touched(covKeys) },
+      car: { missing: s.car.justMe ? [] : (s.car.people.length ? s.car.people.filter((p) => !p.age || !p.hurt).map((p, i) => 'p' + i) : ['who']),
+             started: s.car.justMe || s.car.people.length > 0 },
+      send: { missing: s.send.status === 'signed' ? [] : ['signed'], started: s.send.status !== 'ready' },
+      file: { missing: gaps([['dob', f.dob], ['ssn', f.ssn], ['addr', f.addr]]), started: !!(f.dob || f.ssn || f.addr || f.dl || f.ecName) },
+      close: { missing: s.saved ? [] : ['saved'], started: !!s.saved }
+    };
+    sec.body = { missing: sec.injury.missing.concat(sec.cover.missing), started: sec.injury.started || sec.cover.started };
+    sec.open = { missing: [], started: true };
+    sec.money = { missing: [], started: true };
+    return sec;
+  }
+
+  // Tab state for a list of section keys in call order: done (green check),
+  // missing (amber, left behind with a blank), current, or not reached yet.
+  // Guided flags what the agent walked past; Freestyle and Q&A flag what sits
+  // blank behind a later section that already has answers.
+  tabStates(keys: any, current: any) {
+    var sec = this.sections(), v = this.state.visited || {}, cur = keys.indexOf(current);
+    var later = (i: any) => keys.slice(i + 1).some((k) => sec[k] && sec[k].started);
+    return keys.map((k, i) => {
+      var x = sec[k], quiet = k === 'open' || k === 'money';
+      var reached = current ? (i < cur || v[k]) : later(i);
+      var full = quiet ? reached : x.missing.length === 0;
+      var miss = !full && !quiet && (reached || (!current && x.started && later(i)));
+      return { key: k, full: full, miss: miss && k !== current };
+    });
+  }
+
+  setPerson(i: any, key: any, val: any) {
+    var people = this.state.car.people.map((p, j) => (j === i ? Object.assign({}, p, { [key]: val }) : p));
+    this.setState({ car: Object.assign({}, this.state.car, { people: people, justMe: false }) });
+  }
+
+  // One definition of "which state was the wreck in". The agreement and the SOL light
+  // both read it. Takes "Houston, TX" or "Houston, Texas".
+  stateCode(city: any) { return stateCodeOf(city); }
+
+  agreementFor(city: any) {
+    var code = this.stateCode(city);
+    if (!code) return null;
+    if (code === 'TX') return 'Texas';
+    if (code === 'FL') return 'Florida';
+    return 'All other states (AL/GA)';
+  }
+
+  crashDate() {
+    var d = this.daysAgo();
+    if (d == null) return null;
+    var t = new Date(); t.setHours(12, 0, 0, 0);
+    return new Date(t.getTime() - d * 86400000);
+  }
+
+  injuryYears(code: any, when: any) {
+    if (code === 'FL') return when && when < new Date('2023-03-24T00:00:00') ? 4 : 2;
+    if (code === 'LA') return when && when < new Date('2024-07-01T00:00:00') ? 1 : 2;
+    var r = SOL.find((x) => x[0] === code);
+    return r ? r[2] : null;
+  }
+
+  // The SOL light: which state, how many years, how many days left.
+  sol() {
+    var code = this.stateCode(this.state.story.city);
+    var r = code ? SOL.find((x) => x[0] === code) : null;
+    if (!r) return { has: false, daysLeft: null, text: '' };
+    var when = this.crashDate();
+    var yrs = this.injuryYears(code, when);
+    var span = yrs + (yrs === 1 ? ' year' : ' years');
+    if (!when) return { has: true, daysLeft: null, text: r[1] + ': ' + span + ' to file. Needs the crash date.' };
+    var dl = new Date(when.getTime()); dl.setFullYear(dl.getFullYear() + yrs);
+    var left = Math.floor((dl.getTime() - Date.now()) / 86400000);
+    var day = dl.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return { has: true, daysLeft: left, text: r[1] + ': ' + span + '. Deadline ' + day + (left < 0 ? ', already passed.' : ', ' + left + ' days left.') };
+  }
+
+  daysAgo() {
+    var st = this.state.story;
+    if (st.when === 'Today') return 0;
+    if (st.when === 'Yesterday') return 1;
+    if (st.when === 'Pick a date' && st.date) {
+      var t = Date.parse(st.date + 'T12:00:00');
+      if (!isNaN(t)) return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+    }
+    return null;
+  }
+
+  // She has an attorney, she said first that she's unhappy, and it sounds like a good case.
+  // A fender bender with low limits gets charged back, so it stays a no.
+  repGood(b) { return b.rep === 'Yes' && !!b.repUnhappy && b.repKind === 'Good case'; }
+
+  seenYes(b) { return b.seen.length > 0 && b.seen.indexOf('Not yet') < 0; }
+  seenNo(b) { return b.seen.indexOf('Not yet') >= 0; }
+
+  answered(b: any, q: any) {
+    if (q.key === 'seen') return this.seenNo(b) || (!!b.done.seen && b.seen.length > 0);
+    if (q.multi) return !!b.done[q.key];
+    return b[q.key] != null;
+  }
+
+  // Branching: 30+ days old and she has been seen -> gap probe.
+  // Not seen, or a gap over 30 days -> ask if she is willing.
+  // Date unknown counts as aged so the gap probe is never skipped by accident.
+  applies(b: any, q: any) {
+    var days = this.daysAgo();
+    var aged = days == null || days >= 30;
+    if (q.key === 'last') return this.seenYes(b) && aged;
+    if (q.key === 'willing') return this.seenNo(b) || b.last === 'Over 30 days ago';
+    if (q.key === 'uim') return b.coverage !== 'No insurance';
+    return true;
+  }
+
+  // The six basics, in Brett's order: not at fault, some coverage, no check for the
+  // injury yet, willing to treat, no 30 day gap, inside the deadline.
+  gates() {
+    var st = this.state.story, b = this.state.body;
+    var toBody = (key: any) => () => this.setState({ phase: 'body', sheet: false, body: Object.assign({}, this.state.body, { focus: key }) });
+    var gate = (label: any, status: any, go: any, what: any, href: any) => ({ label: label, cls: 'gate' + (status ? ' ' + status : ''), go: go, href: href, aria: what + ': ' + (status === 'ok' ? 'good' : status === 'bad' ? 'problem' : status === 'flag' ? 'check' : 'not yet') });
+    var fault = st.fault === 'Other driver' ? 'ok' : st.fault === 'Caller' ? 'bad' : st.fault ? 'flag' : '';
+    // Insurance is never a pre-sign gate: red only when every source is a no.
+    var exOk = b.exchanged === 'Yes' || b.exchanged === 'Police handled it';
+    var exNo = b.exchanged === 'No' || b.exchanged === 'Hit and run';
+    var covNo = b.coverage === 'Just liability' || b.coverage === 'No insurance';
+    var umNo = b.uim === 'No' || b.coverage === 'No insurance';
+    var cov = exOk || b.coverage === 'Full coverage' || b.uim === 'Yes' ? 'ok' : (exNo && covNo && umNo ? 'bad' : (b.exchanged || b.coverage || b.uim ? 'flag' : ''));
+    var check = b.check === 'No' || b.check === 'Only for the car' ? 'ok' : b.check === 'Yes, for injuries' ? 'bad' : '';
+    var days = this.daysAgo();
+    var fresh = days != null && days < 30;
+    var gap = '';
+    if (this.seenNo(b)) gap = days == null ? '' : (fresh ? 'ok' : 'bad');
+    else if (this.seenYes(b)) gap = b.last === 'Over 30 days ago' ? 'bad' : (b.last || fresh ? 'ok' : '');
+    var treat = b.willing === 'Yes' ? 'ok' : b.willing === 'No' ? 'bad' : b.willing === 'Maybe' ? 'flag'
+      : (this.seenYes(b) && b.last !== 'Over 30 days ago' && (b.last || fresh) ? 'ok' : '');
+    var sol = this.sol();
+    var solS = sol.daysLeft != null ? (sol.daysLeft < 0 ? 'bad' : sol.daysLeft <= 90 ? 'flag' : 'ok') : (st.when || st.city ? 'flag' : '');
+    return [
+      gate('Fault', fault, () => this.go('story'), 'Not at fault', '#fs-story'),
+      gate('Ins', cov, toBody('exchanged'), 'Some coverage', '#fs-body'),
+      gate('Check', check, toBody('check'), 'No injury check yet', '#fs-body'),
+      gate('Treat', treat, toBody('willing'), 'Willing to treat', '#fs-body'),
+      gate('Gap', gap, toBody('seen'), 'No 30 day gap', '#fs-body'),
+      gate('SOL', solS, () => this.go('story'), 'Inside the deadline', '#fs-story')
+    ];
+  }
+
+  storyGaps() {
+    var st = this.state.story, out = [];
+    if (!st.city) out.push('What city and state was that in?');
+    if (!st.when) out.push('And what day was that?');
+    if (!st.seat) out.push('Were you driving, or were you a passenger?');
+    if (!st.police) out.push('Did the police come out to the scene?');
+    return out;
+  }
+
+  currentQ() {
+    var b = this.state.body;
+    if (b.rep === 'Yes' && !this.repGood(b)) return null;
+    if (b.focus) { var f = BODYQ.find((q) => q.key === b.focus); if (f) return f; }
+    return BODYQ.find((q) => this.applies(b, q) && !this.answered(b, q)) || null;
+  }
+
+  // Q&A mode: the whole intake as plain label and answer rows. No script, no pointers.
+  // Same state and same branching as Guided and Freestyle, so switching modes loses nothing.
+  bareRows() {
+    var s = this.state, b = s.body, st = s.story;
+    var G = (id: any, label: any) => ({ isGroup: true, id: 'q-' + id, label: label });
+    var sec = this.sections();
+    var flagged = {};
+    this.tabStates(['story', 'injury', 'cover', 'car', 'send', 'file'], null).forEach((t) => { if (t.miss) sec[t.key].missing.forEach((k) => { flagged[k] = true; }); });
+    var lc = (key: any) => 'q-l' + (flagged[key] ? ' miss' : '');
+    var C = (label: any, group: any, key: any, opts: any, warn: any) => ({ isChips: true, label: label, lcls: lc(key), chipsCls: chipsCls(opts, false), chips: this.chips(group, key, opts, warn, true) });
+    var I = (label: any, group: any, key: any, ph: any, type: any, mode: any) => {
+      var f = this.field(group, key);
+      return { isInput: true, label: label, lcls: lc(key), ph: ph || '', type: type || 'text', mode: mode || 'text', value: f.value, set: f.set };
+    };
+    var S = (label: any, group: any, key: any, options: any) => ({ isSelect: true, label: label, value: s[group][key], set: this.field(group, key).set, options: options });
+    var byKey = (k: any) => BODYQ.find((x) => x.key === k);
+    var Q = (k: any) => {
+      var x = byKey(k);
+      return { isChips: true, label: x.label, lcls: lc(k), chipsCls: chipsCls(x.opts, x.multi), chips: x.opts.map((o) => ({
+        label: o,
+        cls: 'chip sm' + (o === FINE ? ' warn' : '') + ((x.multi ? b[k].indexOf(o) >= 0 : b[k] === o) ? ' on' : ''),
+        pick: () => this.bodyPick(x, o, true)
+      })) };
+    };
+    var years = ['Year'];
+    for (var y = 2027; y >= 1990; y--) years.push(String(y));
+    var rows = [];
+
+    rows.push(G('crash', 'Crash'));
+    rows.push(C('Fault', 'story', 'fault', ['Other driver', 'Caller', 'Not clear'], 'Caller'));
+    rows.push(C('She was', 'story', 'seat', SEATS));
+    if (st.seat === 'Other') rows.push(I('Explain', 'story', 'seatOther', 'What was she doing'));
+    rows.push(C('Police came', 'story', 'police', ['Came out', 'No', 'Not sure']));
+    rows.push(C('Date of wreck', 'story', 'when', ['Today', 'Yesterday', 'Pick a date']));
+    if (st.when === 'Pick a date') rows.push(I('Date', 'story', 'date', '', 'date'));
+    rows.push(I('City, State', 'story', 'city', 'City, State'));
+
+    rows.push(G('injury', 'Injury'));
+    ['pain', 'seen', 'last', 'willing', 'work'].forEach((k) => { if (this.applies(b, byKey(k))) rows.push(Q(k)); });
+
+    rows.push(G('cover', 'Coverage'));
+    ['exchanged', 'coverage', 'uim', 'check', 'rep'].forEach((k) => { if (this.applies(b, byKey(k))) rows.push(Q(k)); });
+    if (b.rep === 'Yes') {
+      rows.push(C('Unhappy with her attorney', 'body', 'repUnhappy', ["She said so"]));
+      if (b.repUnhappy) rows.push(C('Case', 'body', 'repKind', ['Good case', 'Fender bender, low limits'], 'Fender bender, low limits'));
+    }
+
+    rows.push(G('car', 'Others in the car'));
+    rows.push({ isChips: true, label: 'Passengers', lcls: lc('who'), chipsCls: 'chips list', chips: [
+      { label: 'Just me', cls: 'chip sm' + (s.car.justMe ? ' on' : ''), pick: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }) },
+      { label: 'Add passenger', cls: 'chip add', pick: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ name: '', rel: null, age: null, hurt: null }]) } }) }
+    ] });
+    s.car.people.forEach((p, i) => {
+      var opt = (key: any, pairs: any) => pairs.map((v) => ({ label: v[1], cls: 'chip sm' + (p[key] === v[0] ? ' on' : ''), pick: () => this.setPerson(i, key, p[key] === v[0] ? null : v[0]) }));
+      rows.push({ isPerson: true, p: {
+        name: p.name, setName: (e: any) => this.setPerson(i, 'name', e.target.value),
+        remove: () => this.setState({ car: Object.assign({}, this.state.car, { people: this.state.car.people.filter((x, j) => j !== i) }) }),
+        ages: opt('age', [['Under 18', 'Under 18'], ['Adult', 'Adult']]),
+        hurts: opt('hurt', [['Yes', 'Hurt'], ['No', 'Not hurt']])
+      } });
+    });
+
+    rows.push(G('send', 'Agreement'));
+    rows.push({ isInfo: true, label: 'Agreement', value: this.agreementFor(st.city) || 'Needs city and state' });
+    rows.push(I('Signer full name', 'send', 'client', ''));
+    rows.push(C('Injured person', 'send', 'who', ['Same as signer', 'Someone else']));
+    if (s.send.who === 'Someone else') rows.push(I('Injured full name', 'send', 'injured', ''));
+    rows.push(C('Send by', 'send', 'via', ['Text', 'Email']));
+    if (s.send.status !== 'ready') rows.push({ isSteps: true, steps: this.stepsFor(s.send.status) });
+
+    rows.push(G('after', 'After she signs'));
+    rows.push(I('Date of birth', 'file', 'dob', 'MM/DD/YYYY', 'text', 'numeric'));
+    rows.push(I('SSN', 'file', 'ssn', 'Last 4 or all 9', 'text', 'numeric'));
+    var signed = s.send.status === 'signed';
+    if (s.file.agreement === 'open') rows.push({ isButton: true, label: signed ? 'Complete the agreement' : 'Unlocks after she signs', disabled: !signed, go: () => { if (this.state.send.status === 'signed') this.api.completeAgreement(); } });
+    else rows.push({ isInfo: true, label: 'Agreement', value: s.file.agreement === 'done' ? 'Complete' : 'QA in the morning' });
+    rows.push(I('Home address', 'file', 'addr', ''));
+    rows.push(I("Driver's license", 'file', 'dl', ''));
+    rows.push(I('Emergency contact', 'file', 'ecName', 'Name'));
+    rows.push(I('Emergency phone', 'file', 'ecPhone', '', 'tel', 'tel'));
+    rows.push(C('Relationship', 'file', 'ecRel', ['Spouse or partner', 'Parent', 'Child', 'Sibling', 'Friend', 'Other']));
+    rows.push(S("Other driver's insurance", 'file', 'carrier', ['Pick one', 'Not sure yet', 'State Farm', 'GEICO', 'Progressive', 'Allstate', 'USAA', 'Farmers', 'Liberty Mutual', 'Nationwide', 'Travelers', 'American Family', 'Other']));
+    rows.push(I('Police report number', 'file', 'report', ''));
+    rows.push(S('Vehicle year', 'file', 'vYear', years));
+    rows.push(I('Vehicle make', 'file', 'vMake', ''));
+    rows.push(I('Vehicle model', 'file', 'vModel', ''));
+    var kinds = { isGroup: false, isChips: false, isInput: false, isSelect: false, isInfo: false, isSteps: false, isButton: false, isPerson: false };
+    return rows.map((r) => Object.assign({}, kinds, r));
+  }
+
+  // One definition of what tapping a body answer does, used by both modes.
+  // Guided: a multi answer waits for its Next button; a single answer moves on.
+  // Freestyle: nothing moves; a multi answer counts once anything is tapped.
+  bodyPick(q: any, o: any, free: any) {
+    var nb = Object.assign({}, this.state.body);
+    if (q.multi) {
+      var arr = nb[q.key].slice();
+      if (q.only && o === q.only) {
+        arr = arr.indexOf(o) >= 0 ? [] : [o];
+        nb.done = Object.assign({}, nb.done, { [q.key]: arr.length > 0 });
+        nb.focus = null;
+      } else {
+        arr = arr.filter((v) => v !== q.only);
+        var i = arr.indexOf(o);
+        if (i >= 0) arr.splice(i, 1); else arr.push(o);
+        nb.done = Object.assign({}, nb.done, { [q.key]: free ? arr.length > 0 : false });
+      }
+      nb[q.key] = arr;
+      if (q.key === 'seen') { nb.last = null; nb.willing = null; }
+    } else {
+      nb[q.key] = nb[q.key] === o ? null : o;
+      nb.focus = null;
+      if (q.key === 'last' && nb.last !== 'Over 30 days ago') nb.willing = null;
+      if (q.key === 'rep' && nb.rep !== 'Yes') { nb.repUnhappy = null; nb.repKind = null; }
+    }
+    this.setState({ body: nb });
+  }
+
+  backLine() {
+    var s = this.state, P = s.phase;
+    if (s.free) {
+      var gaps = this.storyGaps(), cq = this.currentQ();
+      return gaps.length ? gaps[0] : (cq ? cq.line : 'Who else was in the car with you?');
+    }
+    if (P === 'open') return 'Tell me what happened.';
+    if (P === 'story') { var g = this.storyGaps(); return g.length ? g[0] : 'Tell me what happened.'; }
+    if (P === 'body') { var q = this.currentQ(); return q ? q.line : "Who else was in the car with you?"; }
+    if (P === 'car') return 'Who else was in the car with you?';
+    if (P === 'money') return "Let me tell you real quick how we work, because people always want to know.";
+    if (P === 'send') return s.send.status === 'ready' ? 'Are you better by text or by email?' : "Go ahead and put me on speaker and I'll walk you through it, it's short.";
+    if (P === 'file') return "What's your date of birth?";
+    return 'I appreciate your time today. I hope you start feeling better.';
+  }
+
+  sendAgreement() { this.api.sendAgreement(); }
+
+  sendPax(i: number) { this.api.sendPax(i); }
+
+  stepsFor(status: any) {
+    var order = ['sent', 'opened', 'signed'];
+    var at = order.indexOf(status);
+    return [['Sent', 0], ['Opened', 1], ['Signed', 2]].map((x) => ({ label: x[0], cls: 'step' + (x[1] <= at ? ' done' : (x[1] === at + 1 ? ' now' : '')) }));
+  }
+
+  callerFirst(): string {
+    return String(this.state.send.client || this.props.callerName || '').trim().split(' ')[0] || 'the caller';
+  }
+
+  renderVals(): any {
+    var s = this.state, P = s.phase, st = s.story, b = s.body;
+    var sec = Math.max(0, Math.floor(((this.props.now || Date.now()) - this.props.startedAt) / 1000));
+    var two = (n: any) => (n < 10 ? '0' : '') + n;
+    var targets = { open: 15, story: 75, body: 135, money: 165, send: 180 };
+    var names = { open: 'Open', story: 'Story', body: 'Body', car: 'Car', money: 'How we work', send: 'Send', file: 'File', close: 'Close' };
+    var tgt = s.free ? 180 : targets[P];
+    var phases = ['open', 'story', 'body', 'car', 'money', 'send', 'file', 'close'];
+    var idx = phases.indexOf(P);
+    var tabLabels = ['Open', 'Story', 'Body', 'Car', 'Money', 'Send', 'File', 'Close'];
+
+    var hurtPax = s.car.people.map((p, i) => ({ p: p, i: i })).filter((x) => x.p.hurt === 'Yes');
+    var agreement = this.agreementFor(st.city);
+    var gates = this.gates();
+    var anyBad = gates.some((g) => g.cls.indexOf('bad') >= 0);
+
+    var q = this.currentQ();
+    var days = this.daysAgo();
+    var sol = this.sol();
+    var fs = s.free && !s.bare;
+    var live = BODYQ.filter((x) => this.applies(b, x));
+    // Fast nav: every live body question as a pill. Tap any to jump to it.
+    var qAt = q ? live.indexOf(q) : live.length;
+    var bodyPills = live.map((x, i) => ({
+      label: x.label,
+      cls: 'pill' + (q && x.key === q.key ? ' now' : (this.answered(b, x) ? ' done' : (i < qAt || (s.visited || {}).body ? ' miss' : ''))),
+      open: () => this.set('body', 'focus', x.key)
+    }));
+    var chipOn = (x: any, o: any) => (x.multi ? b[x.key].indexOf(o) >= 0 : b[x.key] === o);
+    // Full form: every live body question at once, answer in any order.
+    var bodyAll = live.map((x) => ({
+      line: x.line,
+      chipsCls: chipsCls(x.opts, x.multi),
+      cls: 'item' + (this.answered(b, x) ? ' done' : ''),
+      chips: x.opts.map((o) => ({
+        label: o,
+        cls: 'chip sm' + (o === FINE ? ' warn' : '') + (chipOn(x, o) ? ' on' : ''),
+        pick: () => this.bodyPick(x, o, true)
+      }))
+    }));
+    var cueFor = (x: any) => {
+      if (x.key === 'last' && days == null) return 'No crash date yet, so this shows to be safe. Over 30 days since her last visit is a gap. Flag it, do not close it.';
+      if (x.key === 'last') return 'Shows because the wreck was ' + days + ' days ago. Over 30 days since her last visit is a gap. Flag it, do not close it.';
+      if (x.key === 'willing' && b.last === 'Over 30 days ago') return 'She has a gap. Willing to go back in is what keeps this file alive.';
+      return x.cue;
+    };
+    var qv = q ? {
+      step: 'Ask ' + (Math.max(0, live.indexOf(q)) + 1) + ' of ' + live.length,
+      line: q.line, cue: cueFor(q), multi: !!q.multi && !(q.only && b[q.key].indexOf(q.only) >= 0),
+      chipsCls: chipsCls(q.opts, q.multi),
+      nextLabel: q.nextLabel || 'Next',
+      next: () => {
+        var nb = Object.assign({}, this.state.body);
+        nb.done = Object.assign({}, nb.done, { [q.key]: true });
+        nb.focus = null;
+        this.setState({ body: nb });
+      },
+      chips: q.opts.map((o) => ({
+        label: o,
+        cls: 'chip' + (o === FINE ? ' warn' : '') + (chipOn(q, o) ? ' on' : ''),
+        pick: () => this.bodyPick(q, o, false)
+      }))
+    } : { step: '', line: '', cue: '', multi: false, nextLabel: '', chipsCls: 'chips', chips: [], next: () => {} };
+
+    var rowToggle = (id: any) => () => this.setState({ openRow: this.state.openRow === id ? null : id });
+    var rowList = (ids: any) => ids.map((id) => {
+      var r = REBS.find((x) => x.id === id);
+      return { title: r.title, text: this.firmText(r.text), open: s.openRow === id, hint: s.openRow === id ? 'Hide' : 'Show reply', cls: 'rb' + (s.openRow === id ? ' now' : ''), toggle: rowToggle(id) };
+    });
+
+    // Rebuttals in groups: what fits this step first, then everything else by topic.
+    var rebs = [];
+    var addGroup = (head: any, list: any) => {
+      if (!list.length) return;
+      rebs.push({ isHead: true, isItem: false, label: head, title: '', tag: '', tagCls: '', pick: () => {},
+        cls: 'rb-h' + (rebs.length === 0 ? ' first' : '') + (head === 'Right now' ? ' gold' : '') });
+      list.forEach((r, i) => rebs.push({
+        isHead: false, isItem: true, label: '', title: r.title,
+        tag: r.phase === 'locked' ? 'Needs TMP OK' : '',
+        tagCls: r.phase === 'locked' ? 'rb-lock' : 'rb-tag',
+        cls: 'rb ' + (list.length === 1 ? 'solo' : i === 0 ? 'top' : i === list.length - 1 ? 'bot' : 'mid'),
+        pick: () => this.setState({ reb: r.id })
+      }));
+    };
+    // Right now is a shortcut, the top four for this step. Groups always hold everything.
+    addGroup('Right now', REBS.filter((r) => r.phase === P).slice(0, 4));
+    REB_GROUPS.forEach((g) => addGroup(g, REBS.filter((r) => r.group === g)));
+
+    // Lines tab. The section she tapped into comes first. {NAME} is the caller's first name.
+    var first = this.callerFirst();
+    var lines = (s.lineFocus === 'ramble' ? [1, 0, 2] : [0, 1, 2]).map((k, j) => {
+      var sct = LINES[k];
+      return {
+        head: sct.head, note: sct.note, hcls: 'rb-h' + (j === 0 ? ' first' : ''),
+        items: sct.items.map((it, i) => ({
+          k: it[0], t: it[1].replace(/\{NAME\}/g, first),
+          showK: i === 0 || sct.items[i - 1][0] !== it[0],
+          cls: 'ln' + (i === sct.items.length - 1 ? ' end' : '')
+        }))
+      };
+    });
+
+    // Dispo screen.
+    var d = s.dispo, dd = this.dispos.find((x: any) => x.code === d.pick) || null;
+    var needWhy = !!(dd && dd.why);
+    var atText = (() => {
+      var t = d.at ? new Date(d.at) : null;
+      if (!t || isNaN(t.getTime())) return '';
+      var h = t.getHours(), m = t.getMinutes();
+      return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][t.getDay()] + ' ' + (t.getMonth() + 1) + '/' + t.getDate() + ' at ' + ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' AM' : ' PM');
+    })();
+    var whenText = d.when === 'Pick a time' ? atText : d.when;
+    var saveLabel = !dd ? 'Pick how it ended' : (needWhy && !d.why.length) ? 'Pick a reason' : (dd.needWhen && !whenText) ? 'Pick a time' : 'Save dispo';
+    var emailed = d.notify.filter((n) => n.on).map((n) => n.who);
+    var dispoSummary = dd ? [{ k: 'Dispo', v: dd.label }] : [];
+    if (d.why.length) dispoSummary.push({ k: 'Why', v: d.why.map((k: string) => ((dd && dd.why ? dd.why : []).find((r: any) => r.key === k) || { label: k }).label).join(', ') });
+    if (dd && dd.when && whenText) dispoSummary.push({ k: dd.whenHead, v: whenText });
+    if (d.pick === 'signed') dispoSummary.push({ k: 'Emailed', v: emailed.length ? emailed.join(', ') : 'Nobody' });
+    if (String(d.note || '').trim()) dispoSummary.push({ k: 'Note', v: d.note });
+    var savedNote = d.pick === 'signed' ? (emailed.length ? 'Case emailed to ' + emailed.join(', ') + '.' : 'Saved to the file.')
+      : d.pick === 'dnc' ? 'Her number is off every list.'
+      : (dd && dd.when && whenText) ? 'On the call back list for ' + (d.when === 'Pick a time' ? whenText : whenText.toLowerCase()) + '.'
+      : 'Logged for reports.';
+    var picked = REBS.find((r) => r.id === s.reb) || { title: '', text: '', note: '' };
+
+    var repBlock = b.rep === 'Yes' && !this.repGood(b);
+    var contactMissing = s.send.via === 'Email' ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s.send.email || '').trim()) : String(s.send.phone || '').replace(/\D/g, '').length < 10;
+    var sendBlocked = repBlock || !agreement || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || s.send.status === 'sending';
+    var sendWarnText = repBlock ? 'She has an attorney. Only a good case she is unhappy about gets sent.'
+      : !agreement ? 'Add the city and state on Story so we know which agreement to send.'
+      : contactMissing ? (s.send.via === 'Email' ? 'Add her email to send it by email.' : 'Add her cell number to text it.')
+      : anyBad ? 'A gate is red. Send only if you are sure, it gets flagged for review.' : '';
+
+    var fileSteps = [['agreement', 'Agreement'], ['info', 'Her info'], ['crash', 'Crash']];
+    if (hurtPax.length) fileSteps.push(['pax', 'Passengers']);
+    var fIdx = fileSteps.findIndex((x) => x[0] === s.file.step);
+
+    var years = ['Year'];
+    for (var y = 2027; y >= 1990; y--) years.push(String(y));
+
+    var next;
+    if (s.free) {
+      // Freestyle: the one button is always the thing that matters most, the agreement.
+      if (s.send.status === 'ready') next = { label: 'Send agreement', disabled: sendBlocked, go: () => this.sendAgreement() };
+      else if (s.send.status !== 'signed') next = { label: 'Waiting for her signature', disabled: true, go: () => {} };
+      else next = { label: s.saved ? 'Saved. Call ended.' : 'End call and save', disabled: s.saved, go: () => this.openDispo() };
+    } else if (P === 'send') {
+      if (s.send.status === 'ready') next = { label: 'Send agreement', disabled: sendBlocked, go: () => this.sendAgreement() };
+      else if (s.send.status !== 'signed') next = { label: 'Waiting for her signature', disabled: true, go: () => {} };
+      else next = { label: 'Collect the file', disabled: false, go: () => this.go('file') };
+    } else if (P === 'file') {
+      if (fIdx < fileSteps.length - 1) next = { label: 'Next: ' + fileSteps[fIdx + 1][1], disabled: false, go: () => this.set('file', 'step', fileSteps[fIdx + 1][0]) };
+      else next = { label: 'Next: Close', disabled: false, go: () => this.go('close') };
+    } else if (P === 'close') {
+      next = { label: s.saved ? 'Saved. Call ended.' : 'End call and save', disabled: s.saved, go: () => this.openDispo() };
+    } else {
+      var np = phases[idx + 1];
+      next = { label: P === 'open' ? "She's talking: Story" : 'Next: ' + names[np], disabled: false, go: () => this.go(np) };
+    }
+
+    var f = {};
+    ['date', 'city', 'text', 'seatOther'].forEach((k) => { f[k] = this.field('story', k); });
+    ['client', 'injured', 'email', 'phone'].forEach((k) => { f[k] = this.field('send', k); });
+    ['dob', 'ssn', 'addr', 'dl', 'ecName', 'ecPhone', 'carrier', 'report', 'vYear', 'vMake', 'vModel'].forEach((k) => { f[k] = this.field('file', k); });
+
+    return {
+      callerName: this.props.callerName || 'New caller',
+      callerFirst: this.callerFirst(),
+      agentFirst: String(this.props.agentName || '').trim().split(' ')[0] || 'your intake specialist',
+      firmSpoken: this.props.firmSpoken,
+      textFrom: this.props.textFrom || 'your JustCall number',
+      clockText: two(Math.floor(sec / 60)) + ':' + two(sec % 60),
+      clockCls: 'clock' + (tgt && sec > tgt ? ' over' : ''),
+      targetText: s.free ? 'Agreement by 3:00' : (tgt ? names[P] + ' by ' + Math.floor(tgt / 60) + ':' + two(tgt % 60) : (P === 'close' ? 'Wrap under 3 min' : names[P])),
+      gates: s.bare ? gates.map((g) => Object.assign({}, g, { href: { Fault: '#q-crash', SOL: '#q-crash', Ins: '#q-cover', Check: '#q-cover' }[g.label] || '#q-injury' })) : gates,
+      tabs: this.tabStates(phases, P).map((t, i) => ({ label: tabLabels[i], cls: 'tab' + (t.key === P ? ' on' : '') + (t.full ? ' full' : (t.miss ? ' miss' : '')), go: () => this.go(t.key) })),
+      jumps: s.bare
+        ? this.tabStates(['story', 'injury', 'cover', 'car', 'send', 'file'], null).map((t, i) => ({ label: ['Crash', 'Injury', 'Cover', 'Car', 'Send', 'After'][i], href: '#q-' + ['crash', 'injury', 'cover', 'car', 'send', 'after'][i], cls: 'tab' + (t.full ? ' full' : (t.miss ? ' miss' : '')) }))
+        : this.tabStates(phases, null).map((t, i) => ({ label: tabLabels[i], href: '#fs-' + t.key, cls: 'tab' + (t.full ? ' full' : (t.miss ? ' miss' : '')) })),
+      labCls: (() => {
+        var sec = this.sections(), t = this.tabStates(phases, s.free ? null : P).find((x) => x.key === 'story');
+        // Coming back to Story after leaving blanks lights them up too.
+        var flag = t.miss || (!s.free && P === 'story' && !!(s.visited || {}).story && sec.story.missing.length > 0), out = {};
+        ['fault', 'seat', 'police', 'when', 'city'].forEach((k) => { out[k] = 'lab' + (flag && sec.story.missing.indexOf(k) >= 0 ? ' miss' : ''); });
+        return out;
+      })(),
+      guided: !s.free, free: s.free,
+      bare: s.bare,
+      modeLabel: s.bare ? 'Q&A' : (s.free ? 'Freestyle' : 'Guided'),
+      modeMenuOpen: !!s.modeMenu,
+      toggleModeMenu: () => this.setState({ modeMenu: !this.state.modeMenu }),
+      modes: [['Guided', false, false], ['Freestyle', true, false], ['Q&A', true, true]].map((m) => ({
+        label: m[0],
+        on: s.free === m[1] && !!s.bare === m[2],
+        cls: 'menu-b' + ((s.free === m[1] && !!s.bare === m[2]) ? ' on' : ''),
+        go: () => this.setState({ free: m[1], bare: m[2], modeMenu: false })
+      })),
+      bareRows: s.bare ? this.bareRows() : [],
+      isOpen: P === 'open', isStory: P === 'story', isBody: P === 'body', isCar: P === 'car', isMoney: P === 'money', isSend: P === 'send', isFile: P === 'file', isClose: P === 'close',
+      showOpen: fs || (!s.free && P === 'open'), showStory: fs || (!s.free && P === 'story'), showCar: fs || (!s.free && P === 'car'), showMoney: fs || (!s.free && P === 'money'),
+      showSend: fs || (!s.free && P === 'send'), showFile: fs || (!s.free && P === 'file'), showClose: fs || (!s.free && P === 'close'),
+      showBodyGuided: !s.free && P === 'body', showBodyFree: fs,
+      bodyPills: bodyPills, bodyAll: bodyAll,
+      sayingFineFree: b.pain.indexOf(FINE) >= 0 && b.pain.length === 1,
+      f: f,
+      // TMP's split, straight from each agreement's paragraph 3. Only said when she insists.
+      showFees: !!this.props.showFees,
+      fees: agreement === 'Florida'
+        ? [{ k: 'Before they answer a lawsuit', v: '33 1/3%' }, { k: 'After they answer', v: '40%' }]
+        : [{ k: 'First 90 days', v: '33 1/3%' }, { k: 'After 90 days, or suit or mediation', v: '40%' }, { k: 'From 90 days before trial', v: '45%' }],
+      feeNote: agreement === 'Florida' ? 'Florida agreement. Lower on anything over $1 million.' : (agreement ? agreement + ' agreement.' : 'Texas and all other states. Florida is different, add the state on Story.'),
+      openers: rowList(['report', 'info', 'atwork']),
+      fault: this.chips('story', 'fault', ['Other driver', 'Caller', 'Not clear'], 'Caller'),
+      faultCaller: st.fault === 'Caller',
+      seat: this.chips('story', 'seat', SEATS, null, true),
+      seatOther: st.seat === 'Other',
+      police: this.chips('story', 'police', ['Came out', 'No', 'Not sure'], null, true),
+      when: this.chips('story', 'when', ['Today', 'Yesterday', 'Pick a date']),
+      pickDate: st.when === 'Pick a date',
+      hasDays: days != null && st.when === 'Pick a date',
+      daysCls: 'cue',
+      daysText: days == null ? '' : (days === 1 ? '1 day ago' : days + ' days ago'),
+      hasGap: this.storyGaps().length > 0,
+      noGap: this.storyGaps().length === 0,
+      gapNext: this.storyGaps()[0] || '',
+      gapMore: this.storyGaps().length > 1 ? (this.storyGaps().length - 1) + ' more after this' : '',
+      hasQ: !!q, q: qv,
+      repYes: b.rep === 'Yes',
+      rep: {
+        cls: this.repGood(b) ? 'reb' : 'stop',
+        head: this.repGood(b) ? 'Unhappy with her attorney, good case. We help.' : 'She has an attorney',
+        plain: !(b.repUnhappy && b.repKind === 'Good case'),
+        isUnhappy: !!b.repUnhappy,
+        fender: !!(b.repUnhappy && b.repKind === 'Fender bender, low limits'),
+        good: this.repGood(b),
+        unhappy: this.chips('body', 'repUnhappy', ["She says she's unhappy with them"], null, true),
+        kind: this.chips('body', 'repKind', ['Good case', 'Fender bender, low limits'], 'Fender bender, low limits', true)
+      },
+      sayingFine: b.pain.indexOf(FINE) >= 0 && !b.done.pain,
+      soreness: this.firmText(REBS.find((r: any) => r.id === 'soreness').text),
+      bodyComplete: !q && (b.rep !== 'Yes' || this.repGood(b)),
+      justMeCls: 'chip' + (s.car.justMe ? ' on' : ''),
+      justMe: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }),
+      addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ name: '', rel: null, age: null, hurt: null }]) } }),
+      people: s.car.people.map((p, i) => ({
+        title: p.name ? p.name : 'Passenger ' + (i + 1),
+        name: p.name,
+        setName: (e: any) => this.setPerson(i, 'name', e.target.value),
+        remove: () => this.setState({ car: Object.assign({}, this.state.car, { people: this.state.car.people.filter((x, j) => j !== i) }) }),
+        rels: ['Child', 'Spouse or partner', 'Friend', 'Family', 'Other'].map((r) => ({ label: r, cls: 'chip sm' + (p.rel === r ? ' on' : ''), pick: () => this.setPerson(i, 'rel', p.rel === r ? null : r) })),
+        ages: ['Under 18', 'Adult'].map((r) => ({ label: r, cls: 'chip sm' + (p.age === r ? ' on' : ''), pick: () => this.setPerson(i, 'age', p.age === r ? null : r) })),
+        hurts: ['Yes', 'No'].map((r) => ({ label: r, cls: 'chip sm' + (p.hurt === r ? ' on' : ''), pick: () => this.setPerson(i, 'hurt', p.hurt === r ? null : r) })),
+        ownFile: p.hurt === 'Yes'
+      })),
+      sendReady: s.send.status === 'ready',
+      sendLive: s.send.status !== 'ready',
+      notSigned: s.send.status !== 'signed',
+      signed: s.send.status === 'signed',
+      sendSteps: this.stepsFor(s.send.status),
+      agreement: agreement ? agreement : 'Needs the state',
+      injuredWho: this.chips('send', 'who', ['Same as signer', 'Someone else']),
+      injuredOther: s.send.who === 'Someone else',
+      via: this.chips('send', 'via', ['Text', 'Email']),
+      viaNote: !this.props.esign.configured ? 'E-sign is not set up for this campaign yet. An admin sets it up once.' : (s.send.via === 'Text' ? 'Texts the signing link to ' + fmtPhone(s.send.phone) + ' from ' + this.props.textFrom + '.' : 'Emails her the signing link.'),
+      viaEmail: s.send.via === 'Email', viaText: s.send.via === 'Text',
+      hasSendError: !!s.send.error, sendError: s.send.error || '',
+      hasFileError: !!s.file.error, fileError: s.file.error || '',
+      saveBad: !!(s.net && s.net.saveError), saveError: (s.net && s.net.saveError) || '',
+      hasTextError: !!(s.text && s.text.error), textError: (s.text && s.text.error) || '',
+      canHear: !!this.props.canHear,
+      callsList: (s.calls || []).map((c) => ({ when: fmtWhen(c.occurred_at), what: (c.direction === 'inbound' ? 'Inbound' : 'Outbound') + (c.channel === 'voicemail' ? ' voicemail' : ' call') + (c.duration_sec ? ', ' + Math.floor(c.duration_sec / 60) + ':' + String(c.duration_sec % 60).padStart(2, '0') : ''), agent: c.agent_name || '', rec: c.recording_url || '', hasRec: !!(this.props.canHear && c.recording_url), summary: c.jc_summary || '', hasSummary: !!c.jc_summary })),
+      hasCalls: (s.calls || []).length > 0,
+      sendWarn: !!sendWarnText, sendWarnText: sendWarnText,
+      fileTabs: fileSteps.map((x) => ({ label: x[1], cls: 'chip sm' + (x[0] === s.file.step ? ' on' : ''), pick: () => this.set('file', 'step', x[0]) })),
+      fsAgreement: fs || s.file.step === 'agreement', fsInfo: fs || s.file.step === 'info', fsCrash: fs || s.file.step === 'crash', fsPax: (fs && hurtPax.length > 0) || s.file.step === 'pax',
+      agreementOpen: s.file.agreement === 'open',
+      agreementClosed: s.file.agreement !== 'open',
+      agreementNote: s.file.agreement === 'done' ? 'Agreement complete. Goes to QA, then to the firm.' : 'Parked. QA finishes it in the morning.',
+      completeAgreement: () => { if (this.state.send.status === 'signed') this.api.completeAgreement(); },
+      agreementLocked: s.send.status !== 'signed',
+      completeLabel: s.send.status === 'signed' ? 'Complete the agreement' : 'Unlocks after she signs',
+      leaveForQa: () => this.set('file', 'agreement', 'qa'),
+      ecRel: this.chips('file', 'ecRel', ['Spouse or partner', 'Parent', 'Child', 'Sibling', 'Friend', 'Other'], null, true),
+      carriers: ['Pick one', 'Not sure yet', 'State Farm', 'GEICO', 'Progressive', 'Allstate', 'USAA', 'Farmers', 'Liberty Mutual', 'Nationwide', 'Travelers', 'American Family', 'Other'],
+      years: years,
+      missedWork: b.work || 'Not asked',
+      paxSend: hurtPax.map((x) => {
+        var status = s.file.pax[x.i];
+        var minor = x.p.age === 'Under 18';
+        var nm = x.p.name || 'Passenger ' + (x.i + 1);
+        return {
+          title: nm + (minor ? ', under 18' : ''),
+          note: minor ? this.callerFirst() + ' signs as parent or guardian. ' + nm + ' goes on the HIPAA pages.' : nm + ' signs their own agreement.',
+          button: 'Send ' + nm + "'s agreement",
+          ready: !status, live: !!status,
+          send: () => this.sendPax(x.i),
+          steps: this.stepsFor(status)
+        };
+      }),
+      summary: [
+        { k: this.callerFirst(), v: s.send.status === 'signed' ? 'Signed' : 'Not signed' },
+        { k: 'Agreement', v: agreement || 'No state yet' },
+        { k: 'Passenger files', v: String(hurtPax.length) },
+        { k: 'Attorney', v: this.repGood(b) ? 'Switching, she was unhappy' : (b.rep === 'Yes' ? 'Has one' : 'None') },
+        { k: 'DOB and SSN', v: s.file.agreement === 'done' ? 'Done' : s.file.agreement === 'qa' ? 'QA in the morning' : 'Still open' }
+      ],
+      next: next,
+      solHas: sol.daysLeft != null && sol.daysLeft <= 90, solText: sol.text,
+      solCls: 'cue' + (sol.daysLeft != null && sol.daysLeft <= 90 ? ' red' : ''),
+      solClose: sol.daysLeft != null && sol.daysLeft >= 0 && sol.daysLeft <= 90,
+      helpTabs: [['reb', 'Rebuttals'], ['lines', 'Lines'], ['ask', 'Ask CaseCure']].map((x) => ({ label: x[1], cls: 'htab' + (s.helpTab === x[0] ? ' on' : ''), go: () => this.setState({ helpTab: x[0] }) })),
+      isRebTab: s.helpTab === 'reb', isAsk: s.helpTab === 'ask', isLines: s.helpTab === 'lines',
+      lines: lines,
+      openCommon: () => this.setState({ sheet: true, reb: null, helpTab: 'lines', lineFocus: 'common' }),
+      openRamble: () => this.setState({ sheet: true, reb: null, helpTab: 'lines', lineFocus: 'ramble' }),
+      openDispo: () => this.openDispo(),
+      openText: () => this.setState({ text: Object.assign({}, this.state.text, { open: true }), sheet: false, modeMenu: false }),
+      closeText: () => this.set('text', 'open', false),
+      textOpen: !!s.text.open,
+      textEmpty: s.text.thread.length === 0,
+      texts: s.text.thread.map((m) => ({ body: m.body, status: m.status || '', hasStatus: !!m.status, cls: 'bub ' + m.from })),
+      textDraft: this.field('text', 'draft'),
+      textCantSend: !String(s.text.draft || '').trim(),
+      sendText: () => this.sendText(String(this.state.text.draft || '').trim()),
+      canResend: s.send.status === 'sent' || s.send.status === 'opened',
+      resendLink: () => this.api.resendLink(),
+      dispoOpen: !!d.open,
+      dispo: {
+        back: () => this.set('dispo', 'open', false),
+        editing: !d.saved, saved: !!d.saved,
+        opts: (() => {
+          var shown = (d.list || !dd) ? this.dispos : [dd];
+          return shown.map((x, i) => ({
+            label: x.label, on: d.pick === x.code,
+            showCheck: d.pick === x.code && shown.length > 1, showChange: shown.length === 1,
+            cls: 'drow' + (d.pick === x.code ? ' on' : '') + (x.code === 'dnc' ? ' dnc' : '') + (i === shown.length - 1 ? ' end' : ''),
+            pick: () => this.dispoPick(x.code)
+          }));
+        })(),
+        hasPick: !!dd,
+        hasWhy: needWhy, whyHead: dd && dd.whyHead ? dd.whyHead : '',
+        fromCall: d.pick === 'dq' && d.auto && d.why.length > 0,
+        why: needWhy ? dd.why.map((w: any, i: number) => ({ label: w.label, on: d.why.indexOf(w.key) >= 0, cls: 'drow' + (d.why.indexOf(w.key) >= 0 ? ' on' : '') + (i === dd.why.length - 1 ? ' end' : ''), pick: () => this.toggle('dispo', 'why', w.key) })) : [],
+        hasWhen: !!(dd && dd.when), whenHead: dd && dd.whenHead ? dd.whenHead : '',
+        when: WHEN.map((w, i) => ({ label: w, on: d.when === w, cls: 'drow' + (d.when === w ? ' on' : '') + (i === WHEN.length - 1 ? ' end' : ''), pick: () => this.pick('dispo', 'when', w) })),
+        pickTime: d.when === 'Pick a time',
+        at: this.field('dispo', 'at'),
+        isSigned: d.pick === 'signed', isDnc: d.pick === 'dnc',
+        notify: d.notify.map((n, i) => ({
+          who: n.who, how: n.how, on: n.on,
+          cls: 'drow' + (n.on ? ' on' : '') + (i === d.notify.length - 1 ? ' end' : ''),
+          toggle: () => this.set('dispo', 'notify', this.state.dispo.notify.map((x, j) => (j === i ? Object.assign({}, x, { on: !x.on }) : x)))
+        })),
+        add: this.field('dispo', 'add'),
+        addGo: () => {
+          var dd2 = this.state.dispo, em = String(dd2.add || '').trim();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return;
+          this.setState({ dispo: Object.assign({}, dd2, { add: '', notify: dd2.notify.concat([{ who: em, how: 'Added on this call', on: true }]) }) });
+        },
+        note: this.field('dispo', 'note'),
+        cantSave: saveLabel !== 'Save dispo' || !!d.saving, saveLabel: d.saving ? 'Saving' : saveLabel,
+        save: () => this.api.saveDispo(),
+        saving: !!d.saving, error: d.error || '', hasError: !!d.error,
+        edit: () => this.set('dispo', 'saved', false),
+        nextCall: () => this.api.home(),
+        summary: dispoSummary, savedNote: d.serverNote || savedNote
+      },
+      askField: { value: s.askText, set: (e: any) => this.setState({ askText: e.target.value, askOut: null }) },
+      doAsk: () => this.api.ask(String(this.state.askText || '')),
+      asked: !!s.askOut,
+      openSheet: () => this.setState({ sheet: true, reb: null }),
+      closeSheet: () => this.setState({ sheet: false, reb: null }),
+      clearPick: () => this.setState({ reb: null }),
+      sheetOpen: s.sheet,
+      sheetTitle: s.reb ? 'Say this' : 'Rebuttals',
+      rebPicked: !!s.reb, rebList: !s.reb,
+      rebs: rebs,
+      picked: { title: picked.title, text: this.firmText(picked.text), note: picked.note || '', hasNote: !!picked.note },
+      backLine: this.backLine()
+    };
+  }
+}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { signedDocPath, signedDocLink, uploadSignedDoc } from "@/lib/signed-docs";
 export const runtime = "edge";
 
 async function sha256Hex(s: string) {
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
   for (const doc of docs) {
     const docHash = await sha256Hex((doc.body_html || doc.title || "") + "|" + (doc.envelope_id || ""));
     let completedUrl: string | null = null;
+    let completedPath: string | null = null;
     if (doc.pdf_template_id) {
       try {
         const { data: tpl } = await admin.from("pdf_templates").select("file_path, fields").eq("id", doc.pdf_template_id).maybeSingle();
@@ -72,18 +74,24 @@ export async function POST(req: NextRequest) {
             const srcBytes = new Uint8Array(await file.arrayBuffer());
             const { stampPdf } = await import("@/lib/pdf-stamp");
             const stamped = await stampPdf({ sourceBytes: srcBytes, fields: tpl.fields || [], signaturePng: b.signature_data || null, signerName: b.signed_name || doc.signer_name || "Client", signedDate: new Date(now), tokens });
-            const cpath = `${doc.firm_id || "master"}/signed-${doc.envelope_id}.pdf`;
-            const up = await admin.storage.from("signed-docs").upload(cpath, stamped, { contentType: "application/pdf", upsert: true });
-            if (!up.error) { const { data: pub } = admin.storage.from("signed-docs").getPublicUrl(cpath); completedUrl = pub?.publicUrl || null; }
+            completedPath = await uploadSignedDoc(admin, signedDocPath(doc.firm_id, doc.envelope_id, "signed"), stamped);
+            completedUrl = signedDocLink(doc.id, "signed");
           }
         }
-      } catch {}
+      } catch (e: any) {
+        completedPath = null; completedUrl = null;
+        console.error(`packet ${b.group} doc ${doc.id}: signed PDF not saved: ${e?.message ?? e}`);
+      }
     }
-    await admin.from("signable_documents").update({
+    const { error: sErr } = await admin.from("signable_documents").update({
       status: "signed", signed_at: now, signature_data: b.signature_data || null,
       signed_name: b.signed_name || null, signature_type: b.signature_type || "drawn",
-      signed_ip: ip, doc_hash: docHash, completed_pdf_url: completedUrl,
+      signed_ip: ip, doc_hash: docHash, completed_pdf_url: completedUrl, completed_pdf_path: completedPath,
     }).eq("id", doc.id);
+    if (sErr) {
+      console.error(`packet ${b.group} doc ${doc.id}: signature not saved: ${sErr.message}`);
+      return NextResponse.json({ error: "Your signature could not be saved. Please try again." }, { status: 500 });
+    }
   }
 
   // Route the file forward (first doc carries the lead; set the signed status).
