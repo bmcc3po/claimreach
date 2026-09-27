@@ -268,9 +268,9 @@ export default function IntegrationsManager() {
           </div>
           <div className="card" style={{ padding: 16, fontSize: 13.5, lineHeight: 1.6 }}>
             <div className="section-title">Webhook URL for JustCall</div>
-            <p style={{ marginTop: 0 }}>In JustCall, point your call / SMS / voicemail webhooks at:</p>
-            <pre style={{ background: "var(--surface-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: 12 }}>{`${base}/api/justcall/webhook`}</pre>
-            <p className="muted" style={{ fontSize: 12 }}>Optional: set JUSTCALL_WEBHOOK_SECRET in Cloudflare and append ?secret=… or send X-JustCall-Secret to lock it down. Calls, SMS, and voicemails auto-attach to the matching file by phone number.</p>
+            <p style={{ marginTop: 0 }}>In JustCall, point every call, text, voicemail and AI report webhook at the ClaimReach filter:</p>
+            <pre style={{ background: "var(--surface-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: 12 }}>{`${(process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/+$/, "")}/functions/v1/justcall-filter?key=YOUR_KEY`}</pre>
+            <p className="muted" style={{ fontSize: 12 }}>YOUR_KEY is the JUSTCALL_WEBHOOK_SECRET value in Cloudflare. The filter keeps calls, texts and voicemails for numbers that have a file here, plus every text on the ClaimReach texting line, and drops the rest of the account&apos;s traffic before it reaches ClaimReach. Kept ones attach to the matching file by phone number. JustCall posting straight to {`${base}/api/justcall/webhook`} is refused without the key.</p>
           </div>
         </div>
       )}

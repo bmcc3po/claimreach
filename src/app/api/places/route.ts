@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseServer } from "@/lib/supabase-server";
 
 export const runtime = "edge";
 
@@ -6,6 +7,13 @@ export const runtime = "edge";
 // Returns candidate properties with address, place_id, location, and a photo
 // reference. The Google key stays server-side; the browser never sees it.
 export async function POST(req: NextRequest) {
+  // Signed-in people only. Every caller of this route is a signed-in screen
+  // (the App, intake forms, the Motel 6 firm pages); the LawRuler property
+  // tool has its own gated route. Without this, anyone who found the URL
+  // could run Google lookups on our key.
+  const { data: { user } } = await (await supabaseServer()).auth.getUser();
+  if (!user) return NextResponse.json({ error: "Sign in to look up places." }, { status: 401 });
+
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return NextResponse.json({ error: "maps key missing" }, { status: 500 });
 

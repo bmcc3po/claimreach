@@ -15,20 +15,30 @@ function flattenTranscript(ai: any): string {
   return "";
 }
 
+// JustCall no longer posts here directly. It posts to the justcall-filter
+// function in Supabase, which drops everything that is not ours (the whole
+// account's dialer traffic) and passes the rest here with the key. So the key
+// is required: no key set in Cloudflare, or a wrong or missing key, and the
+// post is refused before anything is written.
+function keyOk(got: string, want: string | undefined): boolean {
+  if (!want || !got || got.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
+  return diff === 0;
+}
+
 export async function POST(req: NextRequest) {
+  const got = req.headers.get("x-justcall-secret") || new URL(req.url).searchParams.get("secret") || "";
+  if (!keyOk(got, process.env.JUSTCALL_WEBHOOK_SECRET)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const raw = await req.text();
   let p: any;
   try { p = JSON.parse(raw); } catch { return NextResponse.json({ error: "invalid json" }, { status: 400 }); }
 
-  // Always log the raw inbound payload so delivery + field mapping are verifiable.
+  // Log what came through the filter so delivery and field mapping stay checkable.
   try { await supabaseAdmin().from("webhook_events").insert({ direction: "inbound", event_type: "justcall." + (p.type || "unknown"), status: "received", payload: p }); } catch {}
-
-  // optional shared-secret check
-  const want = process.env.JUSTCALL_WEBHOOK_SECRET;
-  if (want) {
-    const got = req.headers.get("x-justcall-secret") || new URL(req.url).searchParams.get("secret");
-    if (got && got !== want) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
 
   const type: string = (p.type || "").toLowerCase();
   const d = p.data || {};
