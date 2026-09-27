@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CallView from "./CallView";
 import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
+import { WsSummary } from "./IntakeWorkspace";
 import { popOutDialer } from "./JustCallDialer";
 import { stateCodeOf } from "@/lib/mva-call/state";
 import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
@@ -52,6 +53,12 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   const seenInbound = useRef<number | null>(null);
   // Desktop: the call on the left, CarCure, texts, agreement and lead on the right.
   const [isDesk, setIsDesk] = useState(false);
+  // iPad in landscape (or a narrower window): wide enough for three areas.
+  // A touch screen gets the iPad layout even when it is as wide as a computer.
+  const [wide, setWide] = useState(false);
+  const [touch, setTouch] = useState(false);
+  // When the last autosave landed, for "Saved at 2:14 PM" (never shown after a failed write).
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const [deskTab, setDeskTabState] = useState<DeskTab>(init.openText ? "texts" : "know");
   const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
   const deskTextsOpen = useRef(false);
@@ -148,6 +155,26 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   engine.onChange = () => bump((x) => x + 1);
   engine.props.now = now;
 
+  // Each agent's view (Guided, Full Intake, Q&A) is remembered on their device
+  // and used on the next call. Applied after the first paint so the server
+  // render and the phone agree.
+  const viewKey = `cr-call-view:${init.props.agentName || "me"}`;
+  engine.onViewChange = (vw: string) => { try { localStorage.setItem(viewKey, vw); } catch { /* private mode */ } };
+  useEffect(() => {
+    try {
+      const pref = localStorage.getItem(viewKey);
+      if (pref && ["guided", "convo", "quick", "full", "chore", "qa"].includes(pref) && pref !== engine.state.view) engine.setView(pref);
+    } catch { /* private mode */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Which layout. Full Intake: phone, iPad (three areas) or the desktop
+  // workspace (three areas with the tools panel on the right). Simple
+  // Chorelist is its own full-width form everywhere, so no panel beside it.
+  // Same engine and the same answers in all of them.
+  const v = engine.renderVals();
+  const ws: "desk" | "ipad" | null = v.fullView || v.oneQ ? (isDesk && !touch ? "desk" : wide ? "ipad" : null) : null;
+  const deskOn = isDesk && !v.choreView && ws !== "ipad";
+
   async function loadComms() {
     try {
       const r = await fetch(`/api/calls/comms?lead_id=${encodeURIComponent(init.leadId)}`);
@@ -171,6 +198,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
       const d = await post("/api/calls/save", { lead_id: init.leadId, call_id: callId.current, answers: JSON.parse(snap), mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
       callId.current = d.call_id || callId.current;
       lastSaved.current = snap;
+      setSavedAt(Date.now());
       if (engine.state.net?.saveError) engine.setState({ net: { saveError: "" } });
       return true;
     } catch (err: any) {
@@ -270,36 +298,52 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   // Desktop or phone. The panel only mounts on a wide screen.
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1180px)");
-    const on = () => setIsDesk(mq.matches);
+    const mw = window.matchMedia("(min-width: 1000px)");
+    const mt = window.matchMedia("(hover: none) and (pointer: coarse)");
+    const on = () => { setIsDesk(mq.matches); setWide(mw.matches); setTouch(mt.matches); };
     on();
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
+    [mq, mw, mt].forEach((m) => m.addEventListener("change", on));
+    return () => [mq, mw, mt].forEach((m) => m.removeEventListener("change", on));
   }, []);
   useEffect(() => {
-    deskTextsOpen.current = isDesk && deskTab === "texts";
+    deskTextsOpen.current = deskOn && deskTab === "texts";
     // Arriving from a text on a desktop: the thread opens in the panel, not a sheet.
-    if (isDesk && engine.state.text.open) { engine.setState({ text: { ...engine.state.text, open: false } }); setDeskTab("texts"); }
+    if (deskOn && engine.state.text.open) { engine.setState({ text: { ...engine.state.text, open: false } }); setDeskTab("texts"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDesk, deskTab]);
+  }, [deskOn, deskTab]);
   // Texts tab on screen: check every 5 seconds, same as the open sheet.
   useEffect(() => {
-    if (!isDesk || deskTab !== "texts") return;
+    if (!deskOn || deskTab !== "texts") return;
     void loadComms();
     const t = setInterval(() => { void loadComms(); }, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDesk, deskTab]);
+  }, [deskOn, deskTab]);
   // Reaching Send on a desktop brings up the agreement preview.
   const phase = s.phase;
   useEffect(() => {
-    if (isDesk && phase === "send" && init.canPreview) setDeskTab("retainer");
+    if (deskOn && phase === "send" && init.canPreview) setDeskTab("retainer");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDesk, phase]);
+  }, [deskOn, phase]);
+  // The desktop workspace opens its right side on the summary; leaving it puts CarCure back.
+  useEffect(() => {
+    if (ws === "desk" && deskTab === "know") setDeskTab("summary");
+    if (ws !== "desk" && deskTab === "summary") setDeskTab("know");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ws]);
 
-  const v = engine.renderVals();
   const preview = previewInfo(engine.state, init);
-  const view: any = { ...v, leadId: init.leadId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined };
-  if (isDesk) {
+  const view: any = { ...v, leadId: init.leadId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws };
+  // Autosave, said plainly. "Saving" while a change is on its way; a failed
+  // write shows the engine's "Not saved. Retrying." instead, never "Saved".
+  const pending = snapshot !== lastSaved.current;
+  view.saveText = pending ? "Saving" : savedAt ? `Saved at ${new Date(savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "";
+  view.saveNow = () => {
+    if (snapshot === lastSaved.current && callId.current && !engine.state.net?.saveError) { setSavedAt(Date.now()); return; }
+    void flushSave();
+  };
+  if (deskOn) {
+    view.openPhone = () => setDeskTab("phone");
     view.openText = () => setDeskTab("texts");
     view.openSheet = () => setDeskTab("know");
     view.openCommon = () => { setDeskTab("know"); setFocusLines({ key: "common", n: Date.now() }); };
@@ -329,20 +373,20 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     if (save) { try { localStorage.removeItem(W_KEY); } catch { /* private mode */ } }
   };
   useEffect(() => {
-    if (!isDesk) return;
+    if (!deskOn || ws) return;
     try { const w = Number(localStorage.getItem(W_KEY)); if (w > 0) setCallW(w); } catch { /* none saved */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDesk]);
+  }, [deskOn, ws]);
   // Wide enough, the call gets a left rail (caller, checks, steps) and the
   // question gets the middle. Narrow, it keeps the phone layout.
   useEffect(() => {
     const el = deskRef.current;
     const app = el?.querySelector(".cc-app") as HTMLElement | null;
-    if (!isDesk || !el || !app || typeof ResizeObserver === "undefined") { el?.classList.remove("cc-rail"); return; }
+    if (!deskOn || ws || !el || !app || typeof ResizeObserver === "undefined") { el?.classList.remove("cc-rail"); return; }
     const ro = new ResizeObserver(() => el.classList.toggle("cc-rail", app.getBoundingClientRect().width >= 760));
     ro.observe(app);
     return () => { ro.disconnect(); el.classList.remove("cc-rail"); };
-  }, [isDesk]);
+  }, [deskOn, ws]);
   const startSlide = (ev: React.PointerEvent<HTMLDivElement>) => {
     const el = deskRef.current;
     if (!el) return;
@@ -385,15 +429,16 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
   const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
   return (
-    <div ref={deskRef} className={`cc-desk${isDesk ? " cc-desk-on" : ""}`}>
+    <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on" : ""}${ws === "desk" ? " ws-cockpit" : ""}${v.choreView ? " ch-desk" : ""}`}>
       <CallView v={view} />
-      {isDesk && (
+      {deskOn && !ws && (
         <div className="cc-split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the call and the panel" tabIndex={0}
           title="Drag to resize. Double-click to reset."
           onPointerDown={startSlide} onKeyDown={nudgeSlide} onDoubleClick={() => setCallW(null, true)} />
       )}
-      {isDesk && (
+      {deskOn && (
         <DeskPanel v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
+          summary={ws === "desk" ? <WsSummary v={view} /> : null}
           preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
           focusLines={focusLines} phones={phones} leadId={init.leadId}
           story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />

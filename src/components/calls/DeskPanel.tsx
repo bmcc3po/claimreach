@@ -4,12 +4,12 @@
 // agent wants open while she talks: the CarCure playbook with Ask CaseCure,
 // the JustCall thread with texting, the agreement preview, and the lead.
 // On a phone this panel is not rendered at all; those live in sheets.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
 
-export type DeskTab = "know" | "texts" | "phone" | "retainer" | "file" | "tools";
+export type DeskTab = "summary" | "know" | "texts" | "phone" | "retainer" | "file" | "tools";
 export interface PhoneRow { label: string; number: string; pretty: string; kind: "caller" | "threeway" }
 
 export interface PreviewInfo {
@@ -19,8 +19,10 @@ export interface PreviewInfo {
 
 const PHASE_LABEL: Record<string, string> = { open: "Open", story: "Story", body: "Injury", car: "Car", money: "Money", send: "Send", file: "File", close: "Close" };
 
-export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, story }: {
+export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, story, summary }: {
   v: any;
+  /** The Full Intake workspace: next best action, what's missing, the live summary. */
+  summary?: ReactNode;
   tab: DeskTab;
   setTab: (t: DeskTab) => void;
   phase: string;
@@ -37,9 +39,9 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   const [dialState, setDialState] = useState<DialerState>("loading");
   const dialer = useRef<JustCallDialerHandle | null>(null);
   useEffect(() => { if (tab === "phone") setPhoneOn(true); }, [tab]);
-  const tabs: [DeskTab, string][] = [["know", "CarCure"], ["texts", "Texts"], ["phone", "Phone"], ["retainer", "Retainer"], ["file", "File"], ["tools", "Tools"]];
+  const tabs: [DeskTab, string][] = [...(summary ? [["summary", "Summary"] as [DeskTab, string]] : []), ["know", "CarCure"], ["texts", "Texts"], ["phone", "Phone"], ["retainer", "Retainer"], ["file", "File"], ["tools", "Tools"]];
   return (
-    <aside className="cc-side" aria-label="CarCure, texts, agreement and lead">
+    <aside className={`cc-side${summary ? " ws-side" : ""}`} aria-label="Summary, CarCure, texts, agreement and lead">
       <div className="cc-side-top">
         <div className="cc-htabs" role="tablist">
           {tabs.map(([k, label]) => (
@@ -50,6 +52,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
           ))}
         </div>
       </div>
+      {tab === "summary" && !!summary && <div className="cc-side-b ws-side-b">{summary}</div>}
       {tab === "know" && <Knowledge v={v} phase={phase} fill={fill} focusLines={focusLines} />}
       {tab === "texts" && <Texts v={v} />}
       {tab === "retainer" && <Retainer v={v} preview={preview} />}

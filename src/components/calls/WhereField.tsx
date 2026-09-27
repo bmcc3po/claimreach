@@ -15,12 +15,21 @@ function split(value: string): { city: string; st: string } {
   const comma = t.lastIndexOf(",");
   if (comma >= 0) {
     const st = stateCodeOf(t) || "";
-    return st ? { city: t.slice(0, comma).trim(), st } : { city: t, st: "" };
+    if (st) return { city: t.slice(0, comma).trim(), st };
+    // "Las Vegas," is a city with no state picked yet.
+    return { city: t.slice(comma + 1).trim() ? t : t.slice(0, comma).trim(), st: "" };
   }
   const whole = SOL.find((r) => r[0] === t.toUpperCase() || r[1].toUpperCase() === t.toUpperCase());
   return whole ? { city: "", st: whole[0] } : { city: t, st: "" };
 }
-const join = (city: string, st: string) => [city.trim(), st].filter(Boolean).join(", ");
+// A city typed with no state yet is stored with a trailing comma ("La," not
+// "La"), so a half-typed city like "La" or "Me" is never read as Louisiana or
+// Maine. The comma never shows; everything that reads the state ignores it.
+const join = (city: string, st: string) => {
+  const c = city.trim();
+  if (st) return [c, st].filter(Boolean).join(", ");
+  return c ? c + "," : "";
+};
 
 export default function WhereField({ value, onChange, onDone, agreement }: {
   value: string;
@@ -59,7 +68,7 @@ export default function WhereField({ value, onChange, onDone, agreement }: {
           {SOL.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
         </select>
       </div>
-      <div className={`cc-cue${city && !st ? " cc-red" : ""}`} style={{ marginTop: 6 }}>
+      <div className="cc-cue" style={{ marginTop: 6 }}>
         {st && agreement ? `Her agreement: ${agreement}.` : "The state picks which agreement she signs."}
       </div>
     </div>

@@ -5,6 +5,11 @@
 import { Fragment } from "react";
 import PlaceField from "./PlaceField";
 import WhereField from "./WhereField";
+import { FiProgress, FiBody, FiBar } from "./FullIntake";
+import { WsLeft, WsSummary } from "./IntakeWorkspace";
+import { OneTop, OneBody, OneBar } from "./OneQuestion";
+import ChoreList from "./ChoreList";
+import { MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
   return String(cls || "").split(/\s+/).filter(Boolean).map((t) => "cc-" + t).join(" ");
@@ -37,8 +42,22 @@ function GapCard({ g, alone }: { g: any; alone?: boolean }) {
 }
 
 export default function CallView({ v }: { v: any }) {
+  // Simple Chorelist: one numbered form, nothing hidden, no other chrome.
+  if (v.choreView) return (
+<div className="cc-app ch-mode">
+<ChoreList v={v} />
+<Dispo v={v} />
+</div>
+  );
+  // Full Intake on an iPad or a computer: caller on the left, the section in
+  // the middle, what's missing and what's next on the right.
+  // Conversation and Quick Capture share Full Intake's look and its iPad and desktop layouts.
+  const onePage = v.fullView || v.oneQ;
+  const ws = onePage && v.ws ? ` ws ws-${v.ws}` : "";
   return (
-<div className="cc-app">
+<div className={`cc-app${onePage ? " fi-mode" : ""}${v.oneQ ? ` oq-mode oq-${v.oneKind}` : ""}${ws}`}>
+{!!ws && <WsLeft v={v} />}
+{!!ws && v.ws === "ipad" && <aside className="ws-right" aria-label="Summary"><WsSummary v={v} /></aside>}
 <div className="cc-top">
 <div className="cc-nav">
 <div className="cc-nav-l"><a className="cc-navback" href="/app" aria-label="All calls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a><button className="cc-mode" onClick={v.toggleModeMenu} aria-label="Change view" aria-expanded={!!v.modeMenuOpen}>{v.modeLabel}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div>
@@ -52,6 +71,8 @@ export default function CallView({ v }: { v: any }) {
 <a className="cc-menu-b" role="menuitem" href="/app">All calls</a>
 </div>
 </>)}
+{!!(v.fullView) && <FiProgress v={v} />}
+{!!(v.oneQ) && <OneTop v={v} />}
 {!!(v.guided) && (<>
 <div className="cc-gates">
 {(v.gates || []).map((g: any, i2: number) => (<Fragment key={i2}>
@@ -81,7 +102,9 @@ export default function CallView({ v }: { v: any }) {
 </Fragment>))}
 </nav>
 </>)}
-<main className="cc-main">
+<main className={`cc-main${v.fullView ? " fi-main" : ""}${v.oneQ ? " fi-main oq-main" : ""}`}>
+{!!(v.fullView) && <FiBody v={v} />}
+{!!(v.oneQ) && <OneBody v={v} />}
 {!!(v.bare) && (<>
 {(v.bareRows || []).map((r: any, i6: number) => (<Fragment key={i6}>
 {!!(r.isGroup) && (<><div id={r.id} className="cc-q-g">{r.label}</div></>)}
@@ -288,9 +311,9 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.showMoney) && (<>
 {!!(v.free) && (<><div id="fs-money" className="cc-sec-h">How we work</div></>)}
 <div className="cc-say">
-<div className="cc-say-label">Say, before she asks</div>
-<div className="cc-say-line">Let me tell you real quick how we work, because people always want to know. We don't charge you anything up front. We only get paid at the very end out of the settlement, so nothing comes out of your pocket at any point, and if there's nothing recovered you don't owe us anything.</div>
-<div className="cc-cue">Don't bring up the split. Never name a dollar amount. Never do the math out loud.</div>
+<div className="cc-say-label">{MONEY.label}</div>
+<div className="cc-say-line">{MONEY.line}</div>
+<div className="cc-cue">{MONEY.cue}</div>
 </div>
 {!!v.showFees && (<>
 <div className="cc-card">
@@ -308,7 +331,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.sendReady) && (<>
 <div className="cc-say">
 <div className="cc-say-label">Say</div>
-<div className="cc-say-line cc-sm">Here's what I'm going to do. I'm sending your agreement over right now so we can get this open today and start pulling that report for you. Are you better by text or by email?</div>
+<div className="cc-say-line cc-sm">{SEND_LINE}</div>
 </div>
 <div className="cc-agr"><span>Attorney</span><b>{v.firmSpoken}</b></div>
 <div className="cc-agr"><span>Agreement</span><b>{v.agreement}</b></div>
@@ -353,27 +376,23 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-steps">{(v.sendSteps || []).map((st: any, i32: number) => (<Fragment key={i32}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div>
 {!!(v.notSigned) && (<>
 <div className="cc-say">
-<div className="cc-say-label">Stay on the line</div>
-<div className="cc-say-line cc-sm">Go ahead and put me on speaker and I'll walk you through it, it's short.</div>
+<div className="cc-say-label">{STAY.label}</div>
+<div className="cc-say-line cc-sm">{STAY.line}</div>
 </div>
 <div className="cc-card">
 <div className="cc-lab" style={{marginBottom: "0"}}>WALK HER THROUGH IT</div>
-<div className="cc-line">You should see a text from {v.firmSpoken} with a link. Tap that link.</div>
-<div className="cc-line">There's a highlighted box at the bottom of that first page. Tap it, draw your signature with your finger, and hit create.</div>
-<div className="cc-line">Then there's one more on page two. That one is just your authorization for us to go pull the accident report and your records so nobody's asking you to chase paperwork.</div>
+{walkThrough(v.firmSpoken).map((t, i) => <div key={i} className="cc-line">{t}</div>)}
 </div>
 <div className="cc-card">
 <div className="cc-lab" style={{marginBottom: "0"}}>NO DEAD AIR</div>
-<div className="cc-line">While you're looking at that, let me tell you what happens on your end this week.</div>
-<div className="cc-line">Your case manager is going to reach out to introduce herself, and we'll go ahead and start working on getting that report pulled.</div>
-<div className="cc-line">And if you're hurting, we can get you in with somebody local just to get looked at, no cost to you out of pocket. That's up to you, nobody's making you go anywhere.</div>
+{NO_DEAD_AIR.map((t, i) => <div key={i} className="cc-line">{t}</div>)}
 </div>
 </>)}
 {!!(v.signed) && (<>
 <div className="cc-say" style={{border: "2px solid #D9982A", background: "#FDF5E6"}}>
-<div className="cc-say-label">Signed. Say</div>
-<div className="cc-say-line">Perfect, I've got that back on my end. Thank you.</div>
-<div className="cc-cue">Now you collect. A caller who has signed will give you anything.</div>
+<div className="cc-say-label">{SIGNED.label}</div>
+<div className="cc-say-line">{SIGNED.line}</div>
+<div className="cc-cue">{SIGNED.cue}</div>
 </div>
 </>)}
 </>)}
@@ -438,13 +457,8 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.free) && (<><div id="fs-close" className="cc-sec-h">Close</div></>)}
 <div className="cc-say">
 <div className="cc-say-label">Say, then hang up</div>
-<div className="cc-say-line cc-sm">Okay {v.callerFirst}, I've got everything I need from you. Your case manager is going to reach out tomorrow or the day after at the latest to introduce herself and go over next steps. She may come from a different number, and if she can't reach you she'll text you so you can just reply with a good time.</div>
-<div className="cc-say-line cc-sm" style={{marginTop: "8px"}}>We just like to remind our clients of a couple of things. First, stay off social media about the accident. It's the first place the other insurance company will look to try to discredit you.</div>
-<div className="cc-say-line cc-sm" style={{marginTop: "8px"}}>Next, and this is the most important one. You do not need to speak with the other insurance company, or your own. If they call, just politely say, please call my attorney at {v.firmSpoken}.</div>
-<div className="cc-say-line cc-sm" style={{marginTop: "8px"}}>Your only job now is to focus on getting treated and feeling better. We'll handle the rest.</div>
-<div className="cc-say-line cc-sm" style={{marginTop: "8px"}}>Anything you need in the meantime, you call me right back at this number.</div>
-<div className="cc-say-line cc-sm" style={{marginTop: "8px"}}>I appreciate your time today. I hope you start feeling better.</div>
-<div className="cc-cue">Nothing good happens after the close.</div>
+{closeLines(v.callerFirst, v.firmSpoken).map((t, i) => <div key={i} className="cc-say-line cc-sm" style={i ? {marginTop: "8px"} : undefined}>{t}</div>)}
+<div className="cc-cue">{CLOSE_CUE}</div>
 </div>
 <div className="cc-card">
 {(v.summary || []).map((r: any, i39: number) => (<Fragment key={i39}>
@@ -454,10 +468,12 @@ export default function CallView({ v }: { v: any }) {
 </>)}
 
 </main>
-<div className="cc-bar">
+<div className={`cc-bar${v.fullView ? " fi-bar" : ""}${v.oneQ ? " fi-bar oq-bar" : ""}`}>
+{v.fullView ? <FiBar v={v} /> : v.oneQ ? <OneBar v={v} /> : (<>
 <button className="cc-btn cc-ghost" onClick={v.openSheet}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>Help</button>
 {!!(v.nudge) && (<div className="cc-nudge" role="alert">{v.nudge}</div>)}
 <button className={`cc-btn cc-go${v.next.muted ? " cc-muted" : ""}`} disabled={!!v.next.disabled} onClick={v.next.go}>{v.next.label}</button>
+</>)}
 </div>
 
 {!!(v.sheetOpen) && (<>
@@ -553,6 +569,15 @@ export default function CallView({ v }: { v: any }) {
 </div>
 </>)}
 
+<Dispo v={v} />
+</div>
+
+  );
+}
+
+// How the call ended. A full screen of its own, the same from every view.
+function Dispo({ v }: { v: any }) {
+  return (<>
 {!!(v.dispoOpen) && (<>
 <div className="cc-dsp" role="dialog" aria-label="Dispo">
 <div className="cc-dsp-n">
@@ -610,7 +635,5 @@ export default function CallView({ v }: { v: any }) {
 </div>
 </div>
 </>)}
-</div>
-
-  );
+  </>);
 }

@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
   const { data: main } = await sb.from("esign_submissions").select("*")
     .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   let status = main?.status || "ready";
-  if (main && ["sent", "opened", "signed"].includes(main.status)) status = await syncSubmission(admin, main);
+  if (main && ["sent", "opened", "signed"].includes(main.status)) status = await syncSubmission(admin, main, { origin: url.origin });
 
   const pax: Record<string, string> = {};
   if (callId) {
@@ -184,7 +184,7 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false }).limit(6);
     for (const r of rows ?? []) {
       if (pax[String(r.pax_index)]) continue;
-      pax[String(r.pax_index)] = ["sent", "opened"].includes(r.status) ? await syncSubmission(admin, r) : r.status;
+      pax[String(r.pax_index)] = ["sent", "opened"].includes(r.status) ? await syncSubmission(admin, r, { origin: url.origin }) : r.status;
     }
   }
   // The console shows signed for anything signed or complete.

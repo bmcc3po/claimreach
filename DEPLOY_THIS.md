@@ -1,57 +1,76 @@
-# ClaimReach deploy: agreements fill every blank, Send says why it failed, clean Story and Body, the 30-day calculator
+# ClaimReach deploy: Conversation, Quick Capture, Full Intake on phone, iPad and desktop, Simple Chorelist, and an email when a client signs
 
-No database changes. Upload, wait for the check, merge. This zip replaces claimreach_send_fix.zip and the earlier claimreach_funnel.zip (everything in them is in here), so upload only this one.
+One new database step for the signing email: migration 0099. The views need nothing.
 
-## The agreements
+## One intake, four ways to look at it
 
-Page 1 now fills "injuries suffered by" with the injured person's name and "on/around" with the date of the wreck, on all three agreements (Texas, Florida, AL/GA and every other state). Step 2 (DOB and SSN) now also puts the date under Turnbull, Moak & Pendergrass's signature. Checked on the rendered pages of all three.
+Guided, Conversation, Quick Capture, Full Intake, Simple Chorelist and Q&A are presentations of the same call engine. The questions, answers, branching, qualification rules, lights, the 30-day math and the saved call are the same in every one. None of that changed in this zip. Switching views, turning the iPad, or resizing the window lands on the same section with every answer in place, and the section she was in now saves with the call, so opening the same call on another device lands there too.
 
-The date of the wreck is now needed to send. If it's missing, Send says so and shows the date pick right there.
+## Conversation and Quick Capture
 
-The first send after this goes live builds the new agreement templates in DocuSeal on its own, so it takes a few seconds longer once. Nobody has to tap Set up again.
+Built from your renderings. One question at a time, in call order.
 
-## When a send fails
+- **Conversation:** the last answer stays in view above the question. The question sits in a navy card, written the way the agent says it. Answers are big white cards with a picture on each. Add a note sits under the answers, and Previous, Help and Skip are at the bottom.
+- **Quick Capture:** Where, Wreck date and Fault across the top (tap one to go back to it), then "Question 5 of 14", the percent and a green bar. Same navy card, with full-width one-tap answers under it.
+- **Moving on:** tapping an answer goes straight to the next open question. Anything that takes more than one tap (every place it hurts, a passenger, "Other", an attorney) waits for Done. When every question is answered, the button says Next: How we work.
+- **Switching:** these two, Full Intake and Simple Chorelist all share one spot. Jump from one to another and you land on the same question.
+- **On an iPad or a computer:** they get the same three areas as Full Intake, with the question in the middle.
 
-The send you tried died with a bare "(502)". A failed send now says why on screen, in plain words, and writes what DocuSeal answered into the file's history, so the next failure can be read and fixed instead of guessed at.
+## Highlights are boxes
 
-## The site menu
+Anything highlighted is boxed all the way around now. No more colored bar down the left side: the script lines in Simple Chorelist, the Full Intake "Next" question, the lead card, warnings, the Ask CaseCure answer, the active step on the computer and the active icon in the navy rail.
 
-The left menu on the full site could slide partly off the left edge (icons gone, section names cut). The page can no longer scroll sideways, so it stays put.
+## iPad in landscape
 
-## The look
+Full Intake gets three areas. Left: her name, number, email, file number and campaign, the call clock and save status, Call or text and End call, where the lead came from and what she told the marketer, the six qualifiers in words (Good, Problem, Check, Not yet), and quick notes with the time on each. Middle: the intake, the same page as the phone, with the section bookmarks pinned at the top. Right: the next best action with the line to ask, everything still missing (tap one to jump to it), the live summary of every section, and rebuttals for the part of the call you're in.
 
-White rows and one font (Geist, same as the site), regular weights. Color only where it means something: a green check when a fact is in, an amber ring when one got skipped, red for a problem, navy for the row that is open and the answer picked. No tinted boxes, no colored bars, no shouting.
+## Desktop
 
-## Story is one list
+Full Intake is a working screen, not a big phone. Progress across the top. Left and middle are the same as the iPad, with Call, Text and End call on the caller card. The right side opens on Summary (next best action, missing, live summary, rebuttals), and CarCure, Texts, Phone, Retainer, File and Tools are one click away in the same panel. Guided and Q&A on a computer look exactly like they do today.
 
-"Tell me what happened." stays on top. Under it, one list: Where, When, She was, Fault, Police. Each row shows what's captured on the right, or Not yet. One row is open at a time. It's the next thing still missing, with "If she didn't say it, ask:" and the existing line. Tap an answer and that row closes and the next missing one opens. Tap any row to jump to it. Where comes first because it picks the agreement and the deadline. Under Where it shows the agreement. Under When it shows the 30-day rule for that date.
+## Simple Chorelist
 
-The lead is one line ("From the lead: Not at fault, Alabama, ...") and a tap shows the whole description. Common ground and rambling lines moved to two quiet links at the bottom.
+A new view for anyone who would rather fill out a paper form. Pick it from the view control.
 
-## Body is the same list
+- **One numbered form:** 1. Incident, 2. Injury, 3. Treatment, 4. Insurance, 5. Vehicle / Property, 6. Notes, 7. Retainer. Every question is showing with its answers. Nothing folds up, nothing is hidden.
+- **Status in words:** DONE, DO THIS NOW, NOT STARTED, NEEDS AN ANSWER. It never depends on a color or an icon.
+- **The top:** Intake Progress, then "3 sections finished, 4 sections left", a plain bar, and "Next section: Insurance". It is information only.
+- **Answers:** boxes you tick. Anything with a blank shows the line to ask.
+- **Buttons, in words:** SAVE PROGRESS and GO TO NEXT SECTION at the end of every section, FINISH INTAKE at the end of 7. SAVE PROGRESS says "Saved at 2:14 PM" only after the save lands. FINISH INTAKE with sections unfinished names them first; press it again to end the call.
+- **Retainer:** how we work, the send line, signer, injured person, text or email, SEND THE AGREEMENT, then walking her through it. Once she signs: date of birth, SSN, COMPLETE THE AGREEMENT, her info, passengers' agreements, and the close.
+- **Every screen:** one long form on a phone, two fields across on an iPad, three on a computer.
 
-Every question is a row with its answer on the right. The question being asked opens in place. Tap any row to go back to it. The separate strip of question tabs is gone.
+## Full Intake
 
-## The 30-day calculator
+A view on the call screen, picked from the view control. It replaces Freestyle. It is the same call engine as Guided: same questions, answers, branching, lights and saved state. Switching views changes nothing and lands on the same part of the intake.
 
-It works from the crash date and needs no math from the agent.
+- **One page:** Incident, Injury, Treatment, Insurance, Vehicle, Notes, top to bottom. No tabs, no finishing one before the next.
+- **Bookmarks:** the row at the top jumps down the same page and stays put while scrolling.
+- **Each section:** its status (done, partly done, left with blanks, untouched), a one-line summary of what's captured, and opens in place to answer or change anything.
+- **One tap:** answers are big buttons. The crash date has a week strip ("last Thursday" is one tap). Treatment takes the hospital or clinic names. The other driver's insurance is a search. The 30-day check sits at the top of Treatment.
+- **Quick note:** the Note button saves a line to the call notes with the time, for "capture now, sort it later".
+- **Next:** the button at the bottom jumps to the next unanswered question in call order and highlights it.
+- **Lights:** the six lights sit in one line under her name. They turn red only when one is a real problem.
+- **Remembered:** each agent's view is kept on their device for the next call.
 
-- Not seen yet: "Has to be seen by Oct 14, 17 days left."
-- Seen, wreck over 30 days ago: "Wreck was 120 days ago. With no gap she has been seen at least 3 times, never more than 30 days apart." Then it asks her first visit, her last visit, and whether there was a month with no visit (only when the dates leave room for one).
-- Any gap it finds is red and says where: "Last visit was 45 days ago. That is a gap."
-- Otherwise: "Next visit due by Oct 7, 20 days left."
-- The 30-day check is a row like the others: "3 days left" or "Gap" on the right, the why under it.
-- Under 5 days left, and only then, the willing question becomes "Can you get in today or tomorrow?" A no there flags the lights instead of turning Treat red, since she isn't refusing treatment.
+## Also fixed
 
-Visit dates are one tap (Same day, Today, Yesterday, Not sure) or a date pick. A date before the wreck or in the future is refused, and the screen says why. The Gap light and the dispo's 30+ day gap reason read the same calculator. The case summary prints First seen, Last seen and Month with no visit.
+Typing a city like "Las Vegas" no longer reads "La" as Louisiana on the way.
 
-## Send (from the earlier zip)
+## When a client signs
 
-Send agreement is never a dead grey button. Tap it while something is missing and it says exactly what, right above the button. By default it texts her cell on file, and "Another number" takes a spouse's. Where has its own State pick. On a computer the App is white like the Leads page: the line to say reads like a page heading, the lists have thin lines, and the divider gives real width to whichever side you widen.
+- **The email:** it goes out with the case summary and a link to the file.
+- **Who gets it:** set in Settings under "When a client signs". One distro per case type (like mva@), plus CCs per campaign (like tmpmva@).
+- **Needs migration 0099:** additive, staff only.
 
 ## Files
 
-    src/app/api/calls/esign/route.ts, esign/preview/route.ts, esign/complete/route.ts, esign-setup/route.ts
-    src/lib/esign-packets/tmp-mva.ts, src/lib/mva-call/esign.ts, preview.ts, engine.ts, engine.test.ts, server.ts
-    src/components/calls/CallView.tsx, WhereField.tsx (new), PlaceField.tsx, CallConsole.tsx, calls.css
-    src/app/clean.css
+    src/lib/mva-call/intake.ts (new), engine.ts, engine.test.ts, server.ts, esign.ts
+    src/components/calls/FullIntake.tsx (new), IntakeWorkspace.tsx (new), ChoreList.tsx (new), OneQuestion.tsx (new), scripts.ts (new)
+    src/components/calls/CallView.tsx, CallConsole.tsx, DeskPanel.tsx, WhereField.tsx, calls.css
+    src/app/(calls)/app/[id]/page.tsx
+    src/lib/notify-signed.ts (new), notify-signed.test.ts (new), email.ts
+    src/app/api/notify-routes/route.ts (new), src/app/(internal)/settings/notify/page.tsx (new), settings/page.tsx
+    src/components/SignedNotifyManager.tsx (new)
+    src/app/api/calls/esign/route.ts, esign/complete/route.ts, src/app/api/esign/docuseal/route.ts
+    RUN_THESE_MIGRATIONS.sql, supabase/migrations/0099_signed_notify.sql

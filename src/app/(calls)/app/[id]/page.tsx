@@ -105,6 +105,8 @@ export default async function CallPage({ params, searchParams }: { params: Promi
         callerName: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "",
         callerPhone: lead.phone || "",
         callerEmail: lead.email || "",
+        campaign: lead.campaign || "",
+        leadNo: lead.lead_no || "",
         agentName: me.full_name || "",
         firmSpoken: firmSpoken(firm?.name),
         textFrom: from ? fmtPhone(from) : "",

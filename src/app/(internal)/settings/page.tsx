@@ -28,6 +28,11 @@ export default async function SettingsPage() {
         <a className="btn" href="/settings/campaigns">Manage campaigns</a>
       </div>
       <div className="side-card" style={{ maxWidth: 620 }}>
+        <h3>When a client signs</h3>
+        <p className="muted" style={{ marginTop: 0 }}>Who gets an email the moment a client signs: one distro per case type (like mva@), plus CCs per campaign (like tmpmva@).</p>
+        <a className="btn" href="/settings/notify">Set who gets it</a>
+      </div>
+      <div className="side-card" style={{ maxWidth: 620 }}>
         <h3>Retainer templates</h3>
         <p className="muted" style={{ marginTop: 0 }}>Create, edit, and assign retainer templates to case types, and mark a default per type.</p>
         <a className="btn" href="/templates?tab=retainers">Manage retainers</a>

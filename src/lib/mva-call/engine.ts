@@ -14,6 +14,7 @@
 // @ts-nocheck
 /* eslint-disable */
 import { SOL, stateCodeOf, injuryYears as injuryYearsFor } from './state';
+import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './intake';
 export { SOL };
 export const REBS: any[] = [
   { id: 'report', phase: 'open', group: 'Opening', title: "I was just checking on my police report.", text: "Got it, and that's exactly why we have you. When that report gets requested it comes over to us too. We're the intake center for {FIRM}, and I was reaching out to see what kind of pain you've been dealing with since the accident. Tell me what happened out there." },
@@ -189,6 +190,9 @@ export interface CallProps {
   callerName: string;
   callerPhone?: string;
   callerEmail?: string;
+  /** The campaign and file number, shown on the caller card on a computer or iPad. */
+  campaign?: string;
+  leadNo?: string;
   canHear?: boolean;
   /** TMP's split is only shown on TMP campaigns. */
   showFees?: boolean;
@@ -247,6 +251,9 @@ export class CallEngine {
     delete file.ssn;
     return {
       phase: s.phase, free: s.free, bare: s.bare, visited: s.visited,
+      // Where the agent is working, so the same call opened on another device
+      // (phone to iPad) lands on the same section. A screen position, not an answer.
+      at: s.fi.sec || null,
       story: s.story, body: s.body, car: s.car,
       send: { via: s.send.via, client: s.send.client, who: s.send.who, injured: s.send.injured, phone: s.send.phone, email: s.send.email },
       file: file
@@ -255,20 +262,28 @@ export class CallEngine {
 
   seed(saved: any) {
     var s = {
-      phase: 'open', free: false, bare: false, modeMenu: false, visited: {}, sheet: false, reb: null, openRow: null, elapsed: 0, saved: false,
+      phase: 'open', free: false, bare: false, view: 'guided', modeMenu: false, visited: {}, sheet: false, reb: null, openRow: null, elapsed: 0, saved: false,
+      // Full Intake screen state: the open section, the question being changed,
+      // the one "Next" pointed at, the quick note. Never saved with the call.
+      fi: { sec: 'incident', seen: { incident: true }, edit: null, flash: null, whenPick: false, quick: false, draft: '', lights: false, carrierQ: '', prov: '', jump: 0, target: null, finishAsk: false, cq: null, note: false },
       story: { fault: null, seat: null, seatOther: '', police: null, when: null, date: '', city: '', text: '' },
       helpTab: 'reb', askText: '', askOut: null, lineFocus: 'common',
       text: { open: false, draft: '', thread: [] },
       dispo: { open: false, pick: null, list: true, why: [], auto: false, when: null, at: '', note: '', add: '', saved: false, notify: this.props.notifyDefaults.map((n) => ({ who: n.who, how: n.how, on: true })) },
       storyOpen: null, leadOpen: false,
-      body: { pain: [], seen: [], done: {}, last: null, firstAt: null, lastAt: null, stretch: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
+      body: { pain: [], seen: [], providers: [], done: {}, last: null, firstAt: null, lastAt: null, stretch: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
       car: { justMe: false, people: [] },
       send: { via: 'Text', status: this.props.esign.status || 'ready', client: this.props.callerName || '', phone: this.props.callerPhone || '', email: this.props.callerEmail || '', error: '', who: 'Same as signer', injured: '' },
       file: { step: 'agreement', dob: '', ssn: '', agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
     };
     if (saved && typeof saved === 'object') {
       ['phase', 'free', 'bare', 'visited'].forEach((k) => { if (saved[k] != null) s[k] = saved[k]; });
+      // Freestyle became Full Intake: a call saved in it opens there.
+      s.view = s.bare ? 'qa' : (s.free ? 'full' : 'guided');
+      if (s.view === 'full') s.free = false;
       ['story', 'body', 'car', 'send', 'file'].forEach((k) => { if (saved[k] && typeof saved[k] === 'object') s[k] = Object.assign({}, s[k], saved[k]); });
+      // Back on the section she was in. restoredAt keeps it until Guided moves the call on.
+      if (saved.at === 'retainer' || INTAKE_SECTIONS.some((x) => x.id === saved.at)) s.fi = Object.assign({}, s.fi, { sec: saved.at, seen: { [saved.at]: true }, restoredAt: s.phase });
       s.send.status = this.props.esign.status || 'ready';
       s.file.pax = Object.assign({}, this.props.esign.pax);
       s.file.ssn = '';
@@ -634,7 +649,7 @@ export class CallEngine {
     var st = this.state.story, a = this.storyAsks(), days = this.daysAgo();
     var whenVal = !st.when ? '' : st.when !== 'Pick a date' ? st.when : (st.date ? mdy(st.date) + (days != null ? ', ' + (days === 1 ? '1 day ago' : days + ' days ago') : '') : '');
     var rows = [
-      { key: 'city', label: 'Where', value: String(st.city || '').trim(), done: !!this.stateCode(st.city), ask: a.city },
+      { key: 'city', label: 'Where', value: String(st.city || '').trim().replace(/,\s*$/, ''), done: !!this.stateCode(st.city), ask: a.city },
       { key: 'when', label: 'When', value: whenVal, done: !!whenVal, ask: a.when },
       { key: 'seat', label: 'She was', value: st.seat === 'Other' ? ('Other' + (st.seatOther ? ', ' + st.seatOther : '')) : (st.seat || ''), done: !!st.seat && (st.seat !== 'Other' || !!st.seatOther), ask: a.seat },
       { key: 'fault', label: 'Fault', value: st.fault || '', done: !!st.fault, ask: '' },
@@ -919,6 +934,413 @@ export class CallEngine {
     return String(this.state.send.client || this.props.callerName || '').trim().split(' ')[0] || 'the caller';
   }
 
+  // ==========================================================================
+  // Views. One engine, one set of answers; a view only changes what is drawn.
+  // Guided walks the call step by step, Full Intake is the whole intake on one
+  // page, Q&A is plain rows. Switching never touches an answer.
+  // ==========================================================================
+  onViewChange: (view: string) => void = () => {};
+
+  /** Where a guided call is right now, as a Full Intake section. */
+  guidedSection() {
+    var s = this.state, P = s.phase;
+    if (P === 'car') return 'vehicle';
+    if (P === 'body') { var q = this.currentQ(); return (q && sectionOf(q.key)) || 'injury'; }
+    if (P === 'story' && s.storyOpen && s.storyOpen !== 'none') return 'incident';
+    return 'incident';
+  }
+
+  setView(view: any) {
+    var s = this.state;
+    var patch: any = { view: view, modeMenu: false, free: view === 'qa', bare: view === 'qa' };
+    // Full Intake and Simple Chorelist share one position (fi.sec), so moving
+    // between them, or between phone, iPad and desktop, never loses the spot.
+    var onePage = (x: any) => x === 'full' || x === 'chore' || x === 'convo' || x === 'quick';
+    if (onePage(view)) {
+      var keep = onePage(s.view) || (!!s.fi.restoredAt && s.fi.restoredAt === s.phase);
+      var sec = keep ? s.fi.sec : this.guidedSection();
+      if (view === 'chore' && !onePage(s.view) && ['money', 'send', 'file', 'close'].indexOf(s.phase) >= 0) sec = 'retainer';
+      patch.fi = Object.assign({}, s.fi, { sec: sec, edit: null, flash: null, target: null, jump: (s.fi.jump || 0) + 1, finishAsk: false, restoredAt: null });
+      if (view === 'full' && s.fi.sec === 'retainer' && ['open', 'story', 'body', 'car'].indexOf(s.phase) >= 0) patch.phase = 'send';
+      // Conversation and Quick Capture ask one question at a time: the one the
+      // agent was on, else the next one still open in her section, else the next open one.
+      if (view === 'convo' || view === 'quick') {
+        var keepQ = (s.view === 'convo' || s.view === 'quick') ? s.fi.cq : null;
+        patch.fi.cq = keepQ || s.fi.target || (sec && sec !== 'retainer' ? this.fiNext(sec) : null) || this.fiNext();
+      }
+    } else if (view === 'guided' && onePage(s.view) && s.fi.sec === 'retainer' && ['open', 'story', 'body', 'car'].indexOf(s.phase) >= 0) {
+      patch.phase = 'send';
+    } else if (view === 'guided' && onePage(s.view) && ['open', 'story', 'body', 'car'].indexOf(s.phase) >= 0) {
+      // Land on the part of the intake the agent was working in.
+      var sec2 = s.fi.sec || 'incident';
+      var ph = sec2 === 'vehicle' ? 'car' : (sec2 === 'injury' || sec2 === 'treatment' || sec2 === 'insurance') ? 'body' : 'story';
+      patch.phase = ph;
+      patch.storyOpen = null;
+      if (ph === 'body') {
+        var first = this.fiNext(sec2);
+        patch.body = Object.assign({}, s.body, { focus: first && BODYQ.some((q) => q.key === first) ? first : null });
+      }
+    }
+    this.setState(patch);
+    this.onViewChange(view);
+  }
+
+  setFi(patch: any) {
+    var fi = Object.assign({}, this.state.fi, patch);
+    // A section the agent has been in and left with blanks shows as left behind.
+    if (patch.sec) fi.seen = Object.assign({}, this.state.fi.seen, { [patch.sec]: true });
+    this.setState({ fi: fi });
+  }
+
+  // Everything Full Intake needs to know about one question: does it apply,
+  // is it answered, what it reads as, and whether it is a problem.
+  fiInfo(id: any) {
+    var s = this.state, st = s.story, b = s.body, f = s.file, car = s.car;
+    var optional = INTAKE_OPTIONAL.has(id);
+    var bq = BODYQ.find((q) => q.key === id);
+    if (bq) {
+      var applies = this.applies(b, bq), answered = applies && this.answered(b, bq);
+      var gc = this.gapCheck(b);
+      var tone = '';
+      if (id === 'pain' && b.pain.length === 1 && b.pain[0] === FINE) tone = 'warn';
+      if (id === 'check' && b.check === 'Yes, for injuries') tone = 'bad';
+      if (id === 'rep' && b.rep === 'Yes' && !this.repGood(b)) tone = 'bad';
+      if (id === 'stretch' && b.stretch === 'Yes') tone = 'bad';
+      if (id === 'willing' && b.willing === 'No') tone = gc.urgent && !gc.bad ? 'warn' : 'bad';
+      return { id: id, label: bq.label, ask: this.lineOf(bq, b), applies: applies, answered: answered, optional: false, value: answered ? this.bodyValue(b, bq) : '', tone: tone };
+    }
+    var fact = this.storyFacts().find((r) => r.key === id);
+    if (fact) {
+      var fv = fact.value;
+      if (id === 'when' && fact.done) {
+        var dn = dayNo(crashIsoOf(st)), ago = todayNo() - dn;
+        fv = shortDay(dn) + ', ' + (ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago');
+      }
+      return { id: id, label: fact.label, ask: fact.ask, applies: true, answered: fact.done, optional: false, value: fv, tone: id === 'fault' && st.fault === 'Caller' ? 'bad' : '' };
+    }
+    var one = (label: any, answered: any, value: any, applies?: any) => ({ id: id, label: label, ask: '', applies: applies !== false, answered: !!answered, optional: optional, value: answered ? value : '', tone: '' });
+    if (id === 'report') return one('Report number', String(f.report || '').trim(), String(f.report || '').trim());
+    if (id === 'providers') { var pv = (b.providers || []).filter(Boolean); return one('Where she was seen', pv.length, pv.join(', '), this.seenYes(b) || pv.length > 0); }
+    if (id === 'carrier') return one("Other driver's insurance", f.carrier && f.carrier !== 'Pick one', f.carrier);
+    if (id === 'people') {
+      var ok = car.justMe || (car.people.length > 0 && car.people.every((p) => p.age && p.hurt));
+      return one('Passengers', ok, car.justMe ? 'Just her' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers');
+    }
+    if (id === 'car') { var cv = [f.vYear !== 'Year' ? f.vYear : '', f.vMake, f.vModel].filter(Boolean).join(' '); return one('Her car', cv, cv); }
+    if (id === 'notes') { var nt = String(st.text || '').trim(); return one('Notes', nt, nt); }
+    return one(id, false, '');
+  }
+
+  /** The next unanswered question in call order, optionally only inside one section. */
+  fiNext(sec?: any) {
+    for (var i = 0; i < INTAKE_SEQUENCE.length; i++) {
+      var id = INTAKE_SEQUENCE[i];
+      if (sec && sectionOf(id) !== sec) continue;
+      var x = this.fiInfo(id);
+      if (x.applies && !x.answered && !x.optional) return id;
+    }
+    return null;
+  }
+
+  // After an answer: the row closes (a multi-pick stays open for more taps),
+  // and the "Next" highlight clears once its question is answered.
+  fiAfter(id: any, keepOpen?: any) {
+    var fi = this.state.fi;
+    var patch: any = { edit: keepOpen ? id : (fi.edit === id ? null : fi.edit) };
+    if (fi.flash && this.fiInfo(fi.flash).answered) patch.flash = null;
+    this.setFi(patch);
+  }
+
+  fullIntake(pre: any) {
+    var s = this.state, st = s.story, b = s.body, f = s.file, fi = s.fi;
+    var today = todayNo();
+    // Simple Chorelist draws every question with its answers showing, like a
+    // paper form. Same questions, same answers, same controls.
+    var allOpen = s.view === 'chore';
+    var info: any = {};
+    INTAKE_SECTIONS.forEach((sec) => sec.questions.forEach((id) => { info[id] = this.fiInfo(id); }));
+
+    var chip = (label: any, on: any, pick: any, sub?: any) => ({ label: label, sub: sub || '', on: !!on, pick: pick });
+    var storyChip = (key: any, opts: any) => opts.map((o) => chip(o, st[key] === o, () => { this.storyPick(key, o); this.fiAfter(key); }));
+    var bodyChips = (q: any) => q.opts.map((o) => {
+      var on = q.multi ? b[q.key].indexOf(o) >= 0 : b[q.key] === (q.date ? this.quickDate(o) : o);
+      var sub = '';
+      if (q.date && o === 'Today') sub = shortDay(today);
+      if (q.date && o === 'Yesterday') sub = shortDay(today - 1);
+      return chip(o, on, () => { this.bodyPick(q, o, true); this.fiAfter(q.key, q.multi); }, sub);
+    });
+
+    var control = (id: any) => {
+      var bq = BODYQ.find((q) => q.key === id);
+      if (bq && bq.date) {
+        var dv = this.dateBox(b, bq);
+        return { kind: 'visit', opts: bodyChips(bq), date: { value: dv.value, min: dv.min, max: dv.max, why: dv.why, set: (e: any) => { this.bodyDate(bq, e.target.value); if (this.visitNo(this.state.body, id) != null) this.fiAfter(id); } } };
+      }
+      if (bq) return { kind: bq.multi ? 'multi' : 'chips', opts: bodyChips(bq), done: () => this.setFi({ edit: null }) };
+      if (id === 'city') return { kind: 'where', where: { value: st.city || '', set: (t: any) => this.storyCity(t), done: () => this.fiAfter('city') } };
+      if (id === 'when') {
+        // One tap for any day in the last week ("last Thursday"), or pick a date.
+        var iso = crashIsoOf(st);
+        var picked = iso ? dayNo(iso) : null;
+        var opts = [
+          chip('Today', st.when === 'Today', () => { this.setState({ story: Object.assign({}, this.state.story, { when: 'Today', date: '' }) }); this.setFi({ whenPick: false }); this.fiAfter('when'); }),
+          chip('Yesterday', st.when === 'Yesterday', () => { this.setState({ story: Object.assign({}, this.state.story, { when: 'Yesterday', date: '' }) }); this.setFi({ whenPick: false }); this.fiAfter('when'); }),
+        ];
+        for (var d = 2; d <= 6; d++) {
+          ((n) => {
+            var dayIso = isoFromNo(today - n);
+            opts.push(chip(new Date((today - n) * 86400000).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }) + ' ' + new Date((today - n) * 86400000).getUTCDate(),
+              st.when === 'Pick a date' && st.date === dayIso && !fi.whenPick,
+              () => { this.setState({ story: Object.assign({}, this.state.story, { when: 'Pick a date', date: dayIso }) }); this.setFi({ whenPick: false }); this.fiAfter('when'); }));
+          })(d);
+        }
+        var earlier = fi.whenPick || (st.when === 'Pick a date' && (picked == null || today - picked > 6));
+        opts.push(chip('Earlier', earlier, () => { this.setState({ story: Object.assign({}, this.state.story, { when: 'Pick a date' }) }); this.setFi({ whenPick: true }); }));
+        return { kind: 'crashdate', opts: opts, date: { show: earlier, value: st.date || '', max: isoFromNo(today), set: (e: any) => { this.storyDate(e.target.value); if (this.storyDateOk(e.target.value) != null) { this.setFi({ whenPick: false }); this.fiAfter('when'); } } } };
+      }
+      if (id === 'seat') return { kind: 'chips', opts: storyChip('seat', SEATS), other: st.seat === 'Other' ? { value: st.seatOther || '', set: (e: any) => this.set('story', 'seatOther', e.target.value), ph: 'What was she doing' } : null };
+      if (id === 'fault') return { kind: 'chips', opts: storyChip('fault', ['Other driver', 'Caller', 'Not clear']), cue: st.fault === 'Caller' ? 'Do not go hunting.' : '' };
+      if (id === 'police') return { kind: 'chips', opts: storyChip('police', ['Came out', 'No', 'Not sure']) };
+      if (id === 'report') return { kind: 'text', field: { value: f.report || '', set: (e: any) => this.set('file', 'report', e.target.value), ph: 'If she has it' } };
+      if (id === 'providers') {
+        var list = (b.providers || []);
+        var add = () => {
+          var t = String(this.state.fi.prov || '').trim();
+          if (!t) return;
+          this.setState({ body: Object.assign({}, this.state.body, { providers: (this.state.body.providers || []).concat([t]) }) });
+          this.setFi({ prov: '' });
+        };
+        return { kind: 'providers', items: list.map((name, i) => ({ label: name, remove: () => this.setState({ body: Object.assign({}, this.state.body, { providers: this.state.body.providers.filter((x, j) => j !== i) }) }) })),
+          draft: { value: fi.prov || '', set: (e: any) => this.setFi({ prov: e.target.value }), ph: 'Hospital or clinic' }, add: add };
+      }
+      if (id === 'carrier') {
+        var q = String(fi.carrierQ || '').trim().toLowerCase();
+        var all = pre.carriers.filter((c) => c !== 'Pick one' && c !== 'Other');
+        var hits = q ? all.filter((c) => c.toLowerCase().indexOf(q) >= 0) : all.slice(0, 6);
+        var typed = String(fi.carrierQ || '').trim();
+        var exact = all.some((c) => c.toLowerCase() === q);
+        var pickC = (c: any) => { this.set('file', 'carrier', this.state.file.carrier === c ? 'Pick one' : c); this.setFi({ carrierQ: '' }); this.fiAfter('carrier'); };
+        return { kind: 'carrier', query: { value: fi.carrierQ || '', set: (e: any) => this.setFi({ carrierQ: e.target.value }), ph: 'Type to search' },
+          opts: hits.map((c) => chip(c, f.carrier === c, () => pickC(c))).concat(typed && !exact ? [chip('Use "' + typed + '"', false, () => pickC(typed))] : []) };
+      }
+      if (id === 'people') return { kind: 'people', justMe: chip('Just her', s.car.justMe, pre.justMe), add: pre.addPerson, people: pre.people };
+      if (id === 'car') return { kind: 'car', year: { value: f.vYear, set: (e: any) => this.set('file', 'vYear', e.target.value), options: pre.years }, make: { value: f.vMake || '', set: (e: any) => this.set('file', 'vMake', e.target.value) }, model: { value: f.vModel || '', set: (e: any) => this.set('file', 'vModel', e.target.value) } };
+      if (id === 'notes') return { kind: 'notes', field: { value: st.text || '', set: (e: any) => this.set('story', 'text', e.target.value), ph: 'Anything she said worth keeping' } };
+      return { kind: 'none' };
+    };
+
+    // Short words for the section summaries.
+    var word: any = {
+      fault: { 'Other driver': 'Other driver at fault', Caller: 'She was at fault', 'Not clear': 'Fault not clear' },
+      police: { 'Came out': 'Police came', No: 'No police' },
+      work: { Yes: 'Missed work', No: 'No missed work', 'Not working': 'Not working' },
+      exchanged: { Yes: 'Exchanged info', 'Police handled it': 'Police took info', 'Hit and run': 'Hit and run' },
+    };
+    var summaryOf = (sec: any) => {
+      var v = (id: any) => (info[id] && info[id].answered ? info[id].value : '');
+      var parts: any[] = [];
+      if (sec === 'incident') parts = [v('city'), info.when.answered ? shortDay(dayNo(crashIsoOf(st))) : '', v('seat'), word.fault[st.fault] || '', word.police[st.police] || ''];
+      if (sec === 'injury') parts = [b.pain.join(', '), word.work[b.work] || ''];
+      if (sec === 'treatment') parts = [b.seen.join(', '), (b.providers || []).join(', '), info.lastAt.answered ? 'Last seen ' + info.lastAt.value.split(',')[0] : ''];
+      if (sec === 'insurance') parts = [f.carrier && f.carrier !== 'Pick one' ? f.carrier : '', word.exchanged[b.exchanged] || '', b.coverage || '', b.rep === 'Yes' ? 'Has an attorney' : ''];
+      if (sec === 'vehicle') parts = [v('people'), v('car')];
+      if (sec === 'notes') parts = [String(st.text || '').trim().split('\n')[0].slice(0, 90)];
+      return parts.filter(Boolean).join(', ');
+    };
+
+    var sections = INTAKE_SECTIONS.map((sec) => {
+      var live = sec.questions.filter((id) => info[id].applies);
+      var need = live.filter((id) => !info[id].optional);
+      var done = need.filter((id) => info[id].answered).length;
+      var any = live.some((id) => info[id].answered);
+      var leftBehind = !!(fi.seen || {})[sec.id] && fi.sec !== sec.id;
+      var status = need.length === 0 ? (any ? 'done' : 'empty')
+        : done === need.length ? 'done'
+        : leftBehind ? 'missing'
+        : any ? 'partial' : 'empty';
+      var bad = live.some((id) => info[id].tone === 'bad');
+      var open = fi.sec === sec.id;
+      return {
+        id: sec.id, label: sec.label, open: open, status: status, bad: bad,
+        count: need.length ? done + '/' + need.length : '',
+        summary: summaryOf(sec.id) || (status === 'empty' ? 'Nothing yet' : ''),
+        toggle: () => this.setFi(open ? { sec: null, edit: null } : { sec: sec.id, edit: null, target: null, jump: (this.state.fi.jump || 0) + 1 }),
+        gap: sec.id === 'treatment' && pre.gapCard.show ? pre.gapCard : null,
+        questions: live.map((id) => {
+          var x = info[id];
+          var editing = allOpen || fi.edit === id || !x.answered;
+          return Object.assign({}, x, {
+            editing: editing, flash: fi.flash === id,
+            showAsk: !x.answered && !!x.ask,
+            edit: () => this.setFi({ edit: fi.edit === id ? null : id, flash: null }),
+            c: editing ? control(id) : { kind: 'none' },
+            rep: id === 'rep' && b.rep === 'Yes'
+          });
+        })
+      };
+    });
+
+    var seqLive = INTAKE_SEQUENCE.filter((id) => this.fiInfo(id).applies);
+    var total = seqLive.length;
+    var doneN = seqLive.filter((id) => this.fiInfo(id).answered).length;
+    var nextId = this.fiNext();
+    // Open a question's section and point at it (Next, and the missing list).
+    var goTo = (id: any) => this.setFi({ sec: sectionOf(id), flash: id, edit: null, target: id, cq: id, jump: (this.state.fi.jump || 0) + 1 });
+    // Everything still needed, section by section. The same rule as each
+    // section's count: a question that applies, is required, and has no answer.
+    var missing: any[] = [];
+    sections.forEach((x) => x.questions.forEach((q: any) => {
+      if (!q.answered && !q.optional) missing.push({ id: q.id, label: q.label, sec: x.id, secLabel: x.label, go: () => goTo(q.id) });
+    }));
+
+    // Conversation and Quick Capture: one question at a time, in call order.
+    // Same questions and the same controls as the page above; an answer moves
+    // on to the next one still open, Previous and Skip move by hand.
+    var one: any = null;
+    if (s.view === 'convo' || s.view === 'quick') {
+      var liveSeq = () => INTAKE_SEQUENCE.filter((id) => this.fiInfo(id).applies);
+      var seqA = liveSeq();
+      var curId = fi.cq && seqA.indexOf(fi.cq) >= 0 ? fi.cq : nextId;
+      var pos = curId ? seqA.indexOf(curId) : seqA.length;
+      var openAfter = (from: any) => {
+        var list = liveSeq(), k = list.indexOf(from);
+        for (var j = k + 1; j < list.length; j++) if (!this.fiInfo(list[j]).answered) return list[j];
+        for (var j2 = 0; j2 < k; j2++) if (!this.fiInfo(list[j2]).answered) return list[j2];
+        return null;
+      };
+      var goQ = (id: any) => this.setFi({ cq: id, sec: id ? sectionOf(id) : this.state.fi.sec, edit: null, flash: null, note: false });
+      var advance = (id: any) => { if (this.fiInfo(id).answered) goQ(openAfter(id)); };
+      var q1: any = null;
+      if (curId) {
+        var x1 = info[curId];
+        var c1: any = control(curId);
+        var bq1 = BODYQ.find((q) => q.key === curId);
+        var multi1 = c1.kind === 'multi';
+        var wrap = (o: any) => Object.assign({}, o, { pick: () => { o.pick(); if (!multi1 && !(curId === 'rep' && this.state.body.rep === 'Yes') && !(curId === 'seat' && this.state.story.seat === 'Other')) advance(curId); } });
+        if (c1.opts) c1 = Object.assign({}, c1, { opts: c1.opts.map(wrap) });
+        if (c1.date) { var ds = c1.date.set; c1 = Object.assign({}, c1, { date: Object.assign({}, c1.date, { set: (e: any) => { ds(e); advance(curId); } }) }); }
+        if (c1.where) { var wd = c1.where.done; c1 = Object.assign({}, c1, { where: Object.assign({}, c1.where, { done: () => { wd(); advance(curId); } }) }); }
+        if (c1.kind === 'people') { var jm = c1.justMe; c1 = Object.assign({}, c1, { justMe: Object.assign({}, jm, { pick: () => { jm.pick(); if (this.state.car.justMe) advance(curId); } }) }); }
+        var secL = (INTAKE_SECTIONS.find((z) => z.id === sectionOf(curId)) || { label: '' }).label;
+        q1 = {
+          id: curId, label: x1.label, ask: x1.ask, cue: bq1 ? bq1.cue || '' : '', sec: sectionOf(curId), secLabel: secL,
+          answered: x1.answered, tone: x1.tone, c: c1, isDate: !!(bq1 && bq1.date) || curId === 'when',
+          // Some answers need more than one tap: every place it hurts, a passenger, "Other", an attorney.
+          needDone: multi1 || c1.kind === 'people' || (curId === 'rep' && b.rep === 'Yes') || (curId === 'seat' && st.seat === 'Other'),
+          done: () => { if (this.fiInfo(curId).answered) goQ(openAfter(curId)); },
+          rep: curId === 'rep' && b.rep === 'Yes',
+          gap: sectionOf(curId) === 'treatment' && pre.gapCard.show ? pre.gapCard : null
+        };
+      }
+      // What was just said: the last answer before this question, or the open.
+      var before: any = null;
+      for (var pb = Math.min(pos, seqA.length) - 1; pb >= 0; pb--) { var xb = info[seqA[pb]]; if (xb && xb.answered) { before = { label: xb.label, ask: xb.ask, value: xb.value }; break; } }
+      one = {
+        n: Math.min(pos + 1, seqA.length), total: seqA.length, q: q1, before: before,
+        prev: pos > 0 ? () => goQ(seqA[pos - 1]) : null,
+        skip: curId ? () => { var nx = openAfter(curId); goQ(nx && nx !== curId ? nx : (seqA[pos + 1] || null)); } : null,
+        facts: [
+          { id: 'where', label: 'Where', value: info.city.answered ? info.city.value : '' },
+          { id: 'when', label: 'Wreck date', value: info.when.answered ? shortDay(dayNo(crashIsoOf(st))) : '' },
+          { id: 'fault', label: 'Fault', value: info.fault.answered ? (({ 'Other driver': 'Other driver', Caller: 'Hers', 'Not clear': 'Not clear' } as any)[st.fault] || info.fault.value) : '' },
+        ].map((f) => Object.assign(f, { go: () => goQ(f.id === 'where' ? 'city' : f.id) })),
+        note: {
+          open: !!fi.note,
+          toggle: () => this.setFi({ note: !this.state.fi.note })
+        }
+      };
+    }
+
+    // Simple Chorelist: seven numbered sections, the six above plus Retainer,
+    // each with a plain status. Worked out from the same answers and the same
+    // position (fi.sec, fi.seen) Full Intake uses.
+    var chore: any = null;
+    if (allOpen) {
+      var sendSt = s.send.status;
+      var plainLabel: any = { vehicle: 'Vehicle / Property' };
+      var rows = sections.map((x) => {
+        var need = x.questions.filter((q: any) => !q.optional);
+        var any = x.questions.some((q: any) => q.answered);
+        return { id: x.id, label: plainLabel[x.id] || x.label, finished: need.length ? need.every((q: any) => q.answered) : any, loose: need.length === 0 };
+      });
+      rows.push({ id: 'retainer', label: 'Retainer', finished: sendSt === 'signed', loose: false });
+      // Nothing required in it (Notes): finished once every section above it is.
+      rows.forEach((r, i) => { if (r.loose && !r.finished) r.finished = rows.slice(0, i).every((y) => y.finished); });
+      var waiting = sendSt === 'sending' || sendSt === 'sent' || sendSt === 'opened';
+      var at = rows.findIndex((r) => r.id === fi.sec);
+      // Do this now: the agreement while she is signing, else the section the
+      // agent is working in, else the first one not finished.
+      var nowI = waiting ? rows.length - 1 : (at >= 0 && !rows[at].finished) ? at : rows.findIndex((r) => !r.finished);
+      var seenMap = fi.seen || {};
+      var words: any = { done: 'DONE', now: 'DO THIS NOW', needs: 'NEEDS AN ANSWER', todo: 'NOT STARTED' };
+      var fin = rows.filter((r) => r.finished).length, left = rows.length - fin;
+      var many = (n: any) => n + (n === 1 ? ' section' : ' sections');
+      var unfinished = rows.map((r, i) => (r.finished ? '' : (i + 1) + '. ' + r.label)).filter(Boolean);
+      chore = {
+        rows: rows.map((r, i) => {
+          var stt = r.finished ? 'done' : i === nowI ? 'now' : seenMap[r.id] ? 'needs' : 'todo';
+          var nxt = rows[i + 1];
+          return {
+            id: r.id, n: i + 1, label: r.label, status: stt, statusText: words[stt],
+            // Working anywhere in a section makes it the one she is in.
+            enter: () => { if (this.state.fi.sec !== r.id) this.setFi({ sec: r.id }); },
+            next: nxt ? () => this.setFi({ sec: nxt.id, edit: null, flash: null, target: null, finishAsk: false, jump: (this.state.fi.jump || 0) + 1 }) : null
+          };
+        }),
+        progress: { text: many(fin) + ' finished, ' + many(left) + ' left', pct: Math.round((fin / rows.length) * 100) },
+        nextText: nowI >= 0 ? 'Next section: ' + rows[nowI].label : 'Every section is finished.',
+        finish: {
+          ask: !!fi.finishAsk && unfinished.length > 0,
+          askText: 'Not finished yet: ' + unfinished.join(', ') + '. Press FINISH INTAKE again to end the call anyway.',
+          go: () => {
+            if (unfinished.length && !this.state.fi.finishAsk) return this.setFi({ finishAsk: true });
+            this.setFi({ finishAsk: false });
+            this.openDispo();
+          }
+        }
+      };
+    }
+    var bad = pre.gates.filter((g) => g.cls.indexOf('bad') >= 0);
+    var now = new Date();
+    var stamp = ((now.getHours() % 12) || 12) + ':' + String(now.getMinutes()).padStart(2, '0') + (now.getHours() < 12 ? ' AM' : ' PM');
+    return {
+      sections: sections,
+      bookmarks: sections.map((x) => ({ id: x.id, label: x.label, status: x.status, on: x.open,
+        go: () => this.setFi({ sec: x.id, edit: null, target: null, cq: this.fiNext(x.id) || INTAKE_SEQUENCE.find((id) => sectionOf(id) === x.id && this.fiInfo(id).applies) || this.state.fi.cq, jump: (this.state.fi.jump || 0) + 1 }) })),
+      progress: { done: doneN, total: total, pct: total ? Math.round((doneN / total) * 100) : 0, text: doneN + ' of ' + total },
+      jump: fi.jump || 0, target: fi.target, openSec: fi.sec,
+      next: nextId ? {
+        label: 'Next: ' + this.fiInfo(nextId).label,
+        ask: this.fiInfo(nextId).ask, sec: sectionOf(nextId),
+        go: () => goTo(nextId)
+      } : null,
+      missing: missing,
+      chore: chore,
+      one: one,
+      finish: { label: 'Next: How we work', go: () => this.go('money') },
+      lights: {
+        text: bad.length ? bad.map((g) => g.label).join(', ') : (pre.gates.filter((g) => g.cls.indexOf('ok') >= 0).length + ' of 6'),
+        bad: bad.length > 0, open: !!fi.lights,
+        toggle: () => this.setFi({ lights: !this.state.fi.lights }),
+        rows: pre.gates.map((g) => ({ label: { Fault: 'Not at fault', Ins: 'Some coverage', Check: 'No injury payment yet', Treat: 'Willing to treat', Gap: 'No 30-day gap', SOL: 'Inside the deadline' }[g.label] || g.label, state: g.cls.indexOf('bad') >= 0 ? 'bad' : g.cls.indexOf('ok') >= 0 ? 'ok' : g.cls.indexOf('flag') >= 0 ? 'flag' : '' }))
+      },
+      quick: {
+        open: !!fi.quick,
+        toggle: () => this.setFi({ quick: !this.state.fi.quick }),
+        draft: { value: fi.draft || '', set: (e: any) => this.setFi({ draft: e.target.value }) },
+        save: () => {
+          var t = String(this.state.fi.draft || '').trim();
+          if (!t) return this.setFi({ quick: false });
+          var prev = String(this.state.story.text || '').trim();
+          this.setState({ story: Object.assign({}, this.state.story, { text: (prev ? prev + '\n' : '') + stamp + ': ' + t }) });
+          this.setFi({ quick: false, draft: '' });
+        }
+      },
+      lead: pre.lead,
+      viewLabel: allOpen ? 'Simple Chorelist' : s.view === 'convo' ? 'Conversation' : s.view === 'quick' ? 'Quick Capture' : 'Full Intake'
+    };
+  }
+
   renderVals(): any {
     var s = this.state, P = s.phase, st = s.story, b = s.body;
     var sec = Math.max(0, Math.floor(((this.props.now || Date.now()) - this.props.startedAt) / 1000));
@@ -1114,9 +1536,13 @@ export class CallEngine {
     ['client', 'injured', 'email', 'phone'].forEach((k) => { f[k] = this.field('send', k); });
     ['dob', 'ssn', 'addr', 'dl', 'ecName', 'ecPhone', 'carrier', 'report', 'vYear', 'vMake', 'vModel'].forEach((k) => { f[k] = this.field('file', k); });
 
-    return {
+    var out: any = {
       callerName: this.props.callerName || 'New caller',
       callerFirst: this.callerFirst(),
+      callerPhone: this.props.callerPhone ? fmtPhone(this.props.callerPhone) : '',
+      callerEmail: this.props.callerEmail || '',
+      campaignName: this.props.campaign || '',
+      leadNo: this.props.leadNo || '',
       agentFirst: String(this.props.agentName || '').trim().split(' ')[0] || 'your intake specialist',
       firmSpoken: this.props.firmSpoken,
       textFrom: this.props.textFrom || 'your JustCall number',
@@ -1137,14 +1563,16 @@ export class CallEngine {
       })(),
       guided: !s.free, free: s.free,
       bare: s.bare,
-      modeLabel: s.bare ? 'Q&A' : (s.free ? 'Freestyle' : 'Guided'),
+      view: s.view,
+      modeLabel: ({ qa: 'Q&A', full: 'Full Intake', chore: 'Simple Chorelist', convo: 'Conversation', quick: 'Quick Capture' } as any)[s.view] || 'Guided',
       modeMenuOpen: !!s.modeMenu,
       toggleModeMenu: () => this.setState({ modeMenu: !this.state.modeMenu }),
-      modes: [['Guided', false, false], ['Freestyle', true, false], ['Q&A', true, true]].map((m) => ({
+      modes: [['Guided', 'guided'], ['Conversation', 'convo'], ['Quick Capture', 'quick'], ['Full Intake', 'full'], ['Simple Chorelist', 'chore'], ['Q&A', 'qa']].map((m) => ({
+        key: m[1],
         label: m[0],
-        on: s.free === m[1] && !!s.bare === m[2],
-        cls: 'menu-b' + ((s.free === m[1] && !!s.bare === m[2]) ? ' on' : ''),
-        go: () => this.setState({ free: m[1], bare: m[2], modeMenu: false })
+        on: s.view === m[1],
+        cls: 'menu-b' + (s.view === m[1] ? ' on' : ''),
+        go: () => this.setView(m[1])
       })),
       bareRows: s.bare ? this.bareRows() : [],
       isOpen: P === 'open', isStory: P === 'story', isBody: P === 'body', isCar: P === 'car', isMoney: P === 'money', isSend: P === 'send', isFile: P === 'file', isClose: P === 'close',
@@ -1361,5 +1789,21 @@ export class CallEngine {
       picked: { title: picked.title, text: this.firmText(picked.text), note: picked.note || '', hasNote: !!picked.note },
       backLine: this.backLine()
     };
+    // Full Intake reads the same answers through the same pieces as the other views.
+    out.fullView = s.view === 'full' && ['open', 'story', 'body', 'car'].indexOf(P) >= 0;
+    // Conversation and Quick Capture: one question at a time, over the same intake.
+    out.oneQ = (s.view === 'convo' || s.view === 'quick') && ['open', 'story', 'body', 'car'].indexOf(P) >= 0;
+    out.oneKind = s.view;
+    if (out.fullView || out.oneQ) { out.showOpen = false; out.showStory = false; out.showBodyGuided = false; out.showCar = false; }
+    // Simple Chorelist is the whole call on one numbered form, at every step.
+    out.choreView = s.view === 'chore';
+    // The one Send button, for any view that draws its own.
+    out.sendNext = sendNext;
+    out.fi = ['full', 'chore', 'convo', 'quick'].indexOf(s.view) >= 0 ? this.fullIntake({
+      people: out.people, justMe: out.justMe, addPerson: out.addPerson, years: out.years, carriers: out.carriers,
+      gates: gates, gapCard: gapCard,
+      lead: out.hasLead ? { tags: out.leadTags.map((t) => t.label).join(', ') || out.leadFrom, said: out.leadSaid, from: out.leadFrom, open: out.leadOpen, toggle: out.toggleLead } : null
+    }) : null;
+    return out;
   }
 }

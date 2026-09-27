@@ -28,6 +28,6 @@ export async function POST(req: NextRequest) {
 
   const { data: row } = await admin.from("esign_submissions").select("*").eq("provider", "docuseal").eq("submission_id", submissionId).maybeSingle();
   if (!row) return NextResponse.json({ ok: true, ignored: "not ours" });
-  const status = await syncSubmission(admin, row);
+  const status = await syncSubmission(admin, row, { origin: new URL(req.url).origin });
   return NextResponse.json({ ok: true, status });
 }
