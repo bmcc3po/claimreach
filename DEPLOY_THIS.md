@@ -6,6 +6,18 @@ One new database step for the signing email: migration 0099. The views need noth
 
 Guided, Conversation, Quick Capture, Full Intake, Simple Chorelist and Q&A are presentations of the same call engine. The questions, answers, branching, qualification rules, lights, the 30-day math and the saved call are the same in every one. None of that changed in this zip. Switching views, turning the iPad, or resizing the window lands on the same section with every answer in place, and the section she was in now saves with the call, so opening the same call on another device lands there too.
 
+## Email the case
+
+"Email the case" (Print or email the case, in the view menu) now sends the whole case, not just contact info:
+
+- **Case summary:** an automatic write-up in plain sentences at the top. Where and when, who was at fault, police and the report number, where it hurts, where she was seen, the 30-day check, work, both insurances, any injury payment, another attorney, passengers, the car, and where the agreement stands. Red flags are called out.
+- **The six qualifiers:** Good, Problem, Check or Not yet.
+- **Every question:** worded the way the agent asks it, with her answer, section by section. Anything not answered says so.
+- **Her details:** from after she signed (DOB, address, license, emergency contact). Never the SSN.
+- **The signed agreement:** attached when it is complete. The box to turn it off sits right above the button, because the PDF has her DOB and SSN on it.
+
+The print page shows the same report. The dispo "Email the case to" and the automatic signing email send the same report too, with the agreement attached when DocuSeal has it complete.
+
 ## Conversation and Quick Capture
 
 Built from your renderings. One question at a time, in call order.
@@ -67,7 +79,9 @@ Typing a city like "Las Vegas" no longer reads "La" as Louisiana on the way.
 
     src/lib/mva-call/intake.ts (new), engine.ts, engine.test.ts, server.ts, esign.ts
     src/components/calls/FullIntake.tsx (new), IntakeWorkspace.tsx (new), ChoreList.tsx (new), OneQuestion.tsx (new), scripts.ts (new)
-    src/components/calls/CallView.tsx, CallConsole.tsx, DeskPanel.tsx, WhereField.tsx, calls.css
+    src/components/calls/CallView.tsx, CallConsole.tsx, DeskPanel.tsx, WhereField.tsx, PrintActions.tsx, DuoIcon.tsx (new), calls.css
+    src/lib/mva-call/report.ts (new), report.test.ts (new), src/lib/signed-docs.ts
+    src/app/api/calls/email/route.ts, src/app/api/calls/dispo/route.ts, src/app/(calls)/app/[id]/print/page.tsx
     src/app/(calls)/app/[id]/page.tsx
     src/lib/notify-signed.ts (new), notify-signed.test.ts (new), email.ts
     src/app/api/notify-routes/route.ts (new), src/app/(internal)/settings/notify/page.tsx (new), settings/page.tsx
