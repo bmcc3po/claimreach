@@ -9,7 +9,7 @@ import CallView from "./CallView";
 import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
 import { popOutDialer } from "./JustCallDialer";
 import { stateCodeOf } from "@/lib/mva-call/state";
-import { CallEngine, type CallApi, type CallProps } from "@/lib/mva-call/engine";
+import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
 import { callbackAt } from "@/lib/mva-call/dispo";
 
 export interface ConsoleInit {
@@ -28,7 +28,9 @@ export interface ConsoleInit {
 async function post(url: string, body: unknown): Promise<any> {
   const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok || d?.error) throw new Error(d?.error || `That did not go through (${r.status}).`);
+  if (!r.ok || d?.error) throw new Error(d?.error || (r.status >= 500
+    ? `The server did not answer (${r.status}). Nothing went out. Try again in a moment.`
+    : `That did not go through (${r.status}).`));
   return d;
 }
 
@@ -65,7 +67,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         post("/api/calls/esign", {
           lead_id: leadId, call_id: callId.current,
           signer_name: s.send.client, injured_name: s.send.who === "Someone else" ? s.send.injured : s.send.client,
-          via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(),
+          via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
         }).then((d) => {
           e().setState({ send: { ...e().state.send, status: d.status || "sent", error: d.warning || "" } });
         }).catch((err) => {
@@ -83,7 +85,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         post("/api/calls/esign", {
           lead_id: leadId, call_id: callId.current, pax_index: i,
           signer_name: minor ? s.send.client : name, injured_name: name,
-          via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(),
+          via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
         }).then(() => mark("sent")).catch((err) => {
           const pax = { ...e().state.file.pax }; delete pax[i];
           e().setState({ file: { ...e().state.file, pax, error: err.message } });
@@ -317,7 +319,8 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     if (!el) return;
     if (w == null) el.style.removeProperty("--call-w");
     else {
-      const max = el.getBoundingClientRect().width - 390;
+      // The panel keeps at least 360px (its column minimum) plus the 10px bar.
+      const max = el.getBoundingClientRect().width - 372;
       const px = Math.round(Math.max(460, Math.min(max, w)));
       el.style.setProperty("--call-w", `${px}px`);
       if (save) { try { localStorage.setItem(W_KEY, String(px)); } catch { /* private mode */ } }
@@ -410,6 +413,7 @@ function previewInfo(s: any, init: ConsoleInit): PreviewInfo {
   const city = String(s.story.city || "").trim();
   const code = stateCodeOf(city);
   const today = todayMDY();
+  const doi = doiOf(s.story);
   const agreement = code ? (AGREEMENT_LABEL[code] || "All other states (AL/GA)") : "";
   const viaText = s.send.via !== "Email";
   const to = viaText ? String(s.send.phone || "").trim() : String(s.send.email || "").trim();
@@ -417,11 +421,12 @@ function previewInfo(s: any, init: ConsoleInit): PreviewInfo {
     { label: "Agreement", value: agreement ? `${agreement}${code && !AGREEMENT_LABEL[code] ? `, wreck in ${code}` : ""}` : "Add the city and state on Story", ok: !!agreement },
     { label: "Signer", value: signer || "Add her full name on Send", ok: signer.split(/\s+/).filter(Boolean).length >= 2 },
     { label: "Injured person", value: injured || "Add the injured person's full name", ok: injured.split(/\s+/).filter(Boolean).length >= 2 },
+    { label: "Date of the wreck", value: doi || "Add it on Story", ok: !!doi },
     { label: "Signing date", value: today, ok: true },
     { label: viaText ? "Text to" : "Email to", value: to ? (viaText ? prettyPhone(to) : to) : (viaText ? "Add her cell" : "Add her email"), ok: viaText ? to.replace(/\D/g, "").length >= 10 : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) },
     { label: "DOB and SSN", value: "Intake adds these after she signs", ok: false, later: true },
   ];
   if (!code || !signer) return { href: null, checks };
-  const q = new URLSearchParams({ lead_id: init.leadId, signer, injured: injured || signer, city, today });
+  const q = new URLSearchParams({ lead_id: init.leadId, signer, injured: injured || signer, city, today, doi });
   return { href: `/api/calls/esign/preview?${q}`, checks };
 }

@@ -3,7 +3,7 @@
 // (syncSubmission) and both the agent's screen poll and the DocuSeal webhook
 // call it, so the two can never disagree about what happened.
 // ============================================================================
-import { getSubmission, statusFrom, STATUS_RANK } from "@/lib/docuseal";
+import { getSubmission, statusFrom, STATUS_RANK, createTemplate } from "@/lib/docuseal";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
 import { uploadSignedDoc } from "@/lib/signed-docs";
@@ -13,6 +13,33 @@ import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
 export function packetsFor(firmSlug: string | null | undefined, caseType: string | null | undefined): Record<string, Packet> | null {
   if (firmSlug === "tmp" && caseType === "mva") return TMP_MVA_PACKETS;
   return null;
+}
+
+/**
+ * The DocuSeal template for one agreement on one campaign, current with the
+ * packet. A packet change bumps its name (v2, v3), so a stored template with an
+ * older name is replaced: DocuSeal makes the new one from the PDF and the row
+ * points at it. Nothing is deleted. Setup and Send both come through here.
+ */
+export async function templateFor(admin: any, opts: {
+  firmId: string; campaignId: string; key: string; packet: Packet; origin: string; actorId?: string | null; create?: boolean;
+}): Promise<{ ok: true; templateId: string; made: boolean } | { ok: false; error: string; missing?: boolean }> {
+  const { data: row } = await admin.from("esign_templates").select("template_id, name")
+    .eq("campaign_id", opts.campaignId).eq("provider", "docuseal").eq("key", opts.key).maybeSingle();
+  if (row && row.name === opts.packet.name) return { ok: true, templateId: String(row.template_id), made: false };
+  if (!row && !opts.create) return { ok: false, missing: true, error: "E-sign is not set up for this campaign yet. An admin sets it up once from Calls." };
+  const res = await createTemplate(opts.packet, opts.origin + opts.packet.path);
+  if (!res.ok) return { ok: false, error: `DocuSeal would not make the ${opts.key} agreement: ${res.error}` };
+  const templateId = String(res.data.id);
+  const q = row
+    ? admin.from("esign_templates").update({ template_id: templateId, name: opts.packet.name })
+        .eq("campaign_id", opts.campaignId).eq("provider", "docuseal").eq("key", opts.key)
+    : admin.from("esign_templates").insert({ firm_id: opts.firmId, campaign_id: opts.campaignId, provider: "docuseal", key: opts.key, template_id: templateId, name: opts.packet.name, created_by: opts.actorId ?? null });
+  const { error } = await q;
+  if (error) return { ok: false, error: `Made the ${opts.key} agreement in DocuSeal (id ${templateId}) but could not save it here: ${error.message}` };
+  await recordAudit({ firm_id: opts.firmId, actor: opts.actorId ?? undefined, category: "system",
+    description: `${row ? "Updated" : "Set up"} the ${opts.key} agreement in DocuSeal (${opts.packet.name}).`, meta: { template_id: templateId, replaced: row?.template_id ?? null } });
+  return { ok: true, templateId, made: true };
 }
 
 /** "123456789" -> "123-45-6789"; "1234" -> "XXX-XX-1234". Anything else -> null. */

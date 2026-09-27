@@ -7,10 +7,12 @@ import { useEffect, useRef, useState } from "react";
 
 type Kind = "address" | "city";
 
-export default function PlaceField({ kind, value, onChange, placeholder, label }: {
+export default function PlaceField({ kind, value, onChange, onPick, placeholder, label }: {
   kind: Kind;
   value: string;
   onChange: (text: string) => void;
+  /** A Google match was tapped (after onChange has the text). */
+  onPick?: (text: string) => void;
   placeholder?: string;
   label: string;
 }) {
@@ -48,6 +50,7 @@ export default function PlaceField({ kind, value, onChange, placeholder, label }
     last.current = text;
     setHits([]);
     onChange(text);
+    onPick?.(text);
   }
 
   const show = focus && hits.length > 0;

@@ -8,7 +8,7 @@ import { stampPreview } from "@/lib/mva-call/preview";
 
 export const runtime = "edge";
 
-// GET /api/calls/esign/preview?lead_id=&signer=&injured=&city=&today=
+// GET /api/calls/esign/preview?lead_id=&signer=&injured=&city=&today=&doi=
 // The exact agreement she will get, with what the call filled in stamped where
 // DocuSeal puts it, so the agent can check it before it goes out. Marked
 // PREVIEW on every page. Nothing is sent and nothing is saved.
@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
   const signer = q("signer");
   const injured = q("injured") || signer;
   const today = /^\d{2}\/\d{2}\/\d{4}$/.test(q("today")) ? q("today") : "";
+  const doi = /^\d{2}\/\d{2}\/\d{4}$/.test(q("doi")) ? q("doi") : "";
 
   const { data: lead } = await sb.from("leads").select("id, firm_id, case_type, firms(slug)").eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   const src = await fetch(new URL(packet.path, url.origin));
   if (!src.ok) return NextResponse.json({ error: `Could not load the agreement file (${src.status}).` }, { status: 502 });
-  const out = await stampPreview(new Uint8Array(await src.arrayBuffer()), packet, key, { signer, injured, today });
+  const out = await stampPreview(new Uint8Array(await src.arrayBuffer()), packet, key, { signer, injured, today, doi });
   return new Response(out as unknown as BodyInit, {
     headers: {
       "content-type": "application/pdf",

@@ -8,8 +8,8 @@ import { recordAudit } from "@/lib/audit";
 export const runtime = "edge";
 
 // POST /api/calls/esign/complete  { lead_id, dob, ssn }
-// Intake is the second signer. DOB and SSN go onto the HIPAA pages through
-// DocuSeal and the agreement completes. We keep the DOB and the last 4 only;
+// Intake is the second signer. DOB and SSN go onto the HIPAA pages, the date
+// goes under the firm's signature, and the agreement completes. We keep the DOB and the last 4 only;
 // the full SSN lives on the signed PDF in private storage, never in a column.
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
@@ -31,7 +31,9 @@ export async function POST(req: NextRequest) {
   if (row.status !== "signed") return NextResponse.json({ error: "She has not signed yet. This unlocks the moment she does." }, { status: 409 });
   if (!row.intake_submitter_id) return NextResponse.json({ error: "This agreement has no second signer to complete." }, { status: 409 });
 
-  const res = await completeIntake(row.intake_submitter_id, { "Patient DOB": dobForForm(dob), "Patient SSN": ssn.printed });
+  // Step 2 also dates the firm's line, on the office clock.
+  const firmDate = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "2-digit", day: "2-digit", year: "numeric" }).format(new Date());
+  const res = await completeIntake(row.intake_submitter_id, { "Patient DOB": dobForForm(dob), "Patient SSN": ssn.printed, "Firm Date": firmDate });
   if (!res.ok) return NextResponse.json({ error: `DocuSeal did not take it: ${res.error}` }, { status: 502 });
 
   const { error } = await sb.from("leads").update({ dob, ssn_last4: ssn.last4 }).eq("id", leadId);

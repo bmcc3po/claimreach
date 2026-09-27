@@ -103,6 +103,14 @@ export function leadPatchFromAnswers(a: any): Record<string, any> {
   return out;
 }
 
+// A visit date from the 30-day check, as the summary prints it.
+function visitText(v: any, story: any): string {
+  const mdy = (x: any) => { const m = String(x || "").match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[2]}/${m[3]}/${m[1]}` : ""; };
+  if (v === "same") { const c = mdy(crashDateOf(story)); return c ? `Same day as the wreck (${c})` : "Same day as the wreck"; }
+  if (v === "unsure") return "Not sure";
+  return mdy(v);
+}
+
 /** A short case summary for print and email. Never includes the SSN. */
 export function caseSummaryRows(lead: any, a: any): { k: string; v: string }[] {
   const st = a?.story || {}, b = a?.body || {}, f = a?.file || {};
@@ -119,7 +127,9 @@ export function caseSummaryRows(lead: any, a: any): { k: string; v: string }[] {
     ["What happened", st.text],
     ["Pain", (b.pain || []).join(", ")],
     ["Seen by", (b.seen || []).join(", ")],
-    ["Last seen", b.last],
+    ["First seen", visitText(b.firstAt, st)],
+    ["Last seen", visitText(b.lastAt, st) || b.last],
+    ["Month with no visit", b.stretch],
     ["Will treat", b.willing],
     ["Missed work", b.work],
     ["Exchanged info", b.exchanged],

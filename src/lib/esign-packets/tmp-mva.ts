@@ -4,8 +4,11 @@
 //
 // Built from TMP's own contracts, untouched. Field areas were placed and checked
 // against rendered previews (claude/ClaimReach-TMP-MVA-DocuSeal-Fieldmap.md).
-// Client fills name, today's date and signature. Intake (second signer, via the
-// API) adds DOB and SSN. Nobody at Innovative signs or dates the firm's lines.
+// Client fills name, today's date and signature; the call fills the injured
+// person ("injuries suffered by") and the date of the wreck ("on/around") on
+// page 1. Intake (second signer, via the API) adds DOB, SSN and the date under
+// the firm's signature. v2 names: a send finds an older template by name and
+// makes the new one on its own (templateFor in src/lib/mva-call/esign.ts).
 //
 // The PDFs sit in /public under an unguessable folder only so DocuSeal can fetch
 // them once when an admin runs the setup. They are blank firm forms, no client data.
@@ -18,8 +21,8 @@ export interface Packet { name: string; external_id: string; path: string; field
 
 export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
   "TX": {
-    "name": "TMP MVA Retainer + HIPAA/HITECH - Texas",
-    "external_id": "tmp-mva-tx",
+    "name": "TMP MVA Retainer + HIPAA/HITECH - Texas v2",
+    "external_id": "tmp-mva-tx-v2",
     "path": "/esign-src/19ca4877a978c8c85317f5f9/tmp-mva-tx.pdf",
     "fields": [
       {
@@ -70,6 +73,13 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
         },
         "areas": [
           {
+            "page": 1,
+            "x": 0.3567,
+            "y": 0.3515,
+            "w": 0.2314,
+            "h": 0.01515
+          },
+          {
             "page": 4,
             "x": 0.51797,
             "y": 0.24874,
@@ -86,16 +96,36 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
         ]
       },
       {
-        "name": "Signing Date",
-        "type": "date",
+        "name": "Accident Date",
+        "type": "text",
         "role": "Client",
         "readonly": true,
         "required": true,
         "preferences": {
           "font_size": 10,
           "font": "Helvetica",
-          "valign": "bottom",
-          "format": "MM/DD/YYYY"
+          "valign": "bottom"
+        },
+        "areas": [
+          {
+            "page": 1,
+            "x": 0.677,
+            "y": 0.3515,
+            "w": 0.156,
+            "h": 0.01515
+          }
+        ]
+      },
+      {
+        "name": "Signing Date",
+        "type": "text",
+        "role": "Client",
+        "readonly": true,
+        "required": true,
+        "preferences": {
+          "font_size": 10,
+          "font": "Helvetica",
+          "valign": "bottom"
         },
         "areas": [
           {
@@ -203,12 +233,32 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
             "h": 0.01515
           }
         ]
+      },
+      {
+        "name": "Firm Date",
+        "type": "text",
+        "role": "Intake",
+        "required": true,
+        "preferences": {
+          "font_size": 10,
+          "font": "Helvetica",
+          "valign": "bottom"
+        },
+        "areas": [
+          {
+            "page": 3,
+            "x": 0.5415,
+            "y": 0.63889,
+            "w": 0.24387,
+            "h": 0.01515
+          }
+        ]
       }
     ]
   },
   "OTHER": {
-    "name": "TMP MVA Retainer + HIPAA/HITECH - All other states (AL/GA form)",
-    "external_id": "tmp-mva-alga",
+    "name": "TMP MVA Retainer + HIPAA/HITECH - All other states (AL/GA form) v2",
+    "external_id": "tmp-mva-alga-v2",
     "path": "/esign-src/19ca4877a978c8c85317f5f9/tmp-mva-other.pdf",
     "fields": [
       {
@@ -259,6 +309,13 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
         },
         "areas": [
           {
+            "page": 1,
+            "x": 0.3641,
+            "y": 0.3515,
+            "w": 0.2314,
+            "h": 0.01515
+          },
+          {
             "page": 4,
             "x": 0.51797,
             "y": 0.24874,
@@ -275,16 +332,36 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
         ]
       },
       {
-        "name": "Signing Date",
-        "type": "date",
+        "name": "Accident Date",
+        "type": "text",
         "role": "Client",
         "readonly": true,
         "required": true,
         "preferences": {
           "font_size": 10,
           "font": "Helvetica",
-          "valign": "bottom",
-          "format": "MM/DD/YYYY"
+          "valign": "bottom"
+        },
+        "areas": [
+          {
+            "page": 1,
+            "x": 0.6845,
+            "y": 0.3515,
+            "w": 0.156,
+            "h": 0.01515
+          }
+        ]
+      },
+      {
+        "name": "Signing Date",
+        "type": "text",
+        "role": "Client",
+        "readonly": true,
+        "required": true,
+        "preferences": {
+          "font_size": 10,
+          "font": "Helvetica",
+          "valign": "bottom"
         },
         "areas": [
           {
@@ -392,12 +469,32 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
             "h": 0.01515
           }
         ]
+      },
+      {
+        "name": "Firm Date",
+        "type": "text",
+        "role": "Intake",
+        "required": true,
+        "preferences": {
+          "font_size": 10,
+          "font": "Helvetica",
+          "valign": "bottom"
+        },
+        "areas": [
+          {
+            "page": 3,
+            "x": 0.5415,
+            "y": 0.65593,
+            "w": 0.24387,
+            "h": 0.01515
+          }
+        ]
       }
     ]
   },
   "FL": {
-    "name": "TMP MVA Retainer + HIPAA/HITECH - Florida",
-    "external_id": "tmp-mva-fl",
+    "name": "TMP MVA Retainer + HIPAA/HITECH - Florida v2",
+    "external_id": "tmp-mva-fl-v2",
     "path": "/esign-src/19ca4877a978c8c85317f5f9/tmp-mva-fl.pdf",
     "fields": [
       {
@@ -448,6 +545,13 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
         },
         "areas": [
           {
+            "page": 1,
+            "x": 0.5498,
+            "y": 0.3311,
+            "w": 0.2345,
+            "h": 0.01515
+          },
+          {
             "page": 4,
             "x": 0.51797,
             "y": 0.24874,
@@ -464,16 +568,36 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
         ]
       },
       {
-        "name": "Signing Date",
-        "type": "date",
+        "name": "Accident Date",
+        "type": "text",
         "role": "Client",
         "readonly": true,
         "required": true,
         "preferences": {
           "font_size": 10,
           "font": "Helvetica",
-          "valign": "bottom",
-          "format": "MM/DD/YYYY"
+          "valign": "bottom"
+        },
+        "areas": [
+          {
+            "page": 1,
+            "x": 0.1262,
+            "y": 0.3481,
+            "w": 0.172,
+            "h": 0.01515
+          }
+        ]
+      },
+      {
+        "name": "Signing Date",
+        "type": "text",
+        "role": "Client",
+        "readonly": true,
+        "required": true,
+        "preferences": {
+          "font_size": 10,
+          "font": "Helvetica",
+          "valign": "bottom"
         },
         "areas": [
           {
@@ -578,6 +702,26 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER", Packet> = {
             "x": 0.5049,
             "y": 0.29924,
             "w": 0.18627,
+            "h": 0.01515
+          }
+        ]
+      },
+      {
+        "name": "Firm Date",
+        "type": "text",
+        "role": "Intake",
+        "required": true,
+        "preferences": {
+          "font_size": 10,
+          "font": "Helvetica",
+          "valign": "bottom"
+        },
+        "areas": [
+          {
+            "page": 3,
+            "x": 0.57516,
+            "y": 0.86815,
+            "w": 0.24837,
             "h": 0.01515
           }
         ]
