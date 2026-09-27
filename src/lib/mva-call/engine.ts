@@ -113,8 +113,12 @@ export const WHEN: any[] = ['In an hour', 'Tonight', 'Tomorrow morning', 'Tomorr
 export const BODYQ: any[] = [
   { key: 'pain', label: 'Pain', multi: true, nextLabel: "That's where it hurts, next", line: "Tell me about the pain you're dealing with from this.", cue: 'Not "were you injured." Not "are you hurt."', opts: ['Neck', 'Back', 'Head', 'Shoulder', 'Arms or hands', 'Knees or legs', 'Chest', "Says she's fine"] },
   { key: 'seen', label: 'Seen by', multi: true, only: 'Not yet', nextLabel: "That's everywhere she's been, next", line: "Have you been seen by anybody yet, ER, urgent care, your own doctor?", cue: 'Tap every place she went. Not yet goes straight to willing.', opts: ['ER', 'Urgent care', 'Own doctor', 'Chiropractor', 'Not yet'] },
-  { key: 'last', label: 'Last seen', line: "When were you last seen for it?", cue: 'Shows because the wreck was 30+ days ago. Over 30 days since her last visit is a gap. Flag it, do not close it.', opts: ['This week', 'Within 30 days', 'Over 30 days ago'] },
-  { key: 'willing', label: 'Will treat', line: "If we get you in with somebody local this week, are you able to go?", cue: 'The single best predictor of whether the file survives.', opts: ['Yes', 'Maybe', 'No'] },
+  // The 30-day check. Dates, so the engine can do the math for the agent
+  // (gapCheck). The quick picks fill the date; the date box takes any other day.
+  { key: 'firstAt', label: 'First seen', date: true, line: "When did you first get seen after the wreck?", cue: 'More than 30 days after the wreck is a gap.', opts: ['Same day', 'Not sure'] },
+  { key: 'lastAt', label: 'Last seen', date: true, line: "When were you last seen for it?", cue: 'More than 30 days ago is a gap. Flag it, do not close it.', opts: ['Today', 'Yesterday', 'Not sure'] },
+  { key: 'stretch', label: 'Month with no visit', line: "Has there been a stretch of more than a month where you didn't see anybody for it?", cue: 'Yes is a gap. Flag it, do not close it.', opts: ['Yes', 'No', 'Not sure'] },
+  { key: 'willing', label: 'Will treat', line: "If we get you in with somebody local this week, are you able to go?", soonLine: "Can you get in today or tomorrow?", cue: 'The single best predictor of whether the file survives.', opts: ['Yes', 'Maybe', 'No'] },
   { key: 'work', label: 'Missed work', line: "Have you had to miss any work over this?", cue: '', opts: ['Yes', 'No', 'Not working'] },
   { key: 'exchanged', label: 'Exchanged info', line: "Did you and the other driver exchange information out there?", cue: 'Never ask "did the other driver have insurance."', opts: ['Yes', 'No', 'Police handled it', 'Hit and run'] },
   { key: 'coverage', label: 'Her coverage', line: "And do you carry full coverage on your own car, or just liability?", cue: '', opts: ['Full coverage', 'Just liability', 'No insurance', 'Not sure'] },
@@ -136,6 +140,44 @@ function fmtWhen(iso) {
 export const FINE = "Says she's fine";
 export const SEATS: any[] = ['Driver', 'Passenger', 'Pedestrian', 'Other'];
 // Short single-choice answers render as a segmented control when the words fit; everything else is an iOS check list.
+// "2026-09-14" -> "09/14/2026"
+function mdy(iso: any) {
+  var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[2] + '/' + m[3] + '/' + m[1] : String(iso || '');
+}
+// Calendar-day math on local dates, so "3 days ago" never drifts with the clock.
+function isoOf(d: Date) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function dayNo(iso: any) {
+  var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  var t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  return isNaN(t) ? null : Math.round(t / 86400000);
+}
+function todayNo() { return dayNo(isoOf(new Date())); }
+function isoFromNo(n: number) { return new Date(n * 86400000).toISOString().slice(0, 10); }
+// "Oct 3"
+function shortDay(n: number) {
+  return new Date(n * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+function daysWord(n: number) { return n === 1 ? '1 day' : n + ' days'; }
+// The date of the wreck from Story, "2026-09-14", or '' when there is none yet.
+// One definition: the days-ago math, the agreement's on/around blank and the
+// preview all read it.
+export function crashIsoOf(st: any): string {
+  if (!st) return '';
+  if (st.when === 'Today') return isoFromNo(todayNo());
+  if (st.when === 'Yesterday') return isoFromNo(todayNo() - 1);
+  if (st.when === 'Pick a date') {
+    var n = dayNo(st.date);
+    if (n != null && n >= dayNo('1990-01-01') && n <= todayNo()) return st.date;
+  }
+  return '';
+}
+// "09/14/2026" for the agreement, or ''.
+export function doiOf(st: any): string { return mdy(crashIsoOf(st)) || ''; }
+
 function chipsCls(opts: any, multi: any) {
   var room = { 2: 16, 3: 12, 4: 10 }[opts.length];
   var seg = !multi && !!room && opts.every((o) => o.length <= room);
@@ -218,7 +260,8 @@ export class CallEngine {
       helpTab: 'reb', askText: '', askOut: null, lineFocus: 'common',
       text: { open: false, draft: '', thread: [] },
       dispo: { open: false, pick: null, list: true, why: [], auto: false, when: null, at: '', note: '', add: '', saved: false, notify: this.props.notifyDefaults.map((n) => ({ who: n.who, how: n.how, on: true })) },
-      body: { pain: [], seen: [], done: {}, last: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
+      storyOpen: null, leadOpen: false,
+      body: { pain: [], seen: [], done: {}, last: null, firstAt: null, lastAt: null, stretch: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
       car: { justMe: false, people: [] },
       send: { via: 'Text', status: this.props.esign.status || 'ready', client: this.props.callerName || '', phone: this.props.callerPhone || '', email: this.props.callerEmail || '', error: '', who: 'Same as signer', injured: '' },
       file: { step: 'agreement', dob: '', ssn: '', agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
@@ -311,7 +354,7 @@ export class CallEngine {
     var gaps = (pairs: any) => pairs.filter((x) => !x[1]).map((x) => x[0]);
     var live = BODYQ.filter((q) => this.applies(b, q));
     var open = (keys: any) => live.filter((q) => keys.indexOf(q.key) >= 0 && !this.answered(b, q)).map((q) => q.key);
-    var injKeys = ['pain', 'seen', 'last', 'willing', 'work'], covKeys = ['exchanged', 'coverage', 'uim', 'check', 'rep'];
+    var injKeys = ['pain', 'seen', 'firstAt', 'lastAt', 'stretch', 'willing', 'work'], covKeys = ['exchanged', 'coverage', 'uim', 'check', 'rep'];
     var touched = (keys: any) => keys.some((k) => Array.isArray(b[k]) ? b[k].length > 0 : b[k] != null);
     var sec = {
       story: { missing: gaps([['fault', st.fault], ['seat', st.seat && (st.seat !== 'Other' || st.seatOther)], ['police', st.police], ['when', st.when && (st.when !== 'Pick a date' || st.date)], ['city', st.city]]),
@@ -387,15 +430,10 @@ export class CallEngine {
     return { has: true, daysLeft: left, text: r[1] + ': ' + span + '. Deadline ' + day + (left < 0 ? ', already passed.' : ', ' + left + ' days left.') };
   }
 
+  // Calendar days, so a wreck yesterday is 1 day ago at any hour.
   daysAgo() {
-    var st = this.state.story;
-    if (st.when === 'Today') return 0;
-    if (st.when === 'Yesterday') return 1;
-    if (st.when === 'Pick a date' && st.date) {
-      var t = Date.parse(st.date + 'T12:00:00');
-      if (!isNaN(t)) return Math.max(0, Math.floor((Date.now() - t) / 86400000));
-    }
-    return null;
+    var n = dayNo(crashIsoOf(this.state.story));
+    return n == null ? null : Math.max(0, todayNo() - n);
   }
 
   // She has an attorney, she said first that she's unhappy, and it sounds like a good case.
@@ -408,19 +446,133 @@ export class CallEngine {
   answered(b: any, q: any) {
     if (q.key === 'seen') return this.seenNo(b) || (!!b.done.seen && b.seen.length > 0);
     if (q.multi) return !!b.done[q.key];
+    if (q.date) return b[q.key] === 'unsure' || b[q.key] === 'same' || this.visitNo(b, q.key) != null;
     return b[q.key] != null;
   }
 
-  // Branching: 30+ days old and she has been seen -> gap probe.
-  // Not seen, or a gap over 30 days -> ask if she is willing.
-  // Date unknown counts as aged so the gap probe is never skipped by accident.
+  // The crash as a day number (see dayNo), or null when there is no date yet.
+  crashNo() {
+    var d = this.daysAgo();
+    return d == null ? null : todayNo() - d;
+  }
+
+  // A visit date that makes sense: on or after the wreck, not in the future.
+  // "same" is the quick pick Same day, which follows the crash date.
+  visitNo(b: any, key: any) {
+    var raw = b[key];
+    if (raw === 'same') return this.crashNo();
+    var n = dayNo(raw);
+    if (n == null || n > todayNo() || n < dayNo('2000-01-01')) return null;
+    var c = this.crashNo();
+    return c != null && n < c ? null : n;
+  }
+
+  // Branching for the 30-day check. Every question here is a date or a yes/no
+  // the calculator (gapCheck) needs, and only when the math can need it:
+  //   first visit: the wreck was more than 30 days ago (or no date yet)
+  //   last visit: 25+ days, so a gap coming up inside 5 days is caught
+  //   a month with no visit: first to last visit spans more than 30 days,
+  //     and the dates do not already show a gap
+  //   willing: not seen, a gap, a not sure, or under 5 days left
   applies(b: any, q: any) {
     var days = this.daysAgo();
-    var aged = days == null || days >= 30;
-    if (q.key === 'last') return this.seenYes(b) && aged;
-    if (q.key === 'willing') return this.seenNo(b) || b.last === 'Over 30 days ago';
+    if (q.key === 'firstAt') return this.seenYes(b) && (days == null || days > 30);
+    if (q.key === 'lastAt') return this.seenYes(b) && (days == null || days >= 25);
+    if (q.key === 'stretch') {
+      if (!this.seenYes(b)) return false;
+      var fa = this.visitNo(b, 'firstAt'), la = this.visitNo(b, 'lastAt'), c = this.crashNo();
+      // A gap the dates already show needs no more asking.
+      if (la != null && todayNo() - la > 30) return false;
+      if (fa != null && c != null && fa - c > 30) return false;
+      if (fa != null && la != null) return la - fa > 30;
+      return days != null && days > 60;
+    }
+    if (q.key === 'willing') { var g = this.gapCheck(b); return this.seenNo(b) || g.bad || g.unsure || g.urgent; }
     if (q.key === 'uim') return b.coverage !== 'No insurance';
     return true;
+  }
+
+  // The 30-day calculator. From the crash date and her visits it works out
+  // whether there is a gap anywhere (wreck to first visit, between visits,
+  // last visit to today), when the next visit is due, and whether that is
+  // close enough (under 5 days) to ask about today or tomorrow.
+  gapCheck(b?: any) {
+    b = b || this.state.body;
+    var days = this.daysAgo(), crash = this.crashNo(), today = todayNo();
+    var r: any = { head: '', hint: '', dueLine: '', lines: [], bad: false, unsure: false, urgent: false, dueNo: null, left: null, visits: 0, status: '' };
+    var ago = (n: any) => (n === 0 ? 'today' : n === 1 ? 'yesterday' : daysWord(n) + ' ago');
+    var line = (t: any, tone: any) => r.lines.push({ t: t, tone: tone || '' });
+    var bad = (t: any) => { r.bad = true; line(t, 'bad'); };
+    var dueText = (left: any) => (left === 0 ? 'today is the last day' : daysWord(left) + ' left');
+    if (days != null) r.visits = Math.max(0, Math.ceil(days / 30) - 1);
+    var many = r.visits >= 2 ? ' With no gap she has been seen at least ' + r.visits + ' times, never more than 30 days apart.' : '';
+    var complete = false;
+
+    if (this.seenNo(b)) {
+      if (days == null) r.head = 'Needs the crash date to know how long she has to get seen.';
+      else {
+        r.dueNo = crash + 30; r.left = r.dueNo - today;
+        r.head = 'Wreck was ' + ago(days) + '.';
+        if (r.left < 0) bad('Not seen in ' + daysWord(days) + '. That is a gap.');
+        else { line('Has to be seen by ' + shortDay(r.dueNo) + ', ' + dueText(r.left) + '.', r.left < 5 ? 'warn' : ''); r.urgent = r.left < 5; r.dueLine = 'Has to be seen by ' + shortDay(r.dueNo) + '.'; }
+        complete = true;
+      }
+    } else if (this.seenYes(b)) {
+      r.head = days == null ? 'Needs the crash date to check her first visit.' : 'Wreck was ' + ago(days) + '.' + many;
+      var fa = this.visitNo(b, 'firstAt'), la = this.visitNo(b, 'lastAt');
+      if (days == null || days > 30) {
+        if (b.firstAt === 'unsure') { r.unsure = true; line('Not sure when she was first seen.', 'warn'); }
+        else if (fa != null && crash != null && fa - crash > 30) bad('First visit was ' + daysWord(fa - crash) + ' after the wreck. That is a gap.');
+      }
+      if (days == null || days >= 25) {
+        if (b.lastAt === 'unsure') { r.unsure = true; line('Not sure when she was last seen.', 'warn'); }
+        else if (la != null) {
+          var since = today - la;
+          if (since > 30) bad('Last visit was ' + daysWord(since) + ' ago. That is a gap.');
+          else {
+            r.dueNo = la + 30; r.left = r.dueNo - today; r.urgent = r.left < 5;
+            line('Next visit due by ' + shortDay(r.dueNo) + ', ' + dueText(r.left) + '.', r.urgent ? 'warn' : '');
+            r.dueLine = 'Next visit by ' + shortDay(r.dueNo) + '.';
+          }
+        } else if (b.last === 'Over 30 days ago') bad('Last visit was more than 30 days ago. That is a gap.');
+      }
+      if (this.applies(b, { key: 'stretch' })) {
+        if (b.stretch === 'Yes') bad('She went more than a month with no visit. That is a gap.');
+        if (b.stretch === 'Not sure') { r.unsure = true; line('Not sure about a month with no visit.', 'warn'); }
+      }
+      complete = ['firstAt', 'lastAt', 'stretch'].every((k) => !this.applies(b, { key: k }) || this.answered(b, BODYQ.find((x) => x.key === k)));
+    } else if (days != null) {
+      // Not asked yet: say what the date means so the agent knows what is coming.
+      r.head = 'Wreck was ' + ago(days) + '. ' + (days <= 30 ? 'If she has not been seen yet, she needs to be by ' + shortDay(crash + 30) + '.' : (r.visits >= 2 ? 'She needs to have been seen at least ' + r.visits + ' times' : 'She needs to have been seen') + ', never more than 30 days apart.');
+    }
+    // The same thing in one line for Story, under the crash date.
+    if (days != null) r.hint = days <= 30 ? 'If she has not been seen yet, she needs to be by ' + shortDay(crash + 30) + '.'
+      : (r.visits >= 2 ? 'She needs to have been seen at least ' + r.visits + ' times' : 'She needs to have been seen') + ', never more than 30 days apart.';
+    r.status = r.bad ? 'bad' : r.unsure ? 'flag' : r.urgent ? (b.willing === 'Yes' ? 'ok' : 'flag') : complete ? 'ok' : '';
+    r.tone = r.bad ? 'bad' : (r.unsure || (r.urgent && b.willing !== 'Yes')) ? 'warn' : r.status === 'ok' ? 'ok' : '';
+    return r;
+  }
+
+  // The 30-day check as the screen shows it.
+  // A row like the others: the short answer on the right, the why under it.
+  gapView() {
+    var gc = this.gapCheck();
+    var value = gc.bad ? 'Gap' : gc.left != null ? (gc.left === 0 ? 'Last day today' : daysWord(gc.left) + ' left') : gc.unsure ? 'Not sure' : gc.status === 'ok' ? 'No gap' : '';
+    // The days left are already on the right, so the line under it says the date and any problem.
+    var sub = [gc.head, gc.dueLine].concat(gc.lines.filter((l) => l.tone === 'bad' || /^Not sure/.test(l.t)).map((l) => l.t)).filter(Boolean).join(' ');
+    return {
+      show: !!(gc.head || gc.lines.length),
+      cls: 'frow gaprow' + (gc.tone ? ' ' + gc.tone : ''),
+      value: value, sub: sub,
+      head: gc.head, lines: gc.lines
+    };
+  }
+
+  // What a body question says out loud right now. Under 5 days to a gap, the
+  // willing question becomes today or tomorrow.
+  lineOf(q: any, b?: any) {
+    if (q.key === 'willing' && q.soonLine && this.gapCheck(b).urgent) return q.soonLine;
+    return q.line;
   }
 
   // The six basics, in Brett's order: not at fault, some coverage, no check for the
@@ -437,13 +589,12 @@ export class CallEngine {
     var umNo = b.uim === 'No' || b.coverage === 'No insurance';
     var cov = exOk || b.coverage === 'Full coverage' || b.uim === 'Yes' ? 'ok' : (exNo && covNo && umNo ? 'bad' : (b.exchanged || b.coverage || b.uim ? 'flag' : ''));
     var check = b.check === 'No' || b.check === 'Only for the car' ? 'ok' : b.check === 'Yes, for injuries' ? 'bad' : '';
-    var days = this.daysAgo();
-    var fresh = days != null && days < 30;
-    var gap = '';
-    if (this.seenNo(b)) gap = days == null ? '' : (fresh ? 'ok' : 'bad');
-    else if (this.seenYes(b)) gap = b.last === 'Over 30 days ago' ? 'bad' : (b.last || fresh ? 'ok' : '');
-    var treat = b.willing === 'Yes' ? 'ok' : b.willing === 'No' ? 'bad' : b.willing === 'Maybe' ? 'flag'
-      : (this.seenYes(b) && b.last !== 'Over 30 days ago' && (b.last || fresh) ? 'ok' : '');
+    var gc = this.gapCheck(b);
+    var gap = gc.status;
+    // Under 5 days, the willing question is "today or tomorrow". A no there is
+    // not a refusal to treat, it is a gap coming, so it flags instead of going red.
+    var treat = b.willing === 'Yes' ? 'ok' : b.willing === 'No' ? (gc.urgent && !gc.bad ? 'flag' : 'bad') : b.willing === 'Maybe' ? 'flag'
+      : (this.seenYes(b) && gap === 'ok' ? 'ok' : '');
     var sol = this.sol();
     var solS = sol.daysLeft != null ? (sol.daysLeft < 0 ? 'bad' : sol.daysLeft <= 90 ? 'flag' : 'ok') : (st.when || st.city ? 'flag' : '');
     return [
@@ -456,13 +607,98 @@ export class CallEngine {
     ];
   }
 
+  // What to ask if she did not say it while telling the story. One wording,
+  // used by the "ask next" line on each fact row.
+  storyAsks(): Record<string, string> {
+    return {
+      city: 'What city and state was that in?',
+      when: 'And what day was that?',
+      seat: 'Were you driving, or were you a passenger?',
+      police: 'Did the police come out to the scene?',
+    };
+  }
+
   storyGaps() {
-    var st = this.state.story, out = [];
-    if (!st.city) out.push('What city and state was that in?');
-    if (!st.when) out.push('And what day was that?');
-    if (!st.seat) out.push('Were you driving, or were you a passenger?');
-    if (!st.police) out.push('Did the police come out to the scene?');
+    var st = this.state.story, out = [], a = this.storyAsks();
+    if (!this.stateCode(st.city)) out.push(a.city);
+    if (!st.when || (st.when === 'Pick a date' && !st.date)) out.push(a.when);
+    if (!st.seat) out.push(a.seat);
+    if (!st.police) out.push(a.police);
     return out;
+  }
+
+  // The five facts, in the order that matters: where first (it picks the
+  // agreement and the deadline), then when, then how. Each shows what was
+  // captured, or what to ask.
+  storyFacts() {
+    var st = this.state.story, a = this.storyAsks(), days = this.daysAgo();
+    var whenVal = !st.when ? '' : st.when !== 'Pick a date' ? st.when : (st.date ? mdy(st.date) + (days != null ? ', ' + (days === 1 ? '1 day ago' : days + ' days ago') : '') : '');
+    var rows = [
+      { key: 'city', label: 'Where', value: String(st.city || '').trim(), done: !!this.stateCode(st.city), ask: a.city },
+      { key: 'when', label: 'When', value: whenVal, done: !!whenVal, ask: a.when },
+      { key: 'seat', label: 'She was', value: st.seat === 'Other' ? ('Other' + (st.seatOther ? ', ' + st.seatOther : '')) : (st.seat || ''), done: !!st.seat && (st.seat !== 'Other' || !!st.seatOther), ask: a.seat },
+      { key: 'fault', label: 'Fault', value: st.fault || '', done: !!st.fault, ask: '' },
+      { key: 'police', label: 'Police', value: st.police || '', done: !!st.police, ask: a.police },
+    ];
+    var next = rows.find((r) => !r.done);
+    return rows.map((r) => Object.assign(r, { next: !!next && r.key === next.key }));
+  }
+
+  // Story as one list. One row open at a time: the one the agent tapped, or
+  // else the first fact still missing. A tap that finishes a row closes it
+  // and opens the next missing one, so the agent just follows the list.
+  storyRows() {
+    var s = this.state, st = s.story, facts = this.storyFacts();
+    var auto = facts.find((r) => !r.done);
+    var openKey = s.storyOpen === 'none' ? null : (s.storyOpen || (auto ? auto.key : null));
+    var visited = !!(s.visited || {}).story;
+    var gc = this.gapCheck();
+    var sol = this.sol();
+    return facts.map((r) => {
+      var open = r.key === openKey;
+      var bad = (r.key === 'fault' && st.fault === 'Caller') || (r.key === 'when' && sol.daysLeft != null && sol.daysLeft < 0);
+      var sub = '';
+      if (r.key === 'when' && r.done && !open) sub = gc.hint;
+      if (r.key === 'city' && r.done && !open) sub = 'Agreement: ' + this.agreementFor(st.city);
+      return {
+        key: r.key, label: r.label, open: open, done: r.done,
+        value: open ? '' : (r.value || (visited ? 'Missing' : 'Not yet')),
+        sub: sub,
+        cls: 'frow' + (open ? ' open' : '') + (r.done && !open ? ' done' : '') + (!r.done && !open && visited ? ' miss' : '') + (bad && !open ? ' warn' : ''),
+        ask: !r.done && r.ask ? r.ask : '',
+        toggle: () => this.setState({ storyOpen: open ? 'none' : r.key }),
+        isCity: r.key === 'city', isWhen: r.key === 'when', isSeat: r.key === 'seat', isFault: r.key === 'fault', isPolice: r.key === 'police'
+      };
+    });
+  }
+
+  // A tap on a Story answer. Finishing the row moves the list on; Other (she
+  // was) and Pick a date keep it open for the next bit.
+  storyPick(key: any, val: any) {
+    var st = Object.assign({}, this.state.story);
+    st[key] = st[key] === val ? null : val;
+    var stay = (key === 'seat' && st.seat === 'Other') || (key === 'when' && st.when === 'Pick a date' && this.storyDateOk(st.date) == null);
+    this.setState({ story: st, storyOpen: stay ? key : null });
+  }
+
+  storyDateOk(iso: any) {
+    var n = dayNo(iso);
+    return n != null && n >= dayNo('1990-01-01') && n <= todayNo() ? n : null;
+  }
+
+  storyDate(value: any) {
+    var st = Object.assign({}, this.state.story, { date: value || '' });
+    this.setState({ story: st, storyOpen: this.storyDateOk(st.date) != null ? null : 'when' });
+  }
+
+  // Typing in Where keeps the row open. A Google match or a state pick
+  // finishes it (storyWhereDone).
+  storyCity(text: any) {
+    this.setState({ story: Object.assign({}, this.state.story, { city: text }), storyOpen: 'city' });
+  }
+
+  storyWhereDone() {
+    if (this.stateCode(this.state.story.city)) this.setState({ storyOpen: null });
   }
 
   currentQ() {
@@ -492,9 +728,13 @@ export class CallEngine {
       var x = byKey(k);
       return { isChips: true, label: x.label, lcls: lc(k), chipsCls: chipsCls(x.opts, x.multi), chips: x.opts.map((o) => ({
         label: o,
-        cls: 'chip sm' + (o === FINE ? ' warn' : '') + ((x.multi ? b[k].indexOf(o) >= 0 : b[k] === o) ? ' on' : ''),
+        cls: 'chip sm' + (o === FINE ? ' warn' : '') + ((x.multi ? b[k].indexOf(o) >= 0 : b[k] === (x.date ? this.quickDate(o) : o)) ? ' on' : ''),
         pick: () => this.bodyPick(x, o, true)
       })) };
+    };
+    var D = (k: any) => {
+      var x = byKey(k), dv = this.dateBox(b, x);
+      return { isInput: true, label: 'Or the date', lcls: 'q-l', ph: '', type: 'date', mode: 'text', value: dv.value, set: dv.set };
     };
     var years = ['Year'];
     for (var y = 2027; y >= 1990; y--) years.push(String(y));
@@ -510,7 +750,12 @@ export class CallEngine {
     rows.push(I('City, State', 'story', 'city', 'City, State'));
 
     rows.push(G('injury', 'Injury'));
-    ['pain', 'seen', 'last', 'willing', 'work'].forEach((k) => { if (this.applies(b, byKey(k))) rows.push(Q(k)); });
+    ['pain', 'seen', 'firstAt', 'lastAt', 'stretch', 'willing', 'work'].forEach((k) => {
+      if (!this.applies(b, byKey(k))) return;
+      rows.push(Q(k));
+      if (byKey(k).date) rows.push(D(k));
+      if (k === 'seen') { var gv = this.gapView(); if (gv.show) rows.push({ isGap: true, g: gv }); }
+    });
 
     rows.push(G('cover', 'Coverage'));
     ['exchanged', 'coverage', 'uim', 'check', 'rep'].forEach((k) => { if (this.applies(b, byKey(k))) rows.push(Q(k)); });
@@ -558,7 +803,7 @@ export class CallEngine {
     rows.push(S('Vehicle year', 'file', 'vYear', years));
     rows.push(I('Vehicle make', 'file', 'vMake', ''));
     rows.push(I('Vehicle model', 'file', 'vModel', ''));
-    var kinds = { isGroup: false, isChips: false, isInput: false, isSelect: false, isInfo: false, isSteps: false, isButton: false, isPerson: false };
+    var kinds = { isGroup: false, isChips: false, isInput: false, isSelect: false, isInfo: false, isSteps: false, isButton: false, isPerson: false, isGap: false };
     return rows.map((r) => Object.assign({}, kinds, r));
   }
 
@@ -580,25 +825,79 @@ export class CallEngine {
         nb.done = Object.assign({}, nb.done, { [q.key]: free ? arr.length > 0 : false });
       }
       nb[q.key] = arr;
-      if (q.key === 'seen') { nb.last = null; nb.willing = null; }
+      if (q.key === 'seen') { nb.last = null; nb.firstAt = null; nb.lastAt = null; nb.stretch = null; nb.willing = null; }
     } else {
-      nb[q.key] = nb[q.key] === o ? null : o;
+      var val = q.date ? this.quickDate(o) : o;
+      nb[q.key] = nb[q.key] === val ? null : val;
       nb.focus = null;
-      if (q.key === 'last' && nb.last !== 'Over 30 days ago') nb.willing = null;
       if (q.key === 'rep' && nb.rep !== 'Yes') { nb.repUnhappy = null; nb.repKind = null; }
     }
+    this.settleBody(nb);
     this.setState({ body: nb });
+  }
+
+  // A quick pick on a visit date, stored the way gapCheck reads it.
+  quickDate(o: any) {
+    if (o === 'Same day') return 'same';
+    if (o === 'Not sure') return 'unsure';
+    if (o === 'Today') return isoFromNo(todayNo());
+    if (o === 'Yesterday') return isoFromNo(todayNo() - 1);
+    return o;
+  }
+
+  // The date box on a visit question. A full, sensible date answers it (and
+  // Guided moves on); half-typed years do not.
+  bodyDate(q: any, value: any) {
+    var nb = Object.assign({}, this.state.body);
+    nb[q.key] = value || null;
+    if (this.visitNo(nb, q.key) != null) nb.focus = null;
+    this.settleBody(nb);
+    this.setState({ body: nb });
+  }
+
+  // The date box for a visit question: what it shows, its limits, and what is
+  // wrong with a date that does not fit (before the wreck, in the future).
+  dateBox(b: any, q: any) {
+    var raw = b[q.key], crash = this.crashNo(), today = todayNo();
+    var value = raw === 'same' ? (crash != null ? isoFromNo(crash) : '') : (dayNo(raw) != null ? raw : '');
+    var n = dayNo(raw), why = '';
+    if (n != null && this.visitNo(b, q.key) == null && n >= dayNo('2000-01-01')) why = n > today ? 'That date is in the future.' : 'That date is before the wreck.';
+    return {
+      value: value, why: why,
+      min: crash != null ? isoFromNo(crash) : '', max: isoFromNo(today),
+      set: (e: any) => this.bodyDate(q, e && e.target ? e.target.value : e)
+    };
+  }
+
+  // What a body answer reads as in the list: "Neck, Back", "Oct 3, 12 days ago".
+  bodyValue(b: any, q: any) {
+    var v = b[q.key];
+    if (Array.isArray(v)) return v.join(', ');
+    if (!q.date) return v == null ? '' : String(v);
+    if (v === 'same') return 'Same day as the wreck';
+    if (v === 'unsure') return 'Not sure';
+    var n = this.visitNo(b, q.key);
+    if (n == null) return '';
+    var crash = this.crashNo(), today = todayNo();
+    if (q.key === 'firstAt' && crash != null) return shortDay(n) + ', ' + (n === crash ? 'same day' : daysWord(n - crash) + ' after');
+    return shortDay(n) + ', ' + (n === today ? 'today' : daysWord(today - n) + ' ago');
+  }
+
+  // An answer that no longer applies is dropped, so it can never turn a light
+  // red from a question nobody is asking anymore.
+  settleBody(nb: any) {
+    ['stretch', 'willing'].forEach((k) => { if (nb[k] != null && !this.applies(nb, { key: k })) nb[k] = null; });
   }
 
   backLine() {
     var s = this.state, P = s.phase;
     if (s.free) {
       var gaps = this.storyGaps(), cq = this.currentQ();
-      return gaps.length ? gaps[0] : (cq ? cq.line : 'Who else was in the car with you?');
+      return gaps.length ? gaps[0] : (cq ? this.lineOf(cq) : 'Who else was in the car with you?');
     }
     if (P === 'open') return 'Tell me what happened.';
     if (P === 'story') { var g = this.storyGaps(); return g.length ? g[0] : 'Tell me what happened.'; }
-    if (P === 'body') { var q = this.currentQ(); return q ? q.line : "Who else was in the car with you?"; }
+    if (P === 'body') { var q = this.currentQ(); return q ? this.lineOf(q) : "Who else was in the car with you?"; }
     if (P === 'car') return 'Who else was in the car with you?';
     if (P === 'money') return "Let me tell you real quick how we work, because people always want to know.";
     if (P === 'send') return s.send.status === 'ready' ? 'Are you better by text or by email?' : "Go ahead and put me on speaker and I'll walk you through it, it's short.";
@@ -641,48 +940,60 @@ export class CallEngine {
     var sol = this.sol();
     var fs = s.free && !s.bare;
     var live = BODYQ.filter((x) => this.applies(b, x));
-    // Fast nav: every live body question as a pill. Tap any to jump to it.
-    var qAt = q ? live.indexOf(q) : live.length;
-    var bodyPills = live.map((x, i) => ({
-      label: x.label,
-      cls: 'pill' + (q && x.key === q.key ? ' now' : (this.answered(b, x) ? ' done' : (i < qAt || (s.visited || {}).body ? ' miss' : ''))),
-      open: () => this.set('body', 'focus', x.key)
-    }));
-    var chipOn = (x: any, o: any) => (x.multi ? b[x.key].indexOf(o) >= 0 : b[x.key] === o);
-    // Full form: every live body question at once, answer in any order.
-    var bodyAll = live.map((x) => ({
-      line: x.line,
-      chipsCls: chipsCls(x.opts, x.multi),
-      cls: 'item' + (this.answered(b, x) ? ' done' : ''),
-      chips: x.opts.map((o) => ({
-        label: o,
-        cls: 'chip sm' + (o === FINE ? ' warn' : '') + (chipOn(x, o) ? ' on' : ''),
-        pick: () => this.bodyPick(x, o, true)
-      }))
-    }));
+    var gc = this.gapCheck(b);
+    var chipOn = (x: any, o: any) => (x.multi ? b[x.key].indexOf(o) >= 0 : b[x.key] === (x.date ? this.quickDate(o) : o));
     var cueFor = (x: any) => {
-      if (x.key === 'last' && days == null) return 'No crash date yet, so this shows to be safe. Over 30 days since her last visit is a gap. Flag it, do not close it.';
-      if (x.key === 'last') return 'Shows because the wreck was ' + days + ' days ago. Over 30 days since her last visit is a gap. Flag it, do not close it.';
-      if (x.key === 'willing' && b.last === 'Over 30 days ago') return 'She has a gap. Willing to go back in is what keeps this file alive.';
+      if (x.key === 'willing' && gc.bad) return 'She has a gap. Willing to go back in is what keeps this file alive.';
+      if (x.key === 'willing' && gc.urgent) return 'Her 30 days run out ' + (gc.left === 0 ? 'today' : 'in ' + daysWord(gc.left)) + '. Getting her in now keeps the file clean.';
       return x.cue;
     };
-    var qv = q ? {
-      step: 'Ask ' + (Math.max(0, live.indexOf(q)) + 1) + ' of ' + live.length,
-      line: q.line, cue: cueFor(q), multi: !!q.multi && !(q.only && b[q.key].indexOf(q.only) >= 0),
-      chipsCls: chipsCls(q.opts, q.multi),
-      nextLabel: q.nextLabel || 'Next',
-      next: () => {
-        var nb = Object.assign({}, this.state.body);
-        nb.done = Object.assign({}, nb.done, { [q.key]: true });
-        nb.focus = null;
-        this.setState({ body: nb });
-      },
-      chips: q.opts.map((o) => ({
-        label: o,
-        cls: 'chip' + (o === FINE ? ' warn' : '') + (chipOn(q, o) ? ' on' : ''),
-        pick: () => this.bodyPick(q, o, false)
-      }))
-    } : { step: '', line: '', cue: '', multi: false, nextLabel: '', chipsCls: 'chips', chips: [], next: () => {} };
+    // One view of a body question: what to say, the answers, the date box.
+    // Guided shows it inside the open row; Freestyle shows every one.
+    var qView = (x: any, free: any) => {
+      var dv = x.date ? this.dateBox(b, x) : null;
+      return {
+        key: x.key, line: this.lineOf(x, b), cue: cueFor(x),
+        multi: !!x.multi && !(x.only && b[x.key].indexOf(x.only) >= 0),
+        chipsCls: chipsCls(x.opts, x.multi),
+        nextLabel: x.nextLabel || 'Next',
+        next: () => {
+          var nb = Object.assign({}, this.state.body);
+          nb.done = Object.assign({}, nb.done, { [x.key]: true });
+          nb.focus = null;
+          this.setState({ body: nb });
+        },
+        chips: x.opts.map((o) => ({
+          label: o,
+          cls: 'chip' + (free ? ' sm' : '') + (o === FINE ? ' warn' : '') + (chipOn(x, o) ? ' on' : ''),
+          pick: () => this.bodyPick(x, o, free)
+        })),
+        isDate: !!x.date,
+        date: dv ? { value: dv.value, set: dv.set, min: dv.min, max: dv.max } : { value: '', set: () => {}, min: '', max: '' },
+        dateWhy: dv ? dv.why : ''
+      };
+    };
+    // Body as one list: every live question is a row with its answer on the
+    // right. The question being asked is open in place; tap any row to open it.
+    var qAt = q ? live.indexOf(q) : live.length;
+    var bodyRows = live.map((x, i) => {
+      var now = !!q && x.key === q.key, done = this.answered(b, x);
+      var miss = !now && !done && (i < qAt || !!(s.visited || {}).body);
+      var val = done ? this.bodyValue(b, x) : '';
+      var warn = (x.key === 'pain' && b.pain.indexOf(FINE) >= 0) || (x.key === 'stretch' && b.stretch === 'Yes')
+        || (x.key === 'willing' && b.willing === 'No') || (x.key === 'check' && b.check === 'Yes, for injuries');
+      return {
+        key: x.key, label: x.label, now: now, done: done, miss: miss,
+        value: now ? '' : (val || (miss ? 'Missing' : 'Not yet')),
+        cls: 'frow' + (now ? ' open' : '') + (done && !now ? ' done' : '') + (miss ? ' miss' : '') + (warn && !now ? ' warn' : ''),
+        open: () => this.set('body', 'focus', x.key),
+        q: now ? qView(x, false) : null
+      };
+    });
+    // Freestyle: every live body question at once, answer in any order.
+    var bodyAll = live.map((x) => Object.assign(qView(x, true), { cls: 'item' + (this.answered(b, x) ? ' done' : '') }));
+    var qv = q ? Object.assign(qView(q, false), { step: 'Ask ' + (Math.max(0, live.indexOf(q)) + 1) + ' of ' + live.length })
+      : { step: '', line: '', cue: '', multi: false, nextLabel: '', chipsCls: 'chips', chips: [], next: () => {}, isDate: false, date: { value: '', set: () => {}, min: '', max: '' }, dateWhy: '' };
+    var gapCard = this.gapView();
 
     var rowToggle = (id: any) => () => this.setState({ openRow: this.state.openRow === id ? null : id });
     var rowList = (ids: any) => ids.map((id) => {
@@ -746,11 +1057,23 @@ export class CallEngine {
     var picked = REBS.find((r) => r.id === s.reb) || { title: '', text: '', note: '' };
 
     var repBlock = b.rep === 'Yes' && !this.repGood(b);
+    var herDigits = String(this.props.callerPhone || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    var herOk = herDigits.length === 10;
+    var sendDigits = String(s.send.phone || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    var toOther = !herOk || (s.send.toOther != null ? !!s.send.toOther : sendDigits !== herDigits);
     var contactMissing = s.send.via === 'Email' ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s.send.email || '').trim()) : String(s.send.phone || '').replace(/\D/g, '').length < 10;
-    var sendBlocked = repBlock || !agreement || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || s.send.status === 'sending';
+    var noDoi = !crashIsoOf(st);
+    var sendBlocked = repBlock || !agreement || noDoi || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || s.send.status === 'sending';
+    // Everything still missing, said once, so nobody has to guess why Send is grey.
+    var needs: string[] = [];
+    if (!agreement) needs.push('the state where the wreck happened');
+    if (noDoi) needs.push('the date of the wreck');
+    if (!String(s.send.client || '').trim()) needs.push('her full name');
+    if (contactMissing) needs.push(s.send.via === 'Email' ? 'her email' : 'her 10-digit cell number');
+    var needText = needs.length === 1 ? needs[0] : needs.slice(0, -1).join(', ') + ' and ' + needs[needs.length - 1];
     var sendWarnText = repBlock ? 'She has an attorney. Only a good case she is unhappy about gets sent.'
-      : !agreement ? 'Add the city and state on Story so we know which agreement to send.'
-      : contactMissing ? (s.send.via === 'Email' ? 'Add her email to send it by email.' : 'Add her cell number to text it.')
+      : !this.props.esign.configured ? 'E-sign is not set up for this campaign yet. An admin sets it up once.'
+      : needs.length ? 'To send it, add ' + needText + '.'
       : anyBad ? 'A gate is red. Send only if you are sure, it gets flagged for review.' : '';
 
     var fileSteps = [['agreement', 'Agreement'], ['info', 'Her info'], ['crash', 'Crash']];
@@ -760,14 +1083,20 @@ export class CallEngine {
     var years = ['Year'];
     for (var y = 2027; y >= 1990; y--) years.push(String(y));
 
-    var next;
+    // Send is never a dead grey button. Tapping it while something is missing
+    // says what, right above the button, and it clears the moment it is fixed.
+    var sendNext = {
+      label: 'Send agreement', disabled: s.send.status === 'sending', muted: sendBlocked,
+      go: sendBlocked ? () => this.setState({ sendNudge: Date.now() }) : () => this.sendAgreement()
+    };
+    var next: any;
     if (s.free) {
       // Freestyle: the one button is always the thing that matters most, the agreement.
-      if (s.send.status === 'ready') next = { label: 'Send agreement', disabled: sendBlocked, go: () => this.sendAgreement() };
+      if (s.send.status === 'ready') next = sendNext;
       else if (s.send.status !== 'signed') next = { label: 'Waiting for her signature', disabled: true, go: () => {} };
       else next = { label: s.saved ? 'Saved. Call ended.' : 'End call and save', disabled: s.saved, go: () => this.openDispo() };
     } else if (P === 'send') {
-      if (s.send.status === 'ready') next = { label: 'Send agreement', disabled: sendBlocked, go: () => this.sendAgreement() };
+      if (s.send.status === 'ready') next = sendNext;
       else if (s.send.status !== 'signed') next = { label: 'Waiting for her signature', disabled: true, go: () => {} };
       else next = { label: 'Collect the file', disabled: false, go: () => this.go('file') };
     } else if (P === 'file') {
@@ -822,7 +1151,19 @@ export class CallEngine {
       showOpen: fs || (!s.free && P === 'open'), showStory: fs || (!s.free && P === 'story'), showCar: fs || (!s.free && P === 'car'), showMoney: fs || (!s.free && P === 'money'),
       showSend: fs || (!s.free && P === 'send'), showFile: fs || (!s.free && P === 'file'), showClose: fs || (!s.free && P === 'close'),
       showBodyGuided: !s.free && P === 'body', showBodyFree: fs,
-      bodyPills: bodyPills, bodyAll: bodyAll,
+      bodyRows: bodyRows, bodyAll: bodyAll, gapCard: gapCard,
+      storyRows: this.storyRows(),
+      storyWhere: { value: st.city || '', set: (t: string) => this.storyCity(t), done: () => this.storyWhereDone() },
+      storyWhen: {
+        chips: ['Today', 'Yesterday', 'Pick a date'].map((o) => ({ label: o, cls: 'chip' + (st.when === o ? ' on' : ''), pick: () => this.storyPick('when', o) })),
+        pickDate: st.when === 'Pick a date',
+        date: { value: st.date || '', set: (e: any) => this.storyDate(e.target.value), max: isoFromNo(todayNo()) }
+      },
+      storySeat: SEATS.map((o) => ({ label: o, cls: 'chip sm' + (st.seat === o ? ' on' : ''), pick: () => this.storyPick('seat', o) })),
+      storyFault: ['Other driver', 'Caller', 'Not clear'].map((o) => ({ label: o, cls: 'chip' + (o === 'Caller' ? ' warn' : '') + (st.fault === o ? ' on' : ''), pick: () => this.storyPick('fault', o) })),
+      storyPolice: ['Came out', 'No', 'Not sure'].map((o) => ({ label: o, cls: 'chip sm' + (st.police === o ? ' on' : ''), pick: () => this.storyPick('police', o) })),
+      leadOpen: !!s.leadOpen,
+      toggleLead: () => this.setState({ leadOpen: !this.state.leadOpen }),
       sayingFineFree: b.pain.indexOf(FINE) >= 0 && b.pain.length === 1,
       f: f,
       // TMP's split, straight from each agreement's paragraph 3. Only said when she insists.
@@ -849,6 +1190,7 @@ export class CallEngine {
       hasGap: this.storyGaps().length > 0,
       noGap: this.storyGaps().length === 0,
       gapNext: this.storyGaps()[0] || '',
+      storyFacts: this.storyFacts(),
       gapMore: this.storyGaps().length > 1 ? (this.storyGaps().length - 1) + ' more after this' : '',
       hasQ: !!q, q: qv,
       repYes: b.rep === 'Yes',
@@ -884,10 +1226,20 @@ export class CallEngine {
       signed: s.send.status === 'signed',
       sendSteps: this.stepsFor(s.send.status),
       agreement: agreement ? agreement : 'Needs the state',
+      needState: !agreement,
+      needDoi: noDoi,
       injuredWho: this.chips('send', 'who', ['Same as signer', 'Someone else']),
       injuredOther: s.send.who === 'Someone else',
       via: this.chips('send', 'via', ['Text', 'Email']),
-      viaNote: !this.props.esign.configured ? 'E-sign is not set up for this campaign yet. An admin sets it up once.' : (s.send.via === 'Text' ? 'Texts the signing link to ' + fmtPhone(s.send.phone) + ' from ' + this.props.textFrom + '.' : 'Emails her the signing link.'),
+      viaNote: !this.props.esign.configured ? 'E-sign is not set up for this campaign yet. An admin sets it up once.' : (s.send.via === 'Text' ? (sendDigits.length === 10 ? 'Texts the signing link to ' + fmtPhone(sendDigits) + ' from ' + this.props.textFrom + '.' : 'Texts the signing link from ' + this.props.textFrom + '.') : 'Emails her the signing link.'),
+      // Text it to her cell on file by default, or to another number (a spouse
+      // signing while she is on the line).
+      textTo: herOk ? [
+        { label: 'Her cell ' + fmtPhone(herDigits), cls: 'chip' + (!toOther ? ' on' : ''), pick: () => this.setState({ send: Object.assign({}, this.state.send, { toOther: false, phone: herDigits }) }) },
+        { label: 'Another number', cls: 'chip' + (toOther ? ' on' : ''), pick: () => this.setState({ send: Object.assign({}, this.state.send, { toOther: true, phone: '' }) }) },
+      ] : [],
+      textToOther: !herOk || toOther,
+      herPhoneOk: herOk,
       viaEmail: s.send.via === 'Email', viaText: s.send.via === 'Text',
       hasSendError: !!s.send.error, sendError: s.send.error || '',
       hasFileError: !!s.file.error, fileError: s.file.error || '',
@@ -897,6 +1249,7 @@ export class CallEngine {
       callsList: (s.calls || []).map((c) => ({ when: fmtWhen(c.occurred_at), what: (c.direction === 'inbound' ? 'Inbound' : 'Outbound') + (c.channel === 'voicemail' ? ' voicemail' : ' call') + (c.duration_sec ? ', ' + Math.floor(c.duration_sec / 60) + ':' + String(c.duration_sec % 60).padStart(2, '0') : ''), agent: c.agent_name || '', rec: c.recording_url || '', hasRec: !!(this.props.canHear && c.recording_url), summary: c.jc_summary || '', hasSummary: !!c.jc_summary })),
       hasCalls: (s.calls || []).length > 0,
       sendWarn: !!sendWarnText, sendWarnText: sendWarnText,
+      nudge: s.sendNudge && sendBlocked && sendWarnText && s.send.status === 'ready' ? sendWarnText : '',
       fileTabs: fileSteps.map((x) => ({ label: x[1], cls: 'chip sm' + (x[0] === s.file.step ? ' on' : ''), pick: () => this.set('file', 'step', x[0]) })),
       fsAgreement: fs || s.file.step === 'agreement', fsInfo: fs || s.file.step === 'info', fsCrash: fs || s.file.step === 'crash', fsPax: (fs && hurtPax.length > 0) || s.file.step === 'pax',
       agreementOpen: s.file.agreement === 'open',

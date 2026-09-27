@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
-import { createTemplate, docusealConfigured, MISSING_DOCUSEAL } from "@/lib/docuseal";
-import { packetsFor } from "@/lib/mva-call/esign";
+import { docusealConfigured, MISSING_DOCUSEAL } from "@/lib/docuseal";
+import { packetsFor, templateFor } from "@/lib/mva-call/esign";
 import { recordAudit } from "@/lib/audit";
 
 export const runtime = "edge";
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 // POST /api/calls/esign-setup { campaign_id }
 // Owner or admin, once per campaign: creates the DocuSeal templates (TX, FL,
 // and everything else) from the packet PDFs with the checked field map.
-// Safe to run again; it only makes the ones that are missing.
+// Safe to run again; it only makes the ones that are missing or out of date.
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const me = await requireStaff(sb);
@@ -48,20 +48,12 @@ export async function POST(req: NextRequest) {
   if (!packets) return NextResponse.json({ error: "There are no agreement files for this campaign yet." }, { status: 409 });
 
   const admin = supabaseAdmin();
-  const { data: have } = await admin.from("esign_templates").select("key").eq("campaign_id", camp.id).eq("provider", "docuseal");
-  const done = new Set((have ?? []).map((r: any) => r.key));
   const origin = new URL(req.url).origin;
   const made: string[] = [];
   for (const [key, packet] of Object.entries(packets)) {
-    if (done.has(key)) continue;
-    const res = await createTemplate(packet, origin + packet.path);
-    if (!res.ok) return NextResponse.json({ error: `DocuSeal would not make the ${key} template: ${res.error}`, made }, { status: 502 });
-    const { error } = await admin.from("esign_templates").insert({
-      firm_id: camp.firm_id, campaign_id: camp.id, provider: "docuseal", key,
-      template_id: String(res.data.id), name: packet.name, created_by: me.id,
-    });
-    if (error) return NextResponse.json({ error: `Made the ${key} template in DocuSeal (id ${res.data.id}) but could not save it here: ${error.message}`, made }, { status: 500 });
-    made.push(key);
+    const t = await templateFor(admin, { firmId: camp.firm_id, campaignId: camp.id, key, packet, origin, actorId: me.id, create: true });
+    if (!t.ok) return NextResponse.json({ error: t.error, made }, { status: 424 });
+    if (t.made) made.push(key);
   }
   await recordAudit({ firm_id: camp.firm_id, actor: me.id, actor_name: me.name ?? "Admin", category: "system",
     description: `Set up DocuSeal agreements for ${camp.name}: ${made.length ? made.join(", ") : "already done"}.` });

@@ -3,7 +3,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, LEAD_CALL_COLS, firmSpoken } from "@/lib/mva-call/server";
 import { stateCodeOf } from "@/lib/mva-call/state";
 import { createSubmission, agreementKey, docusealConfigured, MISSING_DOCUSEAL } from "@/lib/docuseal";
-import { syncSubmission } from "@/lib/mva-call/esign";
+import { syncSubmission, packetsFor, templateFor } from "@/lib/mva-call/esign";
 import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
@@ -14,11 +14,29 @@ export const runtime = "edge";
 const TODAY_RE = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
 
 // POST /api/calls/esign
-//   { lead_id, call_id?, signer_name, injured_name, via: 'Text'|'Email', phone?, email?, city, today, pax_index? }
+//   { lead_id, call_id?, signer_name, injured_name, via: 'Text'|'Email', phone?, email?, city, today, doi, pax_index? }
 // Sends the agreement for the state where the wreck happened. A text goes out
 // from the JustCall line with the signing link; an email goes from DocuSeal.
 // A passenger gets their own file and their own agreement.
+// Every failure answers in plain words, as JSON, and is written to the file's
+// history with what DocuSeal said, so a failed send is never a bare "502".
 export async function POST(req: NextRequest) {
+  try {
+    return await send(req);
+  } catch (e: any) {
+    const msg = String(e?.message || e || "unknown error").slice(0, 300);
+    console.error("esign send crashed", msg);
+    await recordAudit({ category: "retainer", description: `Agreement send failed: ${msg}`, meta: { stage: "crash", stack: String(e?.stack || "").slice(0, 1500) } });
+    return NextResponse.json({ error: `The agreement did not send. ${msg}` }, { status: 500 });
+  }
+}
+
+async function failed(lead: any, me: any, msg: string, meta: any, status = 424) {
+  await recordAudit({ firm_id: lead?.firm_id ?? null, lead_id: lead?.id, actor: me?.id, actor_name: me?.name ?? "Agent", category: "retainer", description: `Agreement send failed: ${msg}`.slice(0, 500), meta });
+  return NextResponse.json({ error: msg }, { status });
+}
+
+async function send(req: NextRequest) {
   const sb = await supabaseServer();
   const me = await requireStaff(sb);
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -32,8 +50,10 @@ export async function POST(req: NextRequest) {
   const email = String(b?.email || "").trim().toLowerCase();
   const paxIndex = Number.isInteger(b?.pax_index) ? Number(b.pax_index) : null;
   const today = TODAY_RE.test(String(b?.today || "")) ? String(b.today) : null;
+  const doi = TODAY_RE.test(String(b?.doi || "")) ? String(b.doi) : null;
   if (!leadId || !signer) return NextResponse.json({ error: "Add the signer's full name." }, { status: 400 });
   if (!today) return NextResponse.json({ error: "Your phone's date looks off. Refresh and try again." }, { status: 400 });
+  if (!doi) return NextResponse.json({ error: "Add the date of the wreck. It prints on the agreement." }, { status: 400 });
   if (via === "Email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Add her email to send it by email." }, { status: 400 });
 
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
@@ -45,10 +65,21 @@ export async function POST(req: NextRequest) {
   const key = agreementKey(stateCodeOf(b?.city));
   if (!key) return NextResponse.json({ error: "Add the city and state on Story so we know which agreement to send." }, { status: 400 });
   const admin = supabaseAdmin();
-  const { data: tpl } = await admin.from("esign_templates").select("template_id")
-    .eq("campaign_id", lead.campaign_id).eq("provider", "docuseal").eq("key", key).maybeSingle();
+  const { data: firm } = await admin.from("firms").select("name, slug").eq("id", lead.firm_id).maybeSingle();
+  // The template for this agreement, made new first if the packet changed.
+  const packets = packetsFor(firm?.slug, lead.case_type);
+  const packet = packets ? (packets as any)[key] : null;
+  let tpl: { template_id: string } | null = null;
+  if (packet) {
+    const t = await templateFor(admin, { firmId: lead.firm_id, campaignId: lead.campaign_id, key, packet, origin: new URL(req.url).origin, actorId: me.id });
+    if (!t.ok) return t.missing ? NextResponse.json({ error: t.error }, { status: 409 }) : failed(lead, me, t.error, { stage: "template", key });
+    tpl = { template_id: t.templateId };
+  } else {
+    const { data } = await admin.from("esign_templates").select("template_id")
+      .eq("campaign_id", lead.campaign_id).eq("provider", "docuseal").eq("key", key).maybeSingle();
+    tpl = data;
+  }
   if (!tpl) return NextResponse.json({ error: "E-sign is not set up for this campaign yet. An admin sets it up once from Calls." }, { status: 409 });
-  const { data: firm } = await admin.from("firms").select("name").eq("id", lead.firm_id).maybeSingle();
 
   // A passenger is their own file.
   let fileLeadId = lead.id;
@@ -79,16 +110,18 @@ export async function POST(req: NextRequest) {
     templateId: tpl.template_id,
     client: {
       name: signer, email: email || null, phone,
-      values: { "Client Name": signer, "Injured Party Name": injured, "Signing Date": today },
+      values: { "Client Name": signer, "Injured Party Name": injured, "Signing Date": today, "Accident Date": doi },
     },
     intake: { email: auth?.user?.email || "intake@claimreach.com", name: me.name || "Intake" },
     emailClient: via === "Email",
     externalId: fileLeadId,
   });
-  if (!res.ok) return NextResponse.json({ error: `DocuSeal did not create the agreement: ${res.error}` }, { status: 502 });
-  const client = res.data.find((s) => s.role === "Client");
-  const intake = res.data.find((s) => s.role === "Intake");
-  if (!client) return NextResponse.json({ error: "DocuSeal answered without a signer. Try again." }, { status: 502 });
+  if (!res.ok) return failed(lead, me, `DocuSeal did not create the agreement: ${res.error}`, { stage: "docuseal", status: (res as any).status ?? null, template_id: tpl.template_id, key });
+  // DocuSeal answers with the list of signers. Read it either way it comes back.
+  const list: any[] = Array.isArray(res.data) ? res.data : Array.isArray((res.data as any)?.submitters) ? (res.data as any).submitters : [];
+  const client = list.find((s) => s.role === "Client");
+  const intake = list.find((s) => s.role === "Intake");
+  if (!client) return failed(lead, me, "DocuSeal answered without a signer. Try again.", { stage: "no_signer", answer: JSON.stringify(res.data ?? null).slice(0, 1500) });
 
   const { data: row, error: rowErr } = await admin.from("esign_submissions").insert({
     firm_id: lead.firm_id, lead_id: fileLeadId, call_id: b?.call_id || null, campaign_id: lead.campaign_id,
@@ -97,7 +130,7 @@ export async function POST(req: NextRequest) {
     signer_name: signer, injured_name: injured, phone, email: email || null, via, pax_index: paxIndex,
     status: "sent", sign_url: client.embed_src || null, sent_by: me.id,
   }).select("id").single();
-  if (rowErr) return NextResponse.json({ error: `The agreement went to DocuSeal but did not save here: ${rowErr.message}. Run migration 0097.` }, { status: 500 });
+  if (rowErr) return failed(lead, me, `The agreement went to DocuSeal but did not save here: ${rowErr.message}.`, { stage: "save", submission_id: client.submission_id }, 500);
 
   // Text the link ourselves so it comes from the firm's line and lands on the file.
   let textError: string | null = null;

@@ -4,9 +4,36 @@
 // layout; `v` comes from CallEngine.renderVals() so markup and logic stay 1:1.
 import { Fragment } from "react";
 import PlaceField from "./PlaceField";
+import WhereField from "./WhereField";
 
 export function cx(cls: string | null | undefined): string {
   return String(cls || "").split(/\s+/).filter(Boolean).map((t) => "cc-" + t).join(" ");
+}
+
+function Chev({ open }: { open: boolean }) {
+  return <svg className={`cc-chev${open ? " cc-up" : ""}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>;
+}
+
+// A visit date: the quick picks sit above, this takes any other day.
+function DateBox({ q }: { q: any }) {
+  return (<>
+    <label className="cc-datebox"><span>Or pick the date</span>
+      <input className="cc-field" type="date" min={q.date.min || undefined} max={q.date.max || undefined} aria-label="Visit date" value={q.date.value ?? ""} onChange={q.date.set} />
+    </label>
+    {!!q.dateWhy && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>{q.dateWhy}</div>}
+  </>);
+}
+
+// The 30-day check, worked out from the crash date and her visits. A row in
+// the list: the short answer on the right, the why under it.
+function GapCard({ g, alone }: { g: any; alone?: boolean }) {
+  const row = (
+    <div className={cx(g.cls)} role="status">
+      <div className="cc-frow-h"><span className="cc-frow-k">30-day check</span><span className="cc-frow-v">{g.value}</span></div>
+      {!!g.sub && <div className="cc-frow-sub">{g.sub}</div>}
+    </div>
+  );
+  return alone ? <div className="cc-flist">{row}</div> : row;
 }
 
 export default function CallView({ v }: { v: any }) {
@@ -62,6 +89,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(r.isInput) && (<><div className="cc-q-r"><div className={cx(r.lcls)}>{r.label}</div><input className="cc-field" type={r.type} inputMode={r.mode} placeholder={r.ph} aria-label={r.label} value={r.value ?? ""} onChange={r.set} /></div></>)}
 {!!(r.isSelect) && (<><div className="cc-q-r"><div className="cc-q-l">{r.label}</div><select className="cc-field" aria-label={r.label} value={r.value ?? ""} onChange={r.set}>{(r.options || []).map((o: any, i8: number) => (<Fragment key={i8}><option value={o ?? ""}>{o}</option></Fragment>))}</select></div></>)}
 {!!(r.isInfo) && (<><div className="cc-q-i"><span>{r.label}</span><b>{r.value}</b></div></>)}
+{!!(r.isGap) && <GapCard g={r.g} alone />}
 {!!(r.isSteps) && (<><div className="cc-steps">{(r.steps || []).map((st: any, i9: number) => (<Fragment key={i9}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div></>)}
 {!!(r.isButton) && (<><button className="cc-btn cc-full" disabled={!!r.disabled} onClick={r.go}>{r.label}</button></>)}
 {!!(r.isPerson) && (<>
@@ -103,53 +131,78 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-cue">Let her run. Tap what you hear.</div>
 </div>
 {!!(v.hasLead) && (<>
-<div className="cc-lead" aria-label="What the marketer sent">
-<div className="cc-lead-h"><span>From the lead</span>{!!(v.leadFrom) && (<span className="cc-lead-from">{v.leadFrom}</span>)}</div>
-{!!(v.leadTags.length) && (<div className="cc-lead-tags">{(v.leadTags || []).map((t: any, i: number) => (<span key={i} className="cc-lead-tag">{t.label}</span>))}</div>)}
-{!!(v.leadSaid) && (<div className="cc-lead-said">{v.leadSaid}</div>)}
-{!!(v.leadTags.length) && (<div className="cc-lead-cue">What she told the marketer. Picked below where it fits; confirm each one with her.</div>)}
-</div>
+<button className={`cc-leadline${v.leadOpen ? " cc-on" : ""}`} onClick={v.toggleLead} aria-expanded={!!v.leadOpen} aria-label="What the marketer sent">
+<span className="cc-leadline-k">From the lead</span>
+<span className="cc-leadline-t">{(v.leadTags || []).map((t: any) => t.label).join(", ") || v.leadFrom}</span>
+<Chev open={!!v.leadOpen} />
+</button>
+{!!(v.leadOpen) && (<div className="cc-leadmore">
+{!!(v.leadSaid) && <div className="cc-lead-said">{v.leadSaid}</div>}
+{!!(v.leadFrom) && <div className="cc-cue" style={{marginTop: 0}}>{v.leadFrom}. What she told the marketer, so confirm it with her.</div>}
+</div>)}
 </>)}
-<div className="cc-cg">
-<div className="cc-cg-t"><b>Common ground</b> before the signature. One line about her car, her city, or her name, then back to work.</div>
-<div className="cc-chips cc-list"><button className="cc-chip cc-go" onClick={v.openCommon}>Common ground lines</button><button className="cc-chip cc-go" onClick={v.openRamble}>She won't stop talking</button></div>
-</div>
-{!!(v.hasGap) && (<>
-<div className="cc-need"><span className="cc-need-k">When she finishes, ask</span><span className="cc-need-l">{v.gapNext}</span><span className="cc-need-m">{v.gapMore}</span></div>
+<div className="cc-flist" role="list" aria-label="The crash">
+{(v.storyRows || []).map((r: any) => (<div key={r.key} className={cx(r.cls)} role="listitem">
+<button className="cc-frow-h" onClick={r.toggle} aria-expanded={!!r.open}>
+<span className="cc-frow-k">{r.label}</span>
+<span className="cc-frow-v">{r.value}</span>
+<Chev open={!!r.open} />
+</button>
+{!!(r.sub) && <div className="cc-frow-sub">{r.sub}</div>}
+{!!(r.open) && (<div className="cc-frow-b">
+{!!(r.ask) && <div className="cc-ask"><span className="cc-ask-k">If she didn't say it, ask</span><span className="cc-ask-l">{r.ask}</span></div>}
+{!!(r.isCity) && <WhereField value={v.storyWhere.value} agreement={v.agreement} onChange={v.storyWhere.set} onDone={v.storyWhere.done} />}
+{!!(r.isWhen) && (<>
+<div className="cc-chips cc-seg">{(v.storyWhen.chips || []).map((c: any, i: number) => (<button key={i} className={cx(c.cls)} onClick={c.pick}>{c.label}</button>))}</div>
+{!!(v.storyWhen.pickDate) && <input className="cc-field" type="date" max={v.storyWhen.date.max} aria-label="Date of the wreck" value={v.storyWhen.date.value ?? ""} onChange={v.storyWhen.date.set} />}
 </>)}
-<div>
-<div className={cx(v.labCls.fault)}>FAULT</div>
-<div className="cc-chips cc-seg">{(v.fault || []).map((c: any, i13: number) => (<Fragment key={i13}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-{!!(v.faultCaller) && (<><div className="cc-cue cc-red">Do not go hunting.</div></>)}
+{!!(r.isSeat) && (<>
+<div className="cc-chips cc-seg">{(v.storySeat || []).map((c: any, i: number) => (<button key={i} className={cx(c.cls)} onClick={c.pick}>{c.label}</button>))}</div>
+{!!(v.seatOther) && <input className="cc-field" type="text" placeholder="Explain" aria-label="Explain her role in the crash" value={v.f.seatOther.value ?? ""} onChange={v.f.seatOther.set} />}
+</>)}
+{!!(r.isFault) && (<>
+<div className="cc-chips cc-seg">{(v.storyFault || []).map((c: any, i: number) => (<button key={i} className={cx(c.cls)} onClick={c.pick}>{c.label}</button>))}</div>
+{!!(v.faultCaller) && <div className="cc-cue cc-red" style={{marginTop: 0}}>Do not go hunting.</div>}
+</>)}
+{!!(r.isPolice) && <div className="cc-chips cc-seg">{(v.storyPolice || []).map((c: any, i: number) => (<button key={i} className={cx(c.cls)} onClick={c.pick}>{c.label}</button>))}</div>}
+</div>)}
+</div>))}
 </div>
-<div>
-<div className={cx(v.labCls.seat)}>SHE WAS</div>
-<div className="cc-chips cc-seg">{(v.seat || []).map((c: any, i14: number) => (<Fragment key={i14}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-{!!(v.seatOther) && (<><input className="cc-field" style={{marginTop: "8px"}} type="text" placeholder="Explain" aria-label="Explain her role in the crash" value={v.f.seatOther.value ?? ""} onChange={v.f.seatOther.set} /></>)}
-</div>
-<div><div className={cx(v.labCls.police)}>POLICE</div><div className="cc-chips cc-seg">{(v.police || []).map((c: any, i15: number) => (<Fragment key={i15}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div></div>
-<div>
-<div className={cx(v.labCls.when)}>WHEN</div>
-<div className="cc-chips cc-seg">{(v.when || []).map((c: any, i16: number) => (<Fragment key={i16}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-{!!(v.pickDate) && (<><input className="cc-field" style={{marginTop: "8px"}} type="date" aria-label="Date of the wreck" value={v.f.date.value ?? ""} onChange={v.f.date.set} /></>)}
-{!!(v.hasDays) && (<><div className={cx(v.daysCls)}>{v.daysText}</div></>)}
-</div>
-<div style={{display: "flex", flexDirection: "column", gap: "8px"}}>
-<div className={cx(v.labCls.city)} style={{marginBottom: "0"}}>WHERE</div>
-<PlaceField kind="city" label="City and state" placeholder="City, State" value={v.f.city.value ?? ""} onChange={(t: string) => v.f.city.set({ target: { value: t } })} />
-</div>
-{!!(v.solHas) && (<><div className={cx(v.solCls)}>{v.solText}</div></>)}
-{!!(v.solClose) && (<><div className="cc-cue cc-red">Inside 90 days. Get a supervisor before you sign or decline.</div></>)}
+{!!(v.solHas) && (<><div className={cx(v.solCls)} style={{marginTop: "-8px"}}>{v.solText}</div></>)}
+{!!(v.solClose) && (<><div className="cc-cue cc-red" style={{marginTop: "-14px"}}>Inside 90 days. Get a supervisor before you sign or decline.</div></>)}
 <div>
 <div className="cc-lab">NOTES</div>
 <textarea className="cc-area" rows={2} placeholder="Tap the mic on your keyboard and say it" aria-label="Short outline of the story" value={v.f.text.value ?? ""} onChange={v.f.text.set}></textarea>
 </div>
+<div className="cc-quiet">
+<span>Lines</span>
+<button onClick={v.openCommon}>Common ground</button>
+<button onClick={v.openRamble}>She won't stop talking</button>
+</div>
 </>)}
 
 {!!(v.showBodyGuided) && (<>
-<div className="cc-pills" aria-label="Jump to any body question">
-{(v.bodyPills || []).map((d: any, i17: number) => (<Fragment key={i17}>
-<button className={cx(d.cls)} onClick={d.open}>{d.label}</button>
+<div className="cc-flist" role="list" aria-label="Body">
+{(v.bodyRows || []).map((r: any) => (<Fragment key={r.key}>
+<div className={cx(r.cls)} role="listitem">
+<button className="cc-frow-h" onClick={r.open} aria-expanded={!!r.now}>
+<span className="cc-frow-k">{r.label}</span>
+<span className="cc-frow-v">{r.value}</span>
+<Chev open={!!r.now} />
+</button>
+{!!(r.now && r.q) && (<div className="cc-frow-b">
+<div className="cc-qline">{r.q.line}</div>
+<div className={cx(r.q.chipsCls)}>{(r.q.chips || []).map((c: any, i: number) => (<button key={i} className={cx(c.cls)} onClick={c.pick}>{c.label}</button>))}</div>
+{!!(r.q.isDate) && <DateBox q={r.q} />}
+{!!(r.q.multi) && <button className="cc-btn cc-soft cc-rowbtn" onClick={r.q.next}>{r.q.nextLabel}</button>}
+{!!(r.q.cue) && <div className="cc-cue" style={{marginTop: 0}}>{r.q.cue}</div>}
+{!!(r.key === "pain" && v.sayingFine) && (<div className="cc-reb">
+<div className="cc-reb-k">She's downplaying. Do not move past it.</div>
+<div className="cc-reb-t">{v.soreness}</div>
+</div>)}
+</div>)}
+</div>
+{!!(r.key === "seen" && v.gapCard.show) && <GapCard g={v.gapCard} />}
 </Fragment>))}
 </div>
 {!!(v.repYes) && (<>
@@ -168,21 +221,6 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-cue">Then keep going and sign her. Never say her attorney is bad, never tell her to fire anybody, never say she'd do better with us. Write down what she said, in her words.</div>
 </>)}
 </>)}
-</div>
-</>)}
-{!!(v.hasQ) && (<>
-<div className="cc-qcard">
-<div className="cc-say-label">{v.q.step}</div>
-<div className="cc-qline">{v.q.line}</div>
-<div className={cx(v.q.chipsCls)}>{(v.q.chips || []).map((c: any, i20: number) => (<Fragment key={i20}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-{!!(v.q.multi) && (<><button className="cc-btn cc-soft" onClick={v.q.next}>{v.q.nextLabel}</button></>)}
-<div className="cc-cue" style={{marginTop: "0"}}>{v.q.cue}</div>
-</div>
-</>)}
-{!!(v.sayingFine) && (<>
-<div className="cc-reb">
-<div className="cc-reb-k">She's downplaying. Do not move past it.</div>
-<div className="cc-reb-t">{v.soreness}</div>
 </div>
 </>)}
 </>)}
@@ -211,7 +249,9 @@ export default function CallView({ v }: { v: any }) {
 <div className={cx(x.cls)}>
 <div className="cc-item-l">{x.line}</div>
 <div className={cx(x.chipsCls)}>{(x.chips || []).map((c: any, i24: number) => (<Fragment key={i24}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
+{!!(x.isDate) && <DateBox q={x} />}
 </div>
+{!!(x.key === "seen" && v.gapCard.show) && <GapCard g={v.gapCard} alone />}
 </Fragment>))}
 {!!(v.sayingFineFree) && (<>
 <div className="cc-reb">
@@ -272,6 +312,16 @@ export default function CallView({ v }: { v: any }) {
 </div>
 <div className="cc-agr"><span>Attorney</span><b>{v.firmSpoken}</b></div>
 <div className="cc-agr"><span>Agreement</span><b>{v.agreement}</b></div>
+{!!(v.needState) && (<div>
+<div className="cc-lab">WHERE WAS THE WRECK</div>
+<WhereField value={v.f.city.value ?? ""} agreement={v.agreement} onChange={(t: string) => v.f.city.set({ target: { value: t } })} />
+</div>)}
+{!!(v.needDoi) && (<div>
+<div className="cc-lab">DATE OF THE WRECK</div>
+<div className="cc-chips cc-seg">{(v.storyWhen.chips || []).map((c: any, i: number) => (<button key={i} className={cx(c.cls)} onClick={c.pick}>{c.label}</button>))}</div>
+{!!(v.storyWhen.pickDate) && <input className="cc-field" style={{marginTop: "8px"}} type="date" max={v.storyWhen.date.max} aria-label="Date of the wreck" value={v.storyWhen.date.value ?? ""} onChange={v.storyWhen.date.set} />}
+<div className="cc-cue">It prints on the agreement.</div>
+</div>)}
 <div>
 <div className="cc-lab">SIGNER</div>
 <input className="cc-field" type="text" aria-label="Signer full name" value={v.f.client.value ?? ""} onChange={v.f.client.set} />
@@ -285,7 +335,14 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-lab">SEND BY</div>
 <div className="cc-chips cc-seg">{(v.via || []).map((c: any, i31: number) => (<Fragment key={i31}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
 <div className="cc-cue">{v.viaNote}</div>
-{!!v.viaText && <input className="cc-field" style={{marginTop: "8px"}} type="tel" inputMode="tel" placeholder="Her cell" aria-label="Her cell number" value={v.f.phone.value ?? ""} onChange={v.f.phone.set} />}
+{!!v.viaText && (<>
+{!!(v.textTo || []).length && (<>
+<div className="cc-lab" style={{marginTop: "12px"}}>TEXT IT TO</div>
+<div className="cc-chips cc-seg">{(v.textTo || []).map((c: any, i: number) => (<Fragment key={i}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
+</>)}
+{!!v.textToOther && <input className="cc-field" style={{marginTop: "8px"}} type="tel" inputMode="tel" placeholder={v.herPhoneOk ? "Number to text it to" : "Her cell"} aria-label="Number to text the agreement to" value={v.f.phone.value ?? ""} onChange={v.f.phone.set} />}
+{!!v.textToOther && !!v.herPhoneOk && <div className="cc-cue">If someone else is signing, put their name in Signer.</div>}
+</>)}
 {!!v.viaEmail && <input className="cc-field" style={{marginTop: "8px"}} type="email" inputMode="email" autoComplete="off" placeholder="Her email" aria-label="Her email" value={v.f.email.value ?? ""} onChange={v.f.email.set} />}
 </div>
 {!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener" onClick={v.onPreview}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>Preview the agreement before you send it</a>}
@@ -399,7 +456,8 @@ export default function CallView({ v }: { v: any }) {
 </main>
 <div className="cc-bar">
 <button className="cc-btn cc-ghost" onClick={v.openSheet}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>Help</button>
-<button className="cc-btn cc-go" disabled={!!v.next.disabled} onClick={v.next.go}>{v.next.label}</button>
+{!!(v.nudge) && (<div className="cc-nudge" role="alert">{v.nudge}</div>)}
+<button className={`cc-btn cc-go${v.next.muted ? " cc-muted" : ""}`} disabled={!!v.next.disabled} onClick={v.next.go}>{v.next.label}</button>
 </div>
 
 {!!(v.sheetOpen) && (<>

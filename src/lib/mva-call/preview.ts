@@ -5,8 +5,9 @@ import type { Packet } from "@/lib/esign-packets/tmp-mva";
 
 export const AGREEMENT_NAME: Record<string, string> = { TX: "Texas", FL: "Florida", OTHER: "Alabama/Georgia (every other state)" };
 
-export async function stampPreview(src: Uint8Array, packet: Packet, key: string, input: { signer: string; injured: string; today: string }): Promise<Uint8Array> {
+export async function stampPreview(src: Uint8Array, packet: Packet, key: string, input: { signer: string; injured: string; today: string; doi?: string }): Promise<Uint8Array> {
   const { signer, injured, today } = input;
+  const doi = input.doi || "";
   const pdf = await PDFDocument.load(src);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -16,6 +17,8 @@ export async function stampPreview(src: Uint8Array, packet: Packet, key: string,
     "Client Name": { text: signer || "MISSING: signer's name", missing: !signer },
     "Injured Party Name": { text: injured || "MISSING: injured person's name", missing: !injured },
     "Signing Date": { text: today || "MISSING: today's date", missing: !today },
+    "Accident Date": { text: doi || "MISSING: date of the wreck", missing: !doi },
+    "Firm Date": { text: "Dated at step 2", missing: false },
     "Patient DOB": { text: "Added by intake after she signs", missing: false },
     "Patient SSN": { text: "Added by intake after she signs", missing: false },
   };

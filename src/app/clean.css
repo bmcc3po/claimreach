@@ -88,7 +88,9 @@
 body{font-family:var(--font);letter-spacing:-0.006em}
 
 /* ============================================================== the shell */
-.cl-shell{display:flex;min-height:100vh;background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased}
+.cl-shell{display:flex;min-height:100vh;background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;overflow-x:clip}
+/* nothing on a page can push the whole site sideways (it slid the menu under the left edge) */
+html{overflow-x:clip}
 
 .cl-side{width:244px;flex:0 0 auto;background:var(--cl-side);color:var(--cl-side-ink);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:50;transition:width .16s ease}
 .cl-brand{display:flex;align-items:center;gap:11px;height:60px;padding:0 18px;flex-shrink:0;text-decoration:none;color:#FFFFFF}
