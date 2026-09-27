@@ -10,10 +10,12 @@
 import { useEffect, useRef } from "react";
 import WhereField from "./WhereField";
 import { OPEN_LINE } from "./scripts";
+import DuoIcon from "./DuoIcon";
 
 const P = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
 function Ico({ id, size = 18 }: { id: string; size?: number }) {
   const p = { ...P, width: size, height: size, viewBox: "0 0 24 24" };
+  if (!["chev", "back", "check"].includes(id)) return <DuoIcon name={id} size={size + 2} />;
   switch (id) {
     case "calendar": return <svg {...p}><rect x="4" y="5" width="16" height="15" rx="3" /><path d="M8 3v4M16 3v4M4 10h16" /></svg>;
     case "question": return <svg {...p}><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4" /><path d="M12 16.8h.01" /></svg>;

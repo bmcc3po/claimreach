@@ -9,18 +9,10 @@
 import { useEffect, useRef } from "react";
 import WhereField from "./WhereField";
 import { OPEN_LINE } from "./scripts";
+import DuoIcon from "./DuoIcon";
 
 function Icon({ id }: { id: string }) {
-  const p = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
-  switch (id) {
-    case "incident": return <svg {...p}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>;
-    case "injury": return <svg {...p}><path d="M20.8 5.6a5 5 0 0 0-7.1 0L12 7.3l-1.7-1.7a5 5 0 0 0-7.1 7.1L12 21.5l8.8-8.8a5 5 0 0 0 0-7.1z" /></svg>;
-    case "treatment": return <svg {...p}><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M12 8v8M8 12h8" /></svg>;
-    case "insurance": return <svg {...p}><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z" /></svg>;
-    case "vehicle": return <svg {...p}><path d="M5 16V11l2-5h10l2 5v5" /><path d="M3 16h18v2H3z" /><circle cx="7.5" cy="18.5" r="1.5" /><circle cx="16.5" cy="18.5" r="1.5" /></svg>;
-    case "notes": return <svg {...p}><path d="M5 4h10l4 4v12H5z" /><path d="M9 12h6M9 16h4" /></svg>;
-    default: return null;
-  }
+  return <DuoIcon name={id} size={20} />;
 }
 
 function Chev({ open }: { open?: boolean }) {
@@ -214,6 +206,7 @@ export function FiBody({ v }: { v: any }) {
 
   return (<>
     <nav className="fi-marks" aria-label="Jump to a section">
+      <span className="fi-jump-k">Jump to</span>
       {fi.bookmarks.map((b: any) => (
         <button key={b.id} type="button" className={`fi-mark${b.on ? " fi-on" : ""} fi-mark-${b.status}`} onClick={b.go}>
           <span className="fi-mark-i"><Icon id={b.id} /></span>

@@ -1184,3 +1184,192 @@ div.ws-row{cursor:default}
 .ws>.cc-bar.fi-bar.oq-bar{justify-content:space-between;padding-left:24px;padding-right:24px}
 .ws .cc-main.oq-main{max-width:none}
 .ws .oq-main>*{width:100%;max-width:720px;margin-left:auto;margin-right:auto;box-sizing:border-box}
+
+/* ============================================================================
+   Closer to the renderings (Brett, Sep 27: "my renderings look so much higher
+   quality"). Two-tone icons, a tighter type scale, lighter layered shadows,
+   and the renderings' header: name and number on the left, the call clock
+   and "Live call" on the right.
+   ========================================================================== */
+.cc-who-phone,.cc-who-live{display:none}
+@media (max-width:1179px){
+  .fi-mode .cc-nav{align-items:center}
+  .fi-mode .cc-who{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name clock" "phone live";column-gap:10px;row-gap:1px;align-items:baseline;justify-self:stretch;width:100%;min-width:0}
+  .fi-mode .cc-who .cc-caller{grid-area:name;font-size:17px;font-weight:700;letter-spacing:-0.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fi-mode .cc-who .cc-clock{grid-area:clock;justify-self:end;font-size:16px;font-weight:700;color:var(--fi-green)}
+  .fi-mode .cc-who-phone{display:block;grid-area:phone;font-size:12.5px;color:var(--fi-sub);font-variant-numeric:tabular-nums}
+  .fi-mode .cc-who-live{display:block;grid-area:live;justify-self:end;font-size:11.5px;color:var(--fi-sub)}
+  .fi-mode .cc-who .cc-savebad{grid-column:1/-1}
+  .fi-mode .cc-nav-r{gap:8px}
+  .fi-mode .cc-circ{width:38px;height:38px}
+  .fi-mode .cc-circ svg{width:18px;height:18px}
+}
+
+/* the question card and answers */
+.oq-card{border-radius:18px;padding:16px 16px 18px;gap:6px}
+.oq-card-k{font-size:12px}
+.oq-card-q{font-size:20.5px;line-height:1.28}
+.oq-card-s{font-size:13.5px}
+.oq-opts{gap:9px}
+.oq-opt{min-height:56px;padding:9px 12px;border-radius:14px;gap:12px;box-shadow:0 0 0 1px #E3E9F2,0 1px 2px rgba(18,41,79,0.05),0 6px 14px rgba(18,41,79,0.05)}
+.oq-ico{flex-basis:34px;height:34px;border-radius:11px}
+.oq-opt-l{font-size:15.5px}
+.oq-opt-s{font-size:12.5px}
+.oq-opt.oq-big{min-height:66px;padding:12px 16px}
+.oq-opt.oq-big .oq-opt-l{font-size:16.5px}
+.oq-opt.oq-big .oq-opt-s{font-size:13px}
+.oq-opt.oq-on{box-shadow:0 0 0 1.5px var(--fi-blue),0 6px 16px rgba(37,99,235,0.14)}
+.oq-before{padding:11px 14px;border-radius:14px;background:#EDF1F7}
+.oq-before-t{font-size:14.5px}
+.oq-before-open{font-size:16px}
+.oq-before-v{font-size:13px}
+.oq-addnote{min-height:52px;border-radius:14px;font-size:14.5px;background:#E9EEF5}
+.oq-addnote .oq-ico{flex-basis:32px;height:32px}
+.oq-fact-v{font-size:12.5px}
+.oq-fact-i{flex-basis:30px;height:30px}
+.oq-nav{font-size:15px}
+.oq-done{height:50px;border-radius:14px;font-size:15.5px}
+
+/* Full Intake: the same scale */
+.fi-open{padding:15px 16px;border-radius:18px}
+.fi-open-t{font-size:20px}
+.fi-open-s{font-size:13.5px}
+.fi-sec{border-radius:16px;box-shadow:0 0 0 1px #E3E9F2,0 1px 2px rgba(18,41,79,0.05),0 6px 14px rgba(18,41,79,0.04)}
+.fi-open-sec{box-shadow:0 0 0 1.5px var(--fi-blue-line),0 8px 20px rgba(37,99,235,0.09)}
+.fi-sec-h{min-height:60px;padding:11px 14px;gap:12px}
+.fi-ico{flex-basis:34px;height:34px;border-radius:11px}
+.fi-sec-l{font-size:15.5px}
+.fi-sum{font-size:13px}
+.fi-q-k,.fi-q-v{font-size:14.5px}
+.fi-q-row{min-height:48px}
+.fi-chip{min-height:40px;font-size:14.5px;padding:0 13px;border-radius:11px}
+.fi-mark{font-size:11.5px}
+.fi-mark-i{width:34px;height:30px}
+
+/* ============================================================================
+   Enterprise pass, matched to Brett's renderings (Sep 27): a near-white page,
+   hairline 1px boxes with a whisper of shadow, icons in soft circles, a flat
+   deep-navy question card, pill bookmarks, the open section tinted blue, one
+   blue for "picked", green for done. Everything boxed, nothing barred.
+   ========================================================================== */
+.fi-mode,.ws-side{--e-navy:#14305C;--e-navy2:#1A3D72;--e-blue:#2563EB;--e-ink:#0F2240;--e-sub:#5F6F87;--e-line:#E3E8F0;--e-bg:#F5F7FB;--e-tint:#EEF4FD;--e-tint-line:#C9DAF5;--e-circle:#EEF3FB}
+.fi-mode,.fi-mode .cc-main.fi-main{background:var(--e-bg)}
+.fi-mode .cc-top{background:#FFFFFF;box-shadow:0 1px 0 var(--e-line)}
+.fi-mode .cc-who .cc-caller{color:var(--e-ink)}
+.fi-mode .cc-who .cc-clock{background:#EAF7EF;color:#15803D;border-radius:8px;padding:1px 8px}
+.fi-bar-track,.oq-track{height:7px;border-radius:7px;background:#E7ECF3}
+.fi-bar-track i{background:#22A35A;border-radius:7px}
+.fi-prog-t,.oq-count{color:var(--e-ink);font-weight:600;font-size:13px}
+.fi-view{color:var(--e-blue)}
+
+/* the navy card */
+.fi-open,.oq-card{background:var(--e-navy);box-shadow:0 6px 16px rgba(20,48,92,0.18);border-radius:16px}
+.fi-open-k,.oq-card-k{color:#A9BFE3;font-weight:500}
+.fi-open-s,.oq-card-s{color:rgba(255,255,255,0.80)}
+
+/* bookmarks: pills you jump with */
+.fi-marks{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -14px;padding:10px 14px;background:rgba(245,247,251,0.97);grid-template-columns:none}
+.fi-marks::-webkit-scrollbar{display:none}
+.fi-jump-k{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--e-sub);margin-right:2px}
+.fi-mark{flex:0 0 auto;flex-direction:row;gap:6px;min-height:34px;height:34px;padding:0 12px 0 8px;border-radius:999px;background:#FFFFFF;box-shadow:inset 0 0 0 1px #DCE3EE;font-size:13px;font-weight:600;color:var(--e-ink)}
+.fi-mark-i{width:auto;height:auto;background:transparent;box-shadow:none;border-radius:0;color:var(--e-blue)}
+.fi-mark-i svg{width:17px;height:17px}
+.fi-mark.fi-on{background:var(--e-tint);box-shadow:inset 0 0 0 1.5px var(--e-tint-line);color:var(--e-blue)}
+.fi-mark.fi-on .fi-mark-i{background:transparent;color:var(--e-blue);box-shadow:none}
+.fi-mark-done .fi-mark-i{color:#16A34A}
+.fi-mark-missing .fi-mark-i{color:#D97706}
+
+/* the lead */
+.fi-lead{border-radius:12px;box-shadow:0 0 0 1px var(--e-line),0 1px 2px rgba(16,24,40,0.04)}
+.fi-lead-k{color:var(--e-sub);font-weight:600}
+
+/* sections: hairline boxes, icons in soft circles, the open one tinted */
+.fi-sec{border-radius:14px;box-shadow:0 0 0 1px var(--e-line),0 1px 3px rgba(16,24,40,0.05)}
+.fi-open-sec{box-shadow:0 0 0 1.5px var(--e-tint-line),0 4px 14px rgba(37,99,235,0.08)}
+.fi-open-sec .fi-sec-h{background:var(--e-tint)}
+.fi-ico{flex-basis:40px;height:40px;border-radius:50%;background:var(--e-circle);color:var(--e-navy)}
+.fi-ico svg{width:21px;height:21px}
+.fi-open-sec .fi-ico{background:#FFFFFF;color:var(--e-blue)}
+.fi-sec-l{color:var(--e-ink);font-weight:700;font-size:15px}
+.fi-open-sec .fi-sec-l{color:var(--e-blue)}
+.fi-sum{color:var(--e-sub);font-size:12.5px}
+.fi-st{width:22px;height:22px;flex-basis:22px}
+.fi-st-done{background:#16A34A}
+.fi-count{font-size:12px;color:var(--e-sub);font-weight:500}
+.fi-partial .fi-count{color:var(--e-sub)}
+.fi-chev{color:#6B7A92}
+.fi-sec-b{border-top:1px solid #E6EDF8}
+.fi-q-row,.fi-q-edit{border-top-color:#EEF2F7}
+.fi-q-edit .fi-q-k{font-size:14.5px;color:var(--e-ink)}
+.fi-ask{font-size:13px;color:var(--e-sub)}
+.fi-q-v{color:var(--e-ink)}
+.fi-flash{background:#F4F8FF;box-shadow:inset 0 0 0 1.5px var(--e-blue)}
+
+/* answers: white boxes, picked is blue */
+.fi-chip{min-height:40px;border-radius:10px;background:#FFFFFF;box-shadow:inset 0 0 0 1px #D8E0EC;color:var(--e-ink);font-weight:600}
+.fi-chip.fi-on{background:#EAF2FF;box-shadow:inset 0 0 0 1.5px var(--e-blue);color:#1D4ED8}
+.cc-page .fi-in.fi-in{border-radius:10px !important;box-shadow:inset 0 0 0 1px #D8E0EC !important}
+.fi-add,.fi-chip-add{background:#FFFFFF;box-shadow:inset 0 0 0 1px #D8E0EC;color:var(--e-blue)}
+.fi-gap{background:#FFFFFF;box-shadow:inset 0 0 0 1px var(--e-tint-line);border-radius:12px}
+
+/* bottom */
+.cc-bar.fi-bar{background:#FFFFFF;box-shadow:0 -1px 0 var(--e-line);border-top:none}
+.fi-next{background:var(--e-navy);box-shadow:0 4px 12px rgba(20,48,92,0.22);border-radius:12px}
+.fi-tool{color:var(--e-sub)}
+
+/* Conversation and Quick Capture in the same hand */
+.oq-before{background:#EEF1F5;border-radius:14px}
+.oq-before-k{color:var(--e-sub)}
+.oq-opt{border-radius:14px;box-shadow:0 0 0 1px var(--e-line),0 1px 3px rgba(16,24,40,0.05)}
+.oq-ico{border-radius:50%;background:var(--e-circle);color:var(--e-blue)}
+.oq-ico-grey{background:#FFFFFF;color:var(--e-navy);box-shadow:0 0 0 1px var(--e-line)}
+.oq-opt-l{color:var(--e-ink)}
+.oq-opt-r{color:#6B7A92}
+.oq-opt.oq-on{background:#EEF4FF;box-shadow:0 0 0 1.5px var(--e-blue),0 2px 8px rgba(37,99,235,0.10)}
+.oq-opt.oq-on .oq-opt-l{color:#1D4ED8}
+.oq-opt.oq-on .oq-ico{background:var(--e-blue);color:#FFFFFF}
+.oq-facts{background:#FFFFFF;box-shadow:0 0 0 1px var(--e-line),0 1px 3px rgba(16,24,40,0.04);border-radius:14px}
+.oq-fact-i{border-radius:50%;background:var(--e-circle);box-shadow:none;color:var(--e-navy)}
+.oq-addnote{background:#EBEFF5;border-radius:14px}
+.oq-note{box-shadow:0 0 0 1.5px var(--e-tint-line)}
+.oq-done{background:var(--e-navy);border-radius:12px;box-shadow:0 4px 12px rgba(20,48,92,0.22)}
+.oq-date,.oq-field,.oq-person,.oq-rep{box-shadow:0 0 0 1px var(--e-line),0 1px 3px rgba(16,24,40,0.04);border-radius:14px}
+.oq-nav{color:var(--e-ink);font-weight:500}
+.oq-skip{color:var(--e-ink)}
+.oq-pill{border-radius:10px;box-shadow:inset 0 0 0 1px #D8E0EC}
+.oq-pill.oq-on{background:#EAF2FF;box-shadow:inset 0 0 0 1.5px var(--e-blue);color:#1D4ED8}
+
+/* the iPad and computer columns in the same hand */
+.ws-left,.ws-right{border-color:var(--e-line)}
+.ws-next{background:var(--e-navy);box-shadow:0 6px 16px rgba(20,48,92,0.18);border-radius:16px}
+.ws-btn{border-radius:10px;background:#FFFFFF;box-shadow:inset 0 0 0 1px #D8E0EC;color:var(--e-ink)}
+.ws-btn:hover{background:var(--e-tint)}
+.ws-end{background:#FFFFFF;color:#B42318;box-shadow:inset 0 0 0 1px #F2C4C0}
+.ws-end:hover{background:#FEF3F2}
+.ws .fi-marks{background:rgba(245,247,251,0.97)}
+/* denser, like the renderings */
+.fi-prog{display:flex;flex-direction:column}
+.fi-prog-row{order:-1;margin:0 0 7px}
+.fi-sec-h{min-height:54px;padding:9px 12px;gap:11px}
+.fi-ico{flex-basis:36px;height:36px}
+.fi-ico svg{width:19px;height:19px}
+.fi-sec-l{font-size:14.5px}
+.fi-sum{font-size:12.5px}
+.fi-q-edit{padding:12px 14px;gap:9px}
+.fi-q-edit .fi-q-k{font-size:14px}
+.fi-ask{font-size:12.5px}
+.fi-q-row{min-height:44px}
+.fi-q-k,.fi-q-v{font-size:14px}
+.fi-chips{gap:7px}
+.fi-chip{min-height:38px;font-size:14px;padding:0 12px}
+.fi-mark{height:30px;min-height:30px;font-size:12.5px;padding:0 11px 0 7px}
+.fi-mark-i svg{width:15px;height:15px}
+.fi-main .fi-sec+.fi-sec{margin-top:-2px}
+.cc-page .fi-in.fi-in{height:42px;font-size:15px}
+.fi-mode .cc-circ{width:36px;height:36px}
+.oq-card{padding:18px 18px 20px;gap:8px}
+.ws .fi-prog-h{order:-2}
+.ws .fi-marks{margin:0 -24px;padding:12px 24px}
+.ws .fi-mark{min-height:30px;height:30px;font-size:12.5px}
+.ws .fi-sec{scroll-margin-top:64px}
+.fi-marks{flex-shrink:0}
