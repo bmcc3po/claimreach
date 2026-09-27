@@ -293,9 +293,10 @@ export default function PropertyTool({
           const maps = c.lat && c.lng
             ? `https://maps.google.com/?q=${c.lat},${c.lng}`
             : `https://maps.google.com/?q=${encodeURIComponent(c.address || c.name)}`;
+          // The tool's key rides along so the picture loads without a ClaimReach sign-in.
           const photo = c.photo_ref
-            ? `/api/streetview?photo=${encodeURIComponent(c.photo_ref)}`
-            : (c.lat && c.lng ? `/api/streetview?lat=${c.lat}&lng=${c.lng}` : "");
+            ? `/api/streetview?photo=${encodeURIComponent(c.photo_ref)}${qs ? `&${qs}` : ""}`
+            : (c.lat && c.lng ? `/api/streetview?lat=${c.lat}&lng=${c.lng}${qs ? `&${qs}` : ""}` : "");
           const active = selected?.place_id === c.place_id;
           return (
             <li key={c.place_id} className={active ? "on" : ""}>
