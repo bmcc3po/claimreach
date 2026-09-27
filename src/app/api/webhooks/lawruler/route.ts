@@ -158,6 +158,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // LawRuler's Test button sends each mapped field as its own placeholder
+  // ("{{default95}}-Lead ID"), never a real lead. Fixed text in a hook (the
+  // Motel 6 hook's campaign=motel6) still comes through as typed, so the test
+  // is spotted by the lead ID being a placeholder, or by every value being one.
+  // Answer OK so the Test shows the hook is wired, and save nothing.
+  const isToken = (v: unknown) => { const t = String(v ?? ""); return t.includes("{{") && t.includes("}}"); };
+  const idKey = Object.keys(fields).find((k) => /^(lead_?id|lawruler_?lead_?id)$/i.test(k));
+  const vals = Object.values(fields).map((v) => String(v ?? "").trim()).filter(Boolean);
+  if ((idKey && isToken(fields[idKey])) || (vals.length >= 3 && vals.every(isToken))) {
+    await log(admin, null, "received", 200, { test: true, field_keys: Object.keys(fields) }, null);
+    return NextResponse.json({ ok: true, test: true, saved: false, fields: Object.keys(fields) });
+  }
+
   // ---- App campaigns (MVA and anything else the App works) ----------------
   // A hook that names its case type ("INNO MVA", "TMP MVA") goes through the
   // shared ingest and shows up in the App. Keys match however LawRuler spells
@@ -173,6 +186,16 @@ export async function POST(req: NextRequest) {
       if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status || 500 });
       return NextResponse.json({ ok: true, lead_id: r.lead_id, lead_no: r.lead_no, created: r.created, updated: !r.created, campaign: camp.name, log_id: logId, ...(r.error ? { warning: r.error } : {}) });
     }
+  }
+
+  // Only a hook that names its campaign (the Motel 6 hook sends
+  // campaign=motel6) takes the path below. Anything else is a case type
+  // ClaimReach does not run: refuse it, so a hook set to "all case types" can
+  // never turn another campaign's leads into TMP Motel 6 files.
+  if (!clean(fields.campaign)) {
+    const ct = clean(fields.CaseType) || clean(fields.casetype) || clean(fields.case_type) || "(none)";
+    await log(admin, null, "failed", 422, envelope, `case type not run in ClaimReach: ${ct}`);
+    return NextResponse.json({ error: `ClaimReach does not run the case type "${ct}". Nothing was saved. Send only INNO MVA leads to this hook.` }, { status: 422 });
   }
 
   const vendorId = clean(fields.leadid) || clean(fields.external_id) || clean(fields.id);
