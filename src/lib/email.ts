@@ -2,7 +2,7 @@
 // Requires env RESEND_API_KEY and EMAIL_FROM (e.g. "ClaimReach <noreply@claimreach.com>").
 // Returns { ok, error? } so callers can report real delivery status.
 
-export async function sendEmail(opts: { to: string | string[]; cc?: string[]; subject: string; html: string; text?: string; replyTo?: string }): Promise<{ ok: boolean; error?: string }> {
+export async function sendEmail(opts: { to: string | string[]; cc?: string[]; subject: string; html: string; text?: string; replyTo?: string; attachments?: { filename: string; content: string }[] }): Promise<{ ok: boolean; error?: string }> {
   const key = (globalThis as any)?.process?.env?.RESEND_API_KEY;
   const from = (globalThis as any)?.process?.env?.EMAIL_FROM || "ClaimReach <noreply@claimreach.com>";
   if (!key) return { ok: false, error: "email not configured (RESEND_API_KEY missing)" };
@@ -16,6 +16,8 @@ export async function sendEmail(opts: { to: string | string[]; cc?: string[]; su
       body: JSON.stringify({
         from, to, cc: cc.length ? cc : undefined, subject: opts.subject, html: opts.html,
         text: opts.text || undefined, reply_to: opts.replyTo || undefined,
+        // Files ride along base64 encoded (Resend's format).
+        attachments: opts.attachments && opts.attachments.length ? opts.attachments : undefined,
       }),
     });
     if (!r.ok) {

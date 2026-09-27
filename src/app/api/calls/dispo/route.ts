@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leadKeyOf } from "@/lib/lead-key";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
-import { requireStaff, LEAD_CALL_COLS, caseSummaryRows, caseEmailHtml } from "@/lib/mva-call/server";
+import { requireStaff, LEAD_CALL_COLS } from "@/lib/mva-call/server";
+import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/report";
+import { signedPdfAttachment } from "@/lib/signed-docs";
 import { validateDispo, DISPO_STATUS, DISPO_FIXED_DQ_KEY, DISPO_LABEL, DEFAULT_CALL_REASONS } from "@/lib/mva-call/dispo";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
@@ -127,16 +129,22 @@ export async function POST(req: NextRequest) {
   let emailed: string[] = [];
   let emailError: string | null = null;
   if (d.dispo === "signed" && d.notify.length) {
-    const { data: call } = await sb.from("intake_calls").select("answers").eq("id", callId).maybeSingle();
+    // The whole case: summary, qualifiers, every question and answer, and the
+    // signed agreement when it is already complete.
+    const [{ data: call }, { data: sub }] = await Promise.all([
+      sb.from("intake_calls").select("answers").eq("id", callId).maybeSingle(),
+      sb.from("esign_submissions").select("id, status, template_key, signer_name, injured_name, sent_at, signed_at, completed_at, completed_pdf_path")
+        .eq("lead_id", lead.id).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
     const origin = new URL(req.url).origin;
-    const html = caseEmailHtml({
-      title: `Signed: ${lead.claimant_name || "new client"}`,
-      note: `${me.name || "An agent"} signed this file${lead.campaign ? ` on ${lead.campaign}` : ""}.`,
-      rows: caseSummaryRows(lead, call?.answers || {}),
-      link: `${origin}/app/${leadKeyOf(lead)}`,
-    });
+    const report = caseReport(lead, call?.answers || {}, sub);
+    const link = `${origin}/app/${leadKeyOf(lead)}`;
+    const pdf = sub?.completed_pdf_path ? await signedPdfAttachment(admin, sub.completed_pdf_path, `${report.name} agreement`) : { file: null };
+    const attachments = pdf.file ? [pdf.file] : [];
+    const html = caseReportHtml(report, { link, note: `${me.name || "An agent"} signed this file${lead.campaign ? ` on ${lead.campaign}` : ""}.`, attached: attachments.length > 0 });
+    const text = caseReportText(report, link);
     for (const to of d.notify) {
-      const r = await sendEmail({ to, subject: `Signed: ${lead.claimant_name || lead.lead_no || "new client"}`, html });
+      const r = await sendEmail({ to, subject: `Signed: ${report.name}${lead.lead_no ? `, ${lead.lead_no}` : ""}`, html, text, attachments });
       if (r.ok) emailed.push(to); else emailError = r.error || "email failed";
     }
   }

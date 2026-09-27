@@ -77,3 +77,24 @@ export function mayOpenSignedDoc(opts: {
   const now = opts.now ?? Date.now();
   return now - t >= 0 && now - t <= SIGNER_WINDOW_HOURS * 3600 * 1000;
 }
+
+/**
+ * A signed agreement as an email attachment (base64, Resend's format). Only
+ * called when a person chose to send it, or for a firm's own signing email.
+ * Returns null with the reason when the file cannot be read.
+ */
+export async function signedPdfAttachment(admin: any, path: string | null | undefined, filename: string): Promise<{ file: { filename: string; content: string } | null; error?: string }> {
+  if (!path) return { file: null, error: "The signed agreement is not ready yet." };
+  try {
+    const { data, error } = await admin.storage.from(SIGNED_BUCKET).download(path);
+    if (error || !data) return { file: null, error: error?.message || "The signed agreement could not be read." };
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
+    const safe = String(filename || "Agreement").replace(/[^\w .,-]+/g, "").trim() || "Agreement";
+    return { file: { filename: safe.endsWith(".pdf") ? safe : safe + ".pdf", content: btoa(bin) } };
+  } catch (e: any) {
+    return { file: null, error: e?.message || "The signed agreement could not be read." };
+  }
+}
+

@@ -2289,7 +2289,7 @@ create index if not exists idx_webhook_events_type_created
 drop index if exists intake_calls_agent_idx;
 
 -- ============================================================================
--- 0099 (NOT YET APPLIED): who gets an email when a client signs. Additive.
+-- 0099 (APPLIED 2026-09-27): who gets an email when a client signs. Additive.
 -- ============================================================================
 -- 0099: who gets an email when a client signs. Additive, safe to run twice.
 --
