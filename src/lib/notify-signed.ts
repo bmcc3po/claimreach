@@ -13,7 +13,8 @@
 // ============================================================================
 import { sendEmail } from "@/lib/email";
 import { recordAudit } from "@/lib/audit";
-import { caseSummaryRows, caseEmailHtml } from "@/lib/mva-call/server";
+import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/report";
+import { signedPdfAttachment } from "@/lib/signed-docs";
 import { caseName } from "@/lib/case-name";
 import { leadKeyOf } from "@/lib/lead-key";
 
@@ -87,13 +88,14 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
     const agr = AGREEMENT[row.template_key] ? `${AGREEMENT[row.template_key]} ` : "";
     const who = row.signer_name && row.injured_name && row.signer_name !== row.injured_name
       ? `${row.signer_name} signed for ${row.injured_name}` : `${name} signed`;
-    const html = caseEmailHtml({
-      title: `${name} signed`,
-      rows: caseSummaryRows(lead, answers),
-      link: `${origin}/app/${leadKeyOf(lead)}`,
-      note: `${who} the ${agr}agreement${row.pax_index != null ? " as a passenger" : ""}. DOB and SSN are added at step 2.`,
-    });
-    const r = await sendEmail({ to, cc, subject: `Signed: ${name}${camp ? `, ${camp}` : ""}`, html });
+    // The whole case: summary, qualifiers, every question and answer, and the
+    // signed agreement when DocuSeal already has it complete.
+    const report = caseReport(lead, answers, row);
+    const link = `${origin}/app/${leadKeyOf(lead)}`;
+    const pdf = row.completed_pdf_path ? await signedPdfAttachment(admin, row.completed_pdf_path, `${name} agreement`) : { file: null };
+    const attachments = pdf.file ? [pdf.file] : [];
+    const html = caseReportHtml(report, { link, note: `${who} the ${agr}agreement${row.pax_index != null ? " as a passenger" : ""}.`, attached: attachments.length > 0 });
+    const r = await sendEmail({ to, cc, subject: `Signed: ${name}${camp ? `, ${camp}` : ""}`, html, text: caseReportText(report, link), attachments });
     await recordAudit({
       firm_id: lead.firm_id, lead_id: lead.id, actor_name: "ClaimReach", category: "retainer",
       description: r.ok
