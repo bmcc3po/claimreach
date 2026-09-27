@@ -120,7 +120,7 @@ export function caseSummaryRows(lead: any, a: any): { k: string; v: string }[] {
     ["Phone", fmtPhone(lead?.phone)],
     ["Email", lead?.email],
     ["Date of birth", lead?.dob],
-    ["Crash", [crashDateOf(st), st.city].filter(Boolean).join(", ")],
+    ["Crash", [crashDateOf(st), String(st.city || "").trim().replace(/,\s*$/, "")].filter(Boolean).join(", ")],
     ["Fault", st.fault],
     ["She was", st.seat === "Other" ? `Other: ${st.seatOther || ""}` : st.seat],
     ["Police", st.police],

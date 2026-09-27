@@ -43,6 +43,6 @@ export async function POST(req: NextRequest) {
     firm_id: row.firm_id, lead_id: leadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
     description: "Completed the agreement as second signer (DOB and SSN added).", meta: { submission_id: row.submission_id },
   });
-  const status = await syncSubmission(supabaseAdmin(), row, { actorName: me.name ?? "Agent" });
+  const status = await syncSubmission(supabaseAdmin(), row, { actorName: me.name ?? "Agent", origin: new URL(req.url).origin });
   return NextResponse.json({ ok: true, status });
 }

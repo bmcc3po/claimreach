@@ -8,6 +8,7 @@ import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
 import { uploadSignedDoc } from "@/lib/signed-docs";
 import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
+import { notifySigned } from "@/lib/notify-signed";
 
 /** Which packet set a campaign signs with. Only TMP MVA has one today. */
 export function packetsFor(firmSlug: string | null | undefined, caseType: string | null | undefined): Record<string, Packet> | null {
@@ -62,7 +63,7 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
  * Pull DocuSeal's view of one agreement and move our row forward. Never moves
  * backwards (a stale poll after a webhook is a no-op). Returns the status.
  */
-export async function syncSubmission(admin: any, row: any, opts: { actorName?: string } = {}): Promise<string> {
+export async function syncSubmission(admin: any, row: any, opts: { actorName?: string; origin?: string } = {}): Promise<string> {
   if (!row?.submission_id) return row?.status || "sent";
   if (row.status === "completed") return "completed";
   const got = await getSubmission(row.submission_id);
@@ -110,6 +111,8 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
     await admin.from("leads").update({ esign_date: new Date().toISOString().slice(0, 10) }).eq("id", row.lead_id);
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: row.signer_name || "Client", category: "retainer",
       description: `${row.signer_name || "The client"} signed the agreement (DocuSeal).`, meta: { submission_id: row.submission_id } });
+    // Tell the team. Once per agreement, never blocks the signing.
+    await notifySigned(admin, { ...row, ...patch }, opts.origin);
   }
   if (next === "completed") {
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: opts.actorName || "DocuSeal", category: "retainer",

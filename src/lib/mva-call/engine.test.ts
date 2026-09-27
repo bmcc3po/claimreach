@@ -61,6 +61,7 @@ t("every top-level hole in CallView resolves", () => {
   roots.delete("previewHref"); // added by CallConsole
   roots.delete("onPreview"); // added by CallConsole
   roots.delete("phoneRows"); roots.delete("callOut"); roots.delete("copyNum"); // added by CallConsole
+  roots.delete("ws"); // the layout, picked by CallConsole
   const states: Array<(e: CallEngine) => void> = [
     () => {},
     (e) => e.setState({ phase: "story" }),
@@ -351,6 +352,301 @@ t("the crash date reads one way everywhere", () => {
   assert.equal(doiOf({ when: "Pick a date", date: "0002-09-14" }), "");
   assert.equal(doiOf({ when: null }), "");
   assert.equal(doiOf({ when: "Today" }).length, 10);
+});
+
+// ---- Full Intake: one engine, the caller's order ----
+const fiOf = (e: CallEngine) => e.renderVals().fi;
+const fiQ = (e: CallEngine, id: string) => { for (const s of fiOf(e).sections) for (const q of s.questions) if (q.id === id) return q; return null as any; };
+const fiSec = (e: CallEngine, id: string) => fiOf(e).sections.find((s: any) => s.id === id);
+const fiTap = (e: CallEngine, id: string, label: string) => { const q = fiQ(e, id); assert.ok(q && q.c.opts, "no chips for " + id); q.c.opts.find((o: any) => o.label === label).pick(); };
+
+t("full intake: the caller's story, captured out of order", () => {
+  const e = mk();
+  e.setState({ phase: "story" });
+  e.setView("full");
+  assert.equal(e.renderVals().fullView, true);
+  assert.equal(fiOf(e).openSec, "incident");
+  // "Last Thursday" is one tap on the week strip.
+  const four = isoAgo(4);
+  const chip = fiQ(e, "when").c.opts.find((o: any) => /^\w{3} \d+$/.test(o.label) && o.label.endsWith(" " + Number(four.slice(8))));
+  chip.pick();
+  assert.equal(e.state.story.when, "Pick a date");
+  assert.equal(e.state.story.date, four);
+  fiQ(e, "city").c.where.set("Las Vegas, NV");
+  // Jump to Injury, then Treatment, then Insurance, without finishing Incident.
+  fiOf(e).bookmarks.find((b: any) => b.id === "injury").go();
+  fiTap(e, "pain", "Neck"); fiTap(e, "pain", "Back");
+  fiOf(e).bookmarks.find((b: any) => b.id === "treatment").go();
+  fiTap(e, "seen", "ER");
+  const pv = fiQ(e, "providers").c;
+  pv.draft.set({ target: { value: "Sunrise Hospital" } }); fiQ(e, "providers").c.add();
+  fiOf(e).bookmarks.find((b: any) => b.id === "insurance").go();
+  fiQ(e, "carrier").c.query.set({ target: { value: "state" } });
+  fiQ(e, "carrier").c.opts.find((o: any) => o.label === "State Farm").pick();
+  // The same answers, in the engine every view reads.
+  assert.deepEqual(e.state.body.pain, ["Neck", "Back"]);
+  assert.deepEqual(e.state.body.seen, ["ER"]);
+  assert.deepEqual(e.state.body.providers, ["Sunrise Hospital"]);
+  assert.equal(e.state.file.carrier, "State Farm");
+  // Glance: what's captured, what's left behind, what's untouched.
+  assert.equal(fiSec(e, "incident").status, "missing");
+  assert.equal(fiSec(e, "treatment").status, "done");
+  assert.equal(fiSec(e, "vehicle").status, "empty");
+  assert.ok(/Sunrise Hospital/.test(fiSec(e, "treatment").summary));
+  assert.equal(fiSec(e, "insurance").summary, "State Farm");
+  // Back to what's missing, in call order.
+  const nx = fiOf(e).next;
+  assert.equal(nx.label, "Next: She was");
+  nx.go();
+  assert.equal(fiOf(e).openSec, "incident");
+  assert.equal(fiQ(e, "seat").flash, true);
+  fiTap(e, "seat", "Driver");
+  assert.equal(fiQ(e, "seat").flash, false);
+  assert.equal(fiOf(e).next.label, "Next: Fault");
+});
+
+t("full intake: switching views keeps every answer and lands in the same place", () => {
+  const e = mk();
+  e.setState({ phase: "body", story: { ...e.state.story, city: "Houston, TX", when: "Yesterday", seat: "Driver", fault: "Other driver", police: "No" } });
+  e.setState({ body: { ...e.state.body, pain: ["Neck"], done: { pain: true }, focus: "seen" } });
+  // Answers only; "at" is where the agent is (the screen position), saved so
+  // another device lands on the same section.
+  const answers = (x: any) => { const { at, ...rest } = x; return JSON.stringify(rest); };
+  const before = answers(e.persistable());
+  e.setView("full");
+  assert.equal(fiOf(e).openSec, "treatment");
+  assert.equal(answers(e.persistable()), before);
+  assert.equal(e.persistable().at, "treatment");
+  fiTap(e, "seen", "Urgent care");
+  e.setView("guided");
+  assert.equal(e.state.phase, "body");
+  assert.deepEqual(e.state.body.seen, ["Urgent care"]);
+  e.setView("qa");
+  assert.ok(e.renderVals().bare);
+  e.setView("full");
+  assert.deepEqual(e.state.body.seen, ["Urgent care"]);
+});
+
+t("full intake: a multi-pick stays open, a single pick closes, answers can be changed", () => {
+  const e = mk();
+  e.setState({ phase: "story" }); e.setView("full");
+  fiOf(e).bookmarks.find((b: any) => b.id === "injury").go();
+  fiTap(e, "pain", "Head");
+  assert.equal(fiQ(e, "pain").editing, true);
+  fiQ(e, "pain").c.done();
+  assert.equal(fiQ(e, "pain").editing, false);
+  assert.equal(fiQ(e, "pain").value, "Head");
+  fiQ(e, "pain").edit();
+  fiTap(e, "pain", "Chest");
+  assert.deepEqual(e.state.body.pain, ["Head", "Chest"]);
+  fiTap(e, "work", "No");
+  assert.equal(fiQ(e, "work").editing, false);
+});
+
+t("full intake: a quick note lands in the call notes with the time", () => {
+  const e = mk();
+  e.setState({ phase: "story" }); e.setView("full");
+  fiOf(e).quick.toggle();
+  fiOf(e).quick.draft.set({ target: { value: "Witness at the gas station" } });
+  fiOf(e).quick.save();
+  assert.ok(/^\d{1,2}:\d{2} (AM|PM): Witness at the gas station$/.test(e.state.story.text), e.state.story.text);
+  assert.equal(fiOf(e).quick.open, false);
+  assert.equal(fiSec(e, "notes").status, "done");
+});
+
+t("full intake: a red light shows as a problem, nothing else does", () => {
+  const e = mk();
+  e.setState({ phase: "story" }); e.setView("full");
+  assert.equal(fiOf(e).lights.bad, false);
+  fiTap(e, "fault", "Caller");
+  assert.equal(fiOf(e).lights.bad, true);
+  assert.equal(fiOf(e).lights.text, "Fault");
+  assert.equal(fiSec(e, "incident").bad, true);
+});
+
+// ---- Simple Chorelist: the same intake as a numbered paper form ----
+const chOf = (e: CallEngine) => fiOf(e).chore;
+const chRow = (e: CallEngine, id: string) => chOf(e).rows.find((r: any) => r.id === id);
+
+t("chorelist: seven numbered sections, plain statuses, same answers", () => {
+  const e = mk();
+  e.setState({ phase: "story" });
+  e.setView("chore");
+  const v = e.renderVals();
+  assert.equal(v.choreView, true);
+  assert.deepEqual(chOf(e).rows.map((r: any) => r.n + ". " + r.label),
+    ["1. Incident", "2. Injury", "3. Treatment", "4. Insurance", "5. Vehicle / Property", "6. Notes", "7. Retainer"]);
+  assert.deepEqual(chOf(e).rows.map((r: any) => r.statusText), ["DO THIS NOW", "NOT STARTED", "NOT STARTED", "NOT STARTED", "NOT STARTED", "NOT STARTED", "NOT STARTED"]);
+  assert.equal(chOf(e).progress.text, "0 sections finished, 7 sections left");
+  assert.equal(chOf(e).nextText, "Next section: Incident");
+  // Every question is drawn with its answers showing, like paper.
+  for (const s of fiOf(e).sections) for (const q of s.questions) assert.equal(q.editing, true, q.id);
+  // The controls are Full Intake's: the same taps land in the same engine state.
+  fiQ(e, "city").c.where.set("Houston, TX");
+  fiQ(e, "when").c.opts.find((o: any) => o.label === "Yesterday").pick();
+  fiTap(e, "seat", "Driver"); fiTap(e, "fault", "Other driver"); fiTap(e, "police", "No");
+  assert.equal(e.state.story.fault, "Other driver");
+  assert.equal(chRow(e, "incident").statusText, "DONE");
+  assert.equal(chOf(e).progress.text, "1 section finished, 6 sections left");
+  assert.equal(chOf(e).nextText, "Next section: Injury");
+  assert.equal(chRow(e, "injury").statusText, "DO THIS NOW");
+});
+
+t("chorelist: moving on with blanks says NEEDS AN ANSWER; the agreement out is DO THIS NOW", () => {
+  const e = mk();
+  e.setState({ phase: "story" }); e.setView("chore");
+  fiTap(e, "seat", "Passenger");
+  chRow(e, "incident").next(); // GO TO NEXT SECTION
+  assert.equal(fiOf(e).openSec, "injury");
+  assert.equal(chRow(e, "incident").statusText, "NEEDS AN ANSWER");
+  assert.equal(chRow(e, "injury").statusText, "DO THIS NOW");
+  // Working anywhere in a section makes it the one she is in.
+  chRow(e, "insurance").enter();
+  assert.equal(chRow(e, "insurance").statusText, "DO THIS NOW");
+  assert.equal(chRow(e, "injury").statusText, "NEEDS AN ANSWER");
+  assert.equal(chRow(e, "vehicle").statusText, "NOT STARTED");
+  e.setState({ send: { ...e.state.send, status: "sent" } });
+  assert.equal(chRow(e, "retainer").statusText, "DO THIS NOW");
+  e.setState({ send: { ...e.state.send, status: "signed" } });
+  assert.equal(chRow(e, "retainer").statusText, "DONE");
+});
+
+t("chorelist: FINISH INTAKE says what is not finished, then ends the call", () => {
+  const e = mk();
+  e.setState({ phase: "story" }); e.setView("chore");
+  const last = chOf(e).rows[6];
+  assert.equal(last.next, null);
+  chOf(e).finish.go();
+  assert.equal(e.state.dispo.open, false);
+  assert.ok(chOf(e).finish.ask);
+  assert.ok(/^Not finished yet: 1\. Incident, .*7\. Retainer\. Press FINISH INTAKE again/.test(chOf(e).finish.askText), chOf(e).finish.askText);
+  chOf(e).finish.go();
+  assert.equal(e.state.dispo.open, true);
+});
+
+t("chorelist: switching views keeps every answer and the spot", () => {
+  const e = mk();
+  e.setState({ phase: "body", story: { ...e.state.story, city: "Houston, TX", when: "Yesterday" }, body: { ...e.state.body, pain: ["Neck"], done: { pain: true }, focus: "seen" } });
+  const answers = (x: any) => { const { at, ...rest } = x; return JSON.stringify(rest); };
+  const before = answers(e.persistable());
+  e.setView("chore");
+  assert.equal(fiOf(e).openSec, "treatment");
+  assert.equal(chRow(e, "treatment").statusText, "DO THIS NOW");
+  assert.equal(answers(e.persistable()), before);
+  e.setView("full");
+  assert.equal(fiOf(e).openSec, "treatment");
+  e.setView("chore");
+  // Same questions in both views, from the one intake map.
+  const ids = (x: any) => x.sections.map((s: any) => s.questions.map((q: any) => q.id).join(",")).join("|");
+  const inChore = ids(fiOf(e));
+  e.setView("full");
+  assert.equal(ids(fiOf(e)), inChore);
+  // From the Retainer section back to Guided lands on Send.
+  e.setView("chore");
+  chRow(e, "retainer").enter();
+  e.setView("guided");
+  assert.equal(e.state.phase, "send");
+  assert.deepEqual(e.state.body.pain, ["Neck"]);
+});
+
+t("the same call opened on another device lands on the same section", () => {
+  const a = mk();
+  a.setState({ phase: "story" }); a.setView("full");
+  fiOf(a).bookmarks.find((b: any) => b.id === "insurance").go();
+  const saved = JSON.parse(JSON.stringify(a.persistable()));
+  const b = mk({ saved });
+  b.setView("full");
+  assert.equal(fiOf(b).openSec, "insurance");
+  const c = mk({ saved: { ...saved, at: "nonsense" } });
+  c.setView("full");
+  assert.equal(fiOf(c).openSec, "incident");
+});
+
+t("full intake: the missing list and the next question agree", () => {
+  const e = mk();
+  e.setState({ phase: "story" }); e.setView("full");
+  const fi = fiOf(e);
+  assert.equal(fi.missing[0].id, "city");
+  assert.equal(fi.next.label, "Next: " + fi.missing[0].label);
+  assert.ok(fi.next.ask.length > 0);
+  fi.missing.find((m: any) => m.id === "work").go();
+  assert.equal(fiOf(e).openSec, "injury");
+  assert.equal(fiQ(e, "work").flash, true);
+});
+
+// ---- Conversation and Quick Capture: one question at a time ----
+const oneOf = (e: CallEngine) => fiOf(e).one;
+const oneTap = (e: CallEngine, label: string) => oneOf(e).q.c.opts.find((o: any) => o.label === label).pick();
+
+t("conversation: one question at a time in call order; an answer moves on", () => {
+  const e = mk();
+  e.setState({ phase: "story" }); e.setView("convo");
+  const v = e.renderVals();
+  assert.equal(v.oneQ, true);
+  assert.equal(oneOf(e).q.id, "city");
+  assert.equal(oneOf(e).n, 1);
+  oneOf(e).q.c.where.set("Houston, TX"); oneOf(e).q.c.where.done();
+  assert.equal(oneOf(e).q.id, "when");
+  oneTap(e, "Yesterday");
+  assert.equal(e.state.story.when, "Yesterday");
+  assert.equal(oneOf(e).q.id, "seat");
+  assert.deepEqual(oneOf(e).before && oneOf(e).before.label, "When");
+  oneTap(e, "Driver");
+  assert.equal(oneOf(e).q.id, "fault");
+  // Previous goes back to look or change; Skip moves on without an answer.
+  oneOf(e).prev();
+  assert.equal(oneOf(e).q.id, "seat");
+  oneOf(e).skip();
+  assert.equal(oneOf(e).q.id, "fault");
+  oneOf(e).skip();
+  assert.equal(oneOf(e).q.id, "police");
+  // Several taps (every place it hurts) wait for Done.
+  oneTap(e, "No");
+  assert.equal(oneOf(e).q.id, "pain");
+  oneTap(e, "Neck"); oneTap(e, "Back");
+  assert.equal(oneOf(e).q.id, "pain");
+  assert.equal(oneOf(e).q.needDone, true);
+  oneOf(e).q.done();
+  assert.equal(oneOf(e).q.id, "seen");
+  assert.deepEqual(e.state.body.pain, ["Neck", "Back"]);
+});
+
+t("quick capture: same answers as Full Intake, and switching lands on the same question", () => {
+  const e = mk();
+  e.setState({ phase: "story", story: { ...e.state.story, city: "Houston, TX", when: "Yesterday", seat: "Driver", fault: "Other driver", police: "No" } });
+  e.setView("quick");
+  assert.equal(oneOf(e).q.id, "pain");
+  assert.equal(oneOf(e).facts.map((f: any) => f.value).join("|").startsWith("Houston, TX|"), true);
+  oneTap(e, "Head"); oneOf(e).q.done();
+  oneTap(e, "ER"); oneOf(e).q.done();
+  const at = oneOf(e).q.id;
+  assert.equal(at, "work"); // a wreck yesterday skips the visit dates; next in call order is missed work
+  e.setView("full");
+  assert.equal(fiOf(e).openSec, "injury");
+  assert.deepEqual(e.state.body.seen, ["ER"]);
+  e.setView("convo");
+  assert.equal(oneOf(e).q.id, at);
+  // The missing list on the side jumps the one-question views too.
+  fiOf(e).missing.find((m: any) => m.id === "work").go();
+  assert.equal(oneOf(e).q.id, "work");
+});
+
+t("conversation: when every question is answered, the way on is How we work", () => {
+  const e = mk();
+  e.setState({ phase: "body", story: { ...e.state.story, city: "Houston, TX", when: "Yesterday", seat: "Driver", fault: "Other driver", police: "No" } });
+  e.setView("convo");
+  let guard = 0;
+  while (oneOf(e).q && guard++ < 40) {
+    const q = oneOf(e).q;
+    if (q.c.kind === "people") { q.c.justMe.pick(); continue; }
+    const pick = q.c.opts.find((o: any) => /^(No|Not yet|Yes|Full coverage)$/.test(o.label)) || q.c.opts[0];
+    pick.pick();
+    if (oneOf(e).q && oneOf(e).q.id === q.id) oneOf(e).q.done();
+  }
+  assert.equal(oneOf(e).q, null);
+  fiOf(e).finish.go();
+  assert.equal(e.state.phase, "money");
+  assert.equal(e.renderVals().oneQ, false);
 });
 
 console.log(passed, "passed");
