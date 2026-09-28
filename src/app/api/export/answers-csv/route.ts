@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
+import { requirePerm } from "@/lib/gate";
+import { isInternalRole } from "@/lib/permissions";
 export const runtime = "edge";
 
 // GET /api/export/answers-csv?campaign_id=...  (or ?case_type=...)
@@ -23,10 +25,9 @@ function esc(v: any): string {
 
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { data: me } = await sb.from("app_users").select("role").eq("id", auth.user.id).maybeSingle();
-  if (!me || me.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const gate = await requirePerm(sb, "leads.export");
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+  if (!isInternalRole(gate.user.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const url = new URL(req.url);
   const campaignId = url.searchParams.get("campaign_id");

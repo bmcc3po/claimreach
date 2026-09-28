@@ -61,7 +61,11 @@ export function IxHead({ v }: { v: any }) {
           </>)}
         </div>
       </div>
-      <span className="ix-clock"><i aria-hidden="true" />{v.clockText}</span>
+      {v.onCall || v.ringing
+        ? <span className="ix-clock ix-live" title="JustCall says you are on a call"><i aria-hidden="true" />{v.onCall ? "On a call" : "Ringing"}</span>
+        : !!v.clockText && <span className={`ix-clock${v.clockOver ? " ix-over" : ""}`} title={`Intake time. Goal: ${v.targetText}`} aria-label={`Intake time ${v.clockText}`}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg>{v.clockText}
+          </span>}
       <button type="button" className="ix-circ" onClick={v.openText} aria-label={v.textBadge ? `${v.textUnread} new texts from ${v.callerFirst}` : `Text ${v.callerFirst}`}>
         {!!v.textBadge && <span className="ix-badge">{v.textUnread}</span>}
         <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3C6.48 3 2 6.58 2 11c0 2.4 1.32 4.55 3.4 6.02L4.6 21l4.33-2.3c.99.2 2.02.3 3.07.3 5.52 0 10-3.58 10-8s-4.48-8-10-8z" /></svg>
@@ -189,11 +193,19 @@ export function WsLeft({ v }: { v: any }) {
         {(!!v.leadNo || !!v.campaignName) && <div className="ws-sub">{[v.leadNo, v.campaignName].filter(Boolean).join(", ")}</div>}
         {!!v.callerPhone && <div className="ws-contact">{v.callerPhone}</div>}
         {!!v.callerEmail && <div className="ws-contact ws-email">{v.callerEmail}</div>}
-        <div className="ws-status">
-          <span className="ws-live" aria-hidden="true" />
-          <span>On the call</span>
-          <span className="ws-clock">{v.clockText}</span>
-        </div>
+        {(v.onCall || v.ringing) && (
+          <div className="ws-status">
+            <span className="ws-live" aria-hidden="true" />
+            <span>{v.onCall ? "On a call in JustCall" : "Ringing in JustCall"}</span>
+          </div>
+        )}
+        {!!v.clockText && (
+          <div className={`ws-pace${v.clockOver ? " ws-pace-over" : ""}`}>
+            <span className="ws-pace-k">Intake time</span>
+            <span className="ws-clock">{v.clockText}</span>
+            {!!v.targetText && <span className="ws-pace-g">Goal: {v.targetText}</span>}
+          </div>
+        )}
         <div className={`ws-save${v.saveBad ? " ws-save-bad" : ""}`} role="status">{v.saveBad ? v.saveError : v.saveText || "Saves as you go"}</div>
         <div className="ws-ctl">
           <button type="button" className="ws-btn" onClick={desk ? v.openPhone : v.openText}>Call</button>

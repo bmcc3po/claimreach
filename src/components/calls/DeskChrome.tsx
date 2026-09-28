@@ -98,8 +98,21 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
           )}
         </div>
         <a className="cc-chrome-new" href="/app?new=1"><Icon name="headset" size={16} />New call</a>
-        {!agent && <a className="cc-chrome-link" href="/dashboard">Full site</a>}
+        {!agent && <FullSiteLink />}
       </header>
     </>
   );
+}
+
+// On a call file (/app/TMP-1181), Full site opens THAT file's classic page
+// instead of dumping the user on the dashboard (Astra review, Sep 27).
+function FullSiteLink() {
+  const [href, setHref] = useState("/dashboard");
+  useEffect(() => {
+    try {
+      const m = window.location.pathname.match(/^\/app\/([^\/]+)$/);
+      if (m && m[1] && !["new", "search"].includes(m[1])) setHref(`/leads/${decodeURIComponent(m[1])}?classic=1`);
+    } catch { /* keep the dashboard */ }
+  }, []);
+  return <a className="cc-chrome-link" href={href}>Full site</a>;
 }

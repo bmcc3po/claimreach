@@ -46,6 +46,19 @@ export async function uploadSignedDoc(admin: any, path: string, bytes: Uint8Arra
 }
 
 // Server-side read of a signed file (firm delivery attaches the bytes).
+
+/** Every stored path for one DocuSeal submission, in packet order: the primary
+ *  signed PDF, then -2, -3... extras. Extras follow a deterministic name, so
+ *  delivery can attach the whole packet without a schema change. */
+export async function listSubmissionDocs(admin: any, firmFolder: string, submissionId: string): Promise<string[]> {
+  const { data, error } = await admin.storage.from(SIGNED_BUCKET).list(firmFolder, { limit: 100, search: `signed-ds-${submissionId}` });
+  if (error || !data) return [];
+  return (data as any[])
+    .map((f) => `${firmFolder}/${f.name}`)
+    .filter((p) => new RegExp(`/signed-ds-${submissionId}(-\\d+)?\\.pdf$`).test(p))
+    .sort((a, b) => a.length - b.length || (a < b ? -1 : 1));
+}
+
 export async function downloadSignedDoc(admin: any, path: string): Promise<Uint8Array | null> {
   const { data, error } = await admin.storage.from(SIGNED_BUCKET).download(path);
   if (error || !data) {

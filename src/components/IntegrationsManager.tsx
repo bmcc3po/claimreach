@@ -278,7 +278,18 @@ export default function IntegrationsManager() {
       {tab === "esign" && (
         <div>
           <div className="card" style={{ padding: 16, marginBottom: 16 }}>
-            <div className="section-title">Connect SignWell (certified eSign)</div>
+            <div className="section-title">DocuSeal (active eSign system)</div>
+            <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+              Agreements send through DocuSeal. It is configured with two Cloudflare
+              environment variables, not on this screen: <code>DOCUSEAL_API_KEY</code> (the
+              live API key from DocuSeal, Settings, API) and <code>DOCUSEAL_WEBHOOK_SECRET</code>.
+            </p>
+            <p style={{ fontSize: 13, marginTop: 6 }}>In DocuSeal, Settings, Webhooks, register this URL (the key on the end is your <code>DOCUSEAL_WEBHOOK_SECRET</code>) and tick form.viewed, form.completed, form.declined and submission.completed:</p>
+            <pre style={{ background: "var(--surface-2)", padding: 12, borderRadius: 8, overflow: "auto", fontSize: 12 }}>{`${base}/api/esign/docuseal?key=YOUR_WEBHOOK_SECRET`}</pre>
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>A signed agreement then updates the file even with every screen closed. Rejected callbacks show in the Event Log as docuseal.rejected 401, which means the key on the webhook URL does not match Cloudflare.</p>
+          </div>
+          <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+            <div className="section-title">SignWell (legacy, historical files only)</div>
             <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Paste your SignWell API key (SignWell → Settings → API). Used for court-admissible retainer signing with full audit trail.</p>
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               <input placeholder="SignWell API Key" value={swKey} onChange={(e) => setSwKey(e.target.value)} style={{ flex: 1, minWidth: 220 }} />

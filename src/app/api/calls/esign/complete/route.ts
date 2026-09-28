@@ -24,6 +24,22 @@ export async function POST(req: NextRequest) {
   if (!dob) return NextResponse.json({ error: "Date of birth should look like 04/12/1991." }, { status: 400 });
   if (!ssn) return NextResponse.json({ error: "SSN should be all 9 digits or the last 4." }, { status: 400 });
 
+  // Some firms require the full 9-digit SSN on the agreement (per-campaign
+  // switch, Brett Sep 27). Enforced here so the rule holds from every screen.
+  const digits = String(b?.ssn || "").replace(/\D/g, "");
+  if (digits.length === 4) {
+    const { data: leadRow } = await sb.from("leads").select("campaign_id").eq("id", leadId).maybeSingle();
+    if (leadRow?.campaign_id) {
+      const { data: campRow, error: campErr } = await sb.from("campaigns").select("ssn_require_full").eq("id", leadRow.campaign_id).maybeSingle();
+      // The rule being UNREADABLE is not the same as the rule being off: fail
+      // closed and let the agent retry (Astra review, Sep 27).
+      if (campErr) return NextResponse.json({ error: "Could not check this campaign's SSN rule. Try again in a moment." }, { status: 503 });
+      if (campRow?.ssn_require_full === true) {
+        return NextResponse.json({ error: "This firm requires the full 9-digit Social Security number. The last 4 is not enough on this campaign." }, { status: 400 });
+      }
+    }
+  }
+
   const { data: row } = await sb.from("esign_submissions").select("*")
     .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!row) return NextResponse.json({ error: "No agreement was sent on this file." }, { status: 404 });

@@ -2322,3 +2322,345 @@ create policy notify_routes_internal on notify_routes for all using (is_internal
 -- Each signing emails once, even if DocuSeal's webhook and the agent's screen
 -- both notice it at the same moment.
 alter table esign_submissions add column if not exists signed_notified_at timestamptz;
+
+
+-- ============================================================================
+-- 0100 - Pre-launch security hardening (Astra audit, Sep 27 2026).
+-- Full text in supabase/migrations/0100_audit_hardening.sql.
+-- PART A (safe any time): lock the three operational views away from the
+-- public anon key; add campaigns.ssn_require_full.
+-- PART B (read first): app_users trigger blocking role/firm/active/permission
+-- self-changes; case_documents trigger enforcing lead/claim/firm agreement.
+-- ============================================================================
+-- ============================================================================
+-- 0100 — Pre-launch security hardening (Astra audit, Sep 27 2026).
+--
+-- PART A is safe to run any time: it stops the public anon key from reading
+-- three operational views that today expose claimant name, phone and email,
+-- and adds the campaign switch for requiring a full 9-digit SSN.
+--
+-- PART B changes write behavior (blocks role self-escalation and cross-case
+-- document relabeling). The app's own server writes use the service role and
+-- are exempt. Run after Brett reads it.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- PART A1. Operational views: owned by postgres, so they bypass RLS, and they
+-- were granted to anon + authenticated. drips_due includes claimant name,
+-- phone and email. Only server cron (service role) reads these.
+-- ---------------------------------------------------------------------------
+alter view public.drips_due set (security_invoker = true);
+alter view public.automation_queue_due set (security_invoker = true);
+alter view public.leads_purgeable set (security_invoker = true);
+revoke all on public.drips_due from anon, authenticated;
+revoke all on public.automation_queue_due from anon, authenticated;
+revoke all on public.leads_purgeable from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- PART A2. Per-campaign switch: the firm requires the full 9-digit SSN on the
+-- agreement (no last-4). Enforced server-side in /api/calls/esign/complete.
+-- ---------------------------------------------------------------------------
+alter table campaigns add column if not exists ssn_require_full boolean not null default false;
+
+-- ---------------------------------------------------------------------------
+-- PART B1. app_users: RLS lets a user update their own row, and role/firm_id/
+-- active/perm_overrides live on that row. Block self-service changes to the
+-- authorization columns. Admin screens use the service role and are exempt;
+-- users with can_manage_users() keep editing everyone through RLS.
+-- ---------------------------------------------------------------------------
+create or replace function public.guard_app_users_priv()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  -- Server-side (service role) writes are the admin path; let them through.
+  if current_user in ('service_role', 'postgres', 'supabase_admin') then return new; end if;
+  if (new.role is distinct from old.role)
+     or (new.firm_id is distinct from old.firm_id)
+     or (new.active is distinct from old.active)
+     or (new.perm_overrides is distinct from old.perm_overrides)
+     or (new.email is distinct from old.email) then
+    if not public.can_manage_users() then
+      raise exception 'Only a user manager can change role, firm, active or permissions.';
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_guard_app_users_priv on public.app_users;
+create trigger trg_guard_app_users_priv
+  before update on public.app_users
+  for each row execute function public.guard_app_users_priv();
+
+-- ---------------------------------------------------------------------------
+-- PART B2. case_documents: the firm policy only checks firm_id, so a row could
+-- be pointed at another case's lead/claim. Enforce that the labels agree.
+-- ---------------------------------------------------------------------------
+create or replace function public.guard_case_documents()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_lead_firm uuid; v_claim_lead uuid; v_claim_firm uuid;
+begin
+  if new.lead_id is not null then
+    select firm_id into v_lead_firm from public.leads where id = new.lead_id;
+    if v_lead_firm is null then raise exception 'case_documents: lead does not exist'; end if;
+    if new.firm_id is distinct from v_lead_firm then
+      raise exception 'case_documents: firm does not match the lead''s firm';
+    end if;
+  end if;
+  if new.claim_id is not null then
+    select lead_id, firm_id into v_claim_lead, v_claim_firm from public.claims where id = new.claim_id;
+    if v_claim_lead is null then raise exception 'case_documents: claim does not exist'; end if;
+    if new.lead_id is not null and v_claim_lead is distinct from new.lead_id then
+      raise exception 'case_documents: claim does not belong to this lead';
+    end if;
+    if v_claim_firm is not null and new.firm_id is distinct from v_claim_firm then
+      raise exception 'case_documents: firm does not match the claim''s firm';
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_guard_case_documents on public.case_documents;
+create trigger trg_guard_case_documents
+  before insert or update on public.case_documents
+  for each row execute function public.guard_case_documents();
+
+
+-- 0101 - Supabase security-advisor cleanup. Full text in
+-- supabase/migrations/0101_advisor_hardening.sql. Part A (anon loses EXECUTE
+-- on every SECURITY DEFINER function) is already applied live. Part B
+-- (trigger-function grants, search_path pinning) runs after Brett reads it.
+-- ============================================================================
+-- 0101 — Supabase security-advisor cleanup (follow-up to 0100).
+--
+-- PART A (applied live Sep 27: pure exposure reduction, nothing pre-login
+-- calls these): the signed-OUT role can no longer execute any SECURITY
+-- DEFINER function. Every caller in the app runs signed in (auth callback
+-- provisions AFTER the session exists; m6 landing check runs post-login).
+--
+-- PART B (run after reading): pin search_path on flagged functions and drop
+-- pointless EXECUTE grants on trigger functions. Low risk, but touches the
+-- RLS helper functions, so it waits for Brett like 0100 Part B.
+--
+-- Advisor items intentionally left alone:
+--   * automation_events/automation_queue/automation_runs/firm_access/
+--     routing_rules/sources have RLS on with no policies. That is DENY-ALL
+--     for browser clients; only the server (service role) reads them. Safe.
+--   * pg_net sits in the public schema (Supabase's default install target).
+--   * Leaked-password protection is a dashboard toggle (Auth, Passwords):
+--     turn it on — there is no SQL for it.
+-- ============================================================================
+
+-- PART A — signed-out callers lose every definer function.
+revoke execute on function public.current_app_user() from anon;
+revoke execute on function public.firm_stage_only_guard() from anon;
+revoke execute on function public.handle_new_user() from anon;
+revoke execute on function public.is_m6_landing_email(text) from anon;
+revoke execute on function public.m6_log_touch(uuid, text, text, text, uuid, text) from anon;
+revoke execute on function public.my_firm_id() from anon;
+revoke execute on function public.on_two_way_contact() from anon;
+revoke execute on function public.provision_self_from_firm_access() from anon;
+revoke execute on function public.role_is_firm() from anon;
+revoke execute on function public.set_lead_no() from anon;
+revoke execute on function public.mint_lead_no(uuid) from anon;
+revoke execute on function public.enroll_drips_for_lead(uuid, uuid) from anon;
+
+-- PART B1 — trigger functions are fired by triggers, never called over the
+-- API; signed-in users don't need EXECUTE on them either.
+revoke execute on function public.firm_stage_only_guard() from authenticated;
+revoke execute on function public.handle_new_user() from authenticated;
+revoke execute on function public.on_two_way_contact() from authenticated;
+revoke execute on function public.set_lead_no() from authenticated;
+revoke execute on function public.touch_updated_at() from authenticated, anon;
+revoke execute on function public.set_updated_at() from authenticated, anon;
+revoke execute on function public.log_status_change() from authenticated, anon;
+revoke execute on function public.touch_intake_form() from authenticated, anon;
+revoke execute on function public.touch_pdf_template() from authenticated, anon;
+
+-- PART B2 — pin search_path so a hostile schema on the path can never swap
+-- what these names resolve to.
+alter function public.touch_updated_at() set search_path = public;
+alter function public.is_internal() set search_path = public;
+alter function public.set_updated_at() set search_path = public;
+alter function public.log_status_change() set search_path = public;
+alter function public.touch_intake_form() set search_path = public;
+alter function public.can_manage_users() set search_path = public;
+alter function public.norm_phone(text) set search_path = public;
+alter function public.touch_pdf_template() set search_path = public;
+alter function public.can_see_money() set search_path = public;
+
+
+-- ============================================================================
+-- CORRECTION: the "0100 Part B" block earlier in this file is SUPERSEDED and
+-- must NOT be run. Its trigger was SECURITY DEFINER, so current_user inside
+-- it was the function owner and the postgres exemption fired for every
+-- caller: the guard checked nothing. 0102 below is the corrected version.
+-- ============================================================================
+-- ============================================================================
+-- 0102 — Corrected write-protection (supersedes 0100 Part B, which is NOT to
+-- be run: its trigger was SECURITY DEFINER, and inside such a function
+-- current_user is the function OWNER, so the postgres exemption fired for
+-- every caller and the guard never checked anything. Astra caught it before
+-- it was ever applied. This version runs as the INVOKER, so current_user is
+-- the real acting role: 'authenticated' for browser writes, 'service_role'
+-- for the app server.)
+--
+-- Run the whole file at once. Then test with a synthetic agent account:
+-- editing their own name/phone works; editing their own role, firm, active
+-- or permissions fails; the Users screen (service role) still manages everyone.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1. app_users: the own-row RLS policy lets a user write their own row, and
+-- role/firm_id/active/perm_overrides live on it. Block self-service changes
+-- to the authorization columns, self-INSERT, and self-DELETE.
+-- ---------------------------------------------------------------------------
+create or replace function public.guard_app_users_priv()
+returns trigger
+language plpgsql
+-- SECURITY INVOKER (the default): current_user is the real acting role.
+set search_path = public as $$
+declare acting text := current_user;
+begin
+  -- The app server and the platform manage users through the service role.
+  if acting in ('service_role', 'postgres', 'supabase_admin', 'supabase_auth_admin') then
+    return coalesce(new, old);
+  end if;
+
+  if tg_op = 'INSERT' then
+    if not public.can_manage_users() then
+      raise exception 'Accounts are created by a user manager, not self-service.';
+    end if;
+    return new;
+  end if;
+
+  if tg_op = 'DELETE' then
+    if not public.can_manage_users() then
+      raise exception 'Accounts are removed by a user manager, not self-service.';
+    end if;
+    return old;
+  end if;
+
+  -- UPDATE: profile fields are free; authorization fields are not.
+  if (new.role is distinct from old.role)
+     or (new.firm_id is distinct from old.firm_id)
+     or (new.active is distinct from old.active)
+     or (new.perm_overrides is distinct from old.perm_overrides)
+     or (new.email is distinct from old.email)
+     or (new.id is distinct from old.id) then
+    if not public.can_manage_users() then
+      raise exception 'Only a user manager can change role, firm, active, email or permissions.';
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_guard_app_users_priv on public.app_users;
+create trigger trg_guard_app_users_priv
+  before insert or update or delete on public.app_users
+  for each row execute function public.guard_app_users_priv();
+
+-- ---------------------------------------------------------------------------
+-- 2. case_documents: the firm policy only checks firm_id. Bind the row to a
+-- real lead/claim of that firm AND bind the storage pointer itself: uploads
+-- live at "<firm_id>/<lead_id>/...", so a row cannot point another case's
+-- label at someone else's stored file.
+-- ---------------------------------------------------------------------------
+create or replace function public.guard_case_documents()
+returns trigger
+language plpgsql
+set search_path = public as $$
+declare v_lead_firm uuid; v_claim_lead uuid; v_claim_firm uuid; acting text := current_user;
+begin
+  if acting in ('service_role', 'postgres', 'supabase_admin') then
+    -- Server writes still get the referential checks below; skip nothing else.
+    null;
+  end if;
+  if new.lead_id is not null then
+    select firm_id into v_lead_firm from public.leads where id = new.lead_id;
+    if v_lead_firm is null then raise exception 'case_documents: lead does not exist'; end if;
+    if new.firm_id is distinct from v_lead_firm then
+      raise exception 'case_documents: firm does not match the lead''s firm';
+    end if;
+  end if;
+  if new.claim_id is not null then
+    select lead_id, firm_id into v_claim_lead, v_claim_firm from public.claims where id = new.claim_id;
+    if v_claim_lead is null then raise exception 'case_documents: claim does not exist'; end if;
+    if new.lead_id is not null and v_claim_lead is distinct from new.lead_id then
+      raise exception 'case_documents: claim does not belong to this lead';
+    end if;
+    if v_claim_firm is not null and new.firm_id is distinct from v_claim_firm then
+      raise exception 'case_documents: firm does not match the claim''s firm';
+    end if;
+  end if;
+  -- The stored object must live under this firm (and this lead, when set).
+  if new.storage_path is not null then
+    if position(new.firm_id::text || '/' in new.storage_path) <> 1 then
+      raise exception 'case_documents: storage path does not belong to this firm';
+    end if;
+    if new.lead_id is not null
+       and position(new.firm_id::text || '/' || new.lead_id::text || '/' in new.storage_path) <> 1 then
+      raise exception 'case_documents: storage path does not belong to this lead';
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_guard_case_documents on public.case_documents;
+create trigger trg_guard_case_documents
+  before insert or update on public.case_documents
+  for each row execute function public.guard_case_documents();
+
+-- ---------------------------------------------------------------------------
+-- 3. A deactivated account dies at the DATABASE too, not just in the app:
+-- every RLS helper now treats active=false as no access, so a still-valid
+-- JWT gets nothing through the Data API either.
+-- ---------------------------------------------------------------------------
+create or replace function public.is_internal()
+returns boolean language sql stable set search_path = public as $$
+  select exists(
+    select 1 from app_users
+    where id = auth.uid()
+      and coalesce(active, true)
+      and role::text in ('owner','admin','manager','agent','qa')
+  );
+$$;
+
+create or replace function public.can_manage_users()
+returns boolean language sql stable set search_path = public as $$
+  select exists (
+    select 1 from app_users u
+    where u.id = auth.uid()
+      and coalesce(u.active, true)
+      and ( u.role in ('owner','admin')
+            or coalesce((u.perm_overrides->>'users.manage')::boolean, false) )
+  );
+$$;
+
+create or replace function public.can_see_money()
+returns boolean language sql stable set search_path = public as $$
+  select exists (
+    select 1 from app_users u
+    where u.id = auth.uid()
+      and coalesce(u.active, true)
+      and case
+            when u.perm_overrides ? 'money.view'
+              then (u.perm_overrides->>'money.view')::boolean
+            else u.role::text in ('owner','admin')
+          end
+  );
+$$;
+
+create or replace function public.role_is_firm()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists(select 1 from app_users where id = auth.uid() and coalesce(active, true) and role = 'firm')
+$$;
+
+create or replace function public.my_firm_id()
+returns uuid language sql stable security definer set search_path = public as $$
+  select firm_id from app_users where id = auth.uid() and coalesce(active, true)
+$$;
+
+create or replace function public.current_app_user()
+returns table(uid uuid, firm_id uuid, role app_role)
+language sql stable security definer set search_path = public as $$
+  select id, firm_id, role from app_users where id = auth.uid() and coalesce(active, true)
+$$;

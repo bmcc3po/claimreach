@@ -25,19 +25,42 @@ export async function POST(req: NextRequest) {
   if (!claim_id) return NextResponse.json({ error: "claim_id required" }, { status: 400 });
 
   // Fetch existing claim (lead linkage + prior answers for diffing).
-  const { data: claim } = await sb.from("claims").select("lead_id, answers, status").eq("id", claim_id).maybeSingle();
+  const { data: claim } = await sb.from("claims").select("lead_id, answers, status, updated_at").eq("id", claim_id).maybeSingle();
   const prior: Record<string, any> = (claim?.answers as any) ?? {};
-  const next: Record<string, any> = answers ?? {};
+  // MERGE, never replace. Different surfaces (Guided, All sections, the call
+  // console) send different subsets of keys; a save that omits a key must not
+  // delete an answer another surface already captured (Astra audit, Sep 27:
+  // a saved safety-gate answer was wiped by an All-sections save). Clearing a
+  // field still works: the client sends the key with an empty value.
+  const sent: Record<string, any> = answers ?? {};
+  const next: Record<string, any> = { ...prior, ...sent };
 
   // Save answers. Move the claim to "contacting" (a real status key) only when it
   // is still at the very start (new/blank). Never downgrade a file that has moved
   // further along the pipeline (esign_sent, signed_*, qa, approved, etc.), since
   // a mid-pipeline intake edit must not reset its status.
   const START_STATUSES = new Set(["new", "", null as any, undefined as any]);
-  const patch: any = { answers: next };
-  if (START_STATUSES.has(claim?.status as any)) patch.status = "contacting";
-  const { error: cErr } = await sb.from("claims").update(patch).eq("id", claim_id);
-  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+  // Optimistic revision: the update only lands on the version we merged
+  // against (updated_at is touched by trigger on every write). A concurrent
+  // save from another screen re-reads and re-merges instead of overwriting it
+  // (Astra review, Sep 27: out-of-order saves could restore old answers).
+  let merged = next;
+  let seen = claim?.updated_at ?? null;
+  let wrote = false;
+  for (let attempt = 0; attempt < 4 && !wrote; attempt++) {
+    const patch: any = { answers: merged };
+    if (START_STATUSES.has(claim?.status as any)) patch.status = "contacting";
+    let q = sb.from("claims").update(patch).eq("id", claim_id);
+    q = seen === null ? q.is("updated_at", null) : q.eq("updated_at", seen);
+    const { data: hit, error: cErr } = await q.select("id").maybeSingle();
+    if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+    if (hit) { wrote = true; break; }
+    const { data: fresh, error: rErr } = await sb.from("claims").select("answers, updated_at").eq("id", claim_id).maybeSingle();
+    if (rErr || !fresh) return NextResponse.json({ error: rErr?.message || "claim disappeared mid-save" }, { status: 500 });
+    merged = { ...((fresh.answers as any) ?? {}), ...sent };
+    seen = fresh.updated_at ?? null;
+  }
+  if (!wrote) return NextResponse.json({ error: "The file is being saved from another screen right now. Try again." }, { status: 409 });
 
   if (Array.isArray(properties)) {
     // Whitelist writable columns server-side too. brand_mismatch is a GENERATED
@@ -87,25 +110,30 @@ export async function POST(req: NextRequest) {
     // properties — silent data loss on a victim's intake. Instead: capture the
     // current rows, insert the new set, and only delete the old rows once the
     // insert has succeeded. On insert error we return early, data untouched.
-    const { data: existingRows } = await sb.from("claim_properties").select("id").eq("claim_id", claim_id);
-    const oldIds = (existingRows ?? []).map((r: any) => r.id);
-
+    let insertedIds: string[] = [];
     if (rows.length) {
-      const { error: pErr } = await sb.from("claim_properties").insert(rows);
+      const { data: ins, error: pErr } = await sb.from("claim_properties").insert(rows).select("id");
       if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
+      insertedIds = (ins ?? []).map((r: any) => r.id);
     }
-    if (oldIds.length) await sb.from("claim_properties").delete().in("id", oldIds);
+    // Converge instead of racing: everything on this claim that is NOT part of
+    // the set we just wrote goes. Two overlapping saves end with one set, not
+    // a doubled one (Astra review, Sep 27).
+    let del = sb.from("claim_properties").delete().eq("claim_id", claim_id);
+    if (insertedIds.length) del = del.not("id", "in", `(${insertedIds.join(",")})`);
+    const { error: dErr } = await del;
+    if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
   }
 
   // ---- Field-level audit: diff prior vs next, log each change with old→new ----
   const labels = fieldLabelMap();
-  const keys = new Set([...Object.keys(prior), ...Object.keys(next)]);
+  const keys = new Set([...Object.keys(prior), ...Object.keys(merged)]);
   const actor_name = me.full_name ?? "Staff";
   let changeCount = 0;
 
   for (const k of keys) {
     const before = prior[k];
-    const after = next[k];
+    const after = merged[k];
     const same = JSON.stringify(before ?? null) === JSON.stringify(after ?? null);
     if (same) continue;
     changeCount++;

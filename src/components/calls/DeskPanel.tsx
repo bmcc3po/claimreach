@@ -19,8 +19,10 @@ export interface PreviewInfo {
 
 const PHASE_LABEL: Record<string, string> = { open: "Open", story: "Story", body: "Injury", car: "Car", money: "Money", send: "Send", file: "File", close: "Close" };
 
-export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, story, summary }: {
+export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, story, summary, onDialState }: {
   v: any;
+  /** The JustCall dialer in the Phone tab: on a call, ringing, ready. */
+  onDialState?: (s: DialerState) => void;
   /** The Full Intake workspace: next best action, what's missing, the live summary. */
   summary?: ReactNode;
   tab: DeskTab;
@@ -80,7 +82,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
               : dialState === "ready" ? "Calls go out from the JustCall line, record, and land on this file."
               : "Sign in to JustCall inside the box below. You only do it once on this computer."}
           </div>
-          <JustCallDialer ref={dialer} onState={setDialState} />
+          <JustCallDialer ref={dialer} onState={(st) => { setDialState(st); onDialState?.(st); }} />
           <div className="cc-ret-bar">
             <button className="cc-chip cc-sm" onClick={() => popOutDialer(phones.find((p) => p.kind === "caller")?.number)}>Pop out</button>
             <span className="cc-cue" style={{ marginTop: 0 }}>Leaving this page ends a call in this box. Pop it out for a long call or a 3-way.</span>
