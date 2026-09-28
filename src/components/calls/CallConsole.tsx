@@ -21,6 +21,8 @@ export interface ConsoleInit {
   openText?: boolean;
   /** This campaign has an agreement packet the preview can draw. */
   canPreview?: boolean;
+  /** This campaign's firm requires the full 9-digit SSN (no last-4). */
+  ssnRequireFull?: boolean;
   /** Firm lines for a 3-way (routing rules with a transfer number). */
   threeWay?: { label: string; number: string }[];
   props: Omit<CallProps, "startedAt" | "now">;
@@ -61,6 +63,8 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [deskTab, setDeskTabState] = useState<DeskTab>(init.openText ? "texts" : "know");
   const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
+  // Only the JustCall dialer on this screen can say a call is live. Nothing else claims it.
+  const [dialState, setDialState] = useState<string>("");
   const deskTextsOpen = useRef(false);
   const setDeskTab = (t: DeskTab) => { deskTextsOpen.current = t === "texts"; setDeskTabState(t); if (t === "texts") eng.current?.setState({ textUnread: 0 }); };
 
@@ -336,7 +340,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   }, [ws]);
 
   const preview = previewInfo(engine.state, init);
-  const view: any = { ...v, leadId: init.leadId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws };
+  const view: any = { ...v, leadId: init.leadId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull };
   // Autosave, said plainly. "Saving" while a change is on its way; a failed
   // write shows the engine's "Not saved. Retrying." instead, never "Saved".
   const pending = snapshot !== lastSaved.current;
@@ -446,7 +450,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         <DeskPanel v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
           summary={<WsHelper v={view} />}
           preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
-          focusLines={focusLines} phones={phones} leadId={init.leadId}
+          focusLines={focusLines} phones={phones} leadId={init.leadId} onDialState={setDialState}
           story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />
       )}
     </div>

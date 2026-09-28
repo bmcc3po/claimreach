@@ -62,6 +62,8 @@ t("every top-level hole in CallView resolves", () => {
   roots.delete("onPreview"); // added by CallConsole
   roots.delete("phoneRows"); roots.delete("callOut"); roots.delete("copyNum"); // added by CallConsole
   roots.delete("ws"); // the layout, picked by CallConsole
+  roots.delete("ssnRequireFull"); // campaign rule, added by CallConsole
+  roots.delete("saveText"); roots.delete("saveNow"); // autosave line, added by CallConsole
   const states: Array<(e: CallEngine) => void> = [
     () => {},
     (e) => e.setState({ phase: "story" }),
@@ -77,6 +79,20 @@ t("every top-level hole in CallView resolves", () => {
     const v = e.renderVals();
     for (const r of Array.from(roots)) assert.notEqual(v[r], undefined, "v." + r + " is undefined");
   }
+});
+
+t("a parked agreement can be reopened and finished", () => {
+  const e = mk(); e.setState({ phase: "file", send: { ...e.state.send, status: "signed" } });
+  let v = e.renderVals();
+  assert.equal(v.agreementOpen, true);
+  v.leaveForQa();
+  v = e.renderVals();
+  assert.equal(v.agreementParked, true);
+  assert.equal(v.agreementOpen, false);
+  v.reopenAgreement();
+  v = e.renderVals();
+  assert.equal(v.agreementOpen, true);
+  assert.equal(v.agreementParked, false);
 });
 
 t("grouped rebuttals: Right now first, groups hold everything", () => {

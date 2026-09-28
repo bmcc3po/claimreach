@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
   }
 
   if (b.op === "deactivate") {
-    await admin.from("app_users").update({ active: false }).eq("id", b.id);
+    const { error } = await admin.from("app_users").update({ active: false }).eq("id", b.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     // Optionally ban at auth level so they can't log in.
     try { await admin.auth.admin.updateUserById(b.id, { ban_duration: "876000h" }); } catch {}
     return NextResponse.json({ ok: true });

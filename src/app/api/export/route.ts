@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { requirePerm } from "@/lib/gate";
 export const runtime = "edge";
 
 function csvEscape(v: any): string {
@@ -11,10 +12,10 @@ function csvEscape(v: any): string {
 // GET /api/export?format=neos — CSV of leads+claims mapped to import-friendly columns.
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return new Response("unauthorized", { status: 401 });
-  const { data: me } = await sb.from("app_users").select("role, firm_id").eq("id", auth.user.id).maybeSingle();
-  if (!me || me.role === "firm") return new Response("forbidden", { status: 403 });
+  // Exporting claimant PII is its own permission (leads.export), not a side
+  // effect of being staff (Astra audit, Sep 27).
+  const gate = await requirePerm(sb, "leads.export");
+  if (!gate.ok) return new Response(gate.error, { status: gate.status });
 
   const { data: leads } = await sb.from("leads")
     .select("lead_no, claimant_name, phone, email, address, dob, best_time, language, ec1_name, ec1_phone, ec1_relation, ec2_name, ec2_phone, ec2_relation, claims(campaign, claim_type, status, stage, case_summary, primary_dx, qualification)")

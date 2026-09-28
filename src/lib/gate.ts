@@ -23,9 +23,12 @@ export async function gateUser(sb: any): Promise<GatedUser | null> {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return null;
   const { data: me } = await sb.from("app_users")
-    .select("id, role, perm_overrides, firm_id, full_name")
+    .select("id, role, perm_overrides, firm_id, full_name, active")
     .eq("id", auth.user.id).maybeSingle();
   if (!me) return null;
+  // A deactivated account keeps its login cookie until it expires; every
+  // permission check treats it as signed out (Astra audit, Sep 27).
+  if (me.active === false) return null;
   const overrides = (me.perm_overrides ?? {}) as Record<string, boolean>;
   return {
     id: me.id,

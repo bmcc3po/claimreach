@@ -11,12 +11,14 @@ const PROP_FIELDS = INTAKE.filter((f) => f.scope === "property");
 interface PropertyState { _key: string; resolved?: ResolvedProperty; values: Record<string, any>; }
 
 export default function ClaimIntake({
-  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail, claimType, leadId, customFields,
+  claimId, firmId, initialAnswers, initialProperties, claimantName, claimantEmail, claimType, leadId, customFields, onSnapshot,
 }: {
   claimId: string; firmId: string;
   initialAnswers: Record<string, any>; initialProperties: any[];
   claimantName?: string; claimantEmail?: string; claimType?: string; leadId?: string;
   customFields?: import("@/lib/questionnaire").Field[];
+  /** Bubbles the live answers/properties up so a Guided/All-sections switch never remounts stale data. */
+  onSnapshot?: (answers: Record<string, any>, props: any[]) => void;
 }) {
   const segments = useMemo(
     () => customFields && customFields.length ? segmentsFrom(customFields) : segmentsForType(claimType ?? "motel_trafficking"),
@@ -43,13 +45,14 @@ export default function ClaimIntake({
   const [finishing, setFinishing] = useState(false);
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers || {});
   const [props, setProps] = useState<PropertyState[]>(
-    (initialProperties || []).map((p, i) => ({
-      _key: `p${i}`, values: dbRowToFormValues(p), resolved: dbRowToResolved(p),
-    }))
+    (initialProperties || []).map((p: any, i) => (p && p.values && !p.claim_id
+      ? { _key: `p${i}`, values: p.values, resolved: p.resolved } // live runner shape from the other surface
+      : { _key: `p${i}`, values: dbRowToFormValues(p), resolved: dbRowToResolved(p) }))
   );
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { onSnapshot?.(answers, props); }, [answers, props]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A section is the "property section" if it contains the property_lookup
   // widget. Detecting by content (not a hardcoded id) means imported/beta forms
@@ -145,11 +148,17 @@ export default function ClaimIntake({
   // Save needed — the pencil unlocks, edits flow, autosave handles the rest.
   const firstRun = useRef(true);
   const saveTimer = useRef<any>(null);
+  // Leaving the surface (switching case tabs or Guided/All sections) used to
+  // drop an edit made in the last second: the debounce timer was cleared and
+  // nothing fired. Flush on unmount instead (Astra audit, Sep 27).
+  const flushRef = useRef<() => void>(() => {});
+  useEffect(() => () => { flushRef.current(); }, []);
   useEffect(() => {
     if (locked) return;                 // locked = read-only, never autosave
     if (firstRun.current) { firstRun.current = false; return; }
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { save(false); }, 1000);
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; save(false); }, 1000);
+    flushRef.current = () => { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; void save(false); } };
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answers, props, locked]);
@@ -172,7 +181,11 @@ export default function ClaimIntake({
   }
 
   function segAnswered(segId: string): boolean {
-    if (isProps(segId)) return props.length > 0;
+    // A property section is done when every added property is identified and
+    // its questions are answered — an empty row is not a finished section.
+    if (isProps(segId)) return props.length > 0 && props.every((p) =>
+      (p.resolved || isFilled(p.values?.name_as_recalled)) &&
+      propFields.filter((f: any) => f.kind !== "property_lookup").every((f: any) => isFilled(p.values?.[f.id])));
     if (isSchedule(segId)) return scheduled;
     const seg = segments.find((s) => s.id === segId);
     if (!seg) return false;
@@ -522,7 +535,10 @@ function PropertyCard({ index, state, fields, onResolve, onChange, onRemove }: {
 function cleanTitle(t: string) { return t.replace(/\s*\(.*?\)\s*/g, "").trim(); }
 
 function synthSet(claimType?: string) {
-  return new Set(intakeForType(claimType ?? "motel_trafficking").filter((f) => ["section","script","gate"].includes(f.kind)).map((f) => f.id));
+  // Sections and scripts never hold answers. Gates DO (they are numbered
+  // Yes/No questions), so they save like any other field. Stripping them here
+  // made "58/58 answered" reopen as "3 questions left" (Astra audit, Sep 27).
+  return new Set(intakeForType(claimType ?? "motel_trafficking").filter((f) => ["section","script"].includes(f.kind)).map((f) => f.id));
 }
 function cleanAnswers(o: Record<string, any>, claimType?: string) {
   const SYNTH = synthSet(claimType);

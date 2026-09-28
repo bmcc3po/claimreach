@@ -1693,3 +1693,23 @@ div.ws-row{cursor:default}
 .cc-app.ix .ch-finish-ask{margin:0 16px 14px;background:#FEF3F2;border-radius:10px;padding:10px 12px;box-shadow:inset 0 0 0 1px #F7C9C4}
 .ix-save{display:inline-flex;align-items:center;gap:4px;color:#15803D;font-weight:600}
 .ix-save::before{content:"";width:6px;height:6px;border-radius:50%;background:#16A34A}
+
+/* The intake clock is a pace clock, not a call timer: neutral until it runs
+   past the goal for this step. Green "On a call" only when JustCall says so. */
+.cc-app.ix .ix-clock{background:#F1F4F9;color:#3B4A63;gap:5px}
+.cc-app.ix .ix-clock svg{opacity:.7}
+.cc-app.ix .ix-clock.ix-over{background:#FEF3F2;color:#B42318}
+.cc-app.ix .ix-clock.ix-live{background:#EAF7EF;color:#15803D}
+.cc-app.ix .ix-clock i{display:none}
+.cc-app.ix .ix-clock.ix-live i{display:inline-block}
+.ws-pace{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin-top:10px;font-size:13px;color:#5F6F87}
+.ws-pace-k{font-weight:600;color:#0F2240}
+.ws-pace .ws-clock{margin-left:auto;font-size:14px;color:#0F2240}
+.ws-pace-g{flex-basis:100%;font-size:12.5px;color:#5F6F87}
+.ws-pace-over .ws-clock,.ws-pace-over .ws-pace-g{color:#B42318;font-weight:600}
+
+/* ---- Strict DOB and SSN fields (Brett, Sep 27): never an open box ---- */
+.sd-good{color:#15803D !important;font-weight:600}
+.sd-l4{display:flex;align-items:center;gap:8px}
+.sd-mask{font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-size:16px;font-weight:700;color:#5F6F87;letter-spacing:0.06em;flex-shrink:0}
+.sd-l4-in{max-width:130px}

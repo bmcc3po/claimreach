@@ -27,7 +27,13 @@ export async function POST(req: NextRequest) {
   // Fetch existing claim (lead linkage + prior answers for diffing).
   const { data: claim } = await sb.from("claims").select("lead_id, answers, status").eq("id", claim_id).maybeSingle();
   const prior: Record<string, any> = (claim?.answers as any) ?? {};
-  const next: Record<string, any> = answers ?? {};
+  // MERGE, never replace. Different surfaces (Guided, All sections, the call
+  // console) send different subsets of keys; a save that omits a key must not
+  // delete an answer another surface already captured (Astra audit, Sep 27:
+  // a saved safety-gate answer was wiped by an All-sections save). Clearing a
+  // field still works: the client sends the key with an empty value.
+  const sent: Record<string, any> = answers ?? {};
+  const next: Record<string, any> = { ...prior, ...sent };
 
   // Save answers. Move the claim to "contacting" (a real status key) only when it
   // is still at the very start (new/blank). Never downgrade a file that has moved

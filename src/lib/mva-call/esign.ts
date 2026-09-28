@@ -10,6 +10,12 @@ import { uploadSignedDoc } from "@/lib/signed-docs";
 import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
 import { notifySigned } from "@/lib/notify-signed";
 
+// The office's calendar date (America/Chicago), never the UTC date: a signature
+// at 6 PM in Vegas belongs to "today", not tomorrow (Astra audit, Sep 27).
+export function officeDateISO(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
 /** Which packet set a campaign signs with. Only TMP MVA has one today. */
 export function packetsFor(firmSlug: string | null | undefined, caseType: string | null | undefined): Record<string, Packet> | null {
   if (firmSlug === "tmp" && caseType === "mva") return TMP_MVA_PACKETS;
@@ -72,7 +78,13 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
  */
 export async function syncSubmission(admin: any, row: any, opts: { actorName?: string; origin?: string } = {}): Promise<string> {
   if (!row?.submission_id) return row?.status || "sent";
-  if (row.status === "completed") return "completed";
+  if (row.status === "completed") {
+    // A completed row whose signed PDF never stored (DocuSeal hiccup at the
+    // moment of completion) used to be stuck forever: the early return skipped
+    // every later retry (Astra audit, Sep 27). Re-fetch until the file lands.
+    if (!row.completed_pdf_path) await retryCompletedFiles(admin, row);
+    return "completed";
+  }
   const got = await getSubmission(row.submission_id);
   if (!got.ok) return row.status;
   const sub = got.data;
@@ -87,15 +99,23 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
 
   if (next === "completed") {
     patch.completed_at = sub.completed_at || now;
-    const doc = (sub.documents || [])[0];
+    const docs = sub.documents || [];
     const firm = row.firm_id || "master";
-    if (doc?.url) {
+    // Store every document in the packet. The first is the primary the app
+    // links; extras keep a -2, -3 suffix in the same private bucket.
+    for (let i = 0; i < docs.length; i++) {
+      const doc = docs[i];
+      if (!doc?.url) continue;
       const bytes = await fetchBytes(doc.url);
+      const path = `${firm}/signed-ds-${row.submission_id}${i ? `-${i + 1}` : ""}.pdf`;
       if (bytes) {
-        try { patch.completed_pdf_path = await uploadSignedDoc(admin, `${firm}/signed-ds-${row.submission_id}.pdf`, bytes); }
-        catch (e: any) { patch.error = `Signed PDF did not store: ${e?.message || e}`; }
-      } else patch.error = "Could not download the signed PDF from DocuSeal.";
+        try {
+          const stored = await uploadSignedDoc(admin, path, bytes);
+          if (i === 0) patch.completed_pdf_path = stored;
+        } catch (e: any) { patch.error = `Signed PDF did not store: ${e?.message || e}`; }
+      } else if (i === 0) patch.error = "Could not download the signed PDF from DocuSeal.";
     }
+    if (!docs.length) patch.error = "DocuSeal returned no documents for the completed agreement.";
     if (sub.audit_log_url) {
       const bytes = await fetchBytes(sub.audit_log_url);
       if (bytes) {
@@ -115,7 +135,7 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
   if (!wasSigned && STATUS_RANK[next] >= STATUS_RANK.signed) {
     const res = await setClaimStatusForLeads({ leadIds: [row.lead_id], status: "signed_grievous", actorName: row.signer_name || "Client" });
     if (!res.ok) console.error("signed status failed", res.error);
-    await admin.from("leads").update({ esign_date: new Date().toISOString().slice(0, 10) }).eq("id", row.lead_id);
+    await admin.from("leads").update({ esign_date: officeDateISO() }).eq("id", row.lead_id);
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: row.signer_name || "Client", category: "retainer",
       description: `${row.signer_name || "The client"} signed the agreement (DocuSeal).`, meta: { submission_id: row.submission_id } });
     // Tell the team. Once per agreement, never blocks the signing.
@@ -130,4 +150,39 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
       description: "The client declined to sign.", meta: { submission_id: row.submission_id } });
   }
   return next;
+}
+
+// A completed submission whose files never stored: ask DocuSeal again and
+// store whatever is still missing. Guarded so racing pollers write once.
+async function retryCompletedFiles(admin: any, row: any): Promise<void> {
+  try {
+    const got = await getSubmission(row.submission_id);
+    if (!got.ok) return;
+    const sub = got.data;
+    const firm = row.firm_id || "master";
+    const patch: Record<string, any> = {};
+    const docs = sub.documents || [];
+    for (let i = 0; i < docs.length; i++) {
+      const doc = docs[i];
+      if (!doc?.url) continue;
+      const bytes = await fetchBytes(doc.url);
+      if (!bytes) continue;
+      const path = `${firm}/signed-ds-${row.submission_id}${i ? `-${i + 1}` : ""}.pdf`;
+      const stored = await uploadSignedDoc(admin, path, bytes);
+      if (i === 0) patch.completed_pdf_path = stored;
+    }
+    if (!row.cert_pdf_path && sub.audit_log_url) {
+      const bytes = await fetchBytes(sub.audit_log_url);
+      if (bytes) patch.cert_pdf_path = await uploadSignedDoc(admin, `${firm}/cert-ds-${row.submission_id}.pdf`, bytes);
+    }
+    if (patch.completed_pdf_path) {
+      patch.error = null;
+      await admin.from("esign_submissions").update(patch)
+        .eq("id", row.id).is("completed_pdf_path", null);
+      await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: "System", category: "retainer",
+        description: "Recovered the signed PDF from DocuSeal on retry.", meta: { submission_id: row.submission_id } });
+    }
+  } catch (e: any) {
+    console.error("signed-file retry failed", e?.message || e);
+  }
 }

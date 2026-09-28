@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { deliverLeadToFirm } from "@/lib/firm-delivery";
 import { gateUser } from "@/lib/gate";
+import { isInternalRole } from "@/lib/permissions";
 export const runtime = "edge";
 
 // GET /api/firm-delivery?lead_id=...  -> delivery history for a lead.
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
   const g = await gateUser(sb);
   if (!g) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (g.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!isInternalRole(g.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const leadId = new URL(req.url).searchParams.get("lead_id");
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
   const admin = supabaseAdmin();
@@ -23,10 +24,14 @@ export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const g = await gateUser(sb);
   if (!g) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  // Sending a file to the firm is a status-moving action; gate on claims.status.
-  if (!g.can("claims.status")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  // Sending a file to the firm is an internal, status-moving action. A firm
+  // login could otherwise trigger delivery of any lead id it guessed (Astra
+  // audit, Sep 27): internal roles only, plus the claims.status permission.
+  if (!isInternalRole(g.role) || !g.can("claims.status")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const b = await req.json().catch(() => ({}));
   if (!b.lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
+  const { data: leadRow } = await supabaseAdmin().from("leads").select("id").eq("id", b.lead_id).maybeSingle();
+  if (!leadRow) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
   const res = await deliverLeadToFirm({
     leadId: b.lead_id,

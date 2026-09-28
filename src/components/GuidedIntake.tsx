@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fieldVisible, segmentsForType, segmentsFrom, INTAKE, type Field } from "@/lib/questionnaire";
 import PropertyLookup from "@/components/PropertyLookup";
 import Typeahead from "@/components/Typeahead";
@@ -34,7 +34,7 @@ type Step =
 
 export default function GuidedIntake({
   claimId, firmId, leadId, claimType, customFields,
-  initialAnswers = {}, initialProperties = [], claimantName, onExit,
+  initialAnswers = {}, initialProperties = [], claimantName, onExit, onSnapshot,
 }: {
   claimId: string; firmId: string; leadId?: string; claimType?: string;
   customFields?: Field[] | null;
@@ -42,6 +42,8 @@ export default function GuidedIntake({
   initialProperties?: PropRow[];
   claimantName?: string;
   onExit?: () => void;
+  /** Bubbles the live answers/properties up so a Guided/All-sections switch never remounts stale data. */
+  onSnapshot?: (answers: Record<string, any>, props: PropRow[]) => void;
 }) {
   const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers);
   // Hydrate flat claim_properties rows from the DB into the {values, resolved}
@@ -60,6 +62,7 @@ export default function GuidedIntake({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
+  useEffect(() => { onSnapshot?.(answers, props); }, [answers, props]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const segments = useMemo(() => {
     const base = customFields && customFields.length ? segmentsFrom(customFields) : segmentsForType(claimType ?? "mva");
@@ -198,10 +201,18 @@ export default function GuidedIntake({
   }, [steps, answers, props]);
 
   const saveTimer = useRef<any>(null);
+  const pending = useRef<{ a: Record<string, any>; p: PropRow[] } | null>(null);
   function persist(nextAnswers = answers, nextProps = props) {
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { void doSave(nextAnswers, nextProps, false); }, 800);
+    onSnapshot?.(nextAnswers, nextProps);
+    pending.current = { a: nextAnswers, p: nextProps };
+    saveTimer.current = setTimeout(() => { pending.current = null; void doSave(nextAnswers, nextProps, false); }, 800);
   }
+  // Leaving guided (switching to All sections, or the page unmounting) used to
+  // drop the last ~second of edits with the debounce timer. Flush instead.
+  useEffect(() => () => {
+    if (pending.current) { clearTimeout(saveTimer.current); const x = pending.current; pending.current = null; void doSave(x.a, x.p, false); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function doSave(a = answers, p = props, loud = true) {
     if (loud) setSaving(true);

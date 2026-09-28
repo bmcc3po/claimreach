@@ -35,6 +35,12 @@ export async function POST(req: NextRequest) {
     // accident. Both of these are required at every creation path now.
     if (!payload.case_type) return NextResponse.json({ error: "A case type is required. Pick what this file is before saving it." }, { status: 400 });
     if (!payload.campaign_id) return NextResponse.json({ error: "A campaign is required. Every file has to belong to one." }, { status: 400 });
+    // Resolve the campaign ourselves: the list and the detail header both read
+    // the campaign NAME (on the lead and on the claim), so a create that only
+    // carried the id showed "No campaign" on a file that had one (Astra audit).
+    const { data: camp } = await sb.from("campaigns").select("id, name, firm_id, case_type").eq("id", payload.campaign_id).maybeSingle();
+    if (!camp) return NextResponse.json({ error: "That campaign does not exist." }, { status: 400 });
+    if (camp.firm_id && camp.firm_id !== firm_id) return NextResponse.json({ error: "That campaign belongs to a different firm." }, { status: 400 });
     const { data: leadNo, error: mintErr } = await sb.rpc("mint_lead_no", { p_firm: firm_id });
     if (mintErr) return NextResponse.json({ error: mintErr.message }, { status: 500 });
 
@@ -44,8 +50,8 @@ export async function POST(req: NextRequest) {
       firm_ref_no: payload.firm_ref_no ?? null,
       lawruler_ref_no: payload.lawruler_ref_no ?? null,
       case_type: payload.case_type,
-      campaign_id: payload.campaign_id,
-      campaign: payload.campaign ?? null,
+      campaign_id: camp.id,
+      campaign: camp.name,
       first_name: payload.first_name ?? null,
       last_name: payload.last_name ?? null,
       claimant_name: payload.claimant_name ?? null,
@@ -57,6 +63,13 @@ export async function POST(req: NextRequest) {
     }).select("id, lead_no").single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Every file gets its claim row at birth: status, campaign and answers all
+    // live there, and the list warns on any lead without one.
+    { const { error: cErr } = await sb.from("claims").insert({
+        firm_id, lead_id: data.id, claim_type: payload.case_type,
+        campaign: camp.name, campaign_id: camp.id, status: "new", answers: {},
+      });
+      if (cErr) { try { const { recordAudit } = await import("@/lib/audit"); await recordAudit({ firm_id, lead_id: data.id, category: "system", description: `Lead created but its claim row failed: ${cErr.message}` }); } catch {} } }
     // claim any orphaned calls/SMS that arrived before this file existed
     if (payload.phone) { try { const { reconcileUnmatched } = await import("@/lib/comms"); await reconcileUnmatched(data.id, payload.phone, firm_id); } catch {} }
     return NextResponse.json({ lead: data });

@@ -112,9 +112,34 @@ export async function deliverLeadToFirm(opts: {
     } catch {}
   }
 
-  // Signed retainer packet + certificate share the same signable_documents rows.
   const wantRetainer = cfg.attach_retainer !== false;
   const wantCert = cfg.attach_certificate !== false;
+
+  // DocuSeal signings first (esign_submissions). Legacy SignWell rows in
+  // signable_documents still attach below, so historical files keep working —
+  // but delivery no longer reads ONLY the legacy store (Astra audit, Sep 27).
+  if (wantRetainer || wantCert) {
+    const { data: dsRows } = await admin.from("esign_submissions")
+      .select("id, submission_id, template_key, completed_pdf_path, cert_pdf_path, status")
+      .eq("lead_id", opts.leadId).eq("status", "completed").order("created_at");
+    for (const d of dsRows ?? []) {
+      if (wantRetainer && d.completed_pdf_path) {
+        try {
+          const buf = await downloadSignedDoc(admin, d.completed_pdf_path);
+          if (buf) attachments.push({ filename: `${nameBase}_retainer_signed.pdf`, content: toB64(buf), kind: "retainer" });
+          else console.error(`firm delivery: DocuSeal signed PDF missing for ${d.id}`);
+        } catch (e: any) { console.error(`firm delivery: DocuSeal signed PDF failed for ${d.id}: ${e?.message ?? e}`); }
+      }
+      if (wantCert && d.cert_pdf_path) {
+        try {
+          const buf = await downloadSignedDoc(admin, d.cert_pdf_path);
+          if (buf) attachments.push({ filename: `${nameBase}_signing_certificate.pdf`, content: toB64(buf), kind: "certificate" });
+        } catch (e: any) { console.error(`firm delivery: DocuSeal certificate failed for ${d.id}: ${e?.message ?? e}`); }
+      }
+    }
+  }
+
+  // Legacy signed retainers (SignWell-era signable_documents rows).
   if (wantRetainer || wantCert) {
     const { data: docs } = await admin.from("signable_documents")
       .select("*").eq("lead_id", opts.leadId).eq("status", "signed").order("packet_seq");
@@ -166,6 +191,21 @@ export async function deliverLeadToFirm(opts: {
     }
   }
 
+  // A delivery that is configured to carry the signed retainer must actually
+  // carry one. An email going out without it looked like success while the
+  // firm got an empty packet (Astra audit, Sep 27). Manual force overrides.
+  if (wantRetainer && !attachments.some((a) => a.kind === "retainer") && !opts.force) {
+    const msg = "no signed retainer is stored for this file yet; nothing was emailed";
+    await admin.from("firm_deliveries").insert({
+      lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
+      to_email: to, cc_email: cc.join(", ") || null, subject,
+      attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
+      ok: false, error: msg, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
+    });
+    await admin.from("leads").update({ firm_send_result: `error: ${msg}` }).eq("id", opts.leadId);
+    return { ok: false, error: msg, to };
+  }
+
   // ---- Send via Resend (with attachments) ----
   const key = (globalThis as any)?.process?.env?.RESEND_API_KEY;
   const from = (globalThis as any)?.process?.env?.EMAIL_FROM || "ClaimReach <noreply@claimreach.com>";
@@ -198,7 +238,7 @@ export async function deliverLeadToFirm(opts: {
   });
 
   if (sendOk) {
-    await admin.from("leads").update({ firm_sent_at: new Date().toISOString(), firm_send_result: "sent" }).eq("id", opts.leadId);
+    await admin.from("leads").update({ firm_sent_at: new Date().toISOString(), firm_send_result: "sent", stage: "sent_to_firm" }).eq("id", opts.leadId);
   } else {
     await admin.from("leads").update({ firm_send_result: `error: ${sendErr || "unknown"}` }).eq("id", opts.leadId);
   }

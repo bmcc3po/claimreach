@@ -1549,7 +1549,11 @@ export class CallEngine {
       agentFirst: String(this.props.agentName || '').trim().split(' ')[0] || 'your intake specialist',
       firmSpoken: this.props.firmSpoken,
       textFrom: this.props.textFrom || 'your JustCall number',
-      clockText: two(Math.floor(sec / 60)) + ':' + two(sec % 60),
+      // The intake pace clock: time since this intake opened, against the
+      // targets above. It is not a phone call timer. Past an hour it means
+      // the file was reopened later, so it is not shown.
+      clockText: sec >= 3600 ? '' : two(Math.floor(sec / 60)) + ':' + two(sec % 60),
+      clockOver: !!(tgt && sec > tgt && sec < 3600),
       clockCls: 'clock' + (tgt && sec > tgt ? ' over' : ''),
       targetText: s.free ? 'Agreement by 3:00' : (tgt ? names[P] + ' by ' + Math.floor(tgt / 60) + ':' + two(tgt % 60) : (P === 'close' ? 'Wrap under 3 min' : names[P])),
       gates: s.bare ? gates.map((g) => Object.assign({}, g, { href: { Fault: '#q-crash', SOL: '#q-crash', Ins: '#q-cover', Check: '#q-cover' }[g.label] || '#q-injury' })) : gates,
@@ -1688,6 +1692,11 @@ export class CallEngine {
       fsAgreement: fs || s.file.step === 'agreement', fsInfo: fs || s.file.step === 'info', fsCrash: fs || s.file.step === 'crash', fsPax: (fs && hurtPax.length > 0) || s.file.step === 'pax',
       agreementOpen: s.file.agreement === 'open',
       agreementClosed: s.file.agreement !== 'open',
+      // Parked is a pause, not a wall: the agent (or QA in the morning) can
+      // reopen it and finish (Astra audit, Sep 27: parked hid Complete with
+      // no way back).
+      agreementParked: s.file.agreement === 'qa',
+      reopenAgreement: () => this.set('file', 'agreement', 'open'),
       agreementNote: s.file.agreement === 'done' ? 'Agreement complete. Goes to QA, then to the firm.' : 'Parked. QA finishes it in the morning.',
       completeAgreement: () => { if (this.state.send.status === 'signed') this.api.completeAgreement(); },
       agreementLocked: s.send.status !== 'signed',

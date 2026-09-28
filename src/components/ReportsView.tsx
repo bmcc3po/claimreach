@@ -38,7 +38,10 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
     }
     const total = cl.length;
     const qualified = byStatus["qualified"] ?? 0;
-    const signed = byStatus["signed"] ?? 0;
+    // Every signed-track status counts (signed, signed_grievous, signed_qa,
+    // signed_wip, signed_flag, signed_approved) — the board showed Signed 0
+    // while two files sat in Signed: Grievous (Astra audit, Sep 27).
+    const signed = Object.entries(byStatus).reduce((n, [k, v]) => (k === "signed" || k.startsWith("signed_") ? n + (v as number) : n), 0);
     const convRate = total ? Math.round(((qualified + signed) / total) * 100) : 0;
     return { total, qualified, signed, convRate, byStatus, byType, byCampaign, byTier };
   }, [claims, range]);

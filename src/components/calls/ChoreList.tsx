@@ -16,6 +16,7 @@ import { useEffect, useRef } from "react";
 import WhereField from "./WhereField";
 import PlaceField from "./PlaceField";
 import { OPEN_LINE, OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
+import { DobField, SsnField } from "./SsnDob";
 
 const isOn = (cls: string) => / on(\s|$)/.test(" " + String(cls || "") + " ");
 
@@ -235,11 +236,11 @@ function Retainer({ v }: { v: any }) {
       <Say label={SIGNED.label} line={SIGNED.line} cue={SIGNED.cue} />
       <div className="ch-q">
         <div className="ch-q-h"><span className="ch-q-l">Date of birth</span></div>
-        <input className="ch-in" inputMode="numeric" placeholder="MM/DD/YYYY" aria-label="Date of birth" value={v.f.dob.value ?? ""} onChange={v.f.dob.set} />
+        <DobField cls="ch" value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} />
       </div>
       <div className="ch-q">
         <div className="ch-q-h"><span className="ch-q-l">Social Security number</span></div>
-        <input className="ch-in" inputMode="numeric" placeholder="Last 4 or all 9" aria-label="Social Security number" value={v.f.ssn.value ?? ""} onChange={v.f.ssn.set} />
+        <SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} />
       </div>
       <div className="ch-q ch-wide">
         {v.agreementOpen && (
@@ -249,6 +250,7 @@ function Retainer({ v }: { v: any }) {
           </div>
         )}
         {v.agreementClosed && <div className="ch-note">{v.agreementNote}</div>}
+        {v.agreementParked && <button type="button" className="ch-btn ch-line" onClick={v.reopenAgreement}>Reopen and finish it now</button>}
         {v.hasFileError && <div className="ch-note ch-note-bad">{v.fileError}</div>}
       </div>
       <div className="ch-q ch-wide">
