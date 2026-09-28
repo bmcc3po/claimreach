@@ -30,8 +30,11 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Sending a case OUT of the building requires an active internal login,
+  // not just any session (Astra round 4: this route had no role gate at all).
+  const { requireStaff } = await import("@/lib/mva-call/server");
+  const staff = await requireStaff(sb);
+  if (!staff) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const body = await req.json().catch(() => ({} as any));
   const leadId: string = body.lead_id ?? "";
@@ -102,7 +105,7 @@ export async function POST(req: NextRequest) {
     http_status: sent.status,
     response_body: sent.text?.slice(0, 8000) ?? null,
     lexamica_id: lexId,
-    sent_by: auth.user.id,
+    sent_by: staff.id,
   });
 
   if (sent.ok) {

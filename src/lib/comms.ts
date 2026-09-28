@@ -63,6 +63,18 @@ export async function ingestComm(c: {
   const { data, error } = await admin.from("communications").insert(row).select("id, lead_id").single();
   if (error) return { error: error.message };
 
+  // Speed to lead, dial side: the FIRST outbound call or voicemail attempt to
+  // this lead stamps leads.first_dialed_at with the call's own time. Guarded
+  // so the first event wins and a call that predates the lead (orphans
+  // reconciled later) never produces a negative speed.
+  if (data.lead_id && c.direction === "outbound" && (c.channel === "call" || c.channel === "voicemail")) {
+    try {
+      await admin.from("leads")
+        .update({ first_dialed_at: row.occurred_at })
+        .eq("id", data.lead_id).is("first_dialed_at", null).lte("created_at", row.occurred_at);
+    } catch {}
+  }
+
   // Activity Log: log completed calls/voicemails (with duration when known) so the
   // file timeline shows "Call to (702) 555-1234, 1:03" alongside everything else.
   if (data.lead_id && (c.channel === "call" || c.channel === "voicemail")) {

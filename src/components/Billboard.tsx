@@ -28,6 +28,7 @@ export default function Billboard() {
   const [items, setItems] = useState<Clock[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [stale, setStale] = useState(false);
   const [tick, setTick] = useState(0);
 
   const load = useCallback(async () => {
@@ -35,8 +36,9 @@ export default function Billboard() {
       const r = await fetch("/api/sla-clocks");
       const text = await r.text();
       const d = text ? JSON.parse(text) : {};
-      if (r.ok) { setItems(d.items ?? []); setSummary(d.summary ?? null); }
-    } catch {}
+      if (r.ok) { setItems(d.items ?? []); setSummary(d.summary ?? null); setStale(false); }
+      else setStale(true); // keep what we had, say it is stale — never All clear
+    } catch { setStale(true); }
     setLoaded(true);
   }, []);
 
@@ -76,7 +78,10 @@ export default function Billboard() {
         <Column title="Get them back on the line" subtitle="E-sign sent → 72h or it's gone" rows={esign} empty="No e-signs waiting." />
       </div>
 
-      {loaded && items.length === 0 && (
+      {loaded && stale && (
+        <div className="bb-stale">The board could not refresh. Showing the last good numbers, not All clear.</div>
+      )}
+      {loaded && !stale && items.length === 0 && (
         <div className="bb-clear">All clear. Nothing on the clock right now.</div>
       )}
     </div>
@@ -167,4 +172,5 @@ const css = `
 @keyframes bbpulse2 { 0%,100%{opacity:1;} 50%{opacity:.3;} }
 .bb-empty { color:var(--mut); font-size:13.5px; padding:22px 16px; text-align:center; }
 .bb-clear { margin-top:22px; text-align:center; color:#4ade80; font-size:15px; font-weight:600; }
+.bb-stale { margin-top:22px; text-align:center; color:#fbbf24; font-size:14px; font-weight:600; }
 `;

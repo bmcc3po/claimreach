@@ -96,6 +96,9 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
     const attachments = pdf.file ? [pdf.file] : [];
     const html = caseReportHtml(report, { link, note: `${who} the ${agr}agreement${row.pax_index != null ? " as a passenger" : ""}.`, attached: attachments.length > 0 });
     const r = await sendEmail({ to, cc, subject: `Signed: ${name}${camp ? `, ${camp}` : ""}`, html, text: caseReportText(report, link), attachments });
+    // A failed send hands the claim back so the next sync retries it; the
+    // marker only stays when the email actually went (Astra round 4).
+    if (!r.ok) await admin.from("esign_submissions").update({ signed_notified_at: null }).eq("id", row.id);
     await recordAudit({
       firm_id: lead.firm_id, lead_id: lead.id, actor_name: "ClaimReach", category: "retainer",
       description: r.ok

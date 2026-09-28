@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { data: me } = await sb.from("app_users").select("id, role, perm_overrides").eq("id", auth.user.id).maybeSingle();
-  const isStaff = isInternalRole(me?.role);
+  const { data: me } = await sb.from("app_users").select("id, role, perm_overrides, active").eq("id", auth.user.id).maybeSingle();
+  const isStaff = isInternalRole(me?.role) && me?.active !== false;
   if (!isStaff) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const canDelete = me && (["owner", "admin"].includes(me.role) || me.perm_overrides?.["leads.delete"]);
 
@@ -31,8 +31,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, count: ids.length });
     }
     if (b.op === "move_firm") {
+      // Moving a file between firms rewires who may see it: owner/admin only,
+      // and the claims move WITH the lead so nothing is left half-owned
+      // (Astra round 4).
+      if (!["owner", "admin"].includes(me!.role)) return NextResponse.json({ error: "Only an owner or admin can move files between firms." }, { status: 403 });
       const { error } = await sb.from("leads").update({ firm_id: b.firmId }).in("id", ids);
       if (error) throw error;
+      const { error: cErr } = await sb.from("claims").update({ firm_id: b.firmId }).in("lead_id", ids);
+      if (cErr) return NextResponse.json({ error: `Leads moved but their claims did not: ${cErr.message}. Run it again.` }, { status: 500 });
       return NextResponse.json({ ok: true, count: ids.length });
     }
     if (b.op === "set_status") {

@@ -16,7 +16,8 @@ export const runtime = "edge";
 async function me(sb: any) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return null;
-  const { data } = await sb.from("app_users").select("id, role, firm_id, full_name").eq("id", auth.user.id).maybeSingle();
+  const { data } = await sb.from("app_users").select("id, role, firm_id, full_name, active").eq("id", auth.user.id).maybeSingle();
+  if (data?.active === false) return null; // deactivated reviews nothing
   return data ? { ...data, uid: auth.user.id } : null;
 }
 
@@ -94,6 +95,11 @@ export async function POST(req: NextRequest) {
 
   // Submit a QA review + route the file.
   if (b.op === "submit") {
+    // Routing a file is QA's job, not any internal login's (Astra round 4:
+    // an agent could approve their own file).
+    if (!["owner", "admin", "manager", "qa"].includes(u.role)) {
+      return NextResponse.json({ error: "Only QA, a manager, an admin or the owner can route a file." }, { status: 403 });
+    }
     const { lead_id, claim_id } = b;
     if (!lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
 
@@ -125,6 +131,19 @@ export async function POST(req: NextRequest) {
     // Determine current status / track. Campaign's esign_required is authoritative.
     const { data: claim } = await sb.from("claims").select("status, claim_type, created_by, campaign_id").eq("lead_id", lead_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
     const signed = await resolveEsignTrack(admin, lead_id, claim?.status);
+
+    // The e-sign gate is verified against the RECORDS, not the reviewer's
+    // checkbox (Astra round 4: approval trusted caller-supplied labels). On
+    // the signed track, approving requires a real completed signing on file.
+    if (b.decision === "approve" && signed) {
+      const [{ data: ds }, { data: legacy }] = await Promise.all([
+        admin.from("esign_submissions").select("id").eq("lead_id", lead_id).in("status", ["signed", "completed"]).limit(1),
+        admin.from("retainers").select("id").eq("lead_id", lead_id).eq("status", "signed").limit(1),
+      ]);
+      if (!(ds ?? []).length && !(legacy ?? []).length) {
+        return NextResponse.json({ error: "Cannot approve: no completed signing is on file for this case. The e-sign gate is checked against the records, not the checkbox." }, { status: 400 });
+      }
+    }
 
     // Record the QA review.
     await admin.from("qa_reviews").insert({

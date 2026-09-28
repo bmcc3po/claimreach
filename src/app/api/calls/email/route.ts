@@ -18,6 +18,13 @@ export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const me = await requireStaff(sb);
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Emailing the whole case out is an export; it takes the export permission
+  // like the CSV and PDF exports do (Astra round 4).
+  {
+    const { requirePerm } = await import("@/lib/gate");
+    const gate = await requirePerm(sb, "leads.export");
+    if (!gate.ok) return NextResponse.json({ error: "Emailing a case out needs the Export leads permission." }, { status: 403 });
+  }
   const b = await req.json().catch(() => null);
   const leadId = String(b?.lead_id || "");
   const to = String(b?.to || "").trim().toLowerCase();

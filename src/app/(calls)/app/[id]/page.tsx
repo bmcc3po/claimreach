@@ -1,6 +1,6 @@
 export const runtime = "edge";
 import { notFound, redirect } from "next/navigation";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import { LEAD_CALL_COLS, firmSpoken, fmtPhone, canHearRecordings } from "@/lib/mva-call/server";
 import { DEFAULT_CALL_REASONS, MVA_DQ_KEYS, type Reason } from "@/lib/mva-call/dispo";
@@ -24,6 +24,8 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   const id = await resolveLeadKey(sb, key);
   if (!id) notFound();
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", id).maybeSingle();
+  // Speed to lead, open side: first staff open of the file stamps it.
+  if (lead?.id) { try { await supabaseAdmin().from("leads").update({ first_opened_at: new Date().toISOString(), first_opened_by: user.id }).eq("id", lead.id).is("first_opened_at", null); } catch {} }
   if (!lead) notFound();
   // This console runs the MVA car-wreck script. A Motel or any other case type
   // opened here got read the wrong script (Astra audit, Sep 27): those files

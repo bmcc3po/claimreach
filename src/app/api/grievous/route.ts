@@ -75,9 +75,13 @@ Return STRICT JSON only: {"verdict":"approved"|"rejected"|"advisory","score":0-1
     verdict, score: parsed.score ?? null, issues: parsed.issues ?? [], summary: parsed.summary ?? "", reviewed_by: auth.user.id,
   }).select("*").single();
 
-  // a FULL approved review flips the gate
+  // a FULL approved review flips the gate; a FULL review that is NOT approved
+  // clears any stale approval, so the newest review is the one that counts
+  // (Astra round 4).
   if (!quick && verdict === "approved") {
     await sb.from("leads").update({ grievous_approved: true, grievous_approved_at: new Date().toISOString() }).eq("id", b.lead_id);
+  } else if (!quick) {
+    await sb.from("leads").update({ grievous_approved: false }).eq("id", b.lead_id);
   }
 
   // FULL review also fills a report card, tags Grievous's recommended verdict,

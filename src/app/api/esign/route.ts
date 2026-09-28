@@ -9,8 +9,8 @@ export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { data: me } = await sb.from("app_users").select("role, firm_id, full_name").eq("id", auth.user.id).maybeSingle();
-  if (!me || !["owner", "admin", "agent", "qa", "manager"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const { data: me } = await sb.from("app_users").select("role, firm_id, full_name, active").eq("id", auth.user.id).maybeSingle();
+  if (!me || me.active === false || !["owner", "admin", "agent", "qa", "manager"].includes(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const b = await req.json();
   const clientMsg = (b.client_message || "").trim();
