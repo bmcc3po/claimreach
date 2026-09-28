@@ -19,7 +19,7 @@ export function canHearRecordings(role: string | null | undefined): boolean {
 }
 
 export const LEAD_CALL_COLS =
-  "id, firm_id, lead_no, campaign_id, campaign, case_type, claimant_name, first_name, last_name, phone, phone_norm, email, dob, ssn_last4, mail_addr1, mail_city, mail_state, mail_zip, perm_call, perm_text, perm_email, comms_monitored, comms_safe_channels, archived_at, created_at";
+  "id, firm_id, lead_no, campaign_id, campaign, case_type, claimant_name, first_name, last_name, phone, phone_norm, email, dob, ssn_last4, mail_addr1, mail_city, mail_state, mail_zip, perm_call, perm_text, perm_email, comms_monitored, comms_safe_channels, archived_at, created_at, external_id";
 
 /** "Turnbull Moak & Pendergrass" -> "Turnbull Moak and Pendergrass", said the way an agent says it. */
 export function firmSpoken(name: string | null | undefined): string {
@@ -122,10 +122,11 @@ export function caseSummaryRows(lead: any, a: any): { k: string; v: string }[] {
     ["Date of birth", lead?.dob],
     ["Crash", [crashDateOf(st), String(st.city || "").trim().replace(/,\s*$/, "")].filter(Boolean).join(", ")],
     ["Fault", st.fault],
-    ["She was", st.seat === "Other" ? `Other: ${st.seatOther || ""}` : st.seat],
+    ["The PNC was", st.seat === "Other" ? `Other: ${st.seatOther || ""}` : st.seat],
     ["Police", st.police],
     ["What happened", st.text],
     ["Pain", (b.pain || []).join(", ")],
+    ["Pain notes", String(b.painNote || "").trim()],
     ["Seen by", (b.seen || []).join(", ")],
     ["First seen", visitText(b.firstAt, st)],
     ["Last seen", visitText(b.lastAt, st) || b.last],
@@ -133,11 +134,11 @@ export function caseSummaryRows(lead: any, a: any): { k: string; v: string }[] {
     ["Will treat", b.willing],
     ["Missed work", b.work],
     ["Exchanged info", b.exchanged],
-    ["Her coverage", b.coverage],
+    ["Their coverage", b.coverage],
     ["UM/UIM", b.uim],
     ["Injury payment", b.check],
     ["Signed elsewhere", b.rep],
-    ["Passengers", a?.car?.justMe ? "Just her" : (a?.car?.people || []).map((p: any) => [p.name, p.age, p.hurt === "Yes" ? "hurt" : p.hurt === "No" ? "not hurt" : ""].filter(Boolean).join(" ")).join("; ")],
+    ["Passengers", a?.car?.justMe ? "Just them" : (a?.car?.people || []).map((p: any) => [p.name, p.age, p.hurt === "Yes" ? "hurt" : p.hurt === "No" ? "not hurt" : ""].filter(Boolean).join(" ")).join("; ")],
     ["Home address", f.addr],
     ["Driver's license", f.dl],
     ["Emergency contact", [f.ecName, f.ecPhone, f.ecRel].filter(Boolean).join(", ")],

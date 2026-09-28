@@ -1,5 +1,5 @@
 export const runtime = "edge";
-import { isSignedStatus } from "@/lib/statuses";
+import { signedStatusKeys } from "@/lib/statuses";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import { isInternalRole } from "@/lib/permissions";
@@ -54,11 +54,14 @@ export default async function LeadsPage() {
   // Live, owner-editable status set drives badges, filters, and bulk actions.
   const { data: statuses } = await sb.from("statuses").select("*").eq("active", true).order("sort");
   const { data: dqReasons } = await sb.from("dq_reasons").select("*").eq("active", true).order("sort");
+  // One signed definition, catalog-aware: the list splits exactly the way the
+  // report counts (Astra round 5: the two disagreed on legacy and custom keys).
+  const signedKeys = signedStatusKeys((statuses ?? []) as any);
 
   // The mirror of /leads: only files that have signed. Same view, opposite side
   // of the same one predicate, so a file is on exactly one of the two pages.
   const signedOnly = (withClaims as any[]).filter(
-    (l) => isSignedStatus(l.claims?.[0]?.status ?? l.status)
+    (l) => signedKeys.has(String(l.claims?.[0]?.status ?? l.status ?? ""))
   );
 
   return <LeadsView leads={signedOnly} title="Signed" basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} statuses={statuses ?? []} dqReasons={dqReasons ?? []} />;

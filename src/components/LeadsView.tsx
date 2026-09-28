@@ -267,9 +267,13 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       <div className="cl-tools">
         <label className="cl-find">
           <Icon name="search" size={16} />
-          <input className="cl-input" type="search" placeholder="Find by name, phone, lead number or what she said" aria-label="Find in this list"
+          <input className="cl-input" type="search" placeholder="Find by name, phone, lead number or what the PNC said" aria-label="Find in this list"
             value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
+        <select className="cl-select" value={fType} onChange={(e) => setFType(e.target.value)} aria-label="Case type">
+          <option value="all">All case types</option>
+          {types.map((t) => <option key={String(t)} value={String(t)}>{caseName(null, String(t))}</option>)}
+        </select>
         <button className="cl-btn" onClick={() => setShowMore((v) => !v)} aria-expanded={showMore}>
           <Icon name="filter" size={15} />Filters{active.length ? ` (${active.length})` : ""}
         </button>
@@ -289,12 +293,6 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
             <select className="cl-select" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
               <option value="all">Any status</option>
               {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-          </label>
-          <label className="cl-lab">Case type
-            <select className="cl-select" value={fType} onChange={(e) => setFType(e.target.value)}>
-              <option value="all">Any case type</option>
-              {types.map((t) => <option key={String(t)} value={String(t)}>{caseName(null, String(t))}</option>)}
             </select>
           </label>
           <label className="cl-lab">Campaign

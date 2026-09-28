@@ -38,9 +38,10 @@ const TABS_HELP = "tabs are computed once in file-fence.ts";
 export default function LeadWorkspace({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
   fence = INTERNAL_STAFF_FENCE, headerActions, retainers, signables, identified = [], lor = null,
-  points = [], lastComm = null, appCall = null,
+  points = [], lastComm = null, appCall = null, linked = [],
 }: {
   appCall?: { rows: { k: string; v: string }[]; answered: number; href: string; hasOld: boolean; when: string | null; agent: string | null; dispo: string | null } | null;
+  linked?: { id: string; lead_no: string | null; name: string; label: string }[];
   lead: any;
   claims: Claim[];
   activity: any[];
@@ -139,8 +140,19 @@ export default function LeadWorkspace({
         </div>
       )}
 
+      {/* Files linked by the same wreck: the driver's and other passengers'.
+          When this person calls in, ask how the others are doing. */}
+      {linked.length > 0 && (
+        <div className="linked-row">
+          <span className="linked-lab">Same wreck</span>
+          {linked.map((l: any) => (
+            <a key={l.id} className="linked-chip" href={`/leads/${l.id}`}>{l.name}{l.lead_no ? ` (${l.lead_no})` : ""}</a>
+          ))}
+        </div>
+      )}
+
       {/* WIP fix banner: QA sent this back. Resubmit returns it to the QA queue. */}
-      {canTools && lead.wip_pending && <WipBanner lead={lead} signed={/^signed_/.test(activeClaim?.status || "")} />}
+      {canTools && lead.wip_pending && <WipBanner lead={lead} claimId={activeClaim?.id} signed={/^signed_/.test(activeClaim?.status || "")} />}
 
       {/* Main grid */}
       <div className="lead-grid solo">
@@ -160,7 +172,7 @@ export default function LeadWorkspace({
               <CaseOverview lead={leadLive} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} onGo={(t) => { setTab(t); setEditMode(false); }} />
               {/* Injured-party status and the pipeline live at the bottom of
                   Overview now; the old "File detail" fold bar is gone. */}
-              <div style={{ marginTop: 18 }}><PncBanner lead={lead} readOnly={!canEdit} /></div>
+              <div style={{ marginTop: 18 }}><PncBanner lead={leadLive} readOnly={!canEdit} /></div>
               <div style={{ marginTop: 12 }}><PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} /></div>
             </>)}
             {tab === "Case Questions" && appCall && !showOldForm && (
@@ -202,15 +214,15 @@ export default function LeadWorkspace({
             )}
             {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
             {tab === "Retainer" && <RetainerTab leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} fence={fence} initialRetainers={retainers} initialSignables={signables} />}
-            {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="sms" fence={fence} />}
-            {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={lead.phone} channel="call" fence={fence} />}
+            {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="sms" fence={fence} />}
+            {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="call" fence={fence} />}
             {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} fence={fence} />}
             {tab === "Timeline" && <CaseTimeline entries={audit} />}
             {tab === "Activity Log" && <ActivityLog entries={audit} />}
           </div>
         </div>
 
-        {canTools && <FloatingDock lead={lead} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />}
+        {canTools && <FloatingDock lead={leadLive} claimId={activeClaim?.id} claimType={activeClaim?.claim_type ?? "motel_trafficking"} />}
       </div>
     </div>
   );
@@ -273,13 +285,15 @@ function PipelineStrip({ status }: { status: string }) {
   );
 }
 
-function WipBanner({ lead, signed }: { lead: any; signed: boolean }) {
+function WipBanner({ lead, claimId, signed }: { lead: any; claimId?: string; signed: boolean }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   async function resubmit() {
     setBusy(true);
     const status = signed ? "signed_qa" : "qa";
-    const r = await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "status", lead_id: lead.id, status }) });
+    // Resubmit the MATTER being fixed, not the whole person: a sibling claim
+    // on another campaign stays where it is (Astra round 5).
+    const r = await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "status", lead_id: lead.id, claim_id: claimId || undefined, status }) });
     setBusy(false);
     if (r.ok) { setDone(true); setTimeout(() => window.location.reload(), 700); }
   }

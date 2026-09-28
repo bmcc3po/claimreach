@@ -459,3 +459,9 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
   .cl-pop{position:fixed;left:12px;right:12px;top:64px;width:auto}
 }
 @media (max-width:560px){.cl-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cl-kpi{padding:14px}.cl-kpi-v{font-size:26px}}
+
+/* Files linked by the same wreck (driver + passengers), on the lead file. */
+.linked-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.linked-lab{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#5B6472}
+.linked-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:#FFFFFF;box-shadow:0 0 0 1px #D1D1D6;color:#1D4FD7;font-weight:600;font-size:13px;text-decoration:none}
+.linked-chip:hover{box-shadow:0 0 0 2px #2563EB}

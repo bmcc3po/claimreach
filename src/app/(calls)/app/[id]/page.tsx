@@ -10,6 +10,7 @@ import CanonicalUrl from "@/components/CanonicalUrl";
 import { resolveLeadKey, leadKeyOf } from "@/lib/lead-key";
 import { readLeadStory, storyTags, prefillFromStory } from "@/lib/mva-call/lead-story";
 import { packetsFor } from "@/lib/mva-call/esign";
+import { linkedFilesFor, paxParentId } from "@/lib/linked-files";
 
 export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ text?: string }> }) {
   const { id: key } = await params;
@@ -24,13 +25,15 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   const id = await resolveLeadKey(sb, key);
   if (!id) notFound();
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", id).maybeSingle();
-  // Speed to lead, open side: first staff open of the file stamps it.
-  if (lead?.id) { try { await supabaseAdmin().from("leads").update({ first_opened_at: new Date().toISOString(), first_opened_by: user.id }).eq("id", lead.id).is("first_opened_at", null); } catch {} }
   if (!lead) notFound();
   // This console runs the MVA car-wreck script. A Motel or any other case type
   // opened here got read the wrong script (Astra audit, Sep 27): those files
   // belong on their own case page.
   if (String(lead.case_type || "").toLowerCase() !== "mva") redirect(`/leads/${lead.id}`);
+  // Speed to lead, open side: first staff open of the file stamps it — AFTER
+  // the redirect decisions, so a bounce off this page is not "opened"
+  // (Astra round 5: the stamp fired during render, before redirects).
+  try { await supabaseAdmin().from("leads").update({ first_opened_at: new Date().toISOString(), first_opened_by: user.id }).eq("id", lead.id).is("first_opened_at", null); } catch {}
 
   const [{ data: firm }, liveRes, mainRes, reasonsRes, dqRes, ownersRes, tplRes, campRes, extraRes, lastRes, routeRes] = await Promise.all([
     sb.from("firms").select("name, slug").eq("id", lead.firm_id).maybeSingle(),
@@ -76,11 +79,26 @@ export default async function CallPage({ params, searchParams }: { params: Promi
     const last = lastRes.data;
     saved = last?.answers && Object.keys(last.answers).length ? { ...last.answers, phase: "open" } : null;
   }
+  // A passenger's first call opens with the wreck already filled in from the
+  // driver's call — same crash, same day, same city (Brett, Sep 28). Their
+  // injuries and everything personal start blank: that is THEIR intake.
+  if (!saved) {
+    const parentId = paxParentId(lead.external_id);
+    if (parentId) {
+      const { data: pc } = await sb.from("intake_calls").select("answers").eq("lead_id", parentId)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      const pstory = (pc?.answers as any)?.story;
+      if (pstory && typeof pstory === "object") saved = { phase: "open", story: { ...pstory, seat: "Passenger", text: "" } };
+    }
+  }
   // First call on a marketer lead: pre-pick what the lead already says.
   if (!saved) {
     const pre = prefillFromStory(story);
     if (pre) saved = { phase: "open", ...pre };
   }
+  // Other files on this same wreck (the driver's, other passengers'), shown on
+  // the caller card so "how's Niko doing?" is right there.
+  const linked = await linkedFilesFor(sb, lead as any);
 
   const pax: Record<string, string> = {};
   if (liveRes.data?.id) {
@@ -108,6 +126,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
       canPreview: !!packetsFor(firm?.slug, lead.case_type),
       ssnRequireFull: campRes?.data?.ssn_require_full === true,
       threeWay,
+      linked,
       startedAt: liveRes.data?.created_at ? Date.parse(liveRes.data.created_at) : Date.now(),
       props: {
         callerName: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "",

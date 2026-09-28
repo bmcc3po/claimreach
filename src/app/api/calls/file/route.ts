@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const leadId = new URL(req.url).searchParams.get("lead_id") || "";
   const { data: lead } = await sb.from("leads")
-    .select("id, firm_id, lead_no, claimant_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, firms(name)")
+    .select("id, firm_id, lead_no, claimant_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, email, mail_addr1, mail_city, mail_state, mail_zip, firms(name)")
     .eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
@@ -45,6 +45,14 @@ export async function GET(req: NextRequest) {
       lead_no: lead.lead_no, name: lead.claimant_name, campaign: lead.campaign, opened: lead.created_at,
       source: lead.marketing_source, attorney: (lead as any).firms?.name ?? null,
       lawruler: lead.lawruler_ref_no, lawruler_url: lead.lawruler_url, origin: lead.origin,
+    },
+    // The traditional contact card: what the record holds right now, editable
+    // from the console so a callback or a report reads the real thing
+    // (Brett, Sep 28).
+    contact: {
+      phone: lead.phone || "", email: lead.email || "",
+      mail_addr1: lead.mail_addr1 || "", mail_city: lead.mail_city || "",
+      mail_state: lead.mail_state || "", mail_zip: lead.mail_zip || "",
     },
     status: st ? { key: st, label: resolveStatus(st, statuses).label, tone: resolveStatus(st, statuses).tone } : null,
     claim_id: claimRes.data?.id ?? null,

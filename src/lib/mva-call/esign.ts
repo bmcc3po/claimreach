@@ -4,9 +4,9 @@
 // call it, so the two can never disagree about what happened.
 // ============================================================================
 import { getSubmission, statusFrom, STATUS_RANK, createTemplate, plainDocuSeal } from "@/lib/docuseal";
-import { setClaimStatusForLeads } from "@/lib/claim-status";
+import { setClaimStatusForLeads, claimScopeFor } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
-import { listSubmissionDocs,uploadSignedDoc } from "@/lib/signed-docs";
+import { listSubmissionDocs, uploadSignedDoc, SIGNED_BUCKET } from "@/lib/signed-docs";
 import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
 import { notifySigned } from "@/lib/notify-signed";
 
@@ -78,19 +78,18 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
  */
 export async function syncSubmission(admin: any, row: any, opts: { actorName?: string; origin?: string } = {}): Promise<string> {
   if (!row?.submission_id) return row?.status || "sent";
+  // Durable notify retry: a signed agreement whose team email never went out
+  // (failed send, crash after claiming) retries on ANY later sync, not only
+  // the first signed transition (Astra round 5). notifySigned claims the
+  // marker atomically, so racing pollers still send exactly once.
+  if ((STATUS_RANK[row.status] ?? 0) >= STATUS_RANK.signed && !row.signed_notified_at) {
+    await notifySigned(admin, row, opts.origin);
+  }
   if (row.status === "completed") {
     // A completed row missing ANY expected artifact (primary PDF, any
     // secondary in the packet per doc_count, or the certificate) keeps
     // retrying until the full manifest is stored (Astra rounds 2-5).
-    let short = !row.completed_pdf_path || !row.cert_pdf_path || row.doc_count == null;
-    if (!short && row.doc_count > 1) {
-      try {
-        const firmFolder = String(row.completed_pdf_path).split("/")[0];
-        const stored = await listSubmissionDocs(admin, firmFolder, String(row.submission_id));
-        short = stored.length < row.doc_count;
-      } catch { short = true; }
-    }
-    if (short) await retryCompletedFiles(admin, row);
+    if (await packetShort(admin, row)) await retryCompletedFiles(admin, row);
     return "completed";
   }
   const got = await getSubmission(row.submission_id);
@@ -108,7 +107,9 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
   if (next === "completed") {
     patch.completed_at = sub.completed_at || now;
     const docs = sub.documents || [];
-    patch.doc_count = docs.length; // the packet's manifest size, checked at delivery
+    // The packet's manifest size, checked at delivery. An empty provider
+    // answer stays UNKNOWN (null), never a zero manifest (Astra round 5).
+    patch.doc_count = docs.length || null;
     const firm = row.firm_id || "master";
     // Store every document in the packet. The first is the primary the app
     // links; extras keep a -2, -3 suffix in the same private bucket.
@@ -142,7 +143,10 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
 
   const wasSigned = (STATUS_RANK[row.status] ?? 0) >= STATUS_RANK.signed;
   if (!wasSigned && STATUS_RANK[next] >= STATUS_RANK.signed) {
-    const res = await setClaimStatusForLeads({ leadIds: [row.lead_id], status: "signed_grievous", actorName: row.signer_name || "Client" });
+    // The signature belongs to THIS submission's matter: the lead's claim on
+    // the submission's campaign, never a sibling claim (Astra round 5).
+    const claimIds = await claimScopeFor(row.lead_id, row.campaign_id ?? undefined);
+    const res = await setClaimStatusForLeads({ leadIds: [row.lead_id], claimIds, status: "signed_grievous", actorName: row.signer_name || "Client" });
     if (!res.ok) console.error("signed status failed", res.error);
     await admin.from("leads").update({ esign_date: officeDateISO() }).eq("id", row.lead_id);
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: row.signer_name || "Client", category: "retainer",
@@ -162,27 +166,89 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
   return next;
 }
 
+/** The storage folder one submission's files live in. */
+function packetFolder(row: any): string {
+  return row?.completed_pdf_path ? String(row.completed_pdf_path).split("/")[0] : (row?.firm_id || "master");
+}
+
+/** The exact storage paths a packet of `count` PDFs must have, in order. */
+export function expectedPacketPaths(folder: string, submissionId: string, count: number): string[] {
+  const out: string[] = [];
+  for (let i = 1; i <= count; i++) out.push(`${folder}/signed-ds-${submissionId}${i > 1 ? `-${i}` : ""}.pdf`);
+  return out;
+}
+
+/**
+ * Establish the packet's true size for a row whose stored count is missing or
+ * zero, from DocuSeal itself. Null = could not be established (an unknown
+ * packet is never treated as complete). Zero counts as unknown: a provider
+ * that answered "no documents yet" during completion must not freeze the
+ * manifest at zero forever (Astra round 5).
+ */
+export async function establishDocCount(admin: any, row: any): Promise<number | null> {
+  if (row.doc_count != null && row.doc_count > 0) return row.doc_count;
+  const got = await getSubmission(row.submission_id);
+  if (!got.ok) return null;
+  const n = (got.data.documents || []).length;
+  if (n < 1) return null;
+  await admin.from("esign_submissions").update({ doc_count: n })
+    .eq("id", row.id).or("doc_count.is.null,doc_count.eq.0");
+  return n;
+}
+
+/**
+ * Is this completed row's stored packet anything less than whole? Whole means:
+ * a known positive doc_count, every expected ordinal present in storage BY
+ * EXACT NAME (a stray -99 never stands in for a missing -2), pointers for the
+ * primary and certificate, and the certificate's OBJECT actually in storage —
+ * a pointer is not a file (Astra round 5). Any listing error reads as short:
+ * unknown is never complete.
+ */
+export async function packetShort(admin: any, row: any): Promise<boolean> {
+  if (!row.completed_pdf_path || !row.cert_pdf_path) return true;
+  if (row.doc_count == null || row.doc_count < 1) return true;
+  const folder = packetFolder(row);
+  try {
+    const stored = await listSubmissionDocs(admin, folder, String(row.submission_id));
+    for (const p of expectedPacketPaths(folder, String(row.submission_id), row.doc_count)) {
+      if (!stored.includes(p)) return true;
+    }
+    const { data: certList, error: certErr } = await admin.storage.from(SIGNED_BUCKET)
+      .list(folder, { limit: 100, search: `cert-ds-${row.submission_id}` });
+    if (certErr) return true;
+    const certNames = (certList ?? []).map((f: any) => `${folder}/${f.name}`);
+    if (!certNames.includes(String(row.cert_pdf_path)) && !certNames.includes(`${folder}/cert-ds-${row.submission_id}.pdf`)) return true;
+    return false;
+  } catch { return true; }
+}
+
 // A completed submission whose files never stored: ask DocuSeal again and
-// store whatever is still missing. Guarded so racing pollers write once.
+// store whatever is still missing — including bytes missing BEHIND a live
+// pointer, and a manifest still unknown or stuck at zero. Guarded so racing
+// pollers write once.
 async function retryCompletedFiles(admin: any, row: any): Promise<void> {
   try {
     const got = await getSubmission(row.submission_id);
     if (!got.ok) return;
     const sub = got.data;
-    const firm = row.firm_id || "master";
+    const folder = packetFolder(row);
     const recovered: string[] = [];
     // Recover EVERY missing document in the packet against the manifest, each
     // pointer with its own guarded write (Astra rounds 3 and 5: a present
-    // primary must not stop a missing secondary or certificate).
+    // primary must not stop a missing secondary or certificate, and a present
+    // POINTER must not stop re-storing bytes that are gone from the bucket).
     const docs = sub.documents || [];
     let have: string[] = [];
-    try { have = row.completed_pdf_path ? await listSubmissionDocs(admin, String(row.completed_pdf_path).split("/")[0], String(row.submission_id)) : []; } catch {}
+    try { have = await listSubmissionDocs(admin, folder, String(row.submission_id)); } catch { have = []; }
     let primary: string | null = null; let extras = 0;
     for (let i = 0; i < docs.length; i++) {
       const doc = docs[i];
       if (!doc?.url) continue;
-      const path = `${firm}/signed-ds-${row.submission_id}${i ? `-${i + 1}` : ""}.pdf`;
-      const missing = i === 0 ? !row.completed_pdf_path : !have.some((h) => h.endsWith(`-${i + 1}.pdf`));
+      const path = `${folder}/signed-ds-${row.submission_id}${i ? `-${i + 1}` : ""}.pdf`;
+      // Missing = no stored object at the exact expected name, or (for the
+      // primary) no pointer either. A pointer with no object re-uploads the
+      // bytes to the same deterministic path the pointer already names.
+      const missing = !have.includes(path) || (i === 0 && !row.completed_pdf_path);
       if (!missing) continue;
       const bytes = await fetchBytes(doc.url);
       if (!bytes) continue;
@@ -194,19 +260,38 @@ async function retryCompletedFiles(admin: any, row: any): Promise<void> {
         .update({ completed_pdf_path: primary, error: null })
         .eq("id", row.id).is("completed_pdf_path", null).select("id");
       if (hit?.length) recovered.push("the signed PDF");
+      else if (!have.includes(primary)) recovered.push("the signed PDF's stored bytes");
     }
     if (extras) recovered.push(`${extras} more packet PDF${extras === 1 ? "" : "s"}`);
-    if (row.doc_count == null && docs.length) {
-      await admin.from("esign_submissions").update({ doc_count: docs.length }).eq("id", row.id).is("doc_count", null);
+    if ((row.doc_count == null || row.doc_count < 1) && docs.length) {
+      // Zero is unknown, not a manifest: replace it with the provider's real
+      // count (Astra round 5: zero could never be corrected, so a two-PDF
+      // packet passed a zero-count delivery check).
+      await admin.from("esign_submissions").update({ doc_count: docs.length })
+        .eq("id", row.id).or("doc_count.is.null,doc_count.eq.0");
     }
-    if (!row.cert_pdf_path && sub.audit_log_url) {
+    // The certificate: recover when the pointer is missing OR the object
+    // behind an existing pointer is gone.
+    let certObjectMissing = !row.cert_pdf_path;
+    if (!certObjectMissing) {
+      try {
+        const { data: certList, error: certErr } = await admin.storage.from(SIGNED_BUCKET)
+          .list(folder, { limit: 100, search: `cert-ds-${row.submission_id}` });
+        if (!certErr) {
+          const names = (certList ?? []).map((f: any) => `${folder}/${f.name}`);
+          certObjectMissing = !names.includes(String(row.cert_pdf_path)) && !names.includes(`${folder}/cert-ds-${row.submission_id}.pdf`);
+        }
+      } catch {}
+    }
+    if (certObjectMissing && sub.audit_log_url) {
       const bytes = await fetchBytes(sub.audit_log_url);
       if (bytes) {
-        const cert = await uploadSignedDoc(admin, `${firm}/cert-ds-${row.submission_id}.pdf`, bytes);
+        const cert = await uploadSignedDoc(admin, `${folder}/cert-ds-${row.submission_id}.pdf`, bytes);
         const { data: hit } = await admin.from("esign_submissions")
           .update({ cert_pdf_path: cert })
           .eq("id", row.id).is("cert_pdf_path", null).select("id");
         if (hit?.length) recovered.push("the signing certificate");
+        else if (row.cert_pdf_path) recovered.push("the signing certificate's stored bytes");
       }
     }
     if (recovered.length) {

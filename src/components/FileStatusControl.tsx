@@ -21,6 +21,11 @@ export default function FileStatusControl({ leadId, current, role, claimId }: { 
 
   const canEdit = role !== "firm";
 
+  // Switching to another claim (or a server refresh) must show THAT claim's
+  // status, not the one this control mounted with — the next change targets
+  // the newly selected claim (Astra round 5: claim A's badge over claim B).
+  useEffect(() => { setStatus(current); setMsg(""); }, [claimId, current]);
+
   useEffect(() => {
     if (!open) return;
     (async () => {

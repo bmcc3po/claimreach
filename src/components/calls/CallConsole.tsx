@@ -25,6 +25,8 @@ export interface ConsoleInit {
   ssnRequireFull?: boolean;
   /** Firm lines for a 3-way (routing rules with a transfer number). */
   threeWay?: { label: string; number: string }[];
+  /** Other files on this same wreck (driver/passengers), linked both ways. */
+  linked?: { id: string; lead_no: string | null; name: string; label: string }[];
   props: Omit<CallProps, "startedAt" | "now">;
 }
 
@@ -79,6 +81,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
           lead_id: leadId, call_id: callId.current,
           signer_name: s.send.client, injured_name: s.send.who === "Someone else" ? s.send.injured : s.send.client,
           via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
+          nv_variant: s.send.nvVariant, nv_reason: s.send.nvReason,
         }).then((d) => {
           e().setState({ send: { ...e().state.send, status: d.status || "sent", error: d.warning || "" } });
         }).catch((err) => {
@@ -96,7 +99,12 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         post("/api/calls/esign", {
           lead_id: leadId, call_id: callId.current, pax_index: i,
           signer_name: minor ? s.send.client : name, injured_name: name,
-          via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
+          // An adult passenger's agreement texts to THEIR cell; only a minor's
+          // goes to the caller, who signs as parent or guardian.
+          via: s.send.via, phone: minor ? s.send.phone : (p.cell || ""), email: s.send.email,
+          city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
+          pax_same_addr: p.sameAddr === "Same address",
+          nv_variant: s.send.nvVariant, nv_reason: s.send.nvReason,
         }).then(() => mark("sent")).catch((err) => {
           const pax = { ...e().state.file.pax }; delete pax[i];
           e().setState({ file: { ...e().state.file, pax, error: err.message } });
@@ -290,7 +298,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   useEffect(() => {
     if (init.openText) engine.setState({ text: { ...engine.state.text, open: true } });
     void loadComms();
-    // While the sheet is closed, check every 15 seconds so a text from her lights the badge.
+    // While the sheet is closed, check every 15 seconds so a text from the PNC lights the badge.
     const t = setInterval(() => { if (!engine.state.text.open) void loadComms(); }, 15000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -349,7 +357,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   }, [ws]);
 
   const preview = previewInfo(engine.state, init);
-  const view: any = { ...v, leadId: init.leadId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull };
+  const view: any = { ...v, leadId: init.leadId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
   // Autosave, said plainly. "Saving" while a change is on its way; a failed
   // write shows the engine's "Not saved. Retrying." instead, never "Saved".
   const pending = snapshot !== lastSaved.current;
@@ -434,7 +442,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     setCallW(cur + (ev.key === "ArrowRight" ? 32 : -32), true);
   };
 
-  // Numbers for the dialer: her number first, then the firm lines for a 3-way.
+  // Numbers for the dialer: the PNC's number first, then the firm lines for a 3-way.
   const herPhone = String(engine.state.send.phone || init.props.callerPhone || "").trim();
   const phones: PhoneRow[] = [
     ...(herPhone ? [{ label: v.callerFirst || "Caller", number: herPhone, pretty: prettyPhone(herPhone), kind: "caller" as const }] : []),
@@ -466,7 +474,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   );
 }
 
-const AGREEMENT_LABEL: Record<string, string> = { TX: "Texas", FL: "Florida" };
+const AGREEMENT_LABEL: Record<string, string> = { TX: "Texas", FL: "Florida", NV: "Nevada" };
 const prettyPhone = (raw: string) => { const d = raw.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, ""); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : raw; };
 
 // What the agreement will say, from the call so far. The same values the Send
@@ -478,19 +486,21 @@ function previewInfo(s: any, init: ConsoleInit): PreviewInfo {
   const code = stateCodeOf(city);
   const today = todayMDY();
   const doi = doiOf(s.story);
-  const agreement = code ? (AGREEMENT_LABEL[code] || "All other states (AL/GA)") : "";
+  const nvFlat = code === "NV" && s.send.nvVariant === "flat";
+  const agreement = code ? ((AGREEMENT_LABEL[code] || "All other states (AL/GA)") + (code === "NV" ? (nvFlat ? " NON-TIERED" : " tiered") : "")) : "";
   const viaText = s.send.via !== "Email";
   const to = viaText ? String(s.send.phone || "").trim() : String(s.send.email || "").trim();
   const checks: PreviewInfo["checks"] = [
-    { label: "Agreement", value: agreement ? `${agreement}${code && !AGREEMENT_LABEL[code] ? `, wreck in ${code}` : ""}` : "Add the city and state on Story", ok: !!agreement },
-    { label: "Signer", value: signer || "Add her full name on Send", ok: signer.split(/\s+/).filter(Boolean).length >= 2 },
-    { label: "Injured person", value: injured || "Add the injured person's full name", ok: injured.split(/\s+/).filter(Boolean).length >= 2 },
-    { label: "Date of the wreck", value: doi || "Add it on Story", ok: !!doi },
+    { label: "Agreement", value: agreement ? `${agreement}${code && !AGREEMENT_LABEL[code] ? `, wreck in ${code}` : ""}` : "Add the city and state on Story", ok: !!agreement, spot: "city" },
+    { label: "Signer", value: signer || "Add the PNC's full name on Send", ok: signer.split(/\s+/).filter(Boolean).length >= 2, spot: "signer" },
+    { label: "Injured person", value: injured || "Add the injured person's full name", ok: injured.split(/\s+/).filter(Boolean).length >= 2, spot: "signer" },
+    { label: "Date of the wreck", value: doi || "Add it on Story", ok: !!doi, spot: "when" },
     { label: "Signing date", value: today, ok: true },
-    { label: viaText ? "Text to" : "Email to", value: to ? (viaText ? prettyPhone(to) : to) : (viaText ? "Add her cell" : "Add her email"), ok: viaText ? to.replace(/\D/g, "").length >= 10 : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) },
-    { label: "DOB and SSN", value: "Intake adds these after she signs", ok: false, later: true },
+    { label: viaText ? "Text to" : "Email to", value: to ? (viaText ? prettyPhone(to) : to) : (viaText ? "Add the PNC's cell" : "Add the PNC's email"), ok: viaText ? to.replace(/\D/g, "").length >= 10 : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to), spot: "contact" },
+    { label: "DOB and SSN", value: "Intake adds these after the PNC signs", ok: false, later: true, spot: "file" },
   ];
   if (!code || !signer) return { href: null, checks };
   const q = new URLSearchParams({ lead_id: init.leadId, signer, injured: injured || signer, city, today, doi });
+  if (nvFlat) q.set("nv_variant", "flat");
   return { href: `/api/calls/esign/preview?${q}`, checks };
 }

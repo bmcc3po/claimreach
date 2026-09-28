@@ -20,6 +20,26 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
     case_description: lead.case_description ?? "",
     case_tags: (lead.case_tags ?? []).join(", "),
   });
+  // A refreshed server record updates every CLEAN field while this tab is
+  // mounted; unsaved typing stays (Astra round 5: a read-only tab kept old
+  // outcome/date after refreshed props).
+  const dirty = useRef<Set<string>>(new Set());
+  const refreshing = useRef(false);
+  const seenUpdatedAt = useRef<any>(lead.updated_at);
+  useEffect(() => {
+    if (lead.updated_at === seenUpdatedAt.current) return;
+    seenUpdatedAt.current = lead.updated_at;
+    refreshing.current = true;
+    setF((s: any) => {
+      const next = { ...s };
+      for (const k of Object.keys(s)) {
+        if (dirty.current.has(k)) continue;
+        next[k] = k === "case_tags" ? (lead.case_tags ?? []).join(", ") : (lead[k] ?? "");
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.updated_at]);
   const [opts, setOpts] = useState<Record<string, string[]>>({});
   const [events, setEvents] = useState<any[]>([]);
   const [newEvent, setNewEvent] = useState({ title: "", event_at: "", notes: "" });
@@ -31,7 +51,7 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
     try { const r = await fetch(`/api/case/events?lead_id=${lead.id}`); const d = await r.json(); setEvents(d.events ?? []); } catch {}
   })(); }, [lead.id]);
 
-  function set(k: string, v: any) { setF((s: any) => ({ ...s, [k]: v })); }
+  function set(k: string, v: any) { dirty.current.add(k); setF((s: any) => ({ ...s, [k]: v })); }
 
   // Autosave a second after the last edit — no manual Save needed.
   const firstRun = useRef(true);
@@ -42,6 +62,7 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
   useEffect(() => () => { flushRef.current(); }, []);
   useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return; }
+    if (refreshing.current) { refreshing.current = false; return; }
     if (t.current) clearTimeout(t.current);
     t.current = setTimeout(() => { t.current = null; save(); }, 1000);
     flushRef.current = () => { if (t.current) { clearTimeout(t.current); t.current = null; void save(); } };
@@ -63,7 +84,7 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
     const d = await r.json().catch(() => ({}));
     setSaving(false);
     setMsg(r.ok ? "Saved." : `Save failed: ${d.error || r.status}`);
-    if (r.ok) onSaved?.({ ...payload, case_tags: payload.case_tags });
+    if (r.ok) { dirty.current.clear(); onSaved?.({ ...payload, case_tags: payload.case_tags }); }
   }
 
   async function addEvent() {

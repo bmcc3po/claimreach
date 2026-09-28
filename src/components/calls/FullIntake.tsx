@@ -49,6 +49,7 @@ function Control({ c, v }: { c: any; v: any }) {
     case "multi":
       return (<>
         <Chips opts={c.opts} />
+        {!!c.note && <textarea className="fi-in fi-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />}
         {!!c.other && <input className="fi-in" placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value} onChange={c.other.set} />}
         {!!c.cue && <div className="fi-cue fi-cue-bad">{c.cue}</div>}
       </>);
@@ -141,7 +142,7 @@ function Question({ q, v }: { q: any; v: any }) {
       <Control c={q.c} v={v} />
       {q.rep && (
         <div className="fi-rep">
-          <div className="fi-cue">{v.rep.head}. Do not go looking for it. She has to be the one who says she's unhappy.</div>
+          <div className="fi-cue">{v.rep.head}. Do not go looking for it. The PNC has to be the one who says they're unhappy.</div>
           <Chips opts={(v.rep.unhappy || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />
           {v.rep.isUnhappy && <Chips opts={(v.rep.kind || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />}
           {v.rep.fender && <div className="fi-cue">The firm charges these back. Close it warm and let it go.</div>}

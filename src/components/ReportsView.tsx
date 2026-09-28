@@ -47,7 +47,8 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
     const signed = Object.entries(byStatus).reduce((n, [k, v]) => (signedKeys.has(k) ? n + (v as number) : n), 0);
     const convRate = total ? Math.round(((qualified + signed) / total) * 100) : 0;
     return { total, qualified, signed, convRate, byStatus, byType, byCampaign, byTier };
-  }, [claims, range]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claims, range, statuses]);
 
   // Speed to lead, per campaign: from the lead dropping in to the first
   // outbound dial (JustCall webhook) and to the first file open in ClaimReach.
@@ -67,13 +68,13 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
         if (m >= 0) { r.dial.push(m); if (m <= 300) r.under5++; }
       }
     }
-    const med = (a: number[]) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
+    const med = (a: number[]) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const mid = s.length >> 1; return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2; };
     return Object.entries(rows)
       .map(([campaign, r]) => ({
         campaign, leads: r.n,
         opened: r.open.length, medOpen: med(r.open),
         dialed: r.dial.length, medDial: med(r.dial),
-        under5: r.dial.length ? Math.round((r.under5 / r.dial.length) * 100) : null,
+        under5: r.n ? Math.round((r.under5 / r.n) * 100) : null,
       }))
       .sort((a, b) => b.leads - a.leads);
   }, [leads, range]);
@@ -155,7 +156,7 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
         <div className="cl-ph"><h2>Speed to lead</h2><div className="cl-ph-r"><span className="cl-n">from the lead dropping in</span></div></div>
         <div style={{ overflow: "auto" }}>
           <table className="cl-table">
-            <thead><tr><th>Campaign</th><th>Leads</th><th>First dial (median)</th><th>Dialed under 5 min</th><th>First open (median)</th><th>Never dialed</th></tr></thead>
+            <thead><tr><th>Campaign</th><th>Leads</th><th>First dial (median)</th><th>Dialed under 5 min (of all leads)</th><th>First open (median)</th><th>No dial recorded</th></tr></thead>
             <tbody>
               {speed.map((s) => (
                 <tr key={s.campaign}>
@@ -172,7 +173,7 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
           </table>
         </div>
         <div style={{ padding: "8px 16px 12px", fontSize: 12.5, color: "var(--ink-faint)" }}>
-          First dial comes from the JustCall webhook (first outbound call or voicemail attempt). First open is the first time staff opened the file in ClaimReach. Both clocks start when the lead drops in; leads older than these columns show as never dialed.
+          First dial comes from the JustCall webhook (first outbound call or voicemail attempt). First open is the first time staff opened the file in ClaimReach. Both clocks start when the lead drops in. \u201CDialed under 5 min\u201D counts EVERY lead in range, so untouched leads pull it down. Leads from before these clocks existed have no dial recorded here \u2014 that is missing history, not proof nobody called.
         </div>
       </div>
 

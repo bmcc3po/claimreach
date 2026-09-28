@@ -69,7 +69,7 @@ export default function WhereField({ value, onChange, onDone, agreement }: {
         </select>
       </div>
       <div className="cc-cue" style={{ marginTop: 6 }}>
-        {st && agreement ? `Her agreement: ${agreement}.` : "The state picks which agreement she signs."}
+        {st && agreement ? `Agreement: ${agreement}.` : "The state picks which agreement the PNC signs."}
       </div>
     </div>
   );

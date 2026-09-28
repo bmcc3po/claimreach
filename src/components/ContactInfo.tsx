@@ -33,6 +33,31 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     for (const fld of allFields) if (fld.kind !== "section" && fld.kind !== "script") init[fld.id] = lead[fld.id] ?? "";
     return init;
   });
+  const dirty = useRef<Set<string>>(new Set());
+  const seenUpdatedAt = useRef<any>(lead.updated_at);
+  const refreshing = useRef(false);
+  useEffect(() => {
+    if (lead.updated_at === seenUpdatedAt.current) return;
+    seenUpdatedAt.current = lead.updated_at;
+    refreshing.current = true;
+    // A refreshed record updates every CLEAN field; unsaved typing stays.
+    setF((s) => {
+      const next = { ...s };
+      for (const fld of allFields) {
+        if (fld.kind === "section" || fld.kind === "script") continue;
+        if (!dirty.current.has(fld.id)) next[fld.id] = lead[fld.id] ?? "";
+      }
+      return next;
+    });
+    setX((s) => {
+      const next: Record<string, any> = { ...s };
+      for (const k of Object.keys(s)) {
+        if (!dirty.current.has("x:" + k)) next[k] = lead[k] ?? (k === "ec_permission_to_discuss" ? false : "");
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.updated_at]);
   const [ssnRevealed, setSsnRevealed] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -78,7 +103,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     ec_name: lead.ec_name ?? "", ec_relationship: lead.ec_relationship ?? "", ec_phone: lead.ec_phone ?? "",
     ec_email: lead.ec_email ?? "", ec_mail: lead.ec_mail ?? "", ec_permission_to_discuss: lead.ec_permission_to_discuss ?? false,
   });
-  function setx(k: string, v: any) { setX((s) => ({ ...s, [k]: v })); }
+  function setx(k: string, v: any) { dirty.current.add("x:" + k); setX((s) => ({ ...s, [k]: v })); }
 
   // Autosave a second after the last edit — no manual Save needed.
   const firstRun = useRef(true);
@@ -89,6 +114,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
   useEffect(() => () => { flushRef.current(); }, []);
   useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return; }
+    if (refreshing.current) { refreshing.current = false; return; }
     if (tmr.current) clearTimeout(tmr.current);
     tmr.current = setTimeout(() => { tmr.current = null; save(); }, 1000);
     flushRef.current = () => { if (tmr.current) { clearTimeout(tmr.current); tmr.current = null; void save(); } };
@@ -96,7 +122,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [f, x]);
 
-  function set(k: string, v: any) { setF((s) => ({ ...s, [k]: v })); }
+  function set(k: string, v: any) { dirty.current.add(k); setF((s) => ({ ...s, [k]: v })); }
 
   async function save() {
     setSaving(true); setSaveErr("");
@@ -111,6 +137,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       // did not save, the screen says so.
       if (!r.ok) { setSaveErr(d.error || "Could not save. Nothing was written."); setSaving(false); return; }
       setSavedAt(new Date().toLocaleTimeString());
+      dirty.current.clear();
       onSaved?.({ ...f, ...x });
     } catch {
       setSaveErr("Could not reach the server. Nothing was saved.");

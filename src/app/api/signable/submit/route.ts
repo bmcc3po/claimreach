@@ -137,8 +137,8 @@ export async function POST(req: NextRequest) {
     }
     if (doc.lead_id) {
       try {
-        const { setClaimStatusForLeads } = await import("@/lib/claim-status");
-        await setClaimStatusForLeads({ leadIds: [doc.lead_id], status: "signed_grievous", actorName: doc.signer_name || "Client" });
+        const { setClaimStatusForLeads, claimScopeFor } = await import("@/lib/claim-status");
+        await setClaimStatusForLeads({ leadIds: [doc.lead_id], claimIds: await claimScopeFor(doc.lead_id), status: "signed_grievous", actorName: doc.signer_name || "Client" });
       } catch {
         await admin.from("leads").update({ signed_at: now, esign_sent_at: null }).eq("id", doc.lead_id);
       }

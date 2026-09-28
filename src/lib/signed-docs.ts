@@ -52,7 +52,11 @@ export async function uploadSignedDoc(admin: any, path: string, bytes: Uint8Arra
  *  delivery can attach the whole packet without a schema change. */
 export async function listSubmissionDocs(admin: any, firmFolder: string, submissionId: string): Promise<string[]> {
   const { data, error } = await admin.storage.from(SIGNED_BUCKET).list(firmFolder, { limit: 100, search: `signed-ds-${submissionId}` });
-  if (error || !data) return [];
+  // A listing FAILURE is an error, never an empty packet: callers treating []
+  // as "nothing stored" were reducing a known multipart packet to its primary
+  // when storage hiccuped (Astra round 5).
+  if (error) throw new Error(`signed-docs list failed for ${firmFolder}/${submissionId}: ${error.message}`);
+  if (!data) return [];
   return (data as any[])
     .map((f) => `${firmFolder}/${f.name}`)
     .filter((p) => new RegExp(`/signed-ds-${submissionId}(-\\d+)?\\.pdf$`).test(p))

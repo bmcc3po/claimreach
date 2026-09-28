@@ -91,7 +91,7 @@ export function SsnField({ value, onChange, requireFull, cls = "cc", storedMode,
     : (digits.length === 9 ? fmtSsnDigits(digits) : "");
   return (<>
     {!requireFull && (
-      <div className={cls === "ch" ? "ch-row" : "cc-chips cc-seg"} role="radiogroup" aria-label="How much of the SSN she gave">
+      <div className={cls === "ch" ? "ch-row" : "cc-chips cc-seg"} role="radiogroup" aria-label="How much of the SSN the PNC gave">
         <button type="button" role="radio" aria-checked={mode === "full"} className={chip(mode === "full")}
           onClick={() => setLast4(false)}>All 9 digits</button>
         <button type="button" role="radio" aria-checked={mode === "last4"} className={chip(mode === "last4")}

@@ -3013,3 +3013,15 @@ grant execute on function public.current_app_user() to authenticated, service_ro
 -- keeps the helpers; an active agent's RLS access is unchanged; the property
 -- replace still works and refuses a nonexistent claim. Record only.
 -- ============================================================================
+
+-- ============================================================================
+-- 0107 — Round 6 (Sep 28 2026): move_leads_to_firm — a firm move is ONE
+-- transaction over the whole graph (lead, claims, documents, signings,
+-- communications, notes, QA, activity, deliveries), so a failure moves
+-- nothing and a success leaves nothing half-owned. service_role only;
+-- PUBLIC/anon/authenticated revoked and probe-verified with
+-- has_function_privilege. STATUS: APPLIED live on Sep 28 2026 and
+-- probe-verified (synthetic two-firm move rolled back; bogus firm refused).
+-- Record only — nothing for you to run. Full text:
+-- supabase/migrations/0107_round6_hardening.sql
+-- ============================================================================

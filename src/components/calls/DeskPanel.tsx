@@ -1,7 +1,7 @@
 "use client";
 // The right half of the call screen on a desktop (1180px and wider). The call
 // itself stays on the left, same screen as the phone. This side holds what an
-// agent wants open while she talks: the CarCure playbook with Ask CaseCure,
+// agent wants open while the PNC talks: the CarCure playbook with Ask CaseCure,
 // the JustCall thread with texting, the agreement preview, and the lead.
 // On a phone this panel is not rendered at all; those live in sheets.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -14,7 +14,7 @@ export interface PhoneRow { label: string; number: string; pretty: string; kind:
 
 export interface PreviewInfo {
   href: string | null;
-  checks: { label: string; value: string; ok: boolean; later?: boolean }[];
+  checks: { label: string; value: string; ok: boolean; later?: boolean; spot?: string }[];
 }
 
 const PHASE_LABEL: Record<string, string> = { open: "Open", story: "Story", body: "Injury", car: "Car", money: "Money", send: "Send", file: "File", close: "Close" };
@@ -182,7 +182,7 @@ function Knowledge({ v, phase, fill, focusLines }: { v: any; phase: string; fill
       <div className="cc-kn-body">
         <div className="cc-card cc-kn-ask" id="kn-ask" data-spy="1">
           <span className="cc-card-h">Ask CaseCure</span>
-          <textarea className="cc-area" rows={2} placeholder="What she said, or what happened, in plain words" aria-label="Ask CaseCure" value={v.askField.value ?? ""} onChange={v.askField.set}
+          <textarea className="cc-area" rows={2} placeholder="What the PNC said, or what happened, in plain words" aria-label="Ask CaseCure" value={v.askField.value ?? ""} onChange={v.askField.set}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) v.doAsk(); }} />
           <div className="cc-kn-ask-row">
             <span className="cc-cue" style={{ marginTop: 0 }}>Ctrl Enter asks</span>
@@ -242,7 +242,7 @@ function Texts({ v }: { v: any }) {
   return (
     <>
       <div className="cc-side-b cc-side-thread">
-        <div className="cc-cue" style={{ margin: "0 4px 6px" }}>From {v.textFrom || "the JustCall line"} through JustCall. Same thread as the JustCall app, and every text saves to her file.</div>
+        <div className="cc-cue" style={{ margin: "0 4px 6px" }}>From {v.textFrom || "the JustCall line"} through JustCall. Same thread as the JustCall app, and every text saves to the file.</div>
         {!!v.hasCalls && (
           <>
             <div className="cc-sec-h" style={{ paddingTop: 4 }}>Calls</div>
@@ -270,7 +270,7 @@ function Texts({ v }: { v: any }) {
         <div ref={end} />
       </div>
       <div className="cc-side-compose">
-        <textarea className="cc-area" rows={2} placeholder={`Text ${v.callerFirst || "her"}`} aria-label={`Text ${v.callerFirst || "her"}`}
+        <textarea className="cc-area" rows={2} placeholder={`Text ${v.callerFirst || "the PNC"}`} aria-label={`Text ${v.callerFirst || "the PNC"}`}
           value={v.textDraft.value ?? ""} onChange={v.textDraft.set}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!v.textCantSend) v.sendText(); } }} />
         <button className="cc-btn cc-full" disabled={!!v.textCantSend} onClick={v.sendText}>Send</button>
@@ -291,12 +291,17 @@ function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
           <div key={c.label} className="cc-chk">
             <span className={`cc-chk-dot${c.ok ? " cc-ok" : c.later ? " cc-later" : " cc-miss"}`} aria-hidden="true" />
             <span className="cc-chk-k">{c.label}</span>
-            <span className={`cc-chk-v${c.ok ? "" : c.later ? "" : " cc-red"}`}>{c.value}</span>
+            {c.ok || c.later || !(c as any).spot ? (
+              <span className={`cc-chk-v${c.ok ? "" : c.later ? "" : " cc-red"}`}>{c.value}</span>
+            ) : (
+              /* A missing item is a link: tap it and land where it gets typed. */
+              <button type="button" className="cc-chk-v cc-red cc-chk-go" onClick={() => v.jumpTo((c as any).spot)}>{c.value}</button>
+            )}
           </div>
         ))}
       </div>
       <div className="cc-cue" style={{ margin: "0 4px" }}>
-        {missing ? `${missing} thing${missing === 1 ? "" : "s"} still missing before it can go.` : "Yellow on the agreement is what the call filled in. Check the spelling with her before you send."}
+        {missing ? `${missing} thing${missing === 1 ? "" : "s"} still missing before it can go.` : "Yellow on the agreement is what the call filled in. Check the spelling with the PNC before you send."}
       </div>
       {preview.href ? (
         <>
@@ -336,6 +341,69 @@ const fmtWhen = (iso?: string | null) => {
 
 // The file: status, agreements, notes, documents and history, without leaving
 // the call. Loads when the tab opens.
+// The traditional contact card (Brett, Sep 28): the record's phone, email
+// and mailing address, right on the File tab, editable during the call.
+// Saves to the LEAD (the same generic contact save the CRM uses), so a
+// callback, a report or a prefill reads exactly what the agent typed here.
+function ContactCard({ leadId, initial }: { leadId: string; initial: Record<string, string> }) {
+  const [f, setF] = useState<Record<string, string>>({
+    phone: initial.phone || "", email: initial.email || "",
+    mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
+    mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
+  });
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
+  const [msg, setMsg] = useState("");
+  const t = useRef<any>(null);
+  const set = (k: string) => (e: any) => {
+    const v = e.target.value;
+    setF((s) => ({ ...s, [k]: v }));
+    setState("dirty");
+    if (t.current) clearTimeout(t.current);
+    t.current = setTimeout(() => { void save({ ...f, [k]: v }); }, 900);
+  };
+  const save = async (data: Record<string, string>) => {
+    setState("saving"); setMsg("");
+    try {
+      const r = await fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ op: "save", lead_id: leadId, lead: data }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error || "The contact did not save.");
+      setState("saved");
+    } catch (e: any) { setState("error"); setMsg(e.message); }
+  };
+  const addr = [f.mail_addr1, f.mail_city, f.mail_state, f.mail_zip].filter(Boolean).join(", ");
+  return (
+    <div className="cc-card" style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span className="cc-card-h">Contact</span>
+        <button type="button" className="cc-chip cc-sm" onClick={() => setOpen((v) => !v)}>{open ? "Done" : "Edit"}</button>
+      </div>
+      {!open && (<>
+        <div className="cc-chk"><span className="cc-chk-k">Cell</span><span className="cc-chk-v">{f.phone || "Not on file"}</span></div>
+        <div className="cc-chk"><span className="cc-chk-k">Email</span><span className="cc-chk-v">{f.email || "Not on file"}</span></div>
+        <div className="cc-chk"><span className="cc-chk-k">Address</span><span className="cc-chk-v">{addr || "Not on file"}</span></div>
+      </>)}
+      {open && (<>
+        <div className="cc-lab">CELL</div>
+        <input className="cc-field" type="tel" inputMode="tel" aria-label="Cell" value={f.phone} onChange={set("phone")} />
+        <div className="cc-lab" style={{ marginTop: 8 }}>EMAIL</div>
+        <input className="cc-field" type="email" inputMode="email" autoComplete="off" aria-label="Email" value={f.email} onChange={set("email")} />
+        <div className="cc-lab" style={{ marginTop: 8 }}>MAILING ADDRESS</div>
+        <input className="cc-field" type="text" placeholder="Street address" aria-label="Street address" value={f.mail_addr1} onChange={set("mail_addr1")} />
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <input className="cc-field" style={{ flex: 2 }} type="text" placeholder="City" aria-label="City" value={f.mail_city} onChange={set("mail_city")} />
+          <input className="cc-field" style={{ flex: 1 }} type="text" placeholder="ST" maxLength={2} aria-label="State" value={f.mail_state} onChange={set("mail_state")} />
+          <input className="cc-field" style={{ flex: 1 }} type="text" inputMode="numeric" placeholder="ZIP" maxLength={10} aria-label="ZIP" value={f.mail_zip} onChange={set("mail_zip")} />
+        </div>
+      </>)}
+      {state === "saving" && <div className="cc-cue" style={{ marginTop: 6 }}>Saving</div>}
+      {state === "saved" && <div className="cc-cue" style={{ marginTop: 6 }}>Saved to the file.</div>}
+      {state === "error" && <div className="cc-cue cc-red" style={{ marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
 function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said: string; tags: string[] } | null }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
@@ -365,10 +433,11 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
   if (!d) return <div className="cc-side-b">{err ? <div className="cc-cue cc-red">{err}</div> : <div className="cc-cue" style={{ textAlign: "center", marginTop: 24 }}>Loading the file</div>}</div>;
   const L = d.lead || {};
   const row = (k: string, val: any) => (val ? <div className="cc-chk" key={k}><span className="cc-chk-k">{k}</span><span className="cc-chk-v">{val}</span></div> : null);
-  const SCOPES: [string, string][] = [["call", "Call"], ["plaintiff", "Her"], ["case", "Case"], ["file", "File"]];
+  const SCOPES: [string, string][] = [["call", "Call"], ["plaintiff", "PNC"], ["case", "Case"], ["file", "File"]];
   return (
     <div className="cc-side-b">
       {err && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>{err}</div>}
+      <ContactCard leadId={leadId} initial={d.contact || {}} />
       <div className="cc-grp">
         {d.status && <div className="cc-chk"><span className="cc-chk-k">Status</span><span className="cc-chk-v"><span className={`cc-dot cc-${d.status.tone || "info"}`} />{d.status.label}</span></div>}
         {row("Lead number", L.lead_no)}
@@ -448,7 +517,7 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
 }
 
 // Quick helpers for mid-call questions: the deadline for any state and date,
-// her local time, which agreement a state gets, and the split when she insists.
+// the PNC's local time, which agreement a state gets, and the split when they insist.
 function Tools({ v, story }: { v: any; story: { city: string; crash: Date | null } }) {
   const iso = (d: Date | null) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "");
   const [st, setSt] = useState<string>(() => stateCodeOf(story.city) || "");
@@ -466,7 +535,7 @@ function Tools({ v, story }: { v: any; story: { city: string; crash: Date | null
       hour = Number(new Date(now).toLocaleString("en-US", { timeZone: tz, hour: "numeric", hour12: false }));
     } catch { /* older browser */ }
   }
-  const agreement = !st ? "" : st === "TX" ? "Texas" : st === "FL" ? "Florida" : "All other states (AL/GA)";
+  const agreement = !st ? "" : st === "TX" ? "Texas" : st === "FL" ? "Florida" : st === "NV" ? "Nevada" : "All other states (AL/GA)";
   return (
     <div className="cc-side-b">
       <div className="cc-rb-h" style={{ paddingTop: 2 }}>Deadline check</div>
@@ -485,21 +554,21 @@ function Tools({ v, story }: { v: any; story: { city: string; crash: Date | null
         ) : <div className="cc-cue" style={{ marginTop: 0 }}>Pick the state and the crash date.</div>}
       </div>
 
-      <div className="cc-rb-h">Her local time</div>
+      <div className="cc-rb-h">PNC's local time</div>
       <div className="cc-card">
         {local ? (
           <div className={`cc-tool-out${hour >= 0 && (hour < 8 || hour >= 21) ? " cc-warn" : ""}`}>
             {local} in {SOL.find((r) => r[0] === st)?.[1]}{hour >= 0 && (hour < 8 || hour >= 21) ? ". Outside 8 AM to 9 PM there, text instead of calling." : "."}
           </div>
-        ) : <div className="cc-cue" style={{ marginTop: 0 }}>Pick her state above.</div>}
+        ) : <div className="cc-cue" style={{ marginTop: 0 }}>Pick the PNC's state above.</div>}
       </div>
 
-      <div className="cc-rb-h">Agreement she gets</div>
-      <div className="cc-card"><div className="cc-tool-out">{agreement || "Pick her state above."}</div></div>
+      <div className="cc-rb-h">Agreement the PNC gets</div>
+      <div className="cc-card"><div className="cc-tool-out">{agreement || "Pick the PNC's state above."}</div></div>
 
       {v.showFees && (
         <>
-          <div className="cc-rb-h">The split, only if she insists</div>
+          <div className="cc-rb-h">The split, only if the PNC insists</div>
           <div className="cc-grp">
             {(v.fees || []).map((f: any) => <div key={f.k} className="cc-chk"><span className="cc-chk-k" style={{ width: "auto", flex: 1 }}>{f.k}</span><span className="cc-chk-v">{f.v}</span></div>)}
           </div>

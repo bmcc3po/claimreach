@@ -29,8 +29,10 @@ export async function GET(req: NextRequest) {
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
   const packets = packetsFor((lead as any).firms?.slug, lead.case_type);
   if (!packets) return NextResponse.json({ error: "This campaign has no agreement set up to preview." }, { status: 404 });
-  const key = agreementKey(stateCodeOf(q("city")));
+  let key: string | null = agreementKey(stateCodeOf(q("city")));
   if (!key) return NextResponse.json({ error: "Add the city and state on Story first. That picks the agreement." }, { status: 400 });
+  // Nevada previews whichever contract the agent picked (tiered by default).
+  if (key === "NV" && q("nv_variant") === "flat") key = "NV_FLAT";
   const packet = (packets as any)[key];
 
   const src = await fetch(new URL(packet.path, url.origin));

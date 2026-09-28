@@ -31,15 +31,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, count: ids.length });
     }
     if (b.op === "move_firm") {
-      // Moving a file between firms rewires who may see it: owner/admin only,
-      // and the claims move WITH the lead so nothing is left half-owned
-      // (Astra round 4).
+      // Moving a file between firms rewires who may see it: owner/admin only.
+      // ONE transaction moves the whole graph — lead, claims, documents,
+      // signings, communications, notes, QA, activity — so a failure moves
+      // nothing instead of leaving a half-owned file (Astra rounds 4-5).
       if (!["owner", "admin"].includes(me!.role)) return NextResponse.json({ error: "Only an owner or admin can move files between firms." }, { status: 403 });
-      const { error } = await sb.from("leads").update({ firm_id: b.firmId }).in("id", ids);
-      if (error) throw error;
-      const { error: cErr } = await sb.from("claims").update({ firm_id: b.firmId }).in("lead_id", ids);
-      if (cErr) return NextResponse.json({ error: `Leads moved but their claims did not: ${cErr.message}. Run it again.` }, { status: 500 });
-      return NextResponse.json({ ok: true, count: ids.length });
+      if (!b.firmId) return NextResponse.json({ error: "Pick the firm to move to." }, { status: 400 });
+      const { supabaseAdmin } = await import("@/lib/supabase-server");
+      const { data: moved, error } = await supabaseAdmin().rpc("move_leads_to_firm", { p_lead_ids: ids, p_firm_id: b.firmId });
+      if (error) return NextResponse.json({ error: `Nothing moved: ${error.message}` }, { status: 500 });
+      return NextResponse.json({ ok: true, count: moved ?? ids.length });
     }
     if (b.op === "set_status") {
       // status lives on the claim; the helper enforces the DQ-reason gate and audits.

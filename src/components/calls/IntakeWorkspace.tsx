@@ -54,7 +54,7 @@ export function IxHead({ v }: { v: any }) {
       <div className="ix-who">
         <div className="ix-name">{v.callerName}</div>
         <div className="ix-meta">
-          {/* A failed save takes the whole line; otherwise her number and a short "Saved". */}
+          {/* A failed save takes the whole line; otherwise the number and a short "Saved". */}
           {v.saveBad ? <span className="ix-save-bad" role="status">{v.saveError}</span> : (<>
             {!!v.callerPhone && <span>{v.callerPhone}</span>}
             {!!v.saveText && <span className="ix-save" role="status" title={v.saveText}>{/^Saved/.test(v.saveText) ? "Saved" : v.saveText}</span>}
@@ -228,10 +228,23 @@ export function WsLeft({ v }: { v: any }) {
           {!!lead.tags && <div className="ws-tags">From the lead: {lead.tags}</div>}
           {!!lead.said && (
             <button type="button" className="ws-link" onClick={lead.toggle} aria-expanded={!!lead.open}>
-              {lead.open ? "Hide what she told the marketer" : "What she told the marketer"}
+              {lead.open ? "Hide what the PNC told the marketer" : "What the PNC told the marketer"}
             </button>
           )}
           {!!lead.open && !!lead.said && <div className="ws-said">{lead.said}</div>}
+        </section>
+      )}
+
+      {!!(v.linked || []).length && (
+        <section className="ws-block">
+          <div className="ws-h">Same wreck</div>
+          {(v.linked || []).map((l: any, i: number) => (
+            <a key={i} className="ws-linkfile" href={`/app/${l.lead_no || l.id}`}>
+              <b>{l.name}</b>
+              <span>{l.lead_no ? `${l.lead_no}, ` : ""}{l.label}</span>
+            </a>
+          ))}
+          <div className="ws-tags">Linked files. Ask how they&apos;re doing.</div>
         </section>
       )}
 
@@ -275,7 +288,7 @@ function sayNow(v: any): { k: string; lines: string[]; cue?: string } {
   const onePage = v.fullView || v.choreView;
   if (!onePage && v.isOpen) return open;
   if (!onePage && v.isStory) return v.hasGap
-    ? { k: "If she didn't say it, ask", lines: [v.gapNext], cue: OPEN_LINE.cue }
+    ? { k: "If the PNC didn't say it, ask", lines: [v.gapNext], cue: OPEN_LINE.cue }
     : { k: OPEN_LINE.label, lines: [OPEN_LINE.line], cue: OPEN_LINE.cue };
   if (!onePage && v.isBody && v.hasQ) return { k: v.q.step ? `Ask, ${v.q.step}` : "Ask", lines: [v.q.line], cue: v.q.cue };
   if (!onePage && v.isCar) return { k: "Say", lines: ["Who else was in the car with you?"], cue: "Do not skip this. Ever. Every passenger is their own file and their own agreement." };
@@ -283,7 +296,7 @@ function sayNow(v: any): { k: string; lines: string[]; cue?: string } {
   if (fi.progress.done === 0) return open;
   if (fi.next) return { k: `Ask next, ${fi.next.label.replace(/^Next: /, "")}`, lines: [fi.next.ask || fi.next.label.replace(/^Next: /, "")], cue: fi.next.cue };
   if (v.choreView && v.sendReady) return { k: MONEY.label, lines: [MONEY.line], cue: MONEY.cue };
-  return { k: "Every question is answered", lines: ["Tell her how we work, then send the agreement."] };
+  return { k: "Every question is answered", lines: ["Tell the PNC how we work, then send the agreement."] };
 }
 
 /** Standing reminders for the moment: the rules that keep a file clean. */
@@ -294,9 +307,9 @@ function reminders(v: any): { t: string; bad?: boolean }[] {
   if (v.solClose) out.push({ t: "Inside 90 days of the deadline. Get a supervisor before you sign or decline.", bad: true });
   else if (v.solHas && v.solText) out.push({ t: v.solText });
   if (v.gapCard?.show && /bad|warn/.test(String(v.gapCard.cls))) out.push({ t: `30-day check: ${v.gapCard.value}. ${v.gapCard.sub || ""}`.trim(), bad: /bad/.test(String(v.gapCard.cls)) });
-  if (v.faultCaller) out.push({ t: "She says she was at fault. Do not go hunting.", bad: true });
-  if (v.repYes) out.push({ t: `${v.rep.head}. Do not go looking for it. She has to be the one who says she's unhappy.` });
-  if (v.sayingFine || v.sayingFineFree) out.push({ t: "She's downplaying. Do not move past it. Use the soreness line." });
+  if (v.faultCaller) out.push({ t: "The PNC says they were at fault. Do not go hunting.", bad: true });
+  if (v.repYes) out.push({ t: `${v.rep.head}. Do not go looking for it. The PNC has to be the one who says they're unhappy.` });
+  if (v.sayingFine || v.sayingFineFree) out.push({ t: "The PNC is downplaying. Do not move past it. Use the soreness line." });
   if (v.sendWarn && (v.isSend || v.choreView)) out.push({ t: v.sendWarnText, bad: true });
   if (v.isMoney || v.isSend) out.push({ t: MONEY.cue });
   return out;
@@ -352,7 +365,7 @@ export function WsHelper({ v, inSheet }: { v: any; inSheet?: boolean }) {
       </section>
 
       <section className="ws-block">
-        <div className="ws-h">If she pushes back</div>
+        <div className="ws-h">If the PNC pushes back</div>
         <div className="ws-rebs">
           {lines.map((r: any) => (
             <div key={r.id} className={`ws-reb${openReb === r.id ? " ws-on" : ""}`}>
@@ -370,7 +383,7 @@ export function WsHelper({ v, inSheet }: { v: any; inSheet?: boolean }) {
       {!inSheet && (
         <section className="ws-block">
           <div className="ws-h">Ask CaseCure</div>
-          <textarea className="fi-in fi-area wh-ask" rows={2} placeholder="What she said, in plain words" aria-label="Ask CaseCure" value={v.askField.value ?? ""} onChange={v.askField.set}
+          <textarea className="fi-in fi-area wh-ask" rows={2} placeholder="What the PNC said, in plain words" aria-label="Ask CaseCure" value={v.askField.value ?? ""} onChange={v.askField.set}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) v.doAsk(); }} />
           <button type="button" className="ws-btn wh-ask-b" disabled={!!v.askBusy} onClick={v.doAsk}>{v.askBusy ? "Asking" : "Ask"}</button>
           {!!v.askAnswer && <div className="wh-answer">{v.askAnswer}</div>}

@@ -15,6 +15,7 @@ import { loadIntakeBundle, buildIntakePdf, buildIntakeCsvSingle } from "@/lib/in
 import { buildCertificatePdf } from "@/lib/certificate";
 import { recordAudit } from "@/lib/audit";
 import { downloadSignedDoc, listSubmissionDocs } from "@/lib/signed-docs";
+import { establishDocCount, expectedPacketPaths } from "@/lib/mva-call/esign";
 
 interface Attachment { filename: string; content: string; kind: string; } // content = base64
 
@@ -80,10 +81,14 @@ export async function deliverLeadToFirm(opts: {
   const cc = String(cfg.firm_cc || "").split(/[,;]/).map((s: string) => s.trim()).filter(Boolean);
   const replyTo = String(cfg.firm_reply_to || "").trim() || undefined;
 
-  // Tokens for mail-merge (client + case + campaign).
+  // Tokens for mail-merge (client + case + campaign). The answers come from
+  // THIS campaign's claim, not whichever row the database returned first
+  // (Astra round 5: delivery picked one unordered claim).
   let answers: Record<string, any> = {};
   try {
-    const { data: claim } = await admin.from("claims").select("answers").eq("lead_id", opts.leadId).limit(1).maybeSingle();
+    const { data: claims } = await admin.from("claims").select("answers, campaign_id, created_at")
+      .eq("lead_id", opts.leadId).order("created_at", { ascending: false });
+    const claim = (claims ?? []).find((c: any) => campaignId && c.campaign_id === campaignId) ?? (claims ?? [])[0];
     answers = claim?.answers ?? {};
   } catch {}
   const tokens = retainerTokens(lead, answers);
@@ -99,11 +104,16 @@ export async function deliverLeadToFirm(opts: {
 
   const bundle = await loadIntakeBundle(sb, opts.leadId);
 
+  // A configured artifact that fails to build REFUSES the send instead of
+  // quietly shipping without it: the campaign promised the firm this
+  // attachment (Astra round 5: a failed intake-PDF render was omitted from a
+  // "successful" delivery).
+  let intakePdfFailed: string | null = null;
   if (cfg.attach_intake_pdf !== false && bundle) {
     try {
       const bytes = await buildIntakePdf(bundle);
       attachments.push({ filename: `${nameBase}_intake.pdf`, content: toB64(bytes), kind: "intake_pdf" });
-    } catch (e: any) { /* skip a failed artifact rather than blocking the whole send */ }
+    } catch (e: any) { intakePdfFailed = e?.message || "intake PDF failed to build"; }
   }
   if (cfg.attach_intake_csv === true && bundle) {
     try {
@@ -121,9 +131,13 @@ export async function deliverLeadToFirm(opts: {
   let dsCertMissing = false;
   let dsPacketShort = false;
   if (wantRetainer || wantCert) {
-    const { data: dsRows } = await admin.from("esign_submissions")
-      .select("id, submission_id, template_key, completed_pdf_path, cert_pdf_path, status, doc_count")
+    const { data: dsAll } = await admin.from("esign_submissions")
+      .select("id, submission_id, template_key, campaign_id, completed_pdf_path, cert_pdf_path, status, doc_count")
       .eq("lead_id", opts.leadId).eq("status", "completed").order("created_at");
+    // THIS campaign's signings, plus legacy rows with no campaign recorded.
+    // A sibling matter's agreement belongs to its own delivery, never this
+    // one's packet (Astra round 5).
+    const dsRows = (dsAll ?? []).filter((d: any) => !d.campaign_id || !campaignId || d.campaign_id === campaignId);
     for (const d of dsRows ?? []) {
       if (wantRetainer && !d.completed_pdf_path) {
         // A completed signing with no stored primary is an incomplete packet,
@@ -131,17 +145,31 @@ export async function deliverLeadToFirm(opts: {
         dsPacketShort = true;
       } else if (wantRetainer && d.completed_pdf_path) {
         try {
-          // The whole packet: the primary signed PDF plus any -2, -3 extras
-          // stored for this submission, checked against the manifest.
+          // The whole packet against an ESTABLISHED manifest. An unknown or
+          // zero count is "packet not yet verified", never "one PDF": rows
+          // from before the doc_count column get their true size from
+          // DocuSeal here, and if that cannot be established the send
+          // refuses (Astra round 5).
           const firmFolder = String(d.completed_pdf_path).split("/")[0];
-          const paths = await listSubmissionDocs(admin, firmFolder, String(d.submission_id));
-          const all = paths.length ? paths : [d.completed_pdf_path];
-          if (d.doc_count != null && all.length < d.doc_count) dsPacketShort = true;
-          let n = 0;
-          for (const path of all) {
-            const buf = await downloadSignedDoc(admin, path);
-            if (buf) { n++; attachments.push({ filename: `${nameBase}_retainer_signed${n > 1 ? `_${n}` : ""}.pdf`, content: toB64(buf), kind: "retainer" }); }
-            else { dsPacketShort = true; console.error(`firm delivery: DocuSeal signed PDF missing at ${path} for ${d.id}`); }
+          const count = await establishDocCount(admin, d);
+          if (count == null) {
+            dsPacketShort = true;
+            console.error(`firm delivery: packet size unknown for ${d.id} and DocuSeal could not confirm it`);
+          } else {
+            // Exact expected names, in order: a stray -99 never stands in
+            // for a missing -2 (Astra round 5).
+            const stored = await listSubmissionDocs(admin, firmFolder, String(d.submission_id));
+            let n = 0;
+            for (const path of expectedPacketPaths(firmFolder, String(d.submission_id), count)) {
+              if (!stored.includes(path)) {
+                dsPacketShort = true;
+                console.error(`firm delivery: DocuSeal signed PDF missing at ${path} for ${d.id}`);
+                continue;
+              }
+              const buf = await downloadSignedDoc(admin, path);
+              if (buf) { n++; attachments.push({ filename: `${nameBase}_retainer_signed${n > 1 ? `_${n}` : ""}.pdf`, content: toB64(buf), kind: "retainer" }); }
+              else { dsPacketShort = true; console.error(`firm delivery: DocuSeal signed PDF unreadable at ${path} for ${d.id}`); }
+            }
           }
         } catch (e: any) { dsPacketShort = true; console.error(`firm delivery: DocuSeal signed PDF failed for ${d.id}: ${e?.message ?? e}`); }
       }
@@ -229,6 +257,17 @@ export async function deliverLeadToFirm(opts: {
   }
   if (wantRetainer && dsPacketShort) {
     const msg = "the signed packet is not complete in storage yet (a required PDF is missing); open the file's agreement screen to recover it, then send again. Nothing was emailed";
+    await admin.from("firm_deliveries").insert({
+      lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
+      to_email: to, cc_email: cc.join(", ") || null, subject,
+      attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
+      ok: false, error: msg, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
+    });
+    await admin.from("leads").update({ firm_send_result: `error: ${msg}` }).eq("id", opts.leadId);
+    return { ok: false, error: msg, to };
+  }
+  if (intakePdfFailed) {
+    const msg = `the intake PDF this campaign attaches could not be built (${intakePdfFailed}); nothing was emailed`;
     await admin.from("firm_deliveries").insert({
       lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
       to_email: to, cc_email: cc.join(", ") || null, subject,

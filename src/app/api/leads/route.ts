@@ -117,10 +117,15 @@ export async function POST(req: NextRequest) {
     // Blank fields arrive as "" — turn them into NULL so a date/number/uuid
     // column can't reject the entire update and silently drop every change.
     const leadPatch = nullifyEmpty(lead ?? {});
-    // Authorization and verification facts never ride in on a generic form
-    // save; they have their own commands (Astra round 4).
+    // Authorization, verification and WORKFLOW facts never ride in on a
+    // generic form save; they have their own commands (Astra rounds 4-5:
+    // status/stage/QA flags were an alternate write path around the status
+    // setter's gates and audit).
     for (const k of ["grievous_approved", "grievous_approved_at", "firm_sent_at", "firm_send_result",
-      "archived_at", "archived_by", "firm_id", "campaign_id", "campaign", "lead_no", "created_by", "signed_at"]) delete leadPatch[k];
+      "archived_at", "archived_by", "firm_id", "campaign_id", "campaign", "lead_no", "created_by", "signed_at",
+      "status", "stage", "qa_pending", "wip_pending", "qa_entered_at", "qa_draft",
+      "dq_reason_key", "dq_reason", "qualification", "esign_sent_at", "esign_date",
+      "first_dialed_at", "first_opened_at", "first_opened_by", "signed_notified_at"]) delete leadPatch[k];
 
     const { error: leadErr } = await sb.from("leads").update(leadPatch).eq("id", lead_id);
     if (leadErr) {
@@ -153,24 +158,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fire outbound webhook on a status change so firms stay in sync.
-    if (lead && lead.status) {
-      try {
-        const { fireEvent } = await import("@/lib/webhook-deliver");
-        const { data: row } = await sb.from("leads").select("firm_id, campaign_id, lead_no, external_id, status, first_name, last_name, claimant_name, phone, email, dob, mail_address1, mail_city, mail_state, mail_zip, case_type, signed_at").eq("id", lead_id).maybeSingle();
-        if (row?.firm_id) {
-          const evt = lead.status === "signed" ? "lead.signed" : lead.status === "dq" ? "lead.dq" : lead.status === "qualified" ? "lead.qualified" : "lead.updated";
-          // The intake answers travel with the event so a receiver's field map
-          // can name individual questions, not just the contact record. Without
-          // this there is nothing per-question to map.
-          const { data: claim } = await sb.from("claims")
-            .select("answers, claim_type, campaign").eq("lead_id", lead_id)
-            .order("created_at", { ascending: true }).limit(1).maybeSingle();
-          await fireEvent(row.firm_id, evt, { lead_id, ...row, campaign: claim?.campaign ?? null },
-            { campaignId: row.campaign_id ?? null, answers: (claim?.answers ?? {}) as any });
-        }
-      } catch {}
-    }
+    // Status no longer rides on a generic save (stripped above), so the
+    // status webhook fires from the central status setter, where every
+    // status change actually happens.
 
     if (Array.isArray(properties)) {
       // Properties live in ONE place: claim_properties on the lead's claim,
@@ -178,8 +168,16 @@ export async function POST(req: NextRequest) {
       // here wrote to a lead_properties table that does not exist, so this
       // path had been failing with a 500 since it was written (Astra round 4,
       // live-confirmed: no such table).
-      const { data: claimRow } = await sb.from("claims").select("id, firm_id").eq("lead_id", lead_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (!claimRow) return NextResponse.json({ error: "This file has no claim to hold the properties. Open the file and add its claim first." }, { status: 400 });
+      // The TARGET claim is explicit: a named claim must belong to this lead,
+      // and a lead with several claims must name one — "the newest" was
+      // sending an older matter's properties onto a different claim
+      // (Astra round 5).
+      const { data: claimRows } = await sb.from("claims").select("id, firm_id, created_at").eq("lead_id", lead_id).order("created_at", { ascending: false });
+      const claims = claimRows ?? [];
+      if (!claims.length) return NextResponse.json({ error: "This file has no claim to hold the properties. Open the file and add its claim first." }, { status: 400 });
+      let claimRow = payload.claim_id ? claims.find((c: any) => c.id === payload.claim_id) : (claims.length === 1 ? claims[0] : null);
+      if (payload.claim_id && !claimRow) return NextResponse.json({ error: "That claim is not on this file. Refresh and try again." }, { status: 400 });
+      if (!claimRow) return NextResponse.json({ error: "This file has more than one claim. Say which claim these properties belong to (claim_id)." }, { status: 400 });
       const rows = properties.map((p: any, i: number) => {
         const clean: Record<string, any> = {};
         for (const k of Object.keys(p)) { const c = coercePropCol(k, p[k]); if (c !== undefined) clean[k] = c; }

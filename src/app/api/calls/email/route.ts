@@ -48,11 +48,18 @@ export async function POST(req: NextRequest) {
     const a = await signedPdfAttachment(supabaseAdmin(), sub.completed_pdf_path, `${report.name} agreement`);
     if (a.file) attachments.push(a.file); else attachError = a.error || "";
   }
+  // This is the case SUMMARY export: the report plus the primary signed
+  // agreement when attached. It is NOT the verified full packet — that goes
+  // through firm delivery, which checks every packet PDF and the certificate.
+  // The email says which one it is so nobody mistakes it (Astra round 5).
+  const scopeNote = attachments.length > 0
+    ? "This email carries the case summary and the primary signed agreement only. The firm's complete verified packet (all packet PDFs and the signing certificate) goes out through firm delivery."
+    : "This email carries the case summary only, no signed documents.";
   const r = await sendEmail({
     to,
-    subject: `Case: ${report.name}${lead.lead_no ? `, ${lead.lead_no}` : ""}`,
-    html: caseReportHtml(report, { link, note: `Sent by ${me.name || "ClaimReach"}.`, attached: attachments.length > 0 }),
-    text: caseReportText(report, link),
+    subject: `Case summary: ${report.name}${lead.lead_no ? `, ${lead.lead_no}` : ""}`,
+    html: caseReportHtml(report, { link, note: `Sent by ${me.name || "ClaimReach"}. ${scopeNote}`, attached: attachments.length > 0 }),
+    text: `${scopeNote}\n\n` + caseReportText(report, link),
     attachments,
   });
   if (!r.ok) return NextResponse.json({ error: r.error || "The email did not send." }, { status: 502 });
