@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { signedStatusKeys } from "@/lib/statuses";
 
 // Reporting surface — breakdowns by status, type, stage, campaign, tier, plus
 // a time series. Exportable to CSV. scope distinguishes firm vs staff copy.
@@ -38,16 +39,11 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
     }
     const total = cl.length;
     const qualified = byStatus["qualified"] ?? 0;
-    // Canonical signed: any status the status table itself marks as an e-sign
-    // status past the pre-signature phase (covers signed_*, delivered/retained
-    // style custom statuses, and the legacy plain "signed"). Falls back to the
-    // signed_* name family when the flags are not loaded.
-    const signedKeys = new Set(
-      statuses.some((s: any) => s.requires_esign !== undefined)
-        ? statuses.filter((s: any) => s.requires_esign === true && s.phase && s.phase !== "pre_qa" && s.key !== "esign_sent").map((s: any) => s.key)
-        : Object.keys(byStatus).filter((k) => k === "signed" || k.startsWith("signed_"))
-    );
-    if (!signedKeys.size) Object.keys(byStatus).forEach((k) => { if (k === "signed" || k.startsWith("signed_")) signedKeys.add(k); });
+    // The ONE signed-status definition lives in statuses.ts
+    // (signedStatusKeys): table flags plus Delivered/Retained plus the
+    // signed_* family. Never a local rule here.
+    const signedKeys = signedStatusKeys(statuses as any);
+    Object.keys(byStatus).forEach((k) => { if (k === "signed" || k.startsWith("signed_")) signedKeys.add(k); });
     const signed = Object.entries(byStatus).reduce((n, [k, v]) => (signedKeys.has(k) ? n + (v as number) : n), 0);
     const convRate = total ? Math.round(((qualified + signed) / total) * 100) : 0;
     return { total, qualified, signed, convRate, byStatus, byType, byCampaign, byTier };

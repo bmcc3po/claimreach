@@ -240,7 +240,7 @@ function Retainer({ v }: { v: any }) {
       </div>
       <div className="ch-q">
         <div className="ch-q-h"><span className="ch-q-l">Social Security number</span></div>
-        <SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} />
+        <SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} />
       </div>
       <div className="ch-q ch-wide">
         {v.agreementOpen && (

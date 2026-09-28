@@ -118,6 +118,7 @@ export async function deliverLeadToFirm(opts: {
   // DocuSeal signings first (esign_submissions). Legacy SignWell rows in
   // signable_documents still attach below, so historical files keep working —
   // but delivery no longer reads ONLY the legacy store (Astra audit, Sep 27).
+  let dsCertMissing = false;
   if (wantRetainer || wantCert) {
     const { data: dsRows } = await admin.from("esign_submissions")
       .select("id, submission_id, template_key, completed_pdf_path, cert_pdf_path, status")
@@ -142,7 +143,12 @@ export async function deliverLeadToFirm(opts: {
         try {
           const buf = await downloadSignedDoc(admin, d.cert_pdf_path);
           if (buf) attachments.push({ filename: `${nameBase}_signing_certificate.pdf`, content: toB64(buf), kind: "certificate" });
-        } catch (e: any) { console.error(`firm delivery: DocuSeal certificate failed for ${d.id}: ${e?.message ?? e}`); }
+          else dsCertMissing = true;
+        } catch (e: any) { dsCertMissing = true; console.error(`firm delivery: DocuSeal certificate failed for ${d.id}: ${e?.message ?? e}`); }
+      } else if (wantCert && d.completed_pdf_path && !d.cert_pdf_path) {
+        // Completed signing with no stored certificate: the packet is not
+        // whole yet (Astra round 3).
+        dsCertMissing = true;
       }
     }
   }
@@ -206,6 +212,17 @@ export async function deliverLeadToFirm(opts: {
   // with no signed retainer in it does not go out (Astra review, Sep 27).
   if (wantRetainer && !attachments.some((a) => a.kind === "retainer")) {
     const msg = "no signed retainer is stored for this file yet; nothing was emailed";
+    await admin.from("firm_deliveries").insert({
+      lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
+      to_email: to, cc_email: cc.join(", ") || null, subject,
+      attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
+      ok: false, error: msg, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
+    });
+    await admin.from("leads").update({ firm_send_result: `error: ${msg}` }).eq("id", opts.leadId);
+    return { ok: false, error: msg, to };
+  }
+  if (wantCert && dsCertMissing) {
+    const msg = "the signing certificate has not stored yet; open the file's agreement screen to recover it, then send again. Nothing was emailed";
     await admin.from("firm_deliveries").insert({
       lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
       to_email: to, cc_email: cc.join(", ") || null, subject,

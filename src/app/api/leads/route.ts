@@ -80,9 +80,10 @@ export async function POST(req: NextRequest) {
       if (cErr) {
         // Never hand back a healthy-looking lead with no claim: archive the
         // half-made record (delete means archive, migration 0066) and say so.
-        await sb.from("leads").update({ archived_at: new Date().toISOString(), archived_for: "claim create failed" }).eq("id", data.id);
+        const { error: archErr } = await sb.from("leads").update({ archived_at: new Date().toISOString(), archived_by: u.uid }).eq("id", data.id);
+        if (archErr) console.error("archive of half-created lead failed", archErr.message);
         try { const { recordAudit } = await import("@/lib/audit"); await recordAudit({ firm_id, lead_id: data.id, category: "system", description: `Lead archived at birth: its claim row failed twice (${cErr.message}).` }); } catch {}
-        return NextResponse.json({ error: `The file did not finish creating (${cErr.message}). Nothing usable was saved; add the lead again.` }, { status: 500 });
+        return NextResponse.json({ error: `The file did not finish creating (${cErr.message}). The half-made lead was archived; add the lead again.`, archived_lead_id: data.id }, { status: 500 });
       }
     }
     // claim any orphaned calls/SMS that arrived before this file existed
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
     // Campaign is the spine: update the lead and its claim so intake/retainer/e-sign
     // all follow the new campaign.
     await sb.from("leads").update({ campaign_id: camp.id, campaign: camp.name, firm_id: camp.firm_id }).eq("id", lead_id);
-    await sb.from("claims").update({ campaign: camp.name, claim_type: camp.case_type }).eq("lead_id", lead_id);
+    await sb.from("claims").update({ campaign: camp.name, campaign_id: camp.id, claim_type: camp.case_type }).eq("lead_id", lead_id);
     try {
       const { recordAudit } = await import("@/lib/audit");
       await recordAudit({ firm_id: camp.firm_id, lead_id, actor: u.id, actor_name: u.full_name, category: "lead", description: `Changed campaign to "${camp.name}".` });

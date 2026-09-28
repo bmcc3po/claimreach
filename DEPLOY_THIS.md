@@ -1,3 +1,43 @@
+# ClaimReach deploy: Astra round-3 repairs
+
+One zip, on top of PR #33 (deaf575). Astra's third review was verified finding by finding against the code and the live database; everything real is fixed here, and the database-side repairs are already applied and probe-verified.
+
+## Confirmed and fixed in this zip
+
+- **Primary buttons were transparent** (browser-confirmed by Astra): the new green action color collided with the pre-existing --cl-pop popover-shadow token. Renamed to --cl-act; a browser check now asserts the computed background is green.
+- **Storage keys are authorized on their canonical form.** The document guard (applied live, migration 0103) refuses traversal, doubled or leading slashes, backslashes, percent-encoding and control characters; the documents API refuses to sign any non-canonical key and derives upload paths from the LEAD's firm, not the operator's, cleaning up orphan bytes if the metadata insert is refused. Probe-verified live: traversal and percent keys refused, clean keys accepted.
+- **Property saves are one database transaction** (replace_claim_properties, applied live). Two overlapping saves can no longer interleave into zero properties; probe-verified that the later full set survives.
+- **Guided intake's final answer no longer vanishes**: finishing saves the freshest pending snapshot, not the render's stale copy.
+- **A call cannot end over unsaved answers**: the dispo save now requires the answers save to succeed and says plainly when it hasn't.
+- **Certificate-only recovery actually lands**: each missing file gets its own guarded write, and the audit line only claims what really recovered.
+- **A packet configured to carry the signing certificate does not send without it**; the refusal is logged like the retainer refusal, with a plain recovery hint.
+- **Inactive managers are locked out of user management** (the route had its own gate that ignored active), and Deactivate/Reactivate in the UI no longer report success on a failed write.
+- **The half-created-lead cleanup wrote to a column that does not exist** (archived_for) — the recurring phantom-column bug, live-confirmed. It now archives with real columns and returns the archived id.
+- **Signed has ONE definition** (statuses.ts signedStatusKeys): table flags plus Delivered and Retained plus the signed_* family. Reports uses it.
+- **Grievous button in the Retainer tab read a field the API never returns**; it now reads the real response.
+- **Today/Yesterday pin the calendar date at the moment of the tap**, so a tab open across midnight cannot drift the crash date.
+- **SSN keeps an explicit stored mode** (full vs last-4) instead of guessing from digit count.
+- **Campaign changes re-spine claims completely** (campaign_id included).
+- **Intake save retries re-check the fresh status**, so a retry can no longer reset an advanced file to Contacting.
+- Remaining anon EXECUTE grants stripped (trigger guards, norm_phone) — measured three functions, not ten, but all revoked.
+
+## Disputed or accepted as designed
+
+- Per-field last-writer-wins on merged answers stands (the revision check prevents whole-record loss; a per-field CRDT is out of scope pre-launch).
+- The SSN full-requirement is enforced fail-closed server-side at completion; the screen hint defaulting off during a config blip does not bypass it.
+- Internal roles seeing all firms remains Brett's pending access-matrix decision, not a defect.
+- Motel-on-DocuSeal still needs Brett's retainer PDFs; packetsFor stays TMP-MVA-only until then.
+
+## SQL: nothing for you to run
+
+Migration 0103 is applied and probe-verified. RUN_THESE_MIGRATIONS.sql is the record.
+
+## Your steps after the upload deploys
+
+Unchanged from last round: retry the Cloudflare deployment so the live DOCUSEAL_API_KEY serves (the 8:24 PM signing was still on the test account), send one fresh test agreement for me to confirm from the database, and flip leaked-password protection in Supabase Auth. The webhook you fixed is confirmed working.
+
+---
+
 # ClaimReach deploy: audit repairs + clean ending flow + one product
 
 One zip, on top of what's live (PR #31). Upload it the usual way. It holds three blocks, all tested together: the Astra audit repairs (both rounds), the clean call-ending flow, and the UI consolidation you asked for. Verified on a clean copy of live main: type check clean, 43 engine tests pass, Cloudflare build prints 190 routes and Build completed.

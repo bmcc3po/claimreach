@@ -63,16 +63,23 @@ export function fmtSsnDigits(raw: string): string {
   return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
 }
 
-export function SsnField({ value, onChange, requireFull, cls = "cc" }: {
+export function SsnField({ value, onChange, requireFull, cls = "cc", storedMode, onMode }: {
   value: string; onChange: (v: string) => void;
   /** The campaign's firm requires all 9 digits: the last-4 choice is not offered. */
   requireFull?: boolean;
   cls?: "cc" | "ch";
+  /** The persisted representation mode, when the file carries one. */
+  storedMode?: "full" | "last4" | null;
+  onMode?: (m: "full" | "last4") => void;
 }) {
   const digits = String(value || "").replace(/\D/g, "");
   // Last-4 mode survives a remount: a stored 1-4 digit value IS a last-4 entry,
   // so it must not reappear as a half-typed full SSN (Astra review, Sep 27).
-  const [last4, setLast4] = useState(() => digits.length > 0 && digits.length <= 4);
+  // The stored mode wins when the file carries one; digit-count stays only
+  // as the legacy fallback for files saved before the mode existed.
+  const [last4Guess, setLast4Guess] = useState(() => digits.length > 0 && digits.length <= 4);
+  const last4 = storedMode ? storedMode === "last4" : last4Guess;
+  const setLast4 = (v: boolean) => { setLast4Guess(v); onMode?.(v ? "last4" : "full"); };
   const mode = requireFull ? "full" : last4 ? "last4" : "full";
   const chip = (on: boolean) => (cls === "ch" ? `ch-btn ch-sm ${on ? "" : "ch-line"}` : `cc-chip cc-sm${on ? " cc-on" : ""}`);
   const note = cls === "ch" ? "ch-note" : "cc-cue";

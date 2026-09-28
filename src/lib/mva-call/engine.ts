@@ -168,6 +168,12 @@ function daysWord(n: number) { return n === 1 ? '1 day' : n + ' days'; }
 // preview all read it.
 export function crashIsoOf(st: any): string {
   if (!st) return '';
+  // A date pinned at pick time wins: an open tab crossing midnight must not
+  // drift the crash day (Astra round 3).
+  if ((st.when === 'Today' || st.when === 'Yesterday') && st.date) {
+    var pinned = dayNo(st.date);
+    if (pinned != null && pinned >= dayNo('1990-01-01') && pinned <= todayNo()) return st.date;
+  }
   if (st.when === 'Today') return isoFromNo(todayNo());
   if (st.when === 'Yesterday') return isoFromNo(todayNo() - 1);
   if (st.when === 'Pick a date') {
@@ -281,7 +287,7 @@ export class CallEngine {
       body: { pain: [], seen: [], providers: [], done: {}, last: null, firstAt: null, lastAt: null, stretch: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
       car: { justMe: false, people: [] },
       send: { via: 'Text', status: this.props.esign.status || 'ready', client: this.props.callerName || '', phone: this.props.callerPhone || '', email: this.props.callerEmail || '', error: '', who: 'Same as signer', injured: '' },
-      file: { step: 'agreement', dob: '', ssn: '', agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
+      file: { step: 'agreement', dob: '', ssn: '', ssnMode: null, agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
     };
     if (saved && typeof saved === 'object') {
       ['phase', 'free', 'bare', 'visited'].forEach((k) => { if (saved[k] != null) s[k] = saved[k]; });
@@ -334,6 +340,11 @@ export class CallEngine {
   set(group: any, key: any, val: any) {
     var g = Object.assign({}, this.state[group]);
     g[key] = val;
+    // Picking Today/Yesterday freezes the actual calendar date right now.
+    if (group === 'story' && key === 'when') {
+      if (val === 'Today') g.date = isoFromNo(todayNo());
+      else if (val === 'Yesterday') g.date = isoFromNo(todayNo() - 1);
+    }
     var patch = {};
     patch[group] = g;
     this.setState(patch);
@@ -1544,7 +1555,7 @@ export class CallEngine {
     var f = {};
     ['date', 'city', 'text', 'seatOther'].forEach((k) => { f[k] = this.field('story', k); });
     ['client', 'injured', 'email', 'phone'].forEach((k) => { f[k] = this.field('send', k); });
-    ['dob', 'ssn', 'addr', 'dl', 'ecName', 'ecPhone', 'carrier', 'report', 'vYear', 'vMake', 'vModel'].forEach((k) => { f[k] = this.field('file', k); });
+    ['dob', 'ssn', 'ssnMode', 'addr', 'dl', 'ecName', 'ecPhone', 'carrier', 'report', 'vYear', 'vMake', 'vModel'].forEach((k) => { f[k] = this.field('file', k); });
 
     var out: any = {
       callerName: this.props.callerName || 'New caller',

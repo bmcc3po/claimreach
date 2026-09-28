@@ -61,6 +61,11 @@ export default function LeadWorkspace({
   lastComm?: { channel?: string; direction?: string; occurred_at?: string; outcome?: string; body?: string; agent_name?: string } | null;
 }) {
   const [showOldForm, setShowOldForm] = useState(false);
+  // The freshest saved values for this file in THIS session. A tab that
+  // unmounts and comes back re-initializes from here, not from the stale
+  // server props, so an edit cannot resurrect old values (Astra round 3).
+  const [leadLive, setLeadLive] = useState<any>(lead);
+  const liveUp = (patch: Record<string, any>) => setLeadLive((s: any) => ({ ...s, ...patch }));
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
   );
@@ -184,10 +189,10 @@ export default function LeadWorkspace({
             {tab === "Case Questions" && !activeClaim && (
               <p className="muted">No intake on this file yet.</p>
             )}
-            {tab === "Contact Info" && <ContactInfo lead={lead} claimType={activeClaim?.claim_type} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} points={points} />}
+            {tab === "Contact Info" && <ContactInfo lead={leadLive} claimType={activeClaim?.claim_type} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} points={points} onSaved={liveUp} />}
             {tab === "Case Details" && (
               <>
-                <CaseDetails lead={lead} staff={staff} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} />
+                <CaseDetails lead={leadLive} staff={staff} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} onSaved={liveUp} />
                 <CaseDocuments leadId={lead.id} claimId={activeClaim?.id} />
               </>
             )}

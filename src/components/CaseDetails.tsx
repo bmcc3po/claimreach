@@ -4,7 +4,7 @@ import { fileMaySeeMoney, type FileFence } from "@/lib/file-fence";
 
 // Case-management layer: routing/people, content, dates, tags, events. Separate
 // from the intake questionnaire. Saves to the leads row + case_events.
-export default function CaseDetails({ lead, staff = [], editMode = true, onRequestEdit, fence }: { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void; fence?: FileFence }) {
+export default function CaseDetails({ lead, staff = [], editMode = true, onRequestEdit, fence, onSaved }: { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void; fence?: FileFence; onSaved?: (patch: Record<string, any>) => void }) {
   const [f, setF] = useState<any>({
     marketing_source: lead.marketing_source ?? "",
     referring_attorney: lead.referring_attorney ?? "",
@@ -63,6 +63,7 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
     const d = await r.json().catch(() => ({}));
     setSaving(false);
     setMsg(r.ok ? "Saved." : `Save failed: ${d.error || r.status}`);
+    if (r.ok) onSaved?.({ ...payload, case_tags: payload.case_tags });
   }
 
   async function addEvent() {

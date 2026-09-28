@@ -123,3 +123,21 @@ export function isSignedStatus(key: string | null | undefined): boolean {
   if (k.startsWith("signed_")) return true;
   return k === "delivered" || k === "retained";
 }
+
+// The one definition of "this status means the file carries a signature".
+// From the status table's own flags (an e-sign status past the pre-signature
+// phase), plus the post-QA outcomes a signed file lands in (Delivered,
+// Retained), plus the signed_* name family as the fallback when flags are
+// not loaded. Reports and any future counter read THIS, never a local rule
+// (Astra round 3: a local predicate dropped Delivered/Retained).
+export function signedStatusKeys(statuses: { key: string; phase?: string | null; requires_esign?: boolean | null }[]): Set<string> {
+  const keys = new Set<string>();
+  for (const s of statuses ?? []) {
+    if (s.requires_esign === true && s.phase && s.phase !== "pre_qa") keys.add(s.key);
+    if (s.key === "signed" || s.key.startsWith("signed_")) keys.add(s.key);
+    if (s.key === "delivered" || s.key === "retained") keys.add(s.key);
+  }
+  keys.delete("esign_sent");
+  return keys;
+}
+

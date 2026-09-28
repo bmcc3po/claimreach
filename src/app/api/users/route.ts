@@ -5,8 +5,10 @@ export const runtime = "edge";
 async function requireManager(sb: any) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return { error: "unauthorized", status: 401 };
-  const { data: me } = await sb.from("app_users").select("role, perm_overrides, firm_id").eq("id", auth.user.id).maybeSingle();
-  const canManage = me && (["owner", "admin"].includes(me.role) || me.perm_overrides?.["users.manage"]);
+  const { data: me } = await sb.from("app_users").select("role, perm_overrides, firm_id, active").eq("id", auth.user.id).maybeSingle();
+  // A deactivated account manages nobody, even with a still-valid session
+  // (Astra round 3: this route had its own gate that ignored active).
+  const canManage = me && me.active !== false && (["owner", "admin"].includes(me.role) || me.perm_overrides?.["users.manage"]);
   if (!canManage) return { error: "forbidden", status: 403 };
   return { me, uid: auth.user.id };
 }
