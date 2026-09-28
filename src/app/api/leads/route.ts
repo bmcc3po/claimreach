@@ -81,7 +81,10 @@ export async function POST(req: NextRequest) {
         // Never hand back a healthy-looking lead with no claim: archive the
         // half-made record (delete means archive, migration 0066) and say so.
         const { error: archErr } = await sb.from("leads").update({ archived_at: new Date().toISOString(), archived_by: u.uid }).eq("id", data.id);
-        if (archErr) console.error("archive of half-created lead failed", archErr.message);
+        if (archErr) {
+          console.error("archive of half-created lead failed", archErr.message);
+          return NextResponse.json({ error: `The file did not finish creating (${cErr.message}) AND the half-made lead could not be archived (${archErr.message}). Lead ${data.lead_no ?? data.id} is still visible; archive it by hand, then add the lead again.`, archived_lead_id: data.id, archive_failed: true }, { status: 500 });
+        }
         try { const { recordAudit } = await import("@/lib/audit"); await recordAudit({ firm_id, lead_id: data.id, category: "system", description: `Lead archived at birth: its claim row failed twice (${cErr.message}).` }); } catch {}
         return NextResponse.json({ error: `The file did not finish creating (${cErr.message}). The half-made lead was archived; add the lead again.`, archived_lead_id: data.id }, { status: 500 });
       }

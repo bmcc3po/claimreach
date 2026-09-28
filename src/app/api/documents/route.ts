@@ -30,7 +30,7 @@ function canonicalKeyFor(row: { firm_id?: string | null; lead_id?: string | null
 // separators, no dot-leading tricks.
 function safeFileName(name: string): string {
   const base = String(name || "file").split(/[\\/]/).pop() || "file";
-  const cleaned = base.replace(/[^A-Za-z0-9._ ()-]/g, "_").replace(/^\.+/, "");
+  const cleaned = base.replace(/[^A-Za-z0-9._ ()-]/g, "_").replace(/\.{2,}/g, ".").replace(/^\.+/, "");
   return (cleaned || "file").slice(0, 140);
 }
 

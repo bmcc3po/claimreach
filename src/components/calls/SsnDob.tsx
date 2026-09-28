@@ -81,6 +81,9 @@ export function SsnField({ value, onChange, requireFull, cls = "cc", storedMode,
   const last4 = storedMode ? storedMode === "last4" : last4Guess;
   const setLast4 = (v: boolean) => { setLast4Guess(v); onMode?.(v ? "last4" : "full"); };
   const mode = requireFull ? "full" : last4 ? "last4" : "full";
+  // First keystroke pins the mode the agent is typing in (Astra round-3
+  // review: an interrupted full SSN could remount as Last 4).
+  const pinMode = () => { if (!storedMode) onMode?.(mode === "last4" ? "last4" : "full"); };
   const chip = (on: boolean) => (cls === "ch" ? `ch-btn ch-sm ${on ? "" : "ch-line"}` : `cc-chip cc-sm${on ? " cc-on" : ""}`);
   const note = cls === "ch" ? "ch-note" : "cc-cue";
   const prints = mode === "last4"
@@ -100,12 +103,12 @@ export function SsnField({ value, onChange, requireFull, cls = "cc", storedMode,
         <span className="sd-mask" aria-hidden="true">XXX-XX-</span>
         <input className={cls === "ch" ? "ch-in sd-l4-in" : "cc-field sd-l4-in"} type="text" inputMode="numeric" autoComplete="off"
           placeholder="1234" maxLength={4} aria-label="Last 4 of the Social Security number"
-          value={digits.slice(0, 4)} onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+          value={digits.slice(0, 4)} onChange={(e) => { pinMode(); onChange(e.target.value.replace(/\D/g, "").slice(0, 4)); }} />
       </div>
     ) : (
       <input className={cls === "ch" ? "ch-in" : "cc-field"} type="text" inputMode="numeric" autoComplete="off"
         placeholder="###-##-####" maxLength={11} aria-label="Social Security number"
-        value={fmtSsnDigits(digits)} onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+        value={fmtSsnDigits(digits)} onChange={(e) => { pinMode(); onChange(e.target.value.replace(/\D/g, "").slice(0, 9)); }} />
     )}
     {!!prints && <div className={`${note} sd-good`}>Prints on the HIPAA pages as {prints}.</div>}
     {requireFull && digits.length > 0 && digits.length < 9 && (

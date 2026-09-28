@@ -1,3 +1,41 @@
+# ClaimReach deploy: rounds 3, 4 and 5 in one zip
+
+On top of merged main (a887ce6). Round 5 answers Astra's review of the round-3 file; rounds 3 and 4 ride along unchanged. This zip replaces every earlier one, and PR #35 should be updated with these files.
+
+## Round 5: Astra's round-3 review, verified and fixed
+
+- **Its P1 on the crash date was right, and it was my regression.** The pin-at-pick fix patched one handler while the guided rows use another, so switching a picked calendar date to "Today" could keep the OLD date and send it into the agreement. Every handler that touches the when-answer now runs the same date rule (Today/Yesterday pin the real calendar date at that moment; clearing the answer clears the date), and a new engine test drives the exact reproduction. 44 engine tests pass.
+- **Property replacement is now serialized per claim**, not just transactional: a per-claim advisory lock means two overlapping saves queue instead of both inserting into an empty set, and the function refuses a claim the caller cannot see. Applied live and probed (0106).
+- **The packet has a real manifest.** doc_count is stamped when a signing completes; recovery retries until every expected PDF and the certificate are stored (missing secondaries included, each with its own guarded write); delivery refuses a packet that is shorter than its manifest or a completed signing with no stored primary.
+- **The anon EXECUTE revokes were ineffective — Astra verified it and was right.** PUBLIC's implicit grant survived the earlier per-role revokes, and 0103's create-or-replace had re-applied default grants. 0106 revokes PUBLIC and grants back exactly what each function needs; verified with has_function_privilege: anon has NO effective EXECUTE on any guard or helper, authenticated keeps the RLS helpers, and an active agent's access is unchanged.
+- **The contact cache follows server refreshes** and the Overview reads the same live copy, so panels agree; editors still keep their own state while mounted, so typing is never reset.
+- **SSN mode pins on the first keystroke**, so four typed digits of a full SSN can never remount as Last 4.
+- **One signed definition for staff AND firm reports**: signedStatusKeys now seeds Delivered/Retained/signed constants and builds on isSignedStatus, so the firm report (which has no status catalog) counts the same files as yours.
+- **Archive-failure honesty**: if the half-made lead cannot be archived, the response says so and names the lead, instead of claiming it was archived.
+- **"medical..pdf" style names** no longer produce a storage key the guard refuses after upload (dots collapse in the safe name).
+
+## Round 4 (also in this zip)
+
+QA routing restricted to QA roles with a records-verified e-sign gate; claim-scoped status changes; credentials tables locked to owner/admin at the database (0104); Lexamica send gated; case email requires the export permission; deactivated accounts locked out of the e-sign route; bulk move-firm owner/admin and moves claims; the legacy property save rerouted off a nonexistent table; authorization columns stripped from generic saves; My Work scoped to you; truthful signing-email marker; failed full Grievous review clears stale approval; honest Delivery Board refresh; SLA firm-without-mapping sees nothing. Plus speed to lead: first-dial (JustCall webhook) and first-open clocks per lead, reported per campaign in Reports (0105).
+
+## Round 3 (also in this zip)
+
+Canonical storage keys (0103), guided final answer, dispo save gating, certificate-only recovery, cert-required delivery refusal, inactive user managers, phantom archive column, Reports signed definition, Grievous response contract, explicit SSN mode, campaign re-spine, the transparent-button token fix.
+
+## SQL: nothing for you to run
+
+0103, 0104, 0105, 0106 all applied and probe-verified. RUN_THESE_MIGRATIONS.sql is the record.
+
+## Still open by design (the continuing backlog, from Astra's full audit)
+
+Automations/drips stay dormant until their runner and STOP gates are rebuilt; the in-house signer's full emergency hardening (frozen evidence, replay guards, linked re-sign) is the next block; inbound phone attribution; per-claim campaign-change atomicity; the unified design concept is post-launch; internal case visibility across firms is your access-matrix decision; Motel DocuSeal awaits your PDFs.
+
+## Your steps after the upload deploys
+
+Unchanged: Cloudflare Retry deployment for the live DOCUSEAL_API_KEY, one fresh test agreement, the Supabase leaked-password toggle.
+
+---
+
 # ClaimReach deploy: Astra rounds 3 + 4
 
 One zip, on top of merged main (a887ce6, PR #33 + your continuity files). It carries BOTH repair rounds: round 3 (Astra's review of the one-product zip) and round 4 (Astra's full-site admin audit). Upload this one; it replaces the round-3 zip.

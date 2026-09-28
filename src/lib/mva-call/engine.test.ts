@@ -675,4 +675,24 @@ t("conversation: when every question is answered, the way on is How we work", ()
   assert.equal(e.renderVals().oneQ, false);
 });
 
+
+t("crash date: every WHEN handler pins the real calendar date", () => {
+  const e = mk();
+  const md = (iso: string) => { const [y, m, d] = iso.split("-"); return `${m}/${d}/${y}`; };
+  // A picked calendar date, then Today via the row handler: Today must win.
+  e.storyPick("when", "Pick a date");
+  e.storyDate(isoAgo(9));
+  assert.equal(doiOf(e.state.story), md(isoAgo(9)));
+  e.storyPick("when", "Today");
+  assert.equal(e.state.story.date, isoAgo(0), "storyPick(Today) pins today's date");
+  assert.equal(doiOf(e.state.story), md(isoAgo(0)));
+  // The set() path pins too.
+  e.set("story", "when", "Yesterday");
+  assert.equal(e.state.story.date, isoAgo(1), "set(Yesterday) pins yesterday's date");
+  // Toggling the answer off clears the date entirely.
+  e.storyPick("when", "Yesterday");
+  assert.equal(e.state.story.when, null);
+  assert.equal(doiOf(e.state.story), "");
+});
+
 console.log(passed, "passed");

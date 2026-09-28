@@ -131,11 +131,13 @@ export function isSignedStatus(key: string | null | undefined): boolean {
 // not loaded. Reports and any future counter read THIS, never a local rule
 // (Astra round 3: a local predicate dropped Delivered/Retained).
 export function signedStatusKeys(statuses: { key: string; phase?: string | null; requires_esign?: boolean | null }[]): Set<string> {
-  const keys = new Set<string>();
+  // Seeded from isSignedStatus's constant family so a caller with no status
+  // catalog (the firm report) still counts Delivered and Retained, then
+  // widened by the table's own e-sign flags.
+  const keys = new Set<string>(["signed", "delivered", "retained"]);
   for (const s of statuses ?? []) {
     if (s.requires_esign === true && s.phase && s.phase !== "pre_qa") keys.add(s.key);
-    if (s.key === "signed" || s.key.startsWith("signed_")) keys.add(s.key);
-    if (s.key === "delivered" || s.key === "retained") keys.add(s.key);
+    if (isSignedStatus(s.key)) keys.add(s.key);
   }
   keys.delete("esign_sent");
   return keys;

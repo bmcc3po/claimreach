@@ -166,6 +166,16 @@ function daysWord(n: number) { return n === 1 ? '1 day' : n + ' days'; }
 // The date of the wreck from Story, "2026-09-14", or '' when there is none yet.
 // One definition: the days-ago math, the agreement's on/around blank and the
 // preview all read it.
+// THE date rule, applied wherever story.when changes: Today/Yesterday pin
+// the actual calendar date at that moment; Pick a date keeps the picked one;
+// clearing the answer clears the date so nothing stale survives.
+export function normalizeWhen(st: any): any {
+  if (st.when === 'Today') st.date = isoFromNo(todayNo());
+  else if (st.when === 'Yesterday') st.date = isoFromNo(todayNo() - 1);
+  else if (st.when == null) st.date = '';
+  return st;
+}
+
 export function crashIsoOf(st: any): string {
   if (!st) return '';
   // A date pinned at pick time wins: an open tab crossing midnight must not
@@ -340,11 +350,8 @@ export class CallEngine {
   set(group: any, key: any, val: any) {
     var g = Object.assign({}, this.state[group]);
     g[key] = val;
-    // Picking Today/Yesterday freezes the actual calendar date right now.
-    if (group === 'story' && key === 'when') {
-      if (val === 'Today') g.date = isoFromNo(todayNo());
-      else if (val === 'Yesterday') g.date = isoFromNo(todayNo() - 1);
-    }
+    // Every path that changes WHEN goes through the same date rule.
+    if (group === 'story' && key === 'when') g = normalizeWhen(g);
     var patch = {};
     patch[group] = g;
     this.setState(patch);
@@ -710,6 +717,11 @@ export class CallEngine {
   storyPick(key: any, val: any) {
     var st = Object.assign({}, this.state.story);
     st[key] = st[key] === val ? null : val;
+    // Every path that changes WHEN goes through the same date rule, so a
+    // previously picked calendar date can never survive a switch to
+    // Today/Yesterday (Astra round-3 review: the pin-at-pick fix missed this
+    // handler and made the stale date authoritative).
+    if (key === 'when') st = normalizeWhen(st);
     var stay = (key === 'seat' && st.seat === 'Other') || (key === 'when' && st.when === 'Pick a date' && this.storyDateOk(st.date) == null);
     this.setState({ story: st, storyOpen: stay ? key : null });
   }
@@ -1101,8 +1113,8 @@ export class CallEngine {
         var iso = crashIsoOf(st);
         var picked = iso ? dayNo(iso) : null;
         var opts = [
-          chip('Today', st.when === 'Today', () => { this.setState({ story: Object.assign({}, this.state.story, { when: 'Today', date: '' }) }); this.setFi({ whenPick: false }); this.fiAfter('when'); }),
-          chip('Yesterday', st.when === 'Yesterday', () => { this.setState({ story: Object.assign({}, this.state.story, { when: 'Yesterday', date: '' }) }); this.setFi({ whenPick: false }); this.fiAfter('when'); }),
+          chip('Today', st.when === 'Today', () => { this.setState({ story: normalizeWhen(Object.assign({}, this.state.story, { when: 'Today' })) }); this.setFi({ whenPick: false }); this.fiAfter('when'); }),
+          chip('Yesterday', st.when === 'Yesterday', () => { this.setState({ story: normalizeWhen(Object.assign({}, this.state.story, { when: 'Yesterday' })) }); this.setFi({ whenPick: false }); this.fiAfter('when'); }),
         ];
         for (var d = 2; d <= 6; d++) {
           ((n) => {

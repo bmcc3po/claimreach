@@ -119,25 +119,31 @@ export async function deliverLeadToFirm(opts: {
   // signable_documents still attach below, so historical files keep working —
   // but delivery no longer reads ONLY the legacy store (Astra audit, Sep 27).
   let dsCertMissing = false;
+  let dsPacketShort = false;
   if (wantRetainer || wantCert) {
     const { data: dsRows } = await admin.from("esign_submissions")
-      .select("id, submission_id, template_key, completed_pdf_path, cert_pdf_path, status")
+      .select("id, submission_id, template_key, completed_pdf_path, cert_pdf_path, status, doc_count")
       .eq("lead_id", opts.leadId).eq("status", "completed").order("created_at");
     for (const d of dsRows ?? []) {
-      if (wantRetainer && d.completed_pdf_path) {
+      if (wantRetainer && !d.completed_pdf_path) {
+        // A completed signing with no stored primary is an incomplete packet,
+        // not a row to skip quietly (Astra round-3 review).
+        dsPacketShort = true;
+      } else if (wantRetainer && d.completed_pdf_path) {
         try {
           // The whole packet: the primary signed PDF plus any -2, -3 extras
-          // stored for this submission (Astra review: extras were dropped).
+          // stored for this submission, checked against the manifest.
           const firmFolder = String(d.completed_pdf_path).split("/")[0];
           const paths = await listSubmissionDocs(admin, firmFolder, String(d.submission_id));
           const all = paths.length ? paths : [d.completed_pdf_path];
+          if (d.doc_count != null && all.length < d.doc_count) dsPacketShort = true;
           let n = 0;
           for (const path of all) {
             const buf = await downloadSignedDoc(admin, path);
             if (buf) { n++; attachments.push({ filename: `${nameBase}_retainer_signed${n > 1 ? `_${n}` : ""}.pdf`, content: toB64(buf), kind: "retainer" }); }
-            else console.error(`firm delivery: DocuSeal signed PDF missing at ${path} for ${d.id}`);
+            else { dsPacketShort = true; console.error(`firm delivery: DocuSeal signed PDF missing at ${path} for ${d.id}`); }
           }
-        } catch (e: any) { console.error(`firm delivery: DocuSeal signed PDF failed for ${d.id}: ${e?.message ?? e}`); }
+        } catch (e: any) { dsPacketShort = true; console.error(`firm delivery: DocuSeal signed PDF failed for ${d.id}: ${e?.message ?? e}`); }
       }
       if (wantCert && d.cert_pdf_path) {
         try {
@@ -212,6 +218,17 @@ export async function deliverLeadToFirm(opts: {
   // with no signed retainer in it does not go out (Astra review, Sep 27).
   if (wantRetainer && !attachments.some((a) => a.kind === "retainer")) {
     const msg = "no signed retainer is stored for this file yet; nothing was emailed";
+    await admin.from("firm_deliveries").insert({
+      lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
+      to_email: to, cc_email: cc.join(", ") || null, subject,
+      attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
+      ok: false, error: msg, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
+    });
+    await admin.from("leads").update({ firm_send_result: `error: ${msg}` }).eq("id", opts.leadId);
+    return { ok: false, error: msg, to };
+  }
+  if (wantRetainer && dsPacketShort) {
+    const msg = "the signed packet is not complete in storage yet (a required PDF is missing); open the file's agreement screen to recover it, then send again. Nothing was emailed";
     await admin.from("firm_deliveries").insert({
       lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
       to_email: to, cc_email: cc.join(", ") || null, subject,
