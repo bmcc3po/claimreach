@@ -1,38 +1,48 @@
-# ClaimReach deploy: Astra audit repairs, round 2
+# ClaimReach deploy: audit repairs + clean ending flow + one product
 
-One zip, on top of what's live. It contains everything from the first repair round plus the fixes from Astra's review of that round. Your steps are at the bottom.
+One zip, on top of what's live (PR #31). Upload it the usual way. It holds three blocks, all tested together: the Astra audit repairs (both rounds), the clean call-ending flow, and the UI consolidation you asked for. Verified on a clean copy of live main: type check clean, 43 engine tests pass, Cloudflare build prints 190 routes and Build completed.
 
-## What Astra's review got right, now fixed
+## The clean ending flow
 
-- **The 0100 Part B trigger really was broken.** Inside a SECURITY DEFINER function, current_user is the function's owner, so my privileged-role exemption fired for everyone and the guard checked nothing. It was never applied, so nothing was ever protected wrongly. The corrected version is migration 0102: it runs as the real caller, and it also blocks self-service INSERT and DELETE on accounts, not just role edits. The old Part B text is marked superseded everywhere.
-- **Deactivation now dies at the database too.** 0102 rewrites the RLS helper functions so active=false means no rows through the Data API, even with a still-valid login token. The app-level check shipped last round. A failed auth-level ban now comes back as a visible warning instead of silence.
-- **Exports are internal staff only**, on top of the Export leads permission, so a firm login given an export override can never pull other firms' files.
-- **Document rows are bound to their stored file.** 0102's case_documents check now also verifies the storage path itself belongs to that firm and lead, not just the labels.
-- **Signed-file recovery now actually runs.** The screen's status check reaches completed agreements too, a missing certificate retries the same as a missing PDF, and the file's history says plainly when the copy has NOT stored yet instead of "Signed copy stored".
-- **Deliveries carry the whole packet.** Extra signed PDFs are found by their stored names and attached, and the no-retainer refusal now holds even on a forced resend. Force only skips the already-sent guard.
-- **Saves are ordered.** A save only lands on the version of the file it merged against; a save from another screen re-reads and re-merges instead of overwriting. Overlapping property saves converge to one set instead of doubling. Contact Info and Case Details flush their pending save when you switch tabs, same as the intake screens. Guided's "Intake complete" screen waits for the save to land and stays put with the error if it fails.
-- **Property completeness follows the real tier rules** on both surfaces: first four Motel 6 properties take the full battery, a 5th+ Motel 6 is name-only, non-Motel-6 takes the abbreviated set. The counter and the section badges use the same rules.
-- **"Open the file" after a dispo goes to the classic case page** (it was bouncing straight back to the call). "Full site" from a call file now opens that file, not the dashboard.
-- **The moving incident date is fixed at the root.** "Today" and "Yesterday" now save as the actual calendar date, so a file reopened tomorrow keeps the real crash day.
-- **Lead creation can't half-succeed.** If the claim row fails twice, the half-made lead is archived and the screen says to add it again. Case type must match the campaign.
-- **The Signed report number uses the status table's own definition** of a signed status (covers custom statuses like Delivered/Retained), not a name prefix.
-- **SSN last-4 mode survives a remount**, and an unreadable campaign SSN rule now fails closed with "try again" instead of quietly acting like the rule is off.
+One straight line, one button at a time, no guessing what's next:
 
-## What Astra flagged that stays open, and why
+- She signs while you're on the send screen → the button becomes **Next: Finish the agreement**.
+- The file steps walk **Agreement → Her info → Crash** (passengers when there are any) → **Next: Close the call**.
+- Close shows the goodbye script and one green **Finish the call** button.
+- The dispo screen ends with **Save the call**. The chore list's last button says **Finish the call** too.
 
-- **DocuSeal for Motel and the other case types.** Still needs each case type's retainer PDFs and field positions from you, same as we built for TMP MVA. That is the one launch gate I cannot build from here.
-- **One shell for CRM, calls and the board; Contact Info and Case Details redesign.** Next block, after you review this round. You also have unsent notes on the ending flow.
-- **Cross-role negative tests, an outage drill, a backup restore drill.** Operational; needs you present.
-- **Grievous "wrote a result while displaying a false failure".** Still not reproduced from the code; needs your screen.
+## One product
+
+- **The file's front door is decluttered.** Overview shows only what the file actually has: one facts panel (a row per real fact, no "No calls yet" boxes), six clean action rows with line icons instead of emoji cards, then the injured-party banner and the pipeline. The "File detail" fold bar is gone; its contents live at the bottom of Overview.
+- **No pastels.** Every washed-out tint is gone: status banners, the Qualified bar, chips, badges, the highlighted action card and the script boxes are white with strong borders, or filled solid. Compliance scripts now sit in navy "read verbatim" cards on every intake surface, same as the call console. A picked answer fills solid navy (green check), not a pale wash.
+- **Reports rebuilt** on the site's system: the four counts as one KPI panel, pull-files with its filters in the panel header, and the four breakdowns as clean bar panels. Same numbers, same definitions (Signed still comes from the status table's own flags).
+- **Motel 6 intake and its file folder look like the MVA side now.** The Motel questionnaire (Guided and All sections) wears white cards, navy scripts and blue accents, and the m6 firm file picks up the same file header, tabs and read views as the internal lead file. No wording changed anywhere, on any script.
+- **The colors you actually picked.** The putty gold is gone from the entire product. Vibrant blue is the working accent everywhere (active tabs, selections, section labels, focus rings, the sidebar's active item). Bright green is the pop, reserved for the big actions: New call, Send, the primary buttons, your avatar. Green/amber/red keep their meanings (good, missing, problem) and nothing else wears them. Cream chips on the call screens went light blue.
+- **The lead file** wears the same design as the rest of the site: a calm header (name first, file number beside it, campaign, attorney, opened date and your counts on one quiet line, real buttons on the right), underline tabs that scroll on a phone instead of stacking, and the read views, pipeline strip and edit toggle retuned to match. Same file for the firm view, nothing moved.
+- **Contact Info** drops the open text boxes: state, preferred language, preferred time, preferred contact method and time zone are dropdowns now. Anything already typed the old way still shows and still saves — picking once cleans it.
+- **Case Details** call outcome joins the option lists (Settings → option lists; free text still allowed until you fill the list).
+- **QA queue and My Queue** rebuilt on the site's tables and tabs.
+- **The Delivery Board** keeps its wall-display scale but wears the product navy, gold and type.
+- Settings and Team pages get the same page headers. The deeper admin screens (Users, Firms, Templates, Integrations) already pick up the new type and lines; their full layouts are the next pass.
+
+## The audit repairs (already written up, still in this zip)
+
+Everything from both Astra rounds: verified-only e-sign webhook, whole-packet firm deliveries that refuse an empty retainer even on force, signed-file recovery that reaches completed rows, ordered saves with revision checks and unmount flushes, converging property saves, tier-correct completeness counts, honest save errors, internal-only exports, half-created leads cleaned up, DOB/SSN structured fields with last-4 masking and the per-campaign full-SSN rule, "Open the file" going to the real case page.
+
+## SQL: nothing for you to run
+
+0100 Part A, 0101 (both parts) and 0102 are **already applied to the live database and verified** — I applied them at your direction and probed them with a simulated agent login: editing your own name works, giving yourself owner is blocked, a deactivated login gets zero rows from the database itself, active agents unchanged. RUN_THESE_MIGRATIONS.sql is the record, not a to-do.
 
 ## Your steps after the upload deploys
 
-1. Fix the DocuSeal webhook (still rejecting with 401 every few minutes): in DocuSeal with test mode OFF, set the webhook URL to `https://claimreach.com/api/esign/docuseal?key=` plus your DOCUSEAL_WEBHOOK_SECRET, and tick form.viewed, form.completed, form.declined, submission.completed.
-2. If you added the live DOCUSEAL_API_KEY after 5:48 PM, retry the latest Cloudflare deployment, then send one test agreement. I'll confirm it hit the live account.
-3. Run migration **0101 Part B** and migration **0102** from RUN_THESE_MIGRATIONS.sql (bottom of the file). Do NOT run the old 0100 Part B block; it's marked superseded in the file.
-4. Supabase dashboard, Auth: turn on leaked-password protection (one toggle, no SQL).
-5. Send me the Motel retainer packet PDFs and I'll build Motel on DocuSeal.
+1. **DocuSeal webhook** (still 401ing every few minutes): in DocuSeal with test mode OFF, set the webhook URL to `https://claimreach.com/api/esign/docuseal?key=` plus your DOCUSEAL_WEBHOOK_SECRET, tick form.viewed, form.completed, form.declined, submission.completed. Tell me when saved and I'll confirm the 401s stop.
+2. **Retry the Cloudflare deployment** so the live DOCUSEAL_API_KEY you added is actually in the running build, then send one test agreement. I'll confirm from the database that it hit the live DocuSeal account, not the test one.
+3. Supabase dashboard → Auth: turn on **leaked-password protection** (one toggle).
+4. Send me the **Motel retainer packet PDFs** and I'll build Motel on DocuSeal.
 
-## Already live (applied directly, disclosed as it happened)
+## Still open, on purpose
 
-The three exposed views are locked to the server. Signed-out visitors can no longer execute any privileged database function. campaigns.ssn_require_full exists and defaults to off.
+- Full restyle of Users, Firms, Templates, Integrations internals — next pass.
+- Roles / who-sees-what (your remote agent) — designed, waiting on your go-ahead.
+- Cross-role negative tests, outage and backup drills — need you present.
+- Grievous false-failure display — still not reproduced; needs your screen.

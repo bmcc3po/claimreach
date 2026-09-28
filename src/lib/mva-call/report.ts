@@ -186,7 +186,7 @@ ${r.summary.map((p) => `<p style="margin:0 0 8px;font-size:14.5px;line-height:1.
 ${sections}
 <h3 style="margin:22px 0 8px;font-size:15px;color:${navy}">Agreement</h3>
 <div style="border:1px solid ${line};border-radius:10px;padding:10px 12px;font-size:14px">${esc(r.agreement.line)}${opts.attached ? `<br><span style="color:${sub};font-size:13px">The signed agreement is attached. It has the client's date of birth and SSN on it, so keep it inside the firm.</span>` : ""}</div>
-<p style="margin:20px 0 0"><a href="${esc(opts.link)}" style="display:inline-block;background:#D9982A;color:#0E1A2C;font-weight:700;text-decoration:none;padding:11px 18px;border-radius:10px">Open the file in ClaimReach</a></p>
+<p style="margin:20px 0 0"><a href="${esc(opts.link)}" style="display:inline-block;background:#22C55E;color:#06290F;font-weight:700;text-decoration:none;padding:11px 18px;border-radius:10px">Open the file in ClaimReach</a></p>
 </div>`;
 }
 

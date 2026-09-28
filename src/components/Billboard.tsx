@@ -54,7 +54,7 @@ export default function Billboard() {
       <header className="bb-head">
         <div className="bb-brand">
           <span className="bb-live"><span className="bb-live-dot" /> LIVE</span>
-          <h1>Delivery Board</h1>
+          <h1>Delivery <b>Board</b></h1>
           <p>Every signed file, every e-sign, on the clock. Nothing hides.</p>
         </div>
         <div className="bb-stamp">{new Date().toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
@@ -123,11 +123,15 @@ function Column({ title, subtitle, rows, empty }: { title: string; subtitle: str
 }
 
 const css = `
-.bb-root { --ink:#0b0f17; --panel:#111725; --line:rgba(255,255,255,.07); --mut:rgba(255,255,255,.5);
-  min-height:100vh; background:radial-gradient(120% 80% at 50% -10%, #16203a 0%, #0b0f17 55%); color:#fff;
-  padding:28px 32px 40px; font-feature-settings:"tnum"; }
+.bb-root { --ink:#0A1524; --panel:#13233A; --line:rgba(255,255,255,.07); --mut:rgba(226,233,242,.55);
+  min-height:100vh; background:radial-gradient(120% 80% at 50% -10%, #16324F 0%, #0A1524 55%); color:#fff;
+  padding:28px 32px 40px; font-feature-settings:"tnum";
+  font-family:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  margin:-26px -28px -64px; }
+@media (max-width:900px){ .bb-root{ margin:-18px -14px -90px; } }
 .bb-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
-.bb-brand h1 { font-size:34px; font-weight:800; letter-spacing:-.02em; margin:6px 0 4px; }
+.bb-brand h1 { font-size:34px; font-weight:750; letter-spacing:-.025em; margin:6px 0 4px; }
+.bb-brand h1 b { color:#4ADE80; font-weight:750; }
 .bb-brand p { color:var(--mut); font-size:14px; margin:0; }
 .bb-live { display:inline-flex; align-items:center; gap:7px; font-size:11px; font-weight:700; letter-spacing:.14em;
   color:#4ade80; }
@@ -137,16 +141,16 @@ const css = `
 .bb-stamp { color:var(--mut); font-size:13px; font-variant-numeric:tabular-nums; padding-top:6px; }
 
 .bb-stats { display:flex; align-items:stretch; gap:14px; margin-bottom:26px; flex-wrap:wrap; }
-.bb-stat { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px 22px; min-width:150px; }
+.bb-stat { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 22px; min-width:150px; }
 .bb-stat.big { min-width:180px; }
-.bb-stat-n { font-size:44px; font-weight:800; line-height:1; letter-spacing:-.03em; }
+.bb-stat-n { font-size:44px; font-weight:750; line-height:1; letter-spacing:-.035em; font-variant-numeric:tabular-nums; }
 .bb-stat.big .bb-stat-n { font-size:56px; }
 .bb-stat-l { color:var(--mut); font-size:12.5px; margin-top:8px; font-weight:500; }
 .bb-stat-div { width:1px; background:var(--line); margin:4px 6px; }
 
 .bb-cols { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 @media (max-width:900px){ .bb-cols{ grid-template-columns:1fr; } .bb-brand h1{ font-size:26px; } }
-.bb-col { background:rgba(17,23,37,.6); border:1px solid var(--line); border-radius:18px; padding:18px; }
+.bb-col { background:rgba(19,35,58,.55); border:1px solid var(--line); border-radius:12px; padding:18px; }
 .bb-col-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; padding:0 4px; }
 .bb-col-head h2 { font-size:16px; font-weight:700; margin:0; }
 .bb-col-head span { color:var(--mut); font-size:12px; }

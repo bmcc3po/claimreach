@@ -312,9 +312,9 @@ export default function ClaimIntake({
         <span className="intake-remaining" title={`${completion.answered} of ${completion.total} answered`} style={{
           display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 700,
           padding: "4px 12px", borderRadius: 999, whiteSpace: "nowrap",
-          background: completion.remaining === 0 ? "rgba(34,197,94,.12)" : "rgba(217,152,42,.12)",
+          background: "#FFFFFF",
           color: completion.remaining === 0 ? "#15803d" : "#a16207",
-          border: `1px solid ${completion.remaining === 0 ? "rgba(34,197,94,.35)" : "rgba(217,152,42,.35)"}`,
+          border: `1.5px solid ${completion.remaining === 0 ? "#15803D" : "#E3A008"}`,
         }}>
           {completion.remaining === 0
             ? <>✓ All {completion.total} answered</>

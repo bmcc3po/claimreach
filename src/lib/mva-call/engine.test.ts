@@ -161,7 +161,7 @@ t("dispo: call back needs a reason and a time", () => {
   assert.equal(v.dispo.saveLabel, "Pick a time");
   v.dispo.when.find((w: any) => w.label === "Tonight").pick();
   v = e.renderVals();
-  assert.equal(v.dispo.saveLabel, "Save dispo");
+  assert.equal(v.dispo.saveLabel, "Save the call");
   assert.deepEqual(e.state.dispo.why, ["driving"]);
   v.dispo.save();
   assert.equal(calls.at(-1), "saveDispo");
@@ -545,7 +545,7 @@ t("chorelist: FINISH INTAKE says what is not finished, then ends the call", () =
   chOf(e).finish.go();
   assert.equal(e.state.dispo.open, false);
   assert.ok(chOf(e).finish.ask);
-  assert.ok(/^Not finished yet: 1\. Incident, .*7\. Retainer\. Press Finish intake again/.test(chOf(e).finish.askText), chOf(e).finish.askText);
+  assert.ok(/^Not finished yet: 1\. Incident, .*7\. Retainer\. Press Finish the call again/.test(chOf(e).finish.askText), chOf(e).finish.askText);
   chOf(e).finish.go();
   assert.equal(e.state.dispo.open, true);
 });

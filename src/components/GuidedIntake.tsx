@@ -572,8 +572,10 @@ const CSS = `
 .gx-vital { margin-left:9px; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
   background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; padding:3px 8px; border-radius:999px; vertical-align:middle; }
 
-.gx-say { border-left:4px solid #0f1a2a; background:#f6f8fb; padding:10px 14px; border-radius:0 8px 8px 0; margin:0 0 14px; }
+.gx-say { background:#14305C; padding:12px 16px; border-radius:12px; margin:0 0 14px; }
 .gx-cap { font-size:11px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:var(--ink-faint); }
+.gx-say .gx-cap { color:#9CC3F0; }
+.gx-say .gx-txt { color:#FFFFFF; }
 .gx-txt { font-size:16px; margin-top:4px; line-height:1.5; color:#0d1420; font-weight:600; }
 .gx-note { font-size:13px; color:var(--ink-soft); font-style:italic; margin:8px 0 0; line-height:1.5; }
 
@@ -581,10 +583,10 @@ const CSS = `
 .gx-opt { display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--surface);
   border:1.5px solid var(--line); border-radius:10px; padding:14px 16px; font-size:15.5px; cursor:pointer;
   transition:border-color .1s, background .1s; color:var(--ink); }
-.gx-opt:hover { border-color:#1d4ed8; background:#f5f9ff; }
-.gx-opt.sel { border-color:#1d4ed8; background:#eef5ff; }
+.gx-opt:hover { border-color:#1d4ed8; }
+.gx-opt.sel { border-color:#14305C; background:#14305C; color:#FFFFFF; }
 .gx-k { width:22px; height:22px; border-radius:6px; border:1.5px solid #c3ccd6; flex:0 0 auto; }
-.gx-opt.sel .gx-k { background:#1d4ed8; border-color:#1d4ed8; }
+.gx-opt.sel .gx-k { background:#22C55E; border-color:#22C55E; }
 .gx-lab { font-weight:600; }
 
 .gx-in { width:100%; font-family:inherit; font-size:15px; padding:11px 12px; border:1.5px solid var(--line);

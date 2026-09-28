@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { fieldVisible, contactFieldsForType } from "@/lib/questionnaire";
+import { fieldVisible, contactFieldsForType, US_STATES } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PhoneInput, { formatUsPhone } from "./PhoneInput";
 
@@ -239,17 +239,17 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       <div className="field"><label style={{ fontSize: 13 }}>Address</label><input value={x.mail_addr1} onChange={(e) => setx("mail_addr1", e.target.value)} /></div>
       <div className="grid2">
         <div className="field"><label style={{ fontSize: 13 }}>City</label><input value={x.mail_city} onChange={(e) => setx("mail_city", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>State</label><input value={x.mail_state} onChange={(e) => setx("mail_state", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>State</label><PickOrKeep value={x.mail_state} onChange={(v) => setx("mail_state", v)} options={US_STATES} /></div>
         <div className="field"><label style={{ fontSize: 13 }}>ZIP</label><input value={x.mail_zip} onChange={(e) => setx("mail_zip", e.target.value)} /></div>
         <div className="field"><label style={{ fontSize: 13 }}>Date of birth</label><input type="date" value={x.dob ?? ""} onChange={(e) => setx("dob", e.target.value)} /></div>
       </div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Contact Preferences</div>
       <div className="grid2">
-        <div className="field"><label style={{ fontSize: 13 }}>Preferred language</label><input value={x.preferred_language} onChange={(e) => setx("preferred_language", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Preferred time</label><input value={x.preferred_time} onChange={(e) => setx("preferred_time", e.target.value)} placeholder="e.g. mornings, after 5pm" /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Preferred contact method</label><input value={x.preferred_contact_method} onChange={(e) => setx("preferred_contact_method", e.target.value)} placeholder="Phone / Text / Email" /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Client time zone</label><input value={x.client_time_zone} onChange={(e) => setx("client_time_zone", e.target.value)} placeholder="e.g. PT, ET" /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred language</label><PickOrKeep value={x.preferred_language} onChange={(v) => setx("preferred_language", v)} options={["English", "Spanish", "Other"]} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred time</label><PickOrKeep value={x.preferred_time} onChange={(v) => setx("preferred_time", v)} options={["Morning", "Afternoon", "Evening", "Any time"]} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred contact method</label><PickOrKeep value={x.preferred_contact_method} onChange={(v) => setx("preferred_contact_method", v)} options={["Phone", "Text", "Email"]} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Client time zone</label><PickOrKeep value={x.client_time_zone} onChange={(v) => setx("client_time_zone", v)} options={["Eastern", "Central", "Mountain", "Pacific", "Alaska", "Hawaii"]} /></div>
       </div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Emergency Contact</div>
@@ -273,6 +273,20 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
           : <span className="muted" style={{ fontSize: 12 }}>{saving ? "Saving…" : "Changes save automatically."}</span>}
       </div>
     </div>
+  );
+}
+
+// A dropdown that never loses data: whatever is already stored shows as a
+// choice even when it is not on the list (old free-typed values keep working),
+// and picking writes the clean option. Dropdowns over free text, everywhere.
+function PickOrKeep({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) {
+  const v = String(value ?? "");
+  return (
+    <select value={v} onChange={(e) => onChange(e.target.value)}>
+      <option value="">—</option>
+      {v && !options.includes(v) && <option value={v}>{v}</option>}
+      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+    </select>
   );
 }
 

@@ -5,7 +5,7 @@ const FIELD_TYPES = [
   { key: "signature", label: "Signature", color: "#2f6df6" },
   { key: "initials", label: "Initials", color: "#7c4dff" },
   { key: "date", label: "Date", color: "#1f9d68" },
-  { key: "text", label: "Text", color: "#d9982a" },
+  { key: "text", label: "Text", color: "#7c3aed" },
   { key: "checkbox", label: "Checkbox", color: "#e0533d" },
 ];
 type Role = "client" | "agent";

@@ -908,7 +908,7 @@ const CSS = `
 .ic-spoken p { margin:6px 0 0; font-size:19px; line-height:1.5; font-weight:600; color:#0d1420; }
 .ic-spoken.sm p { font-size:16px; font-weight:500; }
 
-.ic-note { border-left:4px solid #d9982a; background:#fff8ec; border-radius:0 10px 10px 0; padding:11px 14px; margin:12px 0; }
+.ic-note { border-left:4px solid #2563eb; background:#ffffff; box-shadow:inset 0 0 0 1px #E3E6EB; border-radius:0 10px 10px 0; padding:11px 14px; margin:12px 0; }
 .ic-note.hard { border-left-color:#dc2626; background:#fef2f2; }
 .ic-note.tell { border-left-color:#7c3aed; background:#f5f3ff; }
 .ic-note-tag { font-size:9.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:#a16207; }

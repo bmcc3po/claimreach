@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 
-const COLORS = ["#16324f", "#d9982a", "#2f8a52", "#c0392f", "#6d4aff", "#0891b2", "#c2540c"];
+const COLORS = ["#16324f", "#2563eb", "#2f8a52", "#c0392f", "#6d4aff", "#0891b2", "#c2540c"];
 
 export default function ProfileEditor({ me, email }: { me: any; email: string }) {
   const [f, setF] = useState({

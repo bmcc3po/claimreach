@@ -207,13 +207,13 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   // ---- BOARD lanes ----
   const laneDefs = useMemo(() => {
     if (groupBy === "status") return [
-      { key: "pre_qa", label: "Intake", tone: "#d9982a" },
+      { key: "pre_qa", label: "Intake", tone: "#2563eb" },
       { key: "in_qa", label: "In QA", tone: "#0891b2" },
       { key: "post_qa", label: "Approved / Firm", tone: "#2f8a52" },
       { key: "terminal", label: "Closed", tone: "#c0392f" },
     ];
     if (groupBy === "stage") return STAGES.map((s) => ({ key: s, label: STAGE_LABELS[s] ?? s, tone: "#16324f" }));
-    return ["A", "B", "C", "D", "E", "F", "untiered"].map((t) => ({ key: t, label: t === "untiered" ? "Untiered" : `Tier ${t}`, tone: "#d9982a" }));
+    return ["A", "B", "C", "D", "E", "F", "untiered"].map((t) => ({ key: t, label: t === "untiered" ? "Untiered" : `Tier ${t}`, tone: "#2563eb" }));
   }, [groupBy]);
 
   function laneOf(r: any) {

@@ -1300,7 +1300,7 @@ export class CallEngine {
         nextText: nowI >= 0 ? 'Next section: ' + rows[nowI].label : 'Every section is finished.',
         finish: {
           ask: !!fi.finishAsk && unfinished.length > 0,
-          askText: 'Not finished yet: ' + unfinished.join(', ') + '. Press Finish intake again to end the call anyway.',
+          askText: 'Not finished yet: ' + unfinished.join(', ') + '. Press Finish the call again to end it anyway.',
           go: () => {
             if (unfinished.length && !this.state.fi.finishAsk) return this.setFi({ finishAsk: true });
             this.setFi({ finishAsk: false });
@@ -1475,7 +1475,7 @@ export class CallEngine {
       return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][t.getDay()] + ' ' + (t.getMonth() + 1) + '/' + t.getDate() + ' at ' + ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' AM' : ' PM');
     })();
     var whenText = d.when === 'Pick a time' ? atText : d.when;
-    var saveLabel = !dd ? 'Pick how it ended' : (needWhy && !d.why.length) ? 'Pick a reason' : (dd.needWhen && !whenText) ? 'Pick a time' : 'Save dispo';
+    var saveLabel = !dd ? 'Pick how it ended' : (needWhy && !d.why.length) ? 'Pick a reason' : (dd.needWhen && !whenText) ? 'Pick a time' : 'Save the call';
     var emailed = d.notify.filter((n) => n.on).map((n) => n.who);
     var dispoSummary = dd ? [{ k: 'Dispo', v: dd.label }] : [];
     if (d.why.length) dispoSummary.push({ k: 'Why', v: d.why.map((k: string) => ((dd && dd.why ? dd.why : []).find((r: any) => r.key === k) || { label: k }).label).join(', ') });
@@ -1526,16 +1526,16 @@ export class CallEngine {
       // Freestyle: the one button is always the thing that matters most, the agreement.
       if (s.send.status === 'ready') next = sendNext;
       else if (s.send.status !== 'signed') next = { label: 'Waiting for her signature', disabled: true, go: () => {} };
-      else next = { label: s.saved ? 'Saved. Call ended.' : 'End call and save', disabled: s.saved, go: () => this.openDispo() };
+      else next = { label: s.saved ? 'Saved. Call ended.' : 'Finish the call', disabled: s.saved, finish: true, go: () => this.openDispo() };
     } else if (P === 'send') {
       if (s.send.status === 'ready') next = sendNext;
       else if (s.send.status !== 'signed') next = { label: 'Waiting for her signature', disabled: true, go: () => {} };
-      else next = { label: 'Collect the file', disabled: false, go: () => this.go('file') };
+      else next = { label: 'Next: Finish the agreement', disabled: false, go: () => this.go('file') };
     } else if (P === 'file') {
       if (fIdx < fileSteps.length - 1) next = { label: 'Next: ' + fileSteps[fIdx + 1][1], disabled: false, go: () => this.set('file', 'step', fileSteps[fIdx + 1][0]) };
-      else next = { label: 'Next: Close', disabled: false, go: () => this.go('close') };
+      else next = { label: 'Next: Close the call', disabled: false, go: () => this.go('close') };
     } else if (P === 'close') {
-      next = { label: s.saved ? 'Saved. Call ended.' : 'End call and save', disabled: s.saved, go: () => this.openDispo() };
+      next = { label: s.saved ? 'Saved. Call ended.' : 'Finish the call', disabled: s.saved, finish: true, go: () => this.openDispo() };
     } else {
       var np = phases[idx + 1];
       next = { label: P === 'open' ? "She's talking: Story" : 'Next: ' + names[np], disabled: false, go: () => this.go(np) };
@@ -1789,7 +1789,7 @@ export class CallEngine {
           this.setState({ dispo: Object.assign({}, dd2, { add: '', notify: dd2.notify.concat([{ who: em, how: 'Added on this call', on: true }]) }) });
         },
         note: this.field('dispo', 'note'),
-        cantSave: saveLabel !== 'Save dispo' || !!d.saving, saveLabel: d.saving ? 'Saving' : saveLabel,
+        cantSave: saveLabel !== 'Save the call' || !!d.saving, saveLabel: d.saving ? 'Saving' : saveLabel,
         save: () => this.api.saveDispo(),
         saving: !!d.saving, error: d.error || '', hasError: !!d.error,
         edit: () => this.set('dispo', 'saved', false),
