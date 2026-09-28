@@ -57,6 +57,9 @@ a.cc-menu-b{text-decoration:none;color:#16324F;font-weight:500}
 .cc-field:focus{box-shadow:0 0 0 2px rgba(37,99,235,0.45)}
 .cc-area{min-height:72px;width:100%;box-sizing:border-box;border-radius:12px;border:none;background:#FFFFFF;padding:12px 14px;font-size:17px;font-family:inherit;color:#0D1420;resize:none;outline:none}
 .cc-area:focus{box-shadow:0 0 0 2px rgba(37,99,235,0.45)}
+/* Pain notes: opens under the injury boxes the moment one is checked. */
+.cc-qnote{display:grid;gap:6px;margin:8px 0 2px}
+.cc-qnote .cc-area{min-height:64px;box-shadow:0 0 0 1px #D1D1D6;resize:vertical}
 .cc-need{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border:1.5px solid #E3A008;border-radius:12px}
 .cc-need-k{font-size:13px;font-weight:500;color:#A15C07}
 .cc-need-l{font-size:17px;font-weight:600;line-height:1.3;color:#0D1420}
@@ -922,6 +925,11 @@ html.cc-kb .cc-compose{padding-bottom:8px}
 .ws-src{font-size:14px;color:var(--fi-ink);line-height:1.4}
 .ws-tags{font-size:13.5px;color:var(--fi-sub);line-height:1.45}
 .ws-said{font-size:13.5px;color:var(--fi-ink);line-height:1.5;background:#F5F8FD;border-radius:10px;padding:10px 12px}
+/* Linked files on the same wreck (driver + passengers). */
+.ws-linkfile{display:flex;flex-direction:column;gap:1px;padding:8px 12px;border-radius:10px;background:#FFFFFF;box-shadow:0 0 0 1px #D1D1D6;text-decoration:none;margin-bottom:6px}
+.ws-linkfile b{font-size:13.5px;color:#0D1420}
+.ws-linkfile span{font-size:12px;color:#5B6472}
+.ws-linkfile:hover{box-shadow:0 0 0 2px #2563EB}
 .ws-link{align-self:flex-start;border:none;background:transparent;color:var(--fi-blue);font:inherit;font-size:13.5px;font-weight:600;padding:2px 0;cursor:pointer;text-align:left}
 .ws-lights{display:flex;flex-direction:column}
 .ws-light{display:flex;align-items:center;gap:9px;min-height:30px;font-size:14px;color:var(--fi-ink)}
@@ -1713,3 +1721,51 @@ div.ws-row{cursor:default}
 .sd-l4{display:flex;align-items:center;gap:8px}
 .sd-mask{font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-size:16px;font-weight:700;color:#5F6F87;letter-spacing:0.06em;flex-shrink:0}
 .sd-l4-in{max-width:130px}
+/* A missing agreement item is a tap target that lands where it gets typed. */
+.cc-chk-go{background:none;border:none;padding:0;font:inherit;text-align:right;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+/* File sub-steps: numbered, current filled, done checked. */
+.cc-fsteps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.cc-fsteps .cc-fstep{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:12px;background:#FFFFFF;box-shadow:0 0 0 1px #D1D1D6;border:none;font:inherit;font-size:15px;font-weight:600;color:#0D1420;cursor:pointer}
+.cc-fsteps .cc-fstep i{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;background:#Eef2F8;color:#42526B;font-style:normal;font-size:13px;font-weight:700}
+.cc-fsteps .cc-fstep.on{background:#14305C;color:#FFFFFF;box-shadow:none}
+.cc-fsteps .cc-fstep.on i{background:#FFFFFF;color:#14305C}
+.cc-fsteps .cc-fstep.done i{background:#22C55E;color:#06290F}
+
+/* ---- Simple form: the print layout as a working view. Un-fancy on purpose:
+   white page, plain rows, label left, answer right; one column on a phone. */
+.cc-page .sf{max-width:860px;margin:0 auto;padding:4px 0 40px}
+.cc-page .sf-sec{margin:0 0 22px}
+.cc-page .sf-h{font-size:16px;font-weight:700;color:#0D1420;margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid #14305C}
+.cc-page .sf-rows{background:#FFFFFF;border:1px solid #D1D1D6;border-radius:10px;overflow:hidden}
+.cc-page .sf-row{display:grid;grid-template-columns:240px 1fr;gap:14px;align-items:start;padding:11px 14px;border-bottom:1px solid #E8E8ED}
+.cc-page .sf-row:last-child{border-bottom:none}
+.cc-page .sf-row.sf-need .sf-l{color:#8A5A00}
+.cc-page .sf-l{font-size:14px;color:#5B6472;padding-top:7px;line-height:1.35}
+.cc-page .sf-opt{font-size:12px;color:#98A1AE}
+.cc-page .sf-c{min-width:0}
+.cc-page .sf-in{width:100%;box-sizing:border-box;border:1px solid #C8CDD6;border-radius:8px;background:#FFFFFF;padding:8px 10px;font-size:15px;font-family:inherit;color:#0D1420}
+.cc-page .sf-in:focus{outline:none;border-color:#2563EB;box-shadow:0 0 0 2px rgba(37,99,235,0.25)}
+.cc-page .sf-area{resize:vertical;min-height:64px}
+.cc-page .sf-date{max-width:200px}
+.cc-page .sf-chips{display:flex;flex-wrap:wrap;gap:6px}
+.cc-page .sf-chips + .sf-in,.cc-page .sf-chips + .sf-date{margin-top:6px}
+.cc-page .sf-chip{border:1px solid #C8CDD6;background:#FFFFFF;border-radius:999px;padding:6px 12px;font-size:14px;font-family:inherit;color:#0D1420;cursor:pointer}
+.cc-page .sf-chip.sf-on{background:#14305C;border-color:#14305C;color:#FFFFFF;font-weight:600}
+.cc-page .sf-tag{display:inline-flex;align-items:center;gap:6px;border:1px solid #C8CDD6;border-radius:999px;padding:5px 6px 5px 12px;font-size:14px}
+.cc-page .sf-tag button{border:none;background:#EEF2F8;border-radius:999px;width:20px;height:20px;cursor:pointer;font-size:13px;line-height:1}
+.cc-page .sf-addrow{display:flex;gap:6px}
+.cc-page .sf-mini{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#5B6472;margin:8px 0 4px}
+.cc-page .sf-person{border-top:1px dashed #D1D1D6;margin-top:10px;padding-top:10px}
+.cc-page .sf-btn{border:none;border-radius:8px;padding:9px 16px;font-size:14.5px;font-weight:600;font-family:inherit;cursor:pointer;background:#14305C;color:#FFFFFF}
+.cc-page .sf-btn.sf-line{background:#FFFFFF;color:#14305C;border:1px solid #C8CDD6}
+.cc-page .sf-btn.sf-go{background:#22C55E;color:#06290F;width:100%;padding:12px}
+.cc-page .sf-btn:disabled{opacity:.5;cursor:default}
+.cc-page .sf-link{display:inline-block;margin-bottom:8px;color:#1D4FD7;font-weight:600}
+.cc-page .sf-bad{color:#B42318;font-size:13.5px;margin:6px 0}
+.cc-page .sf-steps{display:flex;gap:6px}
+.cc-page .sf-st{flex:1;text-align:center;padding:9px;border-radius:8px;background:#EEF2F8;color:#5B6472;font-size:14px;font-weight:600}
+.cc-page .sf-st-on{background:#22C55E;color:#06290F}
+@media (max-width: 700px){
+  .cc-page .sf-row{grid-template-columns:1fr;gap:4px;padding:10px 12px}
+  .cc-page .sf-l{padding-top:0}
+}

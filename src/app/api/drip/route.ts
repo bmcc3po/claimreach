@@ -82,7 +82,18 @@ export async function POST(req: NextRequest) {
   }
 
   if (p.op === "enroll") {
-    await supabaseAdmin().rpc("enroll_drips_for_lead", { p_lead: p.lead_id, p_firm: me.firm_id });
+    // The enrollment belongs to the TARGET lead: load it, use ITS firm (never
+    // the operator's), and report a real failure instead of a blind ok
+    // (Astra rounds 4-5: caller-supplied identity was forwarded unchecked and
+    // RPC errors were swallowed).
+    const leadId = String(p.lead_id || "");
+    if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
+    const admin = supabaseAdmin();
+    const { data: lead, error: leadErr } = await admin.from("leads").select("id, firm_id").eq("id", leadId).maybeSingle();
+    if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });
+    if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
+    const { error } = await admin.rpc("enroll_drips_for_lead", { p_lead: lead.id, p_firm: lead.firm_id });
+    if (error) return NextResponse.json({ error: `Enrollment failed: ${error.message}` }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
 

@@ -53,7 +53,7 @@ export const DEFAULT_CALL_REASONS: Record<"esign" | "callback" | "ni", Reason[]>
   callback: [
     { key: "at_work", label: "At work" }, { key: "driving", label: "Driving" },
     { key: "spouse", label: "Wants spouse on" }, { key: "bad_connection", label: "Bad connection" },
-    { key: "needs_papers", label: "Needs her papers" }, { key: "other", label: "Other" },
+    { key: "needs_papers", label: "Needs their papers" }, { key: "other", label: "Other" },
   ],
   ni: [
     { key: "no_lawyer", label: "Doesn't want a lawyer" }, { key: "self", label: "Handling it herself" },
@@ -111,7 +111,7 @@ export function validateDispo(raw: any): { ok: true; value: DispoInput } | { ok:
   let cb: string | null = null;
   if (dispo === "callback") {
     const t = raw?.callback_at ? new Date(String(raw.callback_at)) : null;
-    if (!t || isNaN(t.getTime())) return { ok: false, error: "Pick when to call her back." };
+    if (!t || isNaN(t.getTime())) return { ok: false, error: "Pick when to call the PNC back." };
     cb = t.toISOString();
   } else if (raw?.callback_at) {
     const t = new Date(String(raw.callback_at));

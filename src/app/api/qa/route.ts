@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
+import { can } from "@/lib/permissions";
 
 export const runtime = "edge";
 
@@ -16,7 +17,7 @@ export const runtime = "edge";
 async function me(sb: any) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return null;
-  const { data } = await sb.from("app_users").select("id, role, firm_id, full_name, active").eq("id", auth.user.id).maybeSingle();
+  const { data } = await sb.from("app_users").select("id, role, firm_id, full_name, active, perm_overrides").eq("id", auth.user.id).maybeSingle();
   if (data?.active === false) return null; // deactivated reviews nothing
   return data ? { ...data, uid: auth.user.id } : null;
 }
@@ -25,14 +26,20 @@ function isSignedTrack(status?: string): boolean {
   return /^signed_/.test(status || "") || status === "esign_sent";
 }
 
-// The campaign's esign_required flag is authoritative for which track a file uses.
+// The campaign's esign_required flag is authoritative for which track a file
+// uses. The caller passes the BOUND claim's campaign when it has one, so the
+// track belongs to the matter under review, not an arbitrary claim row.
 // Fall back to inferring from the current status only if the campaign is unknown.
-async function resolveEsignTrack(admin: any, leadId: string, currentStatus?: string): Promise<boolean> {
+async function resolveEsignTrack(admin: any, leadId: string, currentStatus?: string, campaignId?: string | null): Promise<boolean> {
   try {
-    const { data: claim } = await admin.from("claims").select("campaign_id").eq("lead_id", leadId).limit(1).maybeSingle();
-    if (claim?.campaign_id) {
-      const { data: camp } = await admin.from("campaigns").select("esign_required").eq("id", claim.campaign_id).maybeSingle();
-      if (camp && typeof camp.esign_required === "boolean") return camp.esign_required;
+    let camp = campaignId;
+    if (!camp) {
+      const { data: claim } = await admin.from("claims").select("campaign_id").eq("lead_id", leadId).limit(1).maybeSingle();
+      camp = claim?.campaign_id ?? null;
+    }
+    if (camp) {
+      const { data: campRow } = await admin.from("campaigns").select("esign_required").eq("id", camp).maybeSingle();
+      if (campRow && typeof campRow.esign_required === "boolean") return campRow.esign_required;
     }
   } catch {}
   return isSignedTrack(currentStatus);
@@ -95,15 +102,40 @@ export async function POST(req: NextRequest) {
 
   // Submit a QA review + route the file.
   if (b.op === "submit") {
-    // Routing a file is QA's job, not any internal login's (Astra round 4:
-    // an agent could approve their own file).
-    if (!["owner", "admin", "manager", "qa"].includes(u.role)) {
+    // Routing a file takes the QA capability — the role defaults, honoring an
+    // explicit per-user grant or denial (Astra round 5: an explicit
+    // intake.qa=false was ignored by the hardcoded role list).
+    if (u.role === "firm" || !can(u.role, u.perm_overrides, "intake.qa")) {
       return NextResponse.json({ error: "Only QA, a manager, an admin or the owner can route a file." }, { status: 403 });
     }
     const { lead_id, claim_id } = b;
     if (!lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
 
+    // The review is about ONE matter. A named claim must belong to this lead;
+    // unnamed defaults to the newest claim — and everything below (track,
+    // evidence, the status change) is bound to that matter, never a sibling
+    // (Astra rounds 4-5).
+    const { data: allClaims } = await admin.from("claims")
+      .select("id, status, claim_type, created_by, campaign_id, created_at")
+      .eq("lead_id", lead_id).order("created_at", { ascending: false });
+    const claim = claim_id
+      ? (allClaims ?? []).find((c: any) => c.id === claim_id)
+      : (allClaims ?? [])[0];
+    if (claim_id && !claim) return NextResponse.json({ error: "That claim is not on this file. Refresh and pick the matter again." }, { status: 400 });
+    if (!claim) return NextResponse.json({ error: "This file has no claim to review." }, { status: 400 });
+
+    // The three hard gates must actually be graded. A missing value is not a
+    // pass (Astra round 5); yellow remains allowed by policy.
+    const GATE_VALS = ["green", "yellow", "red"];
     const gates = [b.g_qa_pass, b.g_esign, b.g_criteria];
+    for (const g of gates) {
+      if (g != null && g !== "" && !GATE_VALS.includes(g)) {
+        return NextResponse.json({ error: "Gate grades must be green, yellow or red." }, { status: 400 });
+      }
+    }
+    if (b.decision === "approve" && gates.some((g) => g == null || g === "")) {
+      return NextResponse.json({ error: "Cannot approve: grade all three hard gates first." }, { status: 400 });
+    }
     const anyRed = gates.includes("red");
     if (b.decision === "approve" && anyRed) {
       return NextResponse.json({ error: "Cannot approve: a hard-gate check is red. Route to WIP or Flag instead." }, { status: 400 });
@@ -128,38 +160,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Determine current status / track. Campaign's esign_required is authoritative.
-    const { data: claim } = await sb.from("claims").select("status, claim_type, created_by, campaign_id").eq("lead_id", lead_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
-    const signed = await resolveEsignTrack(admin, lead_id, claim?.status);
+    // Determine current status / track for the BOUND claim. Campaign's
+    // esign_required is authoritative.
+    const signed = await resolveEsignTrack(admin, lead_id, claim.status, claim.campaign_id);
 
     // The e-sign gate is verified against the RECORDS, not the reviewer's
     // checkbox (Astra round 4: approval trusted caller-supplied labels). On
-    // the signed track, approving requires a real completed signing on file.
+    // the signed track, approving requires a real completed signing that
+    // belongs to THIS matter's campaign — a sibling matter's signature does
+    // not sign this one (Astra round 5). Legacy retainers predate campaigns
+    // and stay lead-level.
     if (b.decision === "approve" && signed) {
       const [{ data: ds }, { data: legacy }] = await Promise.all([
-        admin.from("esign_submissions").select("id").eq("lead_id", lead_id).in("status", ["signed", "completed"]).limit(1),
+        admin.from("esign_submissions").select("id, campaign_id").eq("lead_id", lead_id).in("status", ["signed", "completed"]),
         admin.from("retainers").select("id").eq("lead_id", lead_id).eq("status", "signed").limit(1),
       ]);
-      if (!(ds ?? []).length && !(legacy ?? []).length) {
-        return NextResponse.json({ error: "Cannot approve: no completed signing is on file for this case. The e-sign gate is checked against the records, not the checkbox." }, { status: 400 });
+      const hit = (ds ?? []).filter((s: any) => !s.campaign_id || !claim.campaign_id || s.campaign_id === claim.campaign_id);
+      if (!hit.length && !(legacy ?? []).length) {
+        return NextResponse.json({ error: "Cannot approve: no completed signing is on file for this matter. The e-sign gate is checked against the records, not the checkbox." }, { status: 400 });
       }
     }
 
-    // Record the QA review.
-    await admin.from("qa_reviews").insert({
-      lead_id, claim_id: claim_id ?? null, firm_id: u.firm_id, reviewer: u.uid, reviewer_name: u.full_name ?? "User",
+    // Record the QA review. The review of record MUST write before the file
+    // moves: a routed file with no stored review is a false audit trail
+    // (Astra round 5).
+    const { error: revErr } = await admin.from("qa_reviews").insert({
+      lead_id, claim_id: claim.id, firm_id: u.firm_id, reviewer: u.uid, reviewer_name: u.full_name ?? "User",
       g_qa_pass: b.g_qa_pass, g_esign: b.g_esign, g_criteria: b.g_criteria,
       c_leading: b.c_leading, c_complete: b.c_complete,
       qa_note: b.qa_note ?? null, agent_note: b.agent_note ?? null,
       decision: b.decision, dq_reason_key: b.dq_reason_key ?? null,
     });
+    if (revErr) {
+      return NextResponse.json({ error: `The review did not save, so the file was not moved: ${revErr.message}` }, { status: 500 });
+    }
 
     // Report card (human QA).
     const { data: agent } = claim?.created_by
       ? await sb.from("app_users").select("id, full_name").eq("id", claim.created_by).maybeSingle()
       : { data: null } as any;
     await admin.from("report_cards").insert({
-      lead_id, claim_id: claim_id ?? null, agent_id: agent?.id ?? null, agent_name: agent?.full_name ?? null,
+      lead_id, claim_id: claim.id, agent_id: agent?.id ?? null, agent_name: agent?.full_name ?? null,
       grader: "qa", qa_pass: b.g_qa_pass, esign: b.g_esign, criteria: b.g_criteria, leading_flag: b.c_leading, complete: b.c_complete,
     });
 
@@ -180,17 +221,14 @@ export async function POST(req: NextRequest) {
     else if (b.decision === "flag") nextStatus = signed ? "signed_flag" : "flag";
     else return NextResponse.json({ error: "unknown decision" }, { status: 400 });
 
+    // The decision moves THE REVIEWED MATTER. The setter verifies the claim
+    // belongs to the lead, requires a real row change, and keeps the person's
+    // QA/WIP flags as lead-level aggregates (a sibling still in QA keeps them).
     const res = await setClaimStatusForLeads({
-      leadIds: [lead_id], status: nextStatus, dqReasonKey: b.dq_reason_key ?? null,
+      leadIds: [lead_id], claimIds: [claim.id], status: nextStatus, dqReasonKey: b.dq_reason_key ?? null,
       actorId: u.uid, actorName: u.full_name ?? "QA",
     });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
-
-    // Update queue flags: clear QA-pending; set wip-pending when routed back.
-    await admin.from("leads").update({
-      qa_pending: false,
-      wip_pending: b.decision === "wip",
-    }).eq("id", lead_id);
 
     await recordAudit({
       firm_id: u.firm_id, lead_id, actor: u.uid, actor_name: u.full_name ?? "QA",

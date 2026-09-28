@@ -1,7 +1,7 @@
 // ============================================================================
 // The whole case on one page: an automatic summary in plain sentences, the six
 // qualifiers, every intake question the way the agent asks it with the answer,
-// her details from after she signed, and where the agreement stands.
+// the PNC's details from after signing, and where the agreement stands.
 //
 // Built by running the saved answers through the call engine itself, so the
 // questions, answers and lights here are exactly what the agent saw on the
@@ -69,6 +69,7 @@ export function caseReport(lead: any, answers: any, esign?: any): CaseReport {
   const pain = (b.pain || []).filter((p: string) => p !== FINE);
   if (pain.length) hurt.push(`${first} is hurting in the ${andList(pain.map((p: string) => p.toLowerCase()))}.`);
   else if ((b.pain || []).includes(FINE)) hurt.push(`${first} says the pain is minor so far.`);
+  if (String(b.painNote || "").trim()) hurt.push(`Pain notes: ${String(b.painNote).trim()}`);
   const seen = (b.seen || []).filter(Boolean);
   const prov = (b.providers || []).filter(Boolean);
   if (seen.includes("Not yet")) hurt.push("Not seen by anyone yet.");

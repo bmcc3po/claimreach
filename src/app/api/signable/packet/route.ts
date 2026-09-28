@@ -94,10 +94,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Route the file forward (first doc carries the lead; set the signed status).
+  // Route the file forward (first doc carries the lead; set the signed status
+  // on the lead's own campaign's matter, never a sibling claim — Astra round 5).
   try {
-    const { setClaimStatusForLeads } = await import("@/lib/claim-status");
-    await setClaimStatusForLeads({ leadIds: [lead_id], status: "signed_grievous" });
+    const { setClaimStatusForLeads, claimScopeFor } = await import("@/lib/claim-status");
+    await setClaimStatusForLeads({ leadIds: [lead_id], claimIds: await claimScopeFor(lead_id), status: "signed_grievous" });
     try {
       const { data: ld } = await admin.from("leads").select("lead_no, claimant_name, firm_id").eq("id", lead_id).maybeSingle();
       await admin.from("notifications").insert({

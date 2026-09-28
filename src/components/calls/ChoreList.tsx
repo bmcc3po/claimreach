@@ -49,6 +49,7 @@ function Control({ c, v }: { c: any; v: any }) {
     case "multi":
       return (<>
         <Opts opts={c.opts} />
+        {!!c.note && <Field label={c.note.label}><textarea className="ch-in ch-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} /></Field>}
         {!!c.other && <Field label="Explain"><input className="ch-in" value={c.other.value} onChange={c.other.set} /></Field>}
         {!!c.cue && <div className="ch-note">{c.cue}</div>}
       </>);
@@ -142,11 +143,11 @@ function Question({ q, v }: { q: any; v: any }) {
         <span className="ch-q-l">{q.label}{q.optional && <span className="ch-q-opt"> (optional)</span>}</span>
         {q.tone === "bad" && <span className="ch-flag">PROBLEM</span>}
       </div>
-      {!!q.ask && <div className="ch-ask">If she didn&apos;t say it, ask: <b>{q.ask}</b></div>}
+      {!!q.ask && <div className="ch-ask">If the PNC didn&apos;t say it, ask: <b>{q.ask}</b></div>}
       <Control c={q.c} v={v} />
       {q.rep && (
         <div className="ch-rep">
-          <div className="ch-note">{v.rep.head}. Do not go looking for it. She has to be the one who says she&apos;s unhappy.</div>
+          <div className="ch-note">{v.rep.head}. Do not go looking for it. The PNC has to be the one who says they&apos;re unhappy.</div>
           <Opts opts={fromCls(v.rep.unhappy)} />
           {v.rep.isUnhappy && <Opts opts={fromCls(v.rep.kind)} />}
           {v.rep.fender && <div className="ch-note">The firm charges these back. Close it warm and let it go.</div>}
@@ -166,7 +167,7 @@ function Say({ label, line, cue, small }: { label: string; line: string; cue?: s
   );
 }
 
-/** Section 7: send the agreement, walk her through it, finish it. */
+/** Section 7: send the agreement, walk the PNC through it, finish it. */
 function Retainer({ v }: { v: any }) {
   if (v.sendReady) {
     return (<>
@@ -185,6 +186,19 @@ function Retainer({ v }: { v: any }) {
         <Opts opts={fromCls(v.injuredWho)} />
         {v.injuredOther && <Field label="Injured person's full name"><input className="ch-in" value={v.f.injured.value ?? ""} onChange={v.f.injured.set} /></Field>}
       </div>
+      {!!(v.nv && v.nv.show) && (
+        <div className="ch-q">
+          <div className="ch-q-h"><span className="ch-q-l">Nevada agreement</span></div>
+          <Opts opts={[
+            { label: "Tiered (standard)", on: v.nv.tiered, pick: v.nv.pickTiered },
+            { label: "Non-tiered (needs approval)", on: !v.nv.tiered, pick: v.nv.pickFlat },
+          ]} />
+          {!v.nv.tiered && (<>
+            <Field label="Who approved it"><input className="ch-in" maxLength={300} placeholder='e.g. "Brett approved, friend and family"' value={v.nv.reason.value ?? ""} onChange={v.nv.reason.set} /></Field>
+            <div className={v.nv.needReason ? "ch-note ch-note-bad" : "ch-note"}>{v.nv.needReason ? "The non-tiered agreement only sends with the approval reason. It is recorded on the file." : "Recorded on the file with the send."}</div>
+          </>)}
+        </div>
+      )}
       <div className="ch-q">
         <div className="ch-q-h"><span className="ch-q-l">Send it by</span></div>
         <Opts opts={fromCls(v.via)} />
@@ -194,13 +208,13 @@ function Retainer({ v }: { v: any }) {
         <div className="ch-q">
           <div className="ch-q-h"><span className="ch-q-l">Text it to</span></div>
           {(v.textTo || []).length > 0 && <Opts opts={fromCls(v.textTo)} />}
-          {v.textToOther && <Field label={v.herPhoneOk ? "Number to text it to" : "Her cell"}><input className="ch-in" type="tel" inputMode="tel" value={v.f.phone.value ?? ""} onChange={v.f.phone.set} /></Field>}
+          {v.textToOther && <Field label={v.herPhoneOk ? "Number to text it to" : "PNC's cell"}><input className="ch-in" type="tel" inputMode="tel" value={v.f.phone.value ?? ""} onChange={v.f.phone.set} /></Field>}
         </div>
       )}
       {v.viaEmail && (
         <div className="ch-q">
-          <div className="ch-q-h"><span className="ch-q-l">Her email</span></div>
-          <input className="ch-in" type="email" inputMode="email" autoComplete="off" aria-label="Her email" value={v.f.email.value ?? ""} onChange={v.f.email.set} />
+          <div className="ch-q-h"><span className="ch-q-l">PNC's email</span></div>
+          <input className="ch-in" type="email" inputMode="email" autoComplete="off" aria-label="PNC's email" value={v.f.email.value ?? ""} onChange={v.f.email.set} />
         </div>
       )}
       <div className="ch-wide ch-sendbox">
@@ -223,7 +237,7 @@ function Retainer({ v }: { v: any }) {
     {v.notSigned && (<>
       <Say label={STAY.label} line={STAY.line} small />
       <div className="ch-say ch-say-2 ch-wide">
-        <div className="ch-say-k">Walk her through it</div>
+        <div className="ch-say-k">Walk the PNC through it</div>
         {walkThrough(v.firmSpoken).map((t, i) => <div key={i} className="ch-say-t ch-say-sm">{t}</div>)}
       </div>
       <div className="ch-say ch-say-2 ch-wide">
@@ -271,6 +285,10 @@ function Retainer({ v }: { v: any }) {
         <div key={i} className="ch-q ch-wide">
           <div className="ch-q-h"><span className="ch-q-l">{p.title}</span></div>
           <div className="ch-note">{p.note}</div>
+          {p.needCell && p.ready && (<>
+            <Field label="Their own cell"><input className="ch-in" type="tel" inputMode="tel" value={p.cell.value ?? ""} onChange={p.cell.set} /></Field>
+            <div className="ch-note ch-note-bad">Add their own cell first. It never texts to the caller&apos;s phone.</div>
+          </>)}
           {p.ready && <button type="button" className="ch-btn" onClick={p.send}>{p.button}</button>}
           {p.live && <ul className="ch-steps">{(p.steps || []).map((st: any, j: number) => <li key={j}><span>{st.label}</span><b>{stepWord(st.cls)}</b></li>)}</ul>}
         </div>

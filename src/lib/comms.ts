@@ -68,11 +68,7 @@ export async function ingestComm(c: {
   // so the first event wins and a call that predates the lead (orphans
   // reconciled later) never produces a negative speed.
   if (data.lead_id && c.direction === "outbound" && (c.channel === "call" || c.channel === "voicemail")) {
-    try {
-      await admin.from("leads")
-        .update({ first_dialed_at: row.occurred_at })
-        .eq("id", data.lead_id).is("first_dialed_at", null).lte("created_at", row.occurred_at);
-    } catch {}
+    await stampFirstDial(admin, data.lead_id, row.occurred_at);
   }
 
   // Activity Log: log completed calls/voicemails (with duration when known) so the
@@ -95,8 +91,27 @@ export async function ingestComm(c: {
   return { id: data.id, lead_id: data.lead_id, matched: !!data.lead_id };
 }
 
+
+// Speed to lead, dial side: the first outbound call or voicemail attempt
+// stamps leads.first_dialed_at with the call's own time. Guarded so a call
+// that predates the lead never produces a negative speed, and an earlier
+// call arriving late CORRECTS a later stamp instead of being ignored.
+async function stampFirstDial(admin: any, leadId: string, occurredAt: string) {
+  try {
+    await admin.from("leads").update({ first_dialed_at: occurredAt })
+      .eq("id", leadId).is("first_dialed_at", null).lte("created_at", occurredAt);
+    await admin.from("leads").update({ first_dialed_at: occurredAt })
+      .eq("id", leadId).gt("first_dialed_at", occurredAt).lte("created_at", occurredAt);
+  } catch {}
+}
+
 // Fill in fields on an existing comm (e.g. recording arrives after the call event).
 async function update(admin: any, id: string, c: any, prior?: { lead_id?: string | null; duration_sec?: number | null }) {
+  // A duplicated event is a second chance for the metric write: if the first
+  // event's first-dial stamp failed, the repeat repairs it (Astra round 5).
+  if (prior?.lead_id && c.direction === "outbound" && (c.channel === "call" || c.channel === "voicemail")) {
+    await stampFirstDial(admin, prior.lead_id, c.occurred_at ?? new Date().toISOString());
+  }
   const patch: any = {};
   for (const k of ["recording_url", "transcript", "jc_summary", "jc_sentiment", "duration_sec", "body"]) if (c[k] != null) patch[k] = c[k];
   if (c.jc_insights) patch.jc_insights = c.jc_insights;

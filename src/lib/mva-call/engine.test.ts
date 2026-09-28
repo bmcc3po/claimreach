@@ -124,7 +124,7 @@ t("rebuttal copy carries the firm on this campaign", () => {
 t("Lines tab fills the caller's first name and follows focus", () => {
   const e = mk(); e.renderVals().openRamble();
   const v = e.renderVals();
-  assert.equal(v.lines[0].head, "She will not stop talking");
+  assert.equal(v.lines[0].head, "The PNC will not stop talking");
   assert.ok(v.lines[0].items[0].t.includes("Maria"));
 });
 
@@ -370,7 +370,7 @@ t("story: pick a date stays open until the date is whole", () => {
   assert.notEqual(rows.find((r: any) => r.open)?.key, "when");
   const when = rows.find((r: any) => r.key === "when");
   assert.ok(/40 days ago/.test(when.value), when.value);
-  assert.equal(when.sub, "She needs to have been seen, never more than 30 days apart.");
+  assert.equal(when.sub, "The PNC needs to have been seen, never more than 30 days apart.");
 });
 
 t("the crash date reads one way everywhere", () => {
@@ -422,7 +422,7 @@ t("full intake: the caller's story, captured out of order", () => {
   assert.equal(fiSec(e, "insurance").summary, "State Farm");
   // Back to what's missing, in call order.
   const nx = fiOf(e).next;
-  assert.equal(nx.label, "Next: She was");
+  assert.equal(nx.label, "Next: The PNC was");
   nx.go();
   assert.equal(fiOf(e).openSec, "incident");
   assert.equal(fiQ(e, "seat").flash, true);
@@ -693,6 +693,44 @@ t("crash date: every WHEN handler pins the real calendar date", () => {
   e.storyPick("when", "Yesterday");
   assert.equal(e.state.story.when, null);
   assert.equal(doiOf(e.state.story), "");
+});
+
+t("pain notes: checking an injury box opens the notes box, saved with the call", () => {
+  const e = mk();
+  e.setState({ phase: "body" });
+  const painRow = () => e.renderVals().bodyRows.find((r: any) => r.key === "pain");
+  assert.equal(painRow().q.note, null, "no notes box before an injury is checked");
+  e.bodyPick(BODYQ_BY("pain"), "Neck", false);
+  const note = painRow().q.note;
+  assert.ok(note, "checking Neck opens the notes box");
+  note.set({ target: { value: "Sharp in the mornings, worse driving" } });
+  assert.equal(e.state.body.painNote, "Sharp in the mornings, worse driving");
+  // Saved with the call, back on a reopen; a file from before the field
+  // existed opens with it empty, not undefined.
+  const saved = JSON.parse(JSON.stringify(e.persistable()));
+  const e2 = mk({ saved });
+  assert.equal(e2.state.body.painNote, "Sharp in the mornings, worse driving");
+  const old = mk({ saved: { phase: "body", body: { pain: ["Back"] } } });
+  assert.equal(old.state.body.painNote, "");
+  assert.ok(old.renderVals().bodyRows.find((r: any) => r.key === "pain").q.note, "old saved file still opens the box");
+  // "Says she's fine" alone is not an injury: no notes box, the rebuttal
+  // owns that moment.
+  const fine = mk();
+  fine.setState({ phase: "body" });
+  fine.bodyPick(BODYQ_BY("pain"), "Says they're fine", false);
+  assert.equal(fine.renderVals().bodyRows.find((r: any) => r.key === "pain").q.note, null);
+  // Full Intake reads the same note through its control.
+  e.setView("full");
+  fiQ(e, "pain").edit();
+  const painQ = fiQ(e, "pain");
+  assert.ok(painQ.c.note, "Full Intake pain control carries the notes box");
+  assert.equal(painQ.c.note.value, "Sharp in the mornings, worse driving");
+});
+
+t("PNC wording: calls saved with the old her/she answer strings still light their chips", () => {
+  const e = mk({ saved: { phase: "body", body: { pain: ["Neck", "Says she's fine"], repUnhappy: "She says she's unhappy with them" } } });
+  assert.deepEqual(e.state.body.pain, ["Neck", "Says they're fine"]);
+  assert.equal(e.state.body.repUnhappy, "The PNC says they're unhappy with them");
 });
 
 console.log(passed, "passed");

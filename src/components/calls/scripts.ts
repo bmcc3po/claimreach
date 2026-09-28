@@ -1,6 +1,6 @@
 // ============================================================================
 // The lines the agent reads out after the intake questions: how we work, the
-// agreement, walking her through signing, and the close. Written once here so
+// agreement, walking the PNC through signing, and the close. Written once here so
 // Guided and Simple Chorelist say the same words. Question and script wording
 // is Brett's: never change it without his approval (AGENTS.md).
 // ============================================================================
@@ -10,10 +10,10 @@ export const openGreeting = (first: string) => `Hi, is this ${first}?`;
 export const openLine = (first: string, agent: string, firm: string) => `${first}, this is ${agent} with the ${firm} Intake Center. I'm reaching out about the car accident information we just received. Tell me what happened.`;
 export const OPEN_CUE = "The last four words are the whole open. You do not ask if now is a good time.";
 
-export const OPEN_LINE = { label: "Say, then stop talking", line: "Tell me what happened.", cue: "Let her run. Capture anything below, in any order." };
+export const OPEN_LINE = { label: "Say, then stop talking", line: "Tell me what happened.", cue: "Let the PNC run. Capture anything below, in any order." };
 
 export const MONEY = {
-  label: "Say, before she asks",
+  label: "Say, before the PNC asks",
   line: "Let me tell you real quick how we work, because people always want to know. We don't charge you anything up front. We only get paid at the very end out of the settlement, so nothing comes out of your pocket at any point, and if there's nothing recovered you don't owe us anything.",
   cue: "Don't bring up the split. Never name a dollar amount. Never do the math out loud.",
 };

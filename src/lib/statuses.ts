@@ -121,7 +121,7 @@ export function isSignedStatus(key: string | null | undefined): boolean {
   const k = String(key ?? "");
   if (!k) return false;
   if (k.startsWith("signed_")) return true;
-  return k === "delivered" || k === "retained";
+  return k === "signed" || k === "delivered" || k === "retained";
 }
 
 // The one definition of "this status means the file carries a signature".

@@ -5,7 +5,7 @@ import { requireStaff, LEAD_CALL_COLS } from "@/lib/mva-call/server";
 import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/report";
 import { signedPdfAttachment } from "@/lib/signed-docs";
 import { validateDispo, DISPO_STATUS, DISPO_FIXED_DQ_KEY, DISPO_LABEL, DEFAULT_CALL_REASONS } from "@/lib/mva-call/dispo";
-import { setClaimStatusForLeads } from "@/lib/claim-status";
+import { setClaimStatusForLeads, claimScopeFor } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
 import { fireEvent } from "@/lib/webhook-deliver";
 import { sendEmail } from "@/lib/email";
@@ -91,11 +91,16 @@ export async function POST(req: NextRequest) {
   }
 
   // Status through the one setter. Signed is left alone: the signature moved it.
+  // The dispo belongs to THIS call's matter: the claim the console named, or
+  // the lead's claim on its current campaign — never a sibling matter
+  // (Astra rounds 4-5: an MVA dispo must not flip the Motel claim).
   const status = DISPO_STATUS[d.dispo];
   if (status) {
     const dqKey = d.dispo === "dq" ? d.reasons[0] : DISPO_FIXED_DQ_KEY[d.dispo] ?? null;
+    const postedClaim = raw?.claim_id ? String(raw.claim_id) : "";
+    const claimIds = postedClaim ? [postedClaim] : await claimScopeFor(lead.id, lead.campaign_id);
     const res = await setClaimStatusForLeads({
-      leadIds: [lead.id], status, dqReasonKey: dqKey,
+      leadIds: [lead.id], claimIds, status, dqReasonKey: dqKey,
       dqNote: labels.length ? labels.join(", ") : null,
       actorId: me.id, actorName: me.name ?? "Agent",
     });

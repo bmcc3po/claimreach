@@ -1,3 +1,34 @@
+# ClaimReach deploy: round 6
+
+On top of merged main (cc1b06a, PR #37). Answers Astra's consolidated round-5 review AND the Sep 28 live-call asks. Upload this zip the usual way; there is NO SQL for you to run (0107 is already applied and probe-verified).
+
+## Astra round-6 repairs (all verified against live source/DB)
+
+- **Claim identity is one identity.** The status setter verifies every named claim belongs to the named lead, refuses a vanished claim, requires a real row change before ANY side effect, and runs flags/audit/automation/delivery only for leads whose claims actually changed. Dispo, e-sign send and signed transitions, the in-house signer, QA decisions and WIP resubmit all pass claim scope now; QA/WIP flags are lead-level aggregates (a sibling still in QA keeps them up); the status badge follows the selected claim.
+- **Packet recovery runs on the REAL route.** The agreement screen's poll reconciles completed mains AND signed/completed passengers; manifests are exact ordinals (a stray -99 never covers a missing -2); zero counts as unknown and is re-established from DocuSeal; bytes missing behind a live pointer re-store; a storage listing failure reads as "not verified"; delivery refuses unknown manifests and a failed configured intake PDF, and scopes answers + signings to the campaign. The manual case email is labeled a summary + primary agreement, never the packet.
+- **QA**: capability check honors an explicit intake.qa=false; evidence must belong to the reviewed matter's campaign; all three hard gates must be graded to approve; the review write must succeed before the file moves.
+- **Privileged writes**: /api/drip derives the target lead's own firm and surfaces RPC errors; the firm move is one transaction (0107); property saves name their claim on multi-claim files; generic lead/claim saves can no longer carry status/stage/QA/workflow fields — and the status webhook now fires from the central setter, so integrations see EVERY status change.
+- **Contact state**: Messages, Calls, the floating tools and the PNC banner read the live record; Contact Info / Case Details refresh clean fields when the record changes and keep unsaved typing; signed-notification markers release on every failure and retry on any later sync.
+- **Honest metrics**: real medians; "dialed under 5 min" counts every lead in range; "No dial recorded" instead of "Never dialed"; an earlier call arriving late corrects first-dial and duplicates repair failed writes; first-open stamps only after redirect decisions; firm reports get campaign + both clocks; ONE signed definition for the Leads/Signed split and the reports, recalculated when the status catalog changes.
+
+## From your live call (Sep 28)
+
+- **Nevada retainers.** Tiered is the default for a Nevada wreck; the non-tiered contract only sends with a typed approval reason ("Brett approved, friend and family"), recorded on the file and refused server-side without it. Both are full contract + HIPAA/HITECH packets; preview shows whichever is picked. Note: your Nevada docs came without TMP's countersignature printed on the firm line (the AL/GA form has it embedded) — they went in exactly as supplied.
+- **Passengers are their own PNC.** Age and Hurt are separate labeled rows; a hurt passenger gets their OWN cell (their agreement texts to THEIR phone — enforced in the console and the server; a minor's still goes to the guardian on the line), wants-representation, willing-to-treat and same-address (prefills their file). Their file opens with the wreck prefilled from the driver's call, and the two files are LINKED both ways — "Same wreck" chips on the lead file and the console, so when the passenger calls in, "how's Niko doing?" is right there.
+- **The console says PNC** — every her/she in labels, cues and coaching is gone; old saved calls map their answer strings on restore.
+- **Traditional contact card** on the console's File tab: phone, email, mailing address — prefilled, editable mid-call, saved to the record for callbacks and reports.
+- **Texted-in photos auto-file** (global): an MMS from a number on file lands in that case's Documents as photo/doc/file, audited.
+- **Missing items are buttons**: "Add the PNC's cell" now takes you to where it gets typed. File's sub-steps are numbered with done-checks.
+- **Simple form view**: the print layout as a working view — one flat page, label left, answer right, same engine, tools in the sidebar.
+- **Quick case-type dropdown** on LEADS and SIGNED toolbars.
+- **Pain notes**: checking an injury box opens a notes box; the note rides into the summary and the firm report.
+
+## Verification
+
+tsc clean; 46 engine + 10 ingest + 3 SSN tests pass; browser screenshots of the Simple form, the passenger card, and the Nevada chooser (blocked send without a reason) on desktop; full Cloudflare build green; the whole changed set re-verified as an overlay on a clean copy of merged main.
+
+---
+
 # ClaimReach deploy: rounds 3, 4 and 5 in one zip
 
 On top of merged main (a887ce6). Round 5 answers Astra's review of the round-3 file; rounds 3 and 4 ride along unchanged. This zip replaces every earlier one, and PR #35 should be updated with these files.
@@ -13,6 +44,7 @@ On top of merged main (a887ce6). Round 5 answers Astra's review of the round-3 f
 - **One signed definition for staff AND firm reports**: signedStatusKeys now seeds Delivered/Retained/signed constants and builds on isSignedStatus, so the firm report (which has no status catalog) counts the same files as yours.
 - **Archive-failure honesty**: if the half-made lead cannot be archived, the response says so and names the lead, instead of claiming it was archived.
 - **"medical..pdf" style names** no longer produce a storage key the guard refuses after upload (dots collapse in the safe name).
+- **Pain notes on the call (Brett, Sep 28).** The moment an injury box is checked on the Pain question, a "Pain notes" box opens right under it — in Guided, Collapsible, All questions and the one-question views — so the agent writes what she says about the pain while she is saying it. "Says she's fine" alone opens nothing (the soreness rebuttal owns that moment). The note saves with the call like every other answer, shows in the injury section summary, and rides into the printed case summary and the firm report. 45 engine tests pass.
 
 ## Round 4 (also in this zip)
 

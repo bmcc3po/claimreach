@@ -51,27 +51,35 @@ export function signedRecipients(routes: NotifyRoute[], lead: { case_type?: stri
   return { to, cc };
 }
 
-const AGREEMENT: Record<string, string> = { TX: "Texas", FL: "Florida", OTHER: "AL/GA" };
+const AGREEMENT: Record<string, string> = { TX: "Texas", FL: "Florida", OTHER: "AL/GA", NV: "Nevada tiered", NV_FLAT: "Nevada NON-TIERED" };
 
 /**
  * Send the signing email for one agreement, once. Never throws: a failed
  * email is written to the file's history and the signing itself is untouched.
  */
 export async function notifySigned(admin: any, row: any, origin = "https://claimreach.com"): Promise<void> {
+  let held = false;
+  // Hands the claim back so a later sync retries: the marker never stays on a
+  // notification that did not actually send (Astra round 5: a thrown error or
+  // an early read failure stranded the claim forever).
+  const release = async () => {
+    try { await admin.from("esign_submissions").update({ signed_notified_at: null }).eq("id", row.id); } catch {}
+  };
   try {
     // Claim it. If migration 0099 has not run, or it was already sent, stop here.
     const { data: claimed, error: claimErr } = await admin.from("esign_submissions")
       .update({ signed_notified_at: new Date().toISOString() })
       .eq("id", row.id).is("signed_notified_at", null).select("id");
     if (claimErr || !claimed?.length) return;
+    held = true;
 
     const { data: lead } = await admin.from("leads")
       .select("id, lead_no, claimant_name, phone, email, dob, case_type, campaign, campaign_id, firm_id")
       .eq("id", row.lead_id).maybeSingle();
-    if (!lead) return;
+    if (!lead) { await release(); return; }
     const { data: routes, error: routeErr } = await admin.from("notify_routes")
       .select("event, case_type, campaign_id, to_emails, cc_emails, active").eq("event", "signed").eq("active", true);
-    if (routeErr) return;
+    if (routeErr) { await release(); return; }
     const { to, cc } = signedRecipients(routes ?? [], lead);
     if (!to.length) return;
 
@@ -108,5 +116,6 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
     });
   } catch (e: any) {
     console.error("signing email failed", e?.message || e);
+    if (held) await release();
   }
 }

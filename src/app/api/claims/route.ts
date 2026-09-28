@@ -64,7 +64,21 @@ export async function POST(req: NextRequest) {
   }
 
   if (p.op === "save") {
-    const { error } = await sb.from("claims").update(p.patch).eq("id", p.claim_id);
+    // A generic claim save carries FORM CONTENT, never workflow state: status,
+    // qualification, approvals and delivery all have their own commands with
+    // their own gates and audit (Astra round 5: a raw patch was an alternate
+    // write path around every one of them).
+    const ALLOWED = new Set(["answers", "summary", "claim_type", "tier", "notes"]);
+    const patch: Record<string, any> = {};
+    const rejected: string[] = [];
+    for (const k of Object.keys(p.patch ?? {})) {
+      if (ALLOWED.has(k)) patch[k] = p.patch[k]; else rejected.push(k);
+    }
+    if (rejected.length) {
+      return NextResponse.json({ error: `These fields do not save through a form: ${rejected.join(", ")}. Use their own commands (status, campaign, QA).` }, { status: 400 });
+    }
+    if (!Object.keys(patch).length) return NextResponse.json({ error: "Nothing to save." }, { status: 400 });
+    const { error } = await sb.from("claims").update(patch).eq("id", p.claim_id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }

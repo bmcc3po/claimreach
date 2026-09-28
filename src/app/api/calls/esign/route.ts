@@ -6,7 +6,7 @@ import { createSubmission, agreementKey, docusealConfigured, MISSING_DOCUSEAL, p
 import { syncSubmission, packetsFor, templateFor } from "@/lib/mva-call/esign";
 import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
-import { setClaimStatusForLeads } from "@/lib/claim-status";
+import { setClaimStatusForLeads, claimScopeFor } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
 
 export const runtime = "edge";
@@ -62,8 +62,19 @@ async function send(req: NextRequest) {
   if (via === "Text" && !phone) return NextResponse.json({ error: "Add her cell number to text it." }, { status: 400 });
   if (via === "Text" && lead.perm_text === false) return NextResponse.json({ error: "She asked not to be texted. Send it by email." }, { status: 409 });
 
-  const key = agreementKey(stateCodeOf(b?.city));
+  let key: string | null = agreementKey(stateCodeOf(b?.city));
   if (!key) return NextResponse.json({ error: "Add the city and state on Story so we know which agreement to send." }, { status: 400 });
+  // Nevada sends the TIERED contract by default. The non-tiered one goes out
+  // only with a typed reason saying who approved it (Brett, Sep 28: "brett
+  // approved friend/fam") — recorded on the file, refused without it.
+  let nvReason = "";
+  if (key === "NV" && b?.nv_variant === "flat") {
+    nvReason = String(b?.nv_reason || "").trim().slice(0, 300);
+    if (!nvReason) {
+      return NextResponse.json({ error: "The non-tiered Nevada agreement only sends with a reason saying who approved it. Add the reason, or send the standard tiered agreement." }, { status: 400 });
+    }
+    key = "NV_FLAT";
+  }
   const admin = supabaseAdmin();
   const { data: firm } = await admin.from("firms").select("name, slug").eq("id", lead.firm_id).maybeSingle();
   // The template for this agreement, made new first if the packet changed.
@@ -93,10 +104,18 @@ async function send(req: NextRequest) {
       const ins: Record<string, any> = {
         firm_id: lead.firm_id, campaign_id: lead.campaign_id, campaign: lead.campaign, case_type: lead.case_type,
         claimant_name: injured, first_name: parts[0] || null, last_name: parts.slice(1).join(" ") || null,
-        phone: lead.phone, external_id: ext, source_key: "passenger", origin: "call",
+        // The passenger's file carries THEIR number (the one this send goes
+        // to), never the caller's — a minor's file keeps the guardian's.
+        phone: phone || lead.phone, external_id: ext, source_key: "passenger", origin: "call",
         created_by: me.id, assigned_agent: me.id, intake_agent_id: me.id,
         caller_is_self: signer === injured, caller_first: signer.split(/\s+/)[0] || null,
       };
+      // Same household: prefill the passenger's mailing address from this file.
+      if (b?.pax_same_addr === true) {
+        for (const k of ["mail_addr1", "mail_city", "mail_state", "mail_zip"]) {
+          if ((lead as any)[k] != null) ins[k] = (lead as any)[k];
+        }
+      }
       if (leadNo) ins.lead_no = leadNo;
       const { data: pl, error } = await sb.from("leads").insert(ins).select("id").single();
       if (error) return NextResponse.json({ error: `Could not open the passenger's file: ${error.message}` }, { status: 500 });
@@ -159,12 +178,17 @@ async function send(req: NextRequest) {
 
   const nowIso = new Date().toISOString();
   await admin.from("leads").update({ esign_sent_at: nowIso }).eq("id", fileLeadId);
-  const st = await setClaimStatusForLeads({ leadIds: [fileLeadId], status: "esign_sent", actorId: me.id, actorName: me.name ?? "Agent" });
+  // The send moves THIS campaign's matter only (Astra round 5: signing
+  // transitions must not touch a sibling claim on the same person).
+  const st = await setClaimStatusForLeads({
+    leadIds: [fileLeadId], claimIds: await claimScopeFor(fileLeadId, lead.campaign_id ?? undefined),
+    status: "esign_sent", actorId: me.id, actorName: me.name ?? "Agent",
+  });
   if (!st.ok) console.error("esign_sent status failed", st.error);
   await recordAudit({
     firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
-    description: `Sent the ${key === "OTHER" ? "AL/GA" : key} agreement by ${via.toLowerCase()} to ${signer}.`,
-    meta: { esign_id: row.id, submission_id: client.submission_id, via },
+    description: `Sent the ${key === "OTHER" ? "AL/GA" : key === "NV" ? "Nevada tiered" : key === "NV_FLAT" ? "Nevada NON-TIERED" : key} agreement by ${via.toLowerCase()} to ${signer}.${nvReason ? ` Non-tiered approved: ${nvReason}.` : ""}`,
+    meta: { esign_id: row.id, submission_id: client.submission_id, via, ...(nvReason ? { nv_variant: "flat", nv_reason: nvReason } : {}) },
   });
 
   if (textError) return NextResponse.json({ ok: true, status: "sent", warning: `The agreement is ready, but the text did not go out: ${textError}. Use Resend in the text sheet.` });
@@ -183,11 +207,16 @@ export async function GET(req: NextRequest) {
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
   const admin = supabaseAdmin();
 
+  // Every live submission goes through the one sync, INCLUDING completed rows
+  // whose pointers exist: the manifest check inside syncSubmission is what
+  // notices a missing secondary, a missing certificate object behind a live
+  // pointer, or an unknown doc_count, and repairs it (Astra round 5: the real
+  // route never invoked the recovery it told operators to use).
+  const LIVE = ["sent", "opened", "signed", "completed"];
   const { data: main } = await sb.from("esign_submissions").select("*")
     .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   let status = main?.status || "ready";
-  if (main && (["sent", "opened", "signed"].includes(main.status)
-    || (main.status === "completed" && (!main.completed_pdf_path || !main.cert_pdf_path)))) {
+  if (main && LIVE.includes(main.status)) {
     status = await syncSubmission(admin, main, { origin: url.origin });
   }
 
@@ -197,7 +226,9 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false }).limit(6);
     for (const r of rows ?? []) {
       if (pax[String(r.pax_index)]) continue;
-      pax[String(r.pax_index)] = ["sent", "opened"].includes(r.status) ? await syncSubmission(admin, r, { origin: url.origin }) : r.status;
+      // Passengers recover the same way as the main agreement (Astra round 5:
+      // signed/completed passenger packets never reached the repair path).
+      pax[String(r.pax_index)] = LIVE.includes(r.status) ? await syncSubmission(admin, r, { origin: url.origin }) : r.status;
     }
   }
   // The console shows signed for anything signed or complete.

@@ -43,7 +43,7 @@ function iconFor(q: any, label: string): string {
   if (q.isDate || /^(today|yesterday|same day|earlier)$/.test(t) || /^(mon|tue|wed|thu|fri|sat|sun) \d+$/.test(t)) return "calendar";
   if (t === "yes" || t === "came out") return "yes";
   if (t === "no" || t === "no insurance") return "no";
-  if (["driver", "passenger", "pedestrian", "caller", "just her"].includes(t)) return "person";
+  if (["driver", "passenger", "pedestrian", "caller", "just them", "just her"].includes(t)) return "person";
   if (t === "other driver" || t === "hit and run") return "vehicle";
   return q.sec || "incident";
 }
@@ -91,6 +91,7 @@ function Answers({ q, v, big }: { q: any; v: any; big: boolean }) {
     <div className={`oq-opts${grid ? " oq-grid" : ""}`}>
       {(c.opts || []).map((o: any, i: number) => <Option key={i} o={o} q={q} big={big && !grid} />)}
     </div>
+    {!!c.note && <textarea className="fi-in fi-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />}
     {!!c.other && <input className="fi-in" placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value} onChange={c.other.set} />}
     {(c.kind === "visit" || (c.kind === "crashdate" && c.date.show)) && (
       <label className="oq-date"><Ico id="calendar" /><span>Or pick the date</span>
@@ -176,7 +177,7 @@ export function OneBody({ v }: { v: any }) {
       <Answers q={q} v={v} big={quick} />
       {q.rep && (
         <div className="oq-rep">
-          <div className="oq-cue">{v.rep.head}. Do not go looking for it. She has to be the one who says she&apos;s unhappy.</div>
+          <div className="oq-cue">{v.rep.head}. Do not go looking for it. The PNC has to be the one who says they&apos;re unhappy.</div>
           <div className="oq-pills">{(v.rep.unhappy || []).map((c: any, i: number) => <button key={i} type="button" className={`oq-pill${/ on/.test(c.cls) ? " oq-on" : ""}`} onClick={c.pick}>{c.label}</button>)}</div>
           {v.rep.isUnhappy && <div className="oq-pills">{(v.rep.kind || []).map((c: any, i: number) => <button key={i} type="button" className={`oq-pill${/ on/.test(c.cls) ? " oq-on" : ""}`} onClick={c.pick}>{c.label}</button>)}</div>}
           {v.rep.fender && <div className="oq-cue">The firm charges these back. Close it warm and let it go.</div>}

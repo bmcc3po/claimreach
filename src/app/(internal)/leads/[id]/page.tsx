@@ -19,18 +19,20 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   if (!id) notFound();
 
   const { data: lead } = await sb.from("leads").select("*").eq("id", id).maybeSingle();
+  if (!lead) notFound();
+  // INNO MVA files are worked in the App, wide on a computer. The classic page
+  // is still one click away (?classic=1) for status, QA, lock and send to firm.
+  if (APP_CASE_TYPES.includes(String(lead.case_type || "")) && classic !== "1") redirect(`/app/${leadKeyOf(lead)}`);
   // Speed to lead, open side: first staff open of the file stamps it (this
-  // layout is internal-only, so a firm view can never stamp).
-  if (lead?.id && !lead.first_opened_at) {
+  // layout is internal-only, so a firm view can never stamp) — AFTER the
+  // redirect decision, so a bounce to the App does not double-count
+  // (Astra round 5: the stamp fired during render, before redirects).
+  if (!lead.first_opened_at) {
     try {
       const { data: { user: opener } } = await sb.auth.getUser();
       await supabaseAdmin().from("leads").update({ first_opened_at: new Date().toISOString(), first_opened_by: opener?.id ?? null }).eq("id", lead.id).is("first_opened_at", null);
     } catch {}
   }
-  if (!lead) notFound();
-  // INNO MVA files are worked in the App, wide on a computer. The classic page
-  // is still one click away (?classic=1) for status, QA, lock and send to firm.
-  if (APP_CASE_TYPES.includes(String(lead.case_type || "")) && classic !== "1") redirect(`/app/${leadKeyOf(lead)}`);
 
   let { data: claims } = await sb.from("claims").select("*")
     .eq("lead_id", id).order("created_at");
@@ -127,6 +129,9 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
     };
   }
 
+  const { linkedFilesFor } = await import("@/lib/linked-files");
+  const linked = await linkedFilesFor(sb, lead as any);
+
   return (
     <>
       <CanonicalUrl path={`/leads/${leadKeyOf(lead)}`} />
@@ -146,6 +151,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
         lor={lor ?? null}
         points={(points ?? []) as any}
         lastComm={lastComms?.[0] ?? null}
+        linked={linked}
       />
     </>
   );
