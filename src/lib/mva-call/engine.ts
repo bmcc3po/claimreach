@@ -294,7 +294,7 @@ export class CallEngine {
       text: { open: false, draft: '', thread: [] },
       dispo: { open: false, pick: null, list: true, why: [], auto: false, when: null, at: '', note: '', add: '', saved: false, notify: this.props.notifyDefaults.map((n) => ({ who: n.who, how: n.how, on: true })) },
       storyOpen: null, leadOpen: false,
-      body: { pain: [], seen: [], providers: [], done: {}, last: null, firstAt: null, lastAt: null, stretch: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
+      body: { pain: [], painNote: '', seen: [], providers: [], done: {}, last: null, firstAt: null, lastAt: null, stretch: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
       car: { justMe: false, people: [] },
       send: { via: 'Text', status: this.props.esign.status || 'ready', client: this.props.callerName || '', phone: this.props.callerPhone || '', email: this.props.callerEmail || '', error: '', who: 'Same as signer', injured: '' },
       file: { step: 'agreement', dob: '', ssn: '', ssnMode: null, agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
@@ -881,6 +881,23 @@ export class CallEngine {
     this.setState({ body: nb });
   }
 
+  // Pain notes (Brett, Sep 28): the moment an injury box is checked, a notes
+  // box opens right under it, so the agent writes down what she says about
+  // the pain while she is saying it. One note for the whole pain answer,
+  // saved with the call like every other body answer. "Says she's fine"
+  // alone opens nothing — there is no pain to note, and the soreness
+  // rebuttal is what shows there instead.
+  painNoteView() {
+    var b = this.state.body;
+    if (!(b.pain || []).some((p: any) => p !== FINE)) return null;
+    return {
+      label: 'Pain notes',
+      ph: 'What she says about the pain. How bad, since when, what makes it worse.',
+      value: b.painNote || '',
+      set: (e: any) => this.setState({ body: Object.assign({}, this.state.body, { painNote: e.target.value }) })
+    };
+  }
+
   // A quick pick on a visit date, stored the way gapCheck reads it.
   quickDate(o: any) {
     if (o === 'Same day') return 'same';
@@ -1106,7 +1123,7 @@ export class CallEngine {
         var dv = this.dateBox(b, bq);
         return { kind: 'visit', opts: bodyChips(bq), date: { value: dv.value, min: dv.min, max: dv.max, why: dv.why, set: (e: any) => { this.bodyDate(bq, e.target.value); if (this.visitNo(this.state.body, id) != null) this.fiAfter(id); } } };
       }
-      if (bq) return { kind: bq.multi ? 'multi' : 'chips', opts: bodyChips(bq), done: () => this.setFi({ edit: null }) };
+      if (bq) return { kind: bq.multi ? 'multi' : 'chips', opts: bodyChips(bq), done: () => this.setFi({ edit: null }), note: bq.key === 'pain' ? this.painNoteView() : null };
       if (id === 'city') return { kind: 'where', where: { value: st.city || '', set: (t: any) => this.storyCity(t), done: () => this.fiAfter('city') } };
       if (id === 'when') {
         // One tap for any day in the last week ("last Thursday"), or pick a date.
@@ -1170,7 +1187,7 @@ export class CallEngine {
       var v = (id: any) => (info[id] && info[id].answered ? info[id].value : '');
       var parts: any[] = [];
       if (sec === 'incident') parts = [v('city'), info.when.answered ? shortDay(dayNo(crashIsoOf(st))) : '', v('seat'), word.fault[st.fault] || '', word.police[st.police] || ''];
-      if (sec === 'injury') parts = [b.pain.join(', '), word.work[b.work] || ''];
+      if (sec === 'injury') parts = [b.pain.join(', '), String(b.painNote || '').trim() ? 'Note: ' + String(b.painNote).trim().split('\n')[0].slice(0, 60) : '', word.work[b.work] || ''];
       if (sec === 'treatment') parts = [b.seen.join(', '), (b.providers || []).join(', '), info.lastAt.answered ? 'Last seen ' + info.lastAt.value.split(',')[0] : ''];
       if (sec === 'insurance') parts = [f.carrier && f.carrier !== 'Pick one' ? f.carrier : '', word.exchanged[b.exchanged] || '', b.coverage || '', b.rep === 'Yes' ? 'Has an attorney' : ''];
       if (sec === 'vehicle') parts = [v('people'), v('car')];
@@ -1422,6 +1439,7 @@ export class CallEngine {
           cls: 'chip' + (free ? ' sm' : '') + (o === FINE ? ' warn' : '') + (chipOn(x, o) ? ' on' : ''),
           pick: () => this.bodyPick(x, o, free)
         })),
+        note: x.key === 'pain' ? this.painNoteView() : null,
         isDate: !!x.date,
         date: dv ? { value: dv.value, set: dv.set, min: dv.min, max: dv.max } : { value: '', set: () => {}, min: '', max: '' },
         dateWhy: dv ? dv.why : ''
@@ -1447,7 +1465,7 @@ export class CallEngine {
     // Freestyle: every live body question at once, answer in any order.
     var bodyAll = live.map((x) => Object.assign(qView(x, true), { cls: 'item' + (this.answered(b, x) ? ' done' : '') }));
     var qv = q ? Object.assign(qView(q, false), { step: 'Ask ' + (Math.max(0, live.indexOf(q)) + 1) + ' of ' + live.length })
-      : { step: '', line: '', cue: '', multi: false, nextLabel: '', chipsCls: 'chips', chips: [], next: () => {}, isDate: false, date: { value: '', set: () => {}, min: '', max: '' }, dateWhy: '' };
+      : { step: '', line: '', cue: '', multi: false, nextLabel: '', chipsCls: 'chips', chips: [], next: () => {}, note: null, isDate: false, date: { value: '', set: () => {}, min: '', max: '' }, dateWhy: '' };
     var gapCard = this.gapView();
 
     var rowToggle = (id: any) => () => this.setState({ openRow: this.state.openRow === id ? null : id });

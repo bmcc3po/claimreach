@@ -91,6 +91,7 @@ function Answers({ q, v, big }: { q: any; v: any; big: boolean }) {
     <div className={`oq-opts${grid ? " oq-grid" : ""}`}>
       {(c.opts || []).map((o: any, i: number) => <Option key={i} o={o} q={q} big={big && !grid} />)}
     </div>
+    {!!c.note && <textarea className="fi-in fi-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />}
     {!!c.other && <input className="fi-in" placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value} onChange={c.other.set} />}
     {(c.kind === "visit" || (c.kind === "crashdate" && c.date.show)) && (
       <label className="oq-date"><Ico id="calendar" /><span>Or pick the date</span>

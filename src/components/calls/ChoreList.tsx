@@ -49,6 +49,7 @@ function Control({ c, v }: { c: any; v: any }) {
     case "multi":
       return (<>
         <Opts opts={c.opts} />
+        {!!c.note && <Field label={c.note.label}><textarea className="ch-in ch-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} /></Field>}
         {!!c.other && <Field label="Explain"><input className="ch-in" value={c.other.value} onChange={c.other.set} /></Field>}
         {!!c.cue && <div className="ch-note">{c.cue}</div>}
       </>);

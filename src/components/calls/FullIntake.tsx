@@ -49,6 +49,7 @@ function Control({ c, v }: { c: any; v: any }) {
     case "multi":
       return (<>
         <Chips opts={c.opts} />
+        {!!c.note && <textarea className="fi-in fi-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />}
         {!!c.other && <input className="fi-in" placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value} onChange={c.other.set} />}
         {!!c.cue && <div className="fi-cue fi-cue-bad">{c.cue}</div>}
       </>);

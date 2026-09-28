@@ -57,6 +57,9 @@ a.cc-menu-b{text-decoration:none;color:#16324F;font-weight:500}
 .cc-field:focus{box-shadow:0 0 0 2px rgba(37,99,235,0.45)}
 .cc-area{min-height:72px;width:100%;box-sizing:border-box;border-radius:12px;border:none;background:#FFFFFF;padding:12px 14px;font-size:17px;font-family:inherit;color:#0D1420;resize:none;outline:none}
 .cc-area:focus{box-shadow:0 0 0 2px rgba(37,99,235,0.45)}
+/* Pain notes: opens under the injury boxes the moment one is checked. */
+.cc-qnote{display:grid;gap:6px;margin:8px 0 2px}
+.cc-qnote .cc-area{min-height:64px;box-shadow:0 0 0 1px #D1D1D6;resize:vertical}
 .cc-need{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border:1.5px solid #E3A008;border-radius:12px}
 .cc-need-k{font-size:13px;font-weight:500;color:#A15C07}
 .cc-need-l{font-size:17px;font-weight:600;line-height:1.3;color:#0D1420}

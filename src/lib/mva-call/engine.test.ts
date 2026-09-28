@@ -695,4 +695,36 @@ t("crash date: every WHEN handler pins the real calendar date", () => {
   assert.equal(doiOf(e.state.story), "");
 });
 
+t("pain notes: checking an injury box opens the notes box, saved with the call", () => {
+  const e = mk();
+  e.setState({ phase: "body" });
+  const painRow = () => e.renderVals().bodyRows.find((r: any) => r.key === "pain");
+  assert.equal(painRow().q.note, null, "no notes box before an injury is checked");
+  e.bodyPick(BODYQ_BY("pain"), "Neck", false);
+  const note = painRow().q.note;
+  assert.ok(note, "checking Neck opens the notes box");
+  note.set({ target: { value: "Sharp in the mornings, worse driving" } });
+  assert.equal(e.state.body.painNote, "Sharp in the mornings, worse driving");
+  // Saved with the call, back on a reopen; a file from before the field
+  // existed opens with it empty, not undefined.
+  const saved = JSON.parse(JSON.stringify(e.persistable()));
+  const e2 = mk({ saved });
+  assert.equal(e2.state.body.painNote, "Sharp in the mornings, worse driving");
+  const old = mk({ saved: { phase: "body", body: { pain: ["Back"] } } });
+  assert.equal(old.state.body.painNote, "");
+  assert.ok(old.renderVals().bodyRows.find((r: any) => r.key === "pain").q.note, "old saved file still opens the box");
+  // "Says she's fine" alone is not an injury: no notes box, the rebuttal
+  // owns that moment.
+  const fine = mk();
+  fine.setState({ phase: "body" });
+  fine.bodyPick(BODYQ_BY("pain"), "Says she's fine", false);
+  assert.equal(fine.renderVals().bodyRows.find((r: any) => r.key === "pain").q.note, null);
+  // Full Intake reads the same note through its control.
+  e.setView("full");
+  fiQ(e, "pain").edit();
+  const painQ = fiQ(e, "pain");
+  assert.ok(painQ.c.note, "Full Intake pain control carries the notes box");
+  assert.equal(painQ.c.note.value, "Sharp in the mornings, worse driving");
+});
+
 console.log(passed, "passed");

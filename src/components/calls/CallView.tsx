@@ -171,6 +171,10 @@ export default function CallView({ v }: { v: any }) {
 {!!(r.now && r.q) && (<div className="cc-frow-b">
 <div className="cc-qline">{r.q.line}</div>
 <div className={cx(r.q.chipsCls)}>{(r.q.chips || []).map((c: any, i: number) => (<button key={i} className={cx(c.cls)} onClick={c.pick}>{c.label}</button>))}</div>
+{!!(r.q.note) && (<div className="cc-qnote">
+<div className="cc-lab">{r.q.note.label}</div>
+<textarea className="cc-area" rows={3} placeholder={r.q.note.ph} aria-label={r.q.note.label} value={r.q.note.value ?? ""} onChange={r.q.note.set} />
+</div>)}
 {!!(r.q.isDate) && <DateBox q={r.q} />}
 {!!(r.q.multi) && <button className="cc-btn cc-soft cc-rowbtn" onClick={r.q.next}>{r.q.nextLabel}</button>}
 {!!(r.q.cue) && <div className="cc-cue" style={{marginTop: 0}}>{r.q.cue}</div>}
@@ -227,6 +231,10 @@ export default function CallView({ v }: { v: any }) {
 <div className={cx(x.cls)}>
 <div className="cc-item-l">{x.line}</div>
 <div className={cx(x.chipsCls)}>{(x.chips || []).map((c: any, i24: number) => (<Fragment key={i24}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
+{!!(x.note) && (<div className="cc-qnote">
+<div className="cc-lab">{x.note.label}</div>
+<textarea className="cc-area" rows={3} placeholder={x.note.ph} aria-label={x.note.label} value={x.note.value ?? ""} onChange={x.note.set} />
+</div>)}
 {!!(x.isDate) && <DateBox q={x} />}
 </div>
 {!!(x.key === "seen" && v.gapCard.show) && <GapCard g={v.gapCard} alone />}
