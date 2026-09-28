@@ -46,18 +46,23 @@ export async function POST(req: NextRequest) {
   // (Astra review, Sep 27: out-of-order saves could restore old answers).
   let merged = next;
   let seen = claim?.updated_at ?? null;
+  // The status check follows the FRESHEST read: a retry after a concurrent
+  // advance (say, to esign_sent) must not reset the file to Contacting
+  // (Astra round 3).
+  let curStatus = claim?.status as any;
   let wrote = false;
   for (let attempt = 0; attempt < 4 && !wrote; attempt++) {
     const patch: any = { answers: merged };
-    if (START_STATUSES.has(claim?.status as any)) patch.status = "contacting";
+    if (START_STATUSES.has(curStatus)) patch.status = "contacting";
     let q = sb.from("claims").update(patch).eq("id", claim_id);
     q = seen === null ? q.is("updated_at", null) : q.eq("updated_at", seen);
     const { data: hit, error: cErr } = await q.select("id").maybeSingle();
     if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
     if (hit) { wrote = true; break; }
-    const { data: fresh, error: rErr } = await sb.from("claims").select("answers, updated_at").eq("id", claim_id).maybeSingle();
+    const { data: fresh, error: rErr } = await sb.from("claims").select("answers, status, updated_at").eq("id", claim_id).maybeSingle();
     if (rErr || !fresh) return NextResponse.json({ error: rErr?.message || "claim disappeared mid-save" }, { status: 500 });
     merged = { ...((fresh.answers as any) ?? {}), ...sent };
+    curStatus = fresh.status as any;
     seen = fresh.updated_at ?? null;
   }
   if (!wrote) return NextResponse.json({ error: "The file is being saved from another screen right now. Try again." }, { status: 409 });
@@ -110,19 +115,12 @@ export async function POST(req: NextRequest) {
     // properties — silent data loss on a victim's intake. Instead: capture the
     // current rows, insert the new set, and only delete the old rows once the
     // insert has succeeded. On insert error we return early, data untouched.
-    let insertedIds: string[] = [];
-    if (rows.length) {
-      const { data: ins, error: pErr } = await sb.from("claim_properties").insert(rows).select("id");
-      if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
-      insertedIds = (ins ?? []).map((r: any) => r.id);
-    }
-    // Converge instead of racing: everything on this claim that is NOT part of
-    // the set we just wrote goes. Two overlapping saves end with one set, not
-    // a doubled one (Astra review, Sep 27).
-    let del = sb.from("claim_properties").delete().eq("claim_id", claim_id);
-    if (insertedIds.length) del = del.not("id", "in", `(${insertedIds.join(",")})`);
-    const { error: dErr } = await del;
-    if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
+    // One transaction on the database side (migration 0103): delete the old
+    // set and insert the new one atomically. Two overlapping saves serialize;
+    // the survivor is the later full set, never an empty one (Astra round 3:
+    // the previous insert-then-delete pair could interleave into zero rows).
+    const { error: pErr } = await sb.rpc("replace_claim_properties", { p_claim_id: claim_id, p_rows: rows });
+    if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
   }
 
   // ---- Field-level audit: diff prior vs next, log each change with old→new ----

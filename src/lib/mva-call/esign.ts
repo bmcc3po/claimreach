@@ -161,30 +161,43 @@ async function retryCompletedFiles(admin: any, row: any): Promise<void> {
     if (!got.ok) return;
     const sub = got.data;
     const firm = row.firm_id || "master";
-    const patch: Record<string, any> = {};
-    const docs = sub.documents || [];
-    for (let i = 0; i < docs.length; i++) {
-      const doc = docs[i];
-      if (!doc?.url) continue;
-      const bytes = await fetchBytes(doc.url);
-      if (!bytes) continue;
-      const path = `${firm}/signed-ds-${row.submission_id}${i ? `-${i + 1}` : ""}.pdf`;
-      const stored = await uploadSignedDoc(admin, path, bytes);
-      if (i === 0) patch.completed_pdf_path = stored;
+    const recovered: string[] = [];
+    // Only fetch what is actually missing, and land each pointer with its own
+    // guarded write, so a present primary never blocks a missing certificate
+    // (Astra round 3: the old single update matched zero rows in that case
+    // and still logged a recovery).
+    if (!row.completed_pdf_path) {
+      const docs = sub.documents || [];
+      let primary: string | null = null;
+      for (let i = 0; i < docs.length; i++) {
+        const doc = docs[i];
+        if (!doc?.url) continue;
+        const bytes = await fetchBytes(doc.url);
+        if (!bytes) continue;
+        const path = `${firm}/signed-ds-${row.submission_id}${i ? `-${i + 1}` : ""}.pdf`;
+        const stored = await uploadSignedDoc(admin, path, bytes);
+        if (i === 0) primary = stored;
+      }
+      if (primary) {
+        const { data: hit } = await admin.from("esign_submissions")
+          .update({ completed_pdf_path: primary, error: null })
+          .eq("id", row.id).is("completed_pdf_path", null).select("id");
+        if (hit?.length) recovered.push("the signed PDF");
+      }
     }
     if (!row.cert_pdf_path && sub.audit_log_url) {
       const bytes = await fetchBytes(sub.audit_log_url);
-      if (bytes) patch.cert_pdf_path = await uploadSignedDoc(admin, `${firm}/cert-ds-${row.submission_id}.pdf`, bytes);
+      if (bytes) {
+        const cert = await uploadSignedDoc(admin, `${firm}/cert-ds-${row.submission_id}.pdf`, bytes);
+        const { data: hit } = await admin.from("esign_submissions")
+          .update({ cert_pdf_path: cert })
+          .eq("id", row.id).is("cert_pdf_path", null).select("id");
+        if (hit?.length) recovered.push("the signing certificate");
+      }
     }
-    if (Object.keys(patch).length) {
-      if (patch.completed_pdf_path) patch.error = null;
-      let q = admin.from("esign_submissions").update(patch).eq("id", row.id);
-      // Guarded so racing pollers write once: only fill columns still empty.
-      if (patch.completed_pdf_path) q = q.is("completed_pdf_path", null);
-      else if (patch.cert_pdf_path) q = q.is("cert_pdf_path", null);
-      await q;
+    if (recovered.length) {
       await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: "System", category: "retainer",
-        description: `Recovered ${patch.completed_pdf_path ? "the signed PDF" : "the signing certificate"} from DocuSeal on retry.`, meta: { submission_id: row.submission_id } });
+        description: `Recovered ${recovered.join(" and ")} from DocuSeal on retry.`, meta: { submission_id: row.submission_id } });
     }
   } catch (e: any) {
     console.error("signed-file retry failed", e?.message || e);

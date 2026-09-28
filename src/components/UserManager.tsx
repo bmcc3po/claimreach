@@ -101,8 +101,11 @@ function UserEditor({ user, firms, onClose, onSaved }: { user: any; firms: any[]
   }
 
   async function setActive(active: boolean) {
-    await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: active ? "reactivate" : "deactivate", id: user.id }) });
-    onSaved(active ? "Reactivated." : "Deactivated.");
+    // Never report Deactivated on a failed write (Astra round 3).
+    const r = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: active ? "reactivate" : "deactivate", id: user.id }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { setErr(d.error || (active ? "Reactivate failed." : "Deactivate failed.")); return; }
+    onSaved(d.warning ? `${active ? "Reactivated" : "Deactivated"}. ${d.warning}` : active ? "Reactivated." : "Deactivated.");
   }
 
   return (

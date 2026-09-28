@@ -8,9 +8,11 @@ import PhoneInput, { formatUsPhone } from "./PhoneInput";
 // Contact Info tab — caller information + emergency contact. These fields are
 // the single source of truth (stored on the lead). Any inline-in-intake copy
 // reads/writes the same data, so they stay in sync (most recent write wins).
-export default function ContactInfo({ lead, claimType, editMode = true, onRequestEdit, points = [] }: {
+export default function ContactInfo({ lead, claimType, editMode = true, onRequestEdit, points = [], onSaved }: {
   lead: any; claimType?: string; editMode?: boolean; onRequestEdit?: () => void;
   points?: { id: string; kind: string; value: string; label?: string | null; status: string }[];
+  /** Reports successfully saved values so the parent's live copy stays fresh. */
+  onSaved?: (patch: Record<string, any>) => void;
 }) {
   const allFields = contactFieldsForType(claimType ?? "motel_trafficking");
 
@@ -109,6 +111,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       // did not save, the screen says so.
       if (!r.ok) { setSaveErr(d.error || "Could not save. Nothing was written."); setSaving(false); return; }
       setSavedAt(new Date().toLocaleTimeString());
+      onSaved?.({ ...f, ...x });
     } catch {
       setSaveErr("Could not reach the server. Nothing was saved.");
     }

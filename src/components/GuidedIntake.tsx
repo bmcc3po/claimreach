@@ -283,8 +283,12 @@ export default function GuidedIntake({
       // The finish screen must not appear over a save that never landed
       // (Astra review, Sep 27): wait for the write, stay put on failure.
       void (async () => {
+        // pending holds the freshest answers/props (the final answer's persist
+        // lands there before this runs). Saving the render's own `answers`
+        // dropped the last answer (Astra round 3).
+        const x = pending.current;
         clearTimeout(saveTimer.current); pending.current = null;
-        const ok = await doSave(answers, props, true);
+        const ok = await doSave(x?.a ?? answers, x?.p ?? props, true);
         if (ok) setFinished(true); // a failed save stays on the question with the error showing
       })();
       return;

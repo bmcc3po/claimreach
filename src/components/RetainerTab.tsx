@@ -162,10 +162,11 @@ function StaffRetainerTab({ leadId, claimId, role }: { leadId: string; claimId?:
     try {
       const r = await fetch("/api/grievous", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, kind: "full" }) });
       const d = await r.json();
-      if (d.verdict) {
-        const ok = d.verdict === "approved";
+      const verdict = d.review?.verdict;
+      if (verdict) {
+        const ok = !!d.approved;
         setApproved(ok);
-        setMsg(ok ? "Grievous approved this file. You can send now." : `Grievous: ${d.verdict}. ${d.summary || "Check the QA tab for the report."}`);
+        setMsg(ok ? "Grievous approved this file. You can send now." : `Grievous: ${verdict}. ${d.review?.summary || "Check the QA tab for the report."}`);
       } else setMsg(d.error || "Grievous review could not run.");
     } catch { setMsg("Grievous review failed to run."); }
     finally { setRunningGrievous(false); }

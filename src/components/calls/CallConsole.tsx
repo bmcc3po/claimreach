@@ -133,11 +133,16 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         const d = e().state.dispo;
         e().setState({ dispo: { ...d, saving: true, error: "" } });
         const at = callbackAt(d.when, d.at);
-        flushSave().then(() => post("/api/calls/dispo", {
+        // The call does not end over unsaved answers (Astra round 3): a failed
+        // answers save blocks the dispo with a plain error instead.
+        flushSave().then((saved) => {
+          if (!saved) throw new Error("The answers have not saved yet. Check the connection; they retry automatically, then press Save again.");
+          return post("/api/calls/dispo", {
           lead_id: leadId, call_id: callId.current, dispo: d.pick, reasons: d.why,
           callback_at: at ? at.toISOString() : null, note: d.note,
           notify: d.pick === "signed" ? d.notify.filter((n: any) => n.on).map((n: any) => n.how) : [],
-        })).then((r) => {
+          });
+        }).then((r) => {
           const note = r.email_error ? `Saved. The email did not send: ${r.email_error}` : "";
           e().setState({ saved: true, dispo: { ...e().state.dispo, saving: false, saved: true, error: "", serverNote: note } });
         }).catch((err) => e().setState({ dispo: { ...e().state.dispo, saving: false, error: err.message } }));
@@ -219,10 +224,14 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     }
   }
 
-  async function flushSave() {
+  async function flushSave(): Promise<boolean> {
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    // If an autosave is mid-flight, give it a moment instead of reporting a
+    // false failure (save() returns false while one is running).
+    for (let i = 0; i < 16 && saving.current; i++) await new Promise((r) => setTimeout(r, 250));
     const snap = JSON.stringify(engine.persistable());
-    if (snap !== lastSaved.current || !callId.current) await save(snap);
+    if (snap !== lastSaved.current || !callId.current) return save(snap);
+    return true;
   }
 
   // Clock.

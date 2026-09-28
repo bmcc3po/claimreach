@@ -15,17 +15,17 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current objective
 
-- Outcome:
-- Why it matters:
-- Definition of done:
+- Outcome: Astra round-3 findings verified, fixed, gated and delivered as claimreach_astra_round3.zip on top of PR #33 (deaf575).
+- Why it matters: launch gates — access protection, data loss, false completion, packet integrity, and a transparent-button regression.
+- Definition of done: every confirmed finding fixed with the build gate green; DB repairs applied and probe-verified; zip verified on a clean copy of origin/main.
 
 ## Current state
 
-- Status: Ready for the next assignment
-- Working branch: main
-- Latest commit:
-- Deployment or preview:
-- Last verified result:
+- Status: Round-3 repair zip cut and delivered to Brett for upload
+- Working branch: astra-round3 (local to Claude's cloud session; delivery is by zip upload, session cannot push)
+- Latest commit: on top of origin/main a887ce6
+- Deployment or preview: awaiting Brett's zip upload; DB migration 0103 ALREADY APPLIED live and probe-verified (traversal/percent storage keys refused, atomic property replace)
+- Last verified result: tsc clean; engine 43 pass; SsnDob pass; next-on-pages 190 routes + Build completed; browser token check: primary buttons compute rgb(34,197,94)
 
 ## Work completed
 
