@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CallView from "./CallView";
 import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
-import { WsSummary } from "./IntakeWorkspace";
+import { WsHelper } from "./IntakeWorkspace";
 import { popOutDialer } from "./JustCallDialer";
 import { stateCodeOf } from "@/lib/mva-call/state";
 import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
@@ -163,7 +163,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   useEffect(() => {
     try {
       const pref = localStorage.getItem(viewKey);
-      if (pref && ["guided", "convo", "quick", "full", "chore", "qa"].includes(pref) && pref !== engine.state.view) engine.setView(pref);
+      if (pref && ["guided", "full", "chore"].includes(pref) && pref !== engine.state.view) engine.setView(pref);
     } catch { /* private mode */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -171,9 +171,12 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   // workspace (three areas with the tools panel on the right). Simple
   // Chorelist is its own full-width form everywhere, so no panel beside it.
   // Same engine and the same answers in all of them.
+  // One frame for every view (Guided, Collapsible, All questions): a computer
+  // gets the caller on the left and the tools panel on the right, an iPad
+  // sideways gets the caller and the helper, a phone gets one column.
   const v = engine.renderVals();
-  const ws: "desk" | "ipad" | null = v.fullView || v.oneQ ? (isDesk && !touch ? "desk" : wide ? "ipad" : null) : null;
-  const deskOn = isDesk && !v.choreView && ws !== "ipad";
+  const ws: "desk" | "ipad" | null = isDesk && !touch ? "desk" : wide ? "ipad" : null;
+  const deskOn = ws === "desk";
 
   async function loadComms() {
     try {
@@ -349,6 +352,9 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     view.openCommon = () => { setDeskTab("know"); setFocusLines({ key: "common", n: Date.now() }); };
     view.openRamble = () => { setDeskTab("know"); setFocusLines({ key: "ramble", n: Date.now() }); };
     view.onPreview = (ev: any) => { ev.preventDefault(); setDeskTab("retainer"); };
+    view.openRetainer = () => setDeskTab("retainer");
+    view.openFile = () => setDeskTab("file");
+    view.openScripts = () => setDeskTab("know");
     view.textBadge = false;
   }
   // Slide the divider to give the call or the panel more room. Remembered per
@@ -429,7 +435,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
   const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
   return (
-    <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on" : ""}${ws === "desk" ? " ws-cockpit" : ""}${v.choreView ? " ch-desk" : ""}`}>
+    <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ""}`}>
       <CallView v={view} />
       {deskOn && !ws && (
         <div className="cc-split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the call and the panel" tabIndex={0}
@@ -438,7 +444,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
       )}
       {deskOn && (
         <DeskPanel v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
-          summary={ws === "desk" ? <WsSummary v={view} /> : null}
+          summary={<WsHelper v={view} />}
           preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
           focusLines={focusLines} phones={phones} leadId={init.leadId}
           story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, LEAD_CALL_COLS, firmSpoken } from "@/lib/mva-call/server";
 import { stateCodeOf } from "@/lib/mva-call/state";
-import { createSubmission, agreementKey, docusealConfigured, MISSING_DOCUSEAL } from "@/lib/docuseal";
+import { createSubmission, agreementKey, docusealConfigured, MISSING_DOCUSEAL, plainDocuSeal, templateProblem } from "@/lib/docuseal";
 import { syncSubmission, packetsFor, templateFor } from "@/lib/mva-call/esign";
 import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
@@ -106,8 +106,8 @@ async function send(req: NextRequest) {
   }
 
   const { data: auth } = await sb.auth.getUser();
-  const res = await createSubmission({
-    templateId: tpl.template_id,
+  const submit = (templateId: string) => createSubmission({
+    templateId,
     client: {
       name: signer, email: email || null, phone,
       values: { "Client Name": signer, "Injured Party Name": injured, "Signing Date": today, "Accident Date": doi },
@@ -116,7 +116,17 @@ async function send(req: NextRequest) {
     emailClient: via === "Email",
     externalId: fileLeadId,
   });
-  if (!res.ok) return failed(lead, me, `DocuSeal did not create the agreement: ${res.error}`, { stage: "docuseal", status: (res as any).status ?? null, template_id: tpl.template_id, key });
+  let res = await submit(tpl.template_id);
+  // The stored template is gone or empty in DocuSeal (a new key, or an old bad
+  // one): make it new from the packet and try once more.
+  if (!res.ok && packet && templateProblem(res.error, res.status)) {
+    const first = res.error;
+    const t = await templateFor(admin, { firmId: lead.firm_id, campaignId: lead.campaign_id, key, packet, origin: new URL(req.url).origin, actorId: me.id, force: true });
+    if (!t.ok) return failed(lead, me, t.error, { stage: "template_retry", key, first });
+    tpl = { template_id: t.templateId };
+    res = await submit(tpl.template_id);
+  }
+  if (!res.ok) return failed(lead, me, plainDocuSeal(res.error, res.status, "send"), { stage: "docuseal", status: res.status ?? null, docuseal: res.error, template_id: tpl.template_id, key });
   // DocuSeal answers with the list of signers. Read it either way it comes back.
   const list: any[] = Array.isArray(res.data) ? res.data : Array.isArray((res.data as any)?.submitters) ? (res.data as any).submitters : [];
   const client = list.find((s) => s.role === "Client");

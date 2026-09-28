@@ -39,7 +39,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   const [dialState, setDialState] = useState<DialerState>("loading");
   const dialer = useRef<JustCallDialerHandle | null>(null);
   useEffect(() => { if (tab === "phone") setPhoneOn(true); }, [tab]);
-  const tabs: [DeskTab, string][] = [...(summary ? [["summary", "Summary"] as [DeskTab, string]] : []), ["know", "CarCure"], ["texts", "Texts"], ["phone", "Phone"], ["retainer", "Retainer"], ["file", "File"], ["tools", "Tools"]];
+  const tabs: [DeskTab, string][] = [...(summary ? [["summary", "Helper"] as [DeskTab, string]] : []), ["know", "Scripts"], ["texts", "Texts"], ["phone", "Phone"], ["retainer", "Agreement"], ["file", "File"], ["tools", "Tools"]];
   return (
     <aside className={`cc-side${summary ? " ws-side" : ""}`} aria-label="Summary, CarCure, texts, agreement and lead">
       <div className="cc-side-top">

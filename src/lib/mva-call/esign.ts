@@ -3,7 +3,7 @@
 // (syncSubmission) and both the agent's screen poll and the DocuSeal webhook
 // call it, so the two can never disagree about what happened.
 // ============================================================================
-import { getSubmission, statusFrom, STATUS_RANK, createTemplate } from "@/lib/docuseal";
+import { getSubmission, statusFrom, STATUS_RANK, createTemplate, plainDocuSeal } from "@/lib/docuseal";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
 import { uploadSignedDoc } from "@/lib/signed-docs";
@@ -24,13 +24,20 @@ export function packetsFor(firmSlug: string | null | undefined, caseType: string
  */
 export async function templateFor(admin: any, opts: {
   firmId: string; campaignId: string; key: string; packet: Packet; origin: string; actorId?: string | null; create?: boolean;
+  /** Make it new even when the stored one has the current name (it was gone or empty in DocuSeal). */
+  force?: boolean;
 }): Promise<{ ok: true; templateId: string; made: boolean } | { ok: false; error: string; missing?: boolean }> {
   const { data: row } = await admin.from("esign_templates").select("template_id, name")
     .eq("campaign_id", opts.campaignId).eq("provider", "docuseal").eq("key", opts.key).maybeSingle();
-  if (row && row.name === opts.packet.name) return { ok: true, templateId: String(row.template_id), made: false };
+  if (row && row.name === opts.packet.name && !opts.force) return { ok: true, templateId: String(row.template_id), made: false };
   if (!row && !opts.create) return { ok: false, missing: true, error: "E-sign is not set up for this campaign yet. An admin sets it up once from Calls." };
   const res = await createTemplate(opts.packet, opts.origin + opts.packet.path);
-  if (!res.ok) return { ok: false, error: `DocuSeal would not make the ${opts.key} agreement: ${res.error}` };
+  if (!res.ok) return { ok: false, error: plainDocuSeal(res.error, res.status, "template") };
+  // Never store a template DocuSeal made without the signing boxes.
+  const got = (res.data.fields || []).length;
+  if (got < opts.packet.fields.length) {
+    return { ok: false, error: `DocuSeal made the ${opts.key} agreement without all its signing boxes (${got} of ${opts.packet.fields.length}). Nothing was sent. Tell your admin: the agreement setup needs a fix.` };
+  }
   const templateId = String(res.data.id);
   const q = row
     ? admin.from("esign_templates").update({ template_id: templateId, name: opts.packet.name })

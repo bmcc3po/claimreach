@@ -45,16 +45,22 @@ async function ds<T>(path: string, init: RequestInit = {}, fetchImpl: typeof fet
   }
 }
 
+/** The body DocuSeal's POST /templates/pdf expects. The fields sit inside the
+ *  document they belong to; fields at the top level are ignored and DocuSeal
+ *  makes an empty template ("Template does not contain fields" on send). */
+export function templateBody(packet: Packet, fileUrl: string) {
+  return {
+    name: packet.name,
+    external_id: packet.external_id,
+    documents: [{ name: packet.name, file: fileUrl, fields: packet.fields }],
+  };
+}
+
 /** One template from a packet. The PDF is fetched by DocuSeal from `fileUrl`. */
 export async function createTemplate(packet: Packet, fileUrl: string, fetchImpl?: typeof fetch) {
-  return ds<{ id: number; name: string }>("/templates/pdf", {
+  return ds<{ id: number; name: string; fields?: { name: string }[]; submitters?: { name: string }[] }>("/templates/pdf", {
     method: "POST",
-    body: JSON.stringify({
-      name: packet.name,
-      external_id: packet.external_id,
-      documents: [{ name: packet.name, file: fileUrl }],
-      fields: packet.fields,
-    }),
+    body: JSON.stringify(templateBody(packet, fileUrl)),
   }, fetchImpl);
 }
 
@@ -71,37 +77,41 @@ export interface DsSubmitter {
   declined_at?: string | null;
 }
 
-/**
- * Send one agreement. Client signs first, Intake (us, through the API) second.
- * Client values are locked so the signer cannot edit her own name or date.
- */
-export async function createSubmission(opts: {
+export interface SubmissionOpts {
   templateId: string | number;
   client: { name: string; email?: string | null; phone?: string | null; values: Record<string, string> };
   intake: { email: string; name?: string };
   emailClient: boolean;
   externalId?: string;
-}, fetchImpl?: typeof fetch) {
+}
+
+/** The body DocuSeal's POST /submissions expects. The client's name and dates
+ *  are locked by the template itself (those fields are readonly there). */
+export function submissionBody(opts: SubmissionOpts) {
   const client: any = {
     role: "Client",
     name: opts.client.name,
     values: opts.client.values,
-    readonly_fields: Object.keys(opts.client.values),
     send_email: opts.emailClient,
     send_sms: false,
   };
   if (opts.client.email) client.email = opts.client.email;
   if (opts.client.phone) client.phone = opts.client.phone;
   if (opts.externalId) client.external_id = opts.externalId;
+  return {
+    template_id: Number(opts.templateId),
+    order: "preserved",
+    send_email: opts.emailClient,
+    send_sms: false,
+    submitters: [client, { role: "Intake", email: opts.intake.email, name: opts.intake.name || "Intake", send_email: false, send_sms: false }],
+  };
+}
+
+/** Send one agreement. Client signs first, Intake (us, through the API) second. */
+export async function createSubmission(opts: SubmissionOpts, fetchImpl?: typeof fetch) {
   return ds<DsSubmitter[]>("/submissions", {
     method: "POST",
-    body: JSON.stringify({
-      template_id: Number(opts.templateId),
-      order: "preserved",
-      send_email: opts.emailClient,
-      send_sms: false,
-      submitters: [client, { role: "Intake", email: opts.intake.email, name: opts.intake.name || "Intake", send_email: false, send_sms: false }],
-    }),
+    body: JSON.stringify(submissionBody(opts)),
   }, fetchImpl);
 }
 
@@ -120,6 +130,35 @@ export async function completeIntake(submitterId: string | number, values: Recor
     method: "PUT",
     body: JSON.stringify({ values, completed: true, send_email: false, send_sms: false }),
   }, fetchImpl);
+}
+
+/**
+ * What DocuSeal said, in words an agent can act on. `stage` is what we were
+ * doing: making the agreement template, or sending it to the client.
+ */
+export function plainDocuSeal(error: string, status: number | undefined, stage: "template" | "send"): string {
+  const e = String(error || "").trim();
+  const low = e.toLowerCase();
+  if (e === MISSING_DOCUSEAL) return e;
+  if (status === 401 || status === 403 || /not authenticated|unauthori[sz]ed|invalid.*token|api key/.test(low))
+    return "DocuSeal refused our key. Nothing was sent. Tell your admin: DOCUSEAL_API_KEY in Cloudflare is wrong or expired.";
+  if (status === 429 || /too many|rate limit/.test(low))
+    return "DocuSeal is busy right now. Nothing was sent. Wait one minute and press Send again.";
+  if (!status || (status >= 500 && status < 600) || /could not reach|fetch failed|network|timed? ?out/.test(low))
+    return "DocuSeal did not answer. Nothing was sent. Wait a few seconds and press Send again.";
+  if (/phone/.test(low)) return `DocuSeal says her cell number is not valid (${e}). Check the number, fix it, and send again.`;
+  if (/email/.test(low)) return `DocuSeal says the email is not valid (${e}). Check the email, fix it, and send again.`;
+  if (stage === "template" && /file|pdf|download|document/.test(low))
+    return `DocuSeal could not open the agreement PDF (${e}). Nothing was sent. Tell your admin.`;
+  if (stage === "template") return `DocuSeal would not set up the agreement (${e}). Nothing was sent. Tell your admin.`;
+  return `DocuSeal would not send the agreement (${e}). Nothing was sent. Press Send again; if it fails twice, tell your admin.`;
+}
+
+/** A send that failed because the stored template is gone or empty in DocuSeal.
+ *  The send route makes the template new and tries once more. */
+export function templateProblem(error: string, status: number | undefined): boolean {
+  const low = String(error || "").toLowerCase();
+  return status === 404 || (/template/.test(low) && /(not found|does not contain|no fields|archived|missing)/.test(low));
 }
 
 /** Where our status sits given DocuSeal's view of the client and the whole packet. */

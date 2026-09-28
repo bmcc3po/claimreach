@@ -267,7 +267,7 @@ export class CallEngine {
       // the one "Next" pointed at, the quick note. Never saved with the call.
       fi: { sec: 'incident', seen: { incident: true }, edit: null, flash: null, whenPick: false, quick: false, draft: '', lights: false, carrierQ: '', prov: '', jump: 0, target: null, finishAsk: false, cq: null, note: false },
       story: { fault: null, seat: null, seatOther: '', police: null, when: null, date: '', city: '', text: '' },
-      helpTab: 'reb', askText: '', askOut: null, lineFocus: 'common',
+      helpTab: 'now', askText: '', askOut: null, lineFocus: 'common',
       text: { open: false, draft: '', thread: [] },
       dispo: { open: false, pick: null, list: true, why: [], auto: false, when: null, at: '', note: '', add: '', saved: false, notify: this.props.notifyDefaults.map((n) => ({ who: n.who, how: n.how, on: true })) },
       storyOpen: null, leadOpen: false,
@@ -1284,6 +1284,8 @@ export class CallEngine {
             id: r.id, n: i + 1, label: r.label, status: stt, statusText: words[stt],
             // Working anywhere in a section makes it the one she is in.
             enter: () => { if (this.state.fi.sec !== r.id) this.setFi({ sec: r.id }); },
+            go: () => this.setFi({ sec: r.id, edit: null, flash: null, target: null, finishAsk: false, jump: (this.state.fi.jump || 0) + 1 }),
+            nextLabel: nxt ? (i + 2) + '. ' + nxt.label : '',
             next: nxt ? () => this.setFi({ sec: nxt.id, edit: null, flash: null, target: null, finishAsk: false, jump: (this.state.fi.jump || 0) + 1 }) : null
           };
         }),
@@ -1291,7 +1293,7 @@ export class CallEngine {
         nextText: nowI >= 0 ? 'Next section: ' + rows[nowI].label : 'Every section is finished.',
         finish: {
           ask: !!fi.finishAsk && unfinished.length > 0,
-          askText: 'Not finished yet: ' + unfinished.join(', ') + '. Press FINISH INTAKE again to end the call anyway.',
+          askText: 'Not finished yet: ' + unfinished.join(', ') + '. Press Finish intake again to end the call anyway.',
           go: () => {
             if (unfinished.length && !this.state.fi.finishAsk) return this.setFi({ finishAsk: true });
             this.setFi({ finishAsk: false });
@@ -1312,6 +1314,7 @@ export class CallEngine {
       next: nextId ? {
         label: 'Next: ' + this.fiInfo(nextId).label,
         ask: this.fiInfo(nextId).ask, sec: sectionOf(nextId),
+        cue: (BODYQ.find((q) => q.key === nextId) || { cue: '' }).cue || '',
         go: () => goTo(nextId)
       } : null,
       missing: missing,
@@ -1337,7 +1340,7 @@ export class CallEngine {
         }
       },
       lead: pre.lead,
-      viewLabel: allOpen ? 'Simple Chorelist' : s.view === 'convo' ? 'Conversation' : s.view === 'quick' ? 'Quick Capture' : 'Full Intake'
+      viewLabel: allOpen ? 'All questions' : s.view === 'convo' ? 'Conversation' : s.view === 'quick' ? 'Quick Capture' : 'Collapsible'
     };
   }
 
@@ -1564,10 +1567,13 @@ export class CallEngine {
       guided: !s.free, free: s.free,
       bare: s.bare,
       view: s.view,
-      modeLabel: ({ qa: 'Q&A', full: 'Full Intake', chore: 'Simple Chorelist', convo: 'Conversation', quick: 'Quick Capture' } as any)[s.view] || 'Guided',
+      // Three views while the agents try them (Brett, Sep 27): Guided, one step
+      // at a time; Collapsible, every section on one page, one open at a time;
+      // All questions, the whole intake open as one numbered form.
+      modeLabel: ({ qa: 'Q&A', full: 'Collapsible', chore: 'All questions', convo: 'Conversation', quick: 'Quick Capture' } as any)[s.view] || 'Guided',
       modeMenuOpen: !!s.modeMenu,
       toggleModeMenu: () => this.setState({ modeMenu: !this.state.modeMenu }),
-      modes: [['Guided', 'guided'], ['Conversation', 'convo'], ['Quick Capture', 'quick'], ['Full Intake', 'full'], ['Simple Chorelist', 'chore'], ['Q&A', 'qa']].map((m) => ({
+      modes: [['Guided', 'guided'], ['Collapsible', 'full'], ['All questions', 'chore']].map((m) => ({
         key: m[1],
         label: m[0],
         on: s.view === m[1],
@@ -1715,8 +1721,9 @@ export class CallEngine {
       solHas: sol.daysLeft != null && sol.daysLeft <= 90, solText: sol.text,
       solCls: 'cue' + (sol.daysLeft != null && sol.daysLeft <= 90 ? ' red' : ''),
       solClose: sol.daysLeft != null && sol.daysLeft >= 0 && sol.daysLeft <= 90,
-      helpTabs: [['reb', 'Rebuttals'], ['lines', 'Lines'], ['ask', 'Ask CaseCure']].map((x) => ({ label: x[1], cls: 'htab' + (s.helpTab === x[0] ? ' on' : ''), go: () => this.setState({ helpTab: x[0] }) })),
-      isRebTab: s.helpTab === 'reb', isAsk: s.helpTab === 'ask', isLines: s.helpTab === 'lines',
+      // Help on a phone: Now (what to say, reminders, what's missing) first.
+      helpTabs: [['now', 'Now'], ['reb', 'Rebuttals'], ['lines', 'Lines'], ['ask', 'Ask']].map((x) => ({ label: x[1], cls: 'htab' + (s.helpTab === x[0] ? ' on' : ''), go: () => this.setState({ helpTab: x[0], reb: null }) })),
+      isNowTab: s.helpTab === 'now', isRebTab: s.helpTab === 'reb', isAsk: s.helpTab === 'ask', isLines: s.helpTab === 'lines',
       lines: lines,
       openCommon: () => this.setState({ sheet: true, reb: null, helpTab: 'lines', lineFocus: 'common' }),
       openRamble: () => this.setState({ sheet: true, reb: null, helpTab: 'lines', lineFocus: 'ramble' }),
@@ -1779,7 +1786,8 @@ export class CallEngine {
       askBusy: s.askOut === 'busy',
       askAnswer: s.askOut && typeof s.askOut === 'object' && s.askOut.answer ? s.askOut.answer : '',
       askError: s.askOut && typeof s.askOut === 'object' && s.askOut.error ? s.askOut.error : '',
-      openSheet: () => this.setState({ sheet: true, reb: null }),
+      openSheet: () => this.setState({ sheet: true, reb: null, helpTab: 'now' }),
+      openRebuttals: () => this.setState({ sheet: true, reb: null, helpTab: 'reb' }),
       closeSheet: () => this.setState({ sheet: false, reb: null }),
       clearPick: () => this.setState({ reb: null }),
       sheetOpen: s.sheet,
@@ -1799,11 +1807,12 @@ export class CallEngine {
     out.choreView = s.view === 'chore';
     // The one Send button, for any view that draws its own.
     out.sendNext = sendNext;
-    out.fi = ['full', 'chore', 'convo', 'quick'].indexOf(s.view) >= 0 ? this.fullIntake({
+    // Every view reads it: the side panels (caller, helper) are the same in all of them.
+    out.fi = this.fullIntake({
       people: out.people, justMe: out.justMe, addPerson: out.addPerson, years: out.years, carriers: out.carriers,
       gates: gates, gapCard: gapCard,
       lead: out.hasLead ? { tags: out.leadTags.map((t) => t.label).join(', ') || out.leadFrom, said: out.leadSaid, from: out.leadFrom, open: out.leadOpen, toggle: out.toggleLead } : null
-    }) : null;
+    });
     return out;
   }
 }

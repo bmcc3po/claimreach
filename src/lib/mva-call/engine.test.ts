@@ -519,7 +519,7 @@ t("chorelist: FINISH INTAKE says what is not finished, then ends the call", () =
   chOf(e).finish.go();
   assert.equal(e.state.dispo.open, false);
   assert.ok(chOf(e).finish.ask);
-  assert.ok(/^Not finished yet: 1\. Incident, .*7\. Retainer\. Press FINISH INTAKE again/.test(chOf(e).finish.askText), chOf(e).finish.askText);
+  assert.ok(/^Not finished yet: 1\. Incident, .*7\. Retainer\. Press Finish intake again/.test(chOf(e).finish.askText), chOf(e).finish.askText);
   chOf(e).finish.go();
   assert.equal(e.state.dispo.open, true);
 });
