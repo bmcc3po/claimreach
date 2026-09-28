@@ -148,7 +148,7 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
         <div className="cd-block">
           <div className="section-title">Status & Dates</div>
           {fileMaySeeMoney(fence) && <L label="Case tier / rating"><Sel value={f.case_rating} onChange={(v) => set("case_rating", v)} options={dd("tier")} allowFree /></L>}
-          <L label="Call outcome"><input value={f.call_outcome} onChange={(e) => set("call_outcome", e.target.value)} /></L>
+          <L label="Call outcome"><Sel value={f.call_outcome} onChange={(v) => set("call_outcome", v)} options={dd("call_outcome")} allowFree /></L>
           <L label="eSign date"><input type="date" value={f.esign_date ?? ""} onChange={(e) => set("esign_date", e.target.value)} /></L>
           <L label="Last called"><span className="muted">{lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : "—"}</span></L>
           <L label="Case tags (comma-separated, searchable)"><input value={f.case_tags} onChange={(e) => set("case_tags", e.target.value)} placeholder="urgent, spanish, callback" /></L>

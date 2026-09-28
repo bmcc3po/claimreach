@@ -1,9 +1,7 @@
 "use client";
 import { useState, useEffect, type ReactNode } from "react";
-import { STAGE_LABELS } from "@/lib/questionnaire";
 import { LX } from "@/lib/lexicon";
 import FloatingDock from "./FloatingDock";
-import CollapsiblePanel from "./CollapsiblePanel";
 import IntakeSurface from "./IntakeSurface";
 import CaseOverview from "./CaseOverview";
 import StatusBadge from "./ui/StatusBadge";
@@ -85,30 +83,42 @@ export default function LeadWorkspace({
 
   return (
     <div>
-      {/* One dense header line: name, file, campaign, date, status, lock. */}
-      <div className="leadhead-line">
-        <a className="qtab-back" href={backHref} title="Back to your queue">←</a>
-        <span className="lh-name">{lead.claimant_name ?? "Unnamed claimant"}</span>
-        <span className="lh-file">{lead.lead_no}</span>
-        <span className="leadhead-dot">·</span>
-        <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={lead.current_user_role} />
-        {appCall && lead.firm_name && <span className="leadhead-campaign" style={{ opacity: 0.85 }} title="The attorney this case signs with">Attorney: {lead.firm_name}</span>}
-        <span className="leadhead-dot">·</span>
-        <span className="muted lh-date">{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : ""}</span>
-        <span className="lh-spacer" />
-        {canTools && stats ? (
-          <>
-            <span className="lh-stat"><b>{stats.signed}</b> signed</span>
-            <span className="lh-stat"><b>{stats.wip}</b> WIP</span>
-          </>
-        ) : null}
-        {headerActions}
-        {fileMayExportPdf(fence) && (
-          <a className="btn ghost sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
-        )}
-        {canTools && ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
-        <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
-        {canTools && <LockFileButton lead={lead} />}
+      {/* The file header: name as the anchor, everything else calm around it. */}
+      <div className="lf-head">
+        <a className="lf-back" href={backHref} title="Back to your queue" aria-label="Back to your queue">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+        </a>
+        <div className="lf-id">
+          <div className="lf-name">
+            <span>{lead.claimant_name ?? "Unnamed claimant"}</span>
+            <span className="lf-no">{lead.lead_no}</span>
+          </div>
+          <div className="lf-sub">
+            <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={lead.current_user_role} />
+            {appCall && lead.firm_name && (<>
+              <span className="leadhead-dot">·</span>
+              <span title="The attorney this case signs with">Attorney: {lead.firm_name}</span>
+            </>)}
+            {lead.created_at && (<>
+              <span className="leadhead-dot">·</span>
+              <span>Opened {new Date(lead.created_at).toLocaleDateString()}</span>
+            </>)}
+            {canTools && stats ? (<>
+              <span className="leadhead-dot">·</span>
+              <span className="lf-stat"><b>{stats.signed}</b> signed</span>
+              <span className="lf-stat"><b>{stats.wip}</b> WIP</span>
+            </>) : null}
+          </div>
+        </div>
+        <div className="lf-acts">
+          {headerActions}
+          {fileMayExportPdf(fence) && (
+            <a className="cl-btn cl-ghost cl-sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
+          )}
+          {canTools && ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
+          <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+          {canTools && <LockFileButton lead={lead} />}
+        </div>
       </div>
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
@@ -119,13 +129,6 @@ export default function LeadWorkspace({
           ))}
         </div>
       )}
-
-      {/* Everything else, injured-party + progress, folds into ONE panel that
-          shows just the PNC name when collapsed. */}
-      <CollapsiblePanel id="lead_detail" title="File detail" sub={`${lead.claimant_name ?? ""}${STAGE_LABELS?.[activeClaim?.status ?? lead.status ?? "new"] ? " · " + STAGE_LABELS[activeClaim?.status ?? lead.status ?? "new"] : ""}`} defaultOpen={false}>
-        <PncBanner lead={lead} readOnly={!canEdit} />
-        <div style={{ marginTop: 12 }}><PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} /></div>
-      </CollapsiblePanel>
 
       {/* WIP fix banner: QA sent this back. Resubmit returns it to the QA queue. */}
       {canTools && lead.wip_pending && <WipBanner lead={lead} signed={/^signed_/.test(activeClaim?.status || "")} />}
@@ -144,9 +147,13 @@ export default function LeadWorkspace({
             )}
           </div>
           <div className="formbody">
-            {tab === "Overview" && (
+            {tab === "Overview" && (<>
               <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} onGo={(t) => { setTab(t); setEditMode(false); }} />
-            )}
+              {/* Injured-party status and the pipeline live at the bottom of
+                  Overview now; the old "File detail" fold bar is gone. */}
+              <div style={{ marginTop: 18 }}><PncBanner lead={lead} readOnly={!canEdit} /></div>
+              <div style={{ marginTop: 12 }}><PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} /></div>
+            </>)}
             {tab === "Case Questions" && appCall && !showOldForm && (
               <AppAnswers call={appCall} onShowOld={appCall.hasOld ? () => setShowOldForm(true) : undefined} />
             )}
@@ -373,7 +380,16 @@ function LockFileButton({ lead }: { lead: any }) {
     setBusy(false);
     if (r.ok) setLocked(!locked); else { const d = await r.json().catch(() => ({})); alert(`Lock failed: ${d.error || r.status}`); }
   }
-  return <button className={`btn ${locked ? "" : "ghost"}`} onClick={toggle} disabled={busy} title={locked ? "File is locked, click to unlock" : "Lock this file read-only"}>{locked ? "🔓 Unlock file" : "🔒 Lock file"}</button>;
+  return (
+    <button className={`cl-btn cl-sm ${locked ? "" : "cl-ghost"}`} onClick={toggle} disabled={busy} title={locked ? "File is locked, click to unlock" : "Lock this file read-only"}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {locked
+          ? <><rect x="3" y="11" width="18" height="10" rx="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></>
+          : <><rect x="3" y="11" width="18" height="10" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>}
+      </svg>
+      {locked ? "Unlock file" : "Lock file"}
+    </button>
+  );
 }
 
 function SendToFirmButton({ leadId }: { leadId: string }) {
@@ -413,7 +429,7 @@ function SendToFirmButton({ leadId }: { leadId: string }) {
   const label = busy ? "Sending…" : state.sentAt ? "Resend to firm" : "Send to firm";
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <button className="btn ghost sm" onClick={() => send(false)} disabled={busy}
+      <button className="cl-btn cl-ghost cl-sm" onClick={() => send(false)} disabled={busy}
         title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this file's documents"}>
         {label}
       </button>

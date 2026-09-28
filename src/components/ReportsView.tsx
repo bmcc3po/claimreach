@@ -69,85 +69,86 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
     const max = Math.max(1, ...Object.values(obj));
     const entries = Object.entries(obj).sort((a, b) => b[1] - a[1]);
     return (
-      <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ marginTop: 0 }}>{title}</h3>
-        {entries.length === 0 && <p className="muted">No data in range.</p>}
-        {entries.map(([k, v]) => (
-          <div key={k} style={{ marginBottom: 9 }}>
-            <div className="row" style={{ justifyContent: "space-between", marginBottom: 3 }}>
-              <span style={{ fontSize: 13, textTransform: "capitalize" }}>{k.replace("_", " ")}</span>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>{v}</span>
+      <div className="cl-panel">
+        <div className="cl-ph"><h2>{title}</h2><div className="cl-ph-r"><span className="cl-n">{entries.length}</span></div></div>
+        <div className="rp-bars">
+          {entries.length === 0 && <div className="cl-empty">No data in range.</div>}
+          {entries.map(([k, v]) => (
+            <div key={k} className="rp-bar">
+              <div className="rp-bar-t"><span>{(statusLabel[k] ?? k).replace(/_/g, " ")}</span><b>{v}</b></div>
+              <div className="rp-track"><div className="rp-fill" style={{ width: `${(v / max) * 100}%` }} /></div>
             </div>
-            <div style={{ height: 7, background: "var(--surface-3)", borderRadius: 100, overflow: "hidden" }}>
-              <div style={{ width: `${(v / max) * 100}%`, height: "100%", background: "var(--accent)", borderRadius: 100 }} />
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     );
   };
 
   return (
     <div>
-      <div className="leads-bar">
-        <h1 style={{ margin: 0 }}>Reports</h1>
-        <div className="spacer" />
-        {scope === "staff" && <a className="btn ghost" href="/reports/status" style={{ marginRight: 8 }}>Status Report →</a>}
-        <select style={{ width: "auto" }} value={range} onChange={(e) => setRange(Number(e.target.value))}>
-          <option value={7}>Last 7 days</option>
-          <option value={30}>Last 30 days</option>
-          <option value={90}>Last 90 days</option>
-          <option value={3650}>All time</option>
-        </select>
-        <button className="btn" onClick={exportCsv}>⬇ Export CSV</button>
+      <div className="cl-head">
+        <div>
+          <h1 className="cl-h1">Reports</h1>
+          <p className="cl-lede">Every file counted from its status, the same numbers the queues run on.</p>
+        </div>
+        <div className="cl-acts">
+          {scope === "staff" && <a className="cl-btn cl-ghost" href="/reports/status">Status Report</a>}
+          <select className="cl-select" value={range} onChange={(e) => setRange(Number(e.target.value))}>
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+            <option value={3650}>All time</option>
+          </select>
+          <button className="cl-btn" onClick={exportCsv}>Export CSV</button>
+        </div>
       </div>
 
-      <div className="dash-grid">
-        <div className="kpi"><div className="kv">{data.total}</div><div className="kl">Total claims</div><div className="ksub">in range</div></div>
-        <div className="kpi"><div className="kv">{data.qualified}</div><div className="kl">Qualified</div><div className="ksub">ready for firm</div></div>
-        <div className="kpi"><div className="kv">{data.signed}</div><div className="kl">Signed</div><div className="ksub">retained</div></div>
-        <div className="kpi"><div className="kv">{data.convRate}%</div><div className="kl">Conversion</div><div className="ksub">qualified+signed / total</div></div>
+      <div className="cl-panel">
+        <div className="cl-kpis">
+          <div className="cl-kpi"><div className="cl-kpi-l">Total claims</div><div className="cl-kpi-v">{data.total}</div><div className="cl-kpi-f">in range</div></div>
+          <div className="cl-kpi"><div className="cl-kpi-l">Qualified</div><div className="cl-kpi-v">{data.qualified}</div><div className="cl-kpi-f">ready for the firm</div></div>
+          <div className="cl-kpi"><div className="cl-kpi-l">Signed</div><div className="cl-kpi-v">{data.signed}</div><div className="cl-kpi-f">retained</div></div>
+          <div className="cl-kpi"><div className="cl-kpi-l">Conversion</div><div className="cl-kpi-v">{data.convRate}%</div><div className="cl-kpi-f">qualified + signed of total</div></div>
+        </div>
       </div>
 
-      <div className="card" style={{ padding: 18, marginTop: 4 }}>
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-          <h3 style={{ margin: 0 }}>Pull files by status and case type</h3>
-          <div className="row" style={{ gap: 8 }}>
-            <select style={{ width: "auto" }} value={pStatus} onChange={(e) => setPStatus(e.target.value)}>
+      <div className="cl-panel" style={{ marginTop: 16 }}>
+        <div className="cl-ph">
+          <h2>Pull files by status and case type</h2>
+          <div className="cl-ph-r">
+            <select className="cl-select" value={pStatus} onChange={(e) => setPStatus(e.target.value)}>
               <option value="all">Any status</option>
               {statuses.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
-            <select style={{ width: "auto" }} value={pType} onChange={(e) => setPType(e.target.value)}>
+            <select className="cl-select" value={pType} onChange={(e) => setPType(e.target.value)}>
               <option value="all">Any case type</option>
               {caseTypes.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
+            <span className="cl-n">{pivotRows.length} file{pivotRows.length === 1 ? "" : "s"}</span>
           </div>
         </div>
-        <p className="muted" style={{ marginTop: 0 }}>{pivotRows.length} file{pivotRows.length === 1 ? "" : "s"}{pStatus !== "all" ? ` in ${statusLabel[pStatus] ?? pStatus}` : ""}{pType !== "all" ? ` · ${pType}` : ""}.</p>
-        <div className="table-scroll">
-          <table className="docket">
+        <div style={{ overflow: "auto", maxHeight: "60vh" }}>
+          <table className="cl-table">
             <thead><tr><th>File</th><th>Claimant</th><th>Case type</th><th>Status</th><th>Campaign</th></tr></thead>
             <tbody>
               {pivotRows.slice(0, 500).map((c, i) => (
                 <tr key={c.lead_id + i}>
-                  <td><a href={`/leads/${c.lead_id}`}>{c.lead.lead_no}</a></td>
-                  <td style={{ fontWeight: 600 }}>{c.lead.claimant_name || "—"}</td>
+                  <td><a className="cl-mono" href={`/leads/${c.lead_id}`}>{c.lead.lead_no}</a></td>
+                  <td className="cl-t1">{c.lead.claimant_name || "—"}</td>
                   <td>{c.claim_type || "—"}</td>
                   <td>{statusLabel[c.status] ?? c.status}</td>
-                  <td className="muted">{c.campaign || "—"}</td>
+                  <td className="cl-t2">{c.campaign || "—"}</td>
                 </tr>
               ))}
-              {pivotRows.length === 0 && <tr><td colSpan={5} className="muted">No files match.</td></tr>}
+              {pivotRows.length === 0 && <tr><td colSpan={5}><div className="cl-empty"><b>No files match</b>Loosen the status or case type filter.</div></td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
-      <div className="dash-cols" style={{ marginTop: 4 }}>
+      <div className="rp-grid">
         <Bar obj={data.byStatus} title="By status" />
         <Bar obj={data.byType} title="By case type" />
-      </div>
-      <div className="dash-cols">
         <Bar obj={data.byCampaign} title="By campaign" />
         <Bar obj={data.byTier} title="By tier" />
       </div>

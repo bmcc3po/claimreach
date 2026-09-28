@@ -8,7 +8,7 @@ export default async function TeamPage() {
 
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Team</h2>
+      <div className="cl-head"><div><h1 className="cl-h1">Team</h1><p className="cl-lede">Everyone with a seat, and what they do here.</p></div></div>
       <table className="docket">
         <thead><tr><th>Name</th><th>Role</th></tr></thead>
         <tbody>

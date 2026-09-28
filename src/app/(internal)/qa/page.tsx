@@ -43,10 +43,14 @@ export default async function QaQueuePage() {
 
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>QA queue</h2>
-      <p className="muted" style={{ marginTop: 0 }}>Files Grievous has reviewed and passed to QA. Open a file to review, grade, and route it.</p>
-      <div className="table-scroll">
-        <table className="docket">
+      <div className="cl-head">
+        <div>
+          <h1 className="cl-h1">QA queue <small>{queue.length}</small></h1>
+          <p className="cl-lede">Files Grievous has reviewed and passed to QA. Open a file to review, grade, and route it.</p>
+        </div>
+      </div>
+      <div className="cl-tablewrap">
+        <table className="cl-table">
           <thead><tr><th>File</th><th>Claimant</th><th>Type</th><th>Status</th><th>Grievous call</th><th>Waiting</th></tr></thead>
           <tbody>
             {(queue ?? []).map((l: any) => {
@@ -54,16 +58,16 @@ export default async function QaQueuePage() {
               const days = Math.floor((Date.now() - new Date(l.updated_at).getTime()) / 86400000);
               return (
                 <tr key={l.id}>
-                  <td><Link href={`/leads/${l.id}`}>{l.lead_no}</Link></td>
-                  <td style={{ fontWeight: 600 }}>{l.claimant_name || "—"}</td>
+                  <td><Link className="cl-mono" href={`/leads/${l.id}`}>{l.lead_no}</Link></td>
+                  <td className="cl-t1">{l.claimant_name || "—"}</td>
                   <td>{l.case_type || c.claim_type || "—"}</td>
                   <td><StatusBadge status={c.status} /></td>
-                  <td className="muted">{verdictLabel[c.grievous_verdict] || "—"}</td>
-                  <td className="muted">{days === 0 ? "today" : `${days}d`}</td>
+                  <td className="cl-t2">{verdictLabel[c.grievous_verdict] || "—"}</td>
+                  <td className="cl-t2">{days === 0 ? "today" : `${days}d`}</td>
                 </tr>
               );
             })}
-            {(queue ?? []).length === 0 && <tr><td colSpan={6} className="muted">Nothing in the QA queue right now.</td></tr>}
+            {(queue ?? []).length === 0 && <tr><td colSpan={6}><div className="cl-empty"><b>Nothing in the QA queue</b>Files land here when Grievous passes them to QA.</div></td></tr>}
           </tbody>
         </table>
       </div>

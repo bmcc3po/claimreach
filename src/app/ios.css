@@ -145,8 +145,8 @@ a:hover { text-decoration: none; opacity: 0.8; }
   min-height: 38px; padding: 8px 16px; background: var(--brand); color: #FFFFFF; transform: none !important;
 }
 .btn:hover { background: var(--brand); filter: brightness(1.12); opacity: 1; }
-.btn.primary, .btn.gold { background: #D9982A; color: #0E1A2C; }
-.btn.primary:hover, .btn.gold:hover { background: #D9982A; filter: brightness(1.06); }
+.btn.primary, .btn.gold { background: #22C55E; color: #06290F; }
+.btn.primary:hover, .btn.gold:hover { background: #22C55E; filter: brightness(1.06); }
 .btn.secondary { background: var(--seg-track); color: var(--tint); }
 .btn.ghost { background: var(--seg-track) !important; color: var(--tint) !important; }
 .btn.ghost:hover { background: var(--seg-track) !important; filter: brightness(0.96); color: var(--tint) !important; }
@@ -163,7 +163,7 @@ input[type=search], input[type=date], input[type=datetime-local], input:not([typ
 }
 .card input[type=text], .card input[type=email], .card input[type=tel], .card input:not([type]), .card textarea, .card select,
 .modal input, .modal textarea, .modal select { background: var(--surface-3) !important; }
-input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 2px rgba(217,152,42,0.55) !important; outline: none; }
+input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 2px rgba(37,99,235,0.45) !important; outline: none; }
 input[type=checkbox], input[type=radio] { accent-color: #16324F; min-height: 0; }
 .field > label, .fld-label { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
 .leads-search { background: var(--seg-track) !important; }
@@ -184,7 +184,7 @@ input[type=checkbox], input[type=radio] { accent-color: #16324F; min-height: 0; 
 .badge.signed, .badge.count { color: var(--ok) !important; }
 .badge.dq, .badge.danger { color: var(--danger) !important; }
 .badge.flag, .badge.warn { color: var(--flag) !important; }
-.badge.gold { color: #8A5A0F !important; }
+.badge.gold { color: #1D4FD7 !important; }
 .tag { color: var(--ink-soft) !important; font-weight: 500; }
 .badge.signed::before, .badge.dq::before, .badge.danger::before, .badge.flag::before, .badge.warn::before {
   content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px;
@@ -221,7 +221,7 @@ h3 + .badge.dq::before, .row > h3 + .badge::before { display: none; }
 /* ---------------------------------------------------------------- tabs */
 .tabs { border-bottom: var(--sep) !important; background: transparent; }
 .tabs button { color: var(--ink-soft); font-weight: 500; border-bottom: 2px solid transparent; }
-.tabs button.active { color: var(--tint) !important; font-weight: 700; border-bottom: 3px solid #D9982A !important; }
+.tabs button.active { color: var(--tint) !important; font-weight: 700; border-bottom: 3px solid #2563EB !important; }
 
 /* ---------------------------------------------------------------- tables: grouped lists */
 .table-scroll { background: var(--surface) !important; overflow-x: auto; }
@@ -237,7 +237,7 @@ table.docket tbody tr.needs-action td { background: transparent; }
 table.docket tbody tr.row-selected td { background: var(--tint-bg) !important; }
 table.docket td a { font-weight: 600; }
 table.docket .btn.ghost { background: transparent !important; padding: 4px 6px; min-height: 0; }
-.docket.leads .dot { background: #D9982A; width: 8px; height: 8px; }
+.docket.leads .dot { background: #2563EB; width: 8px; height: 8px; }
 
 /* ---------------------------------------------------------------- kanban and modal */
 .kcard { background: var(--surface) !important; }

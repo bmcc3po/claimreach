@@ -44,6 +44,18 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
   const stamped = [lead.property_name, lead.property_street, [lead.property_city, lead.property_state].filter(Boolean).join(", "), lead.property_zip].filter(Boolean).join(" · ");
   const lorLabel = LOR_STATUSES.find((s) => s.value === lor?.status)?.label || (lor?.status ? String(lor.status) : "");
 
+  // Only the facts that exist make a row. Empty state is one quiet line, not
+  // four boxes of "No X yet" (Brett: the clutter goes).
+  const facts: { k: string; v: string; sub?: string }[] = [];
+  if (lead.phone) facts.push({ k: "Phone", v: lead.phone });
+  if (lead.email) facts.push({ k: "Email", v: lead.email });
+  if (addr) facts.push({ k: "Address", v: addr });
+  if (diagnosis) facts.push({ k: "Diagnosis", v: String(diagnosis) });
+  if (lastCall) facts.push({ k: "Last touch", v: `${lastCallLabel}${lastComm?.occurred_at && lastCallWhen ? ` · ${lastCallWhen}` : ""}`, sub: lastComm?.outcome || (lastCall.jc_summary ? String(lastCall.jc_summary).slice(0, 90) : undefined) });
+  if (livePoints.length > 0) facts.push({ k: "Contact points", v: `${livePoints.length} live` });
+  if (intakeProgress > 0) facts.push({ k: "Intake", v: `${intakeProgress} answers captured` });
+  if (activeClaim?.grievous_approved) facts.push({ k: "Grievous", v: "Approved" });
+
   return (
     <div className="ov">
       {/* status banner */}
@@ -53,37 +65,19 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
         <span className="ov-status-sub">{caseType}{activeClaim?.on_behalf_of ? " · on behalf of" : ""}</span>
       </div>
 
-      {/* the glance grid */}
-      <div className="ov-grid">
-        <Glance label="Contact">
-          <div className="ov-val-strong">{lead.phone || "No phone"}</div>
-          {lead.email && <div className="ov-val-sub">{lead.email}</div>}
-          {addr && <div className="ov-val-sub">{addr}</div>}
-          {!lead.phone && !lead.email && <div className="ov-empty">No contact info yet</div>}
-        </Glance>
-
-        <Glance label="Case type">
-          <div className="ov-val-strong">{caseType}</div>
-          {diagnosis ? <div className="ov-val-sub">Dx: {String(diagnosis)}</div> : <div className="ov-empty">No diagnosis recorded</div>}
-        </Glance>
-
-        <Glance label="Last touch">
-          {lastCall ? <>
-            <div className="ov-val-strong">{lastCallLabel}{lastComm?.occurred_at && lastCallWhen ? ` · ${lastCallWhen}` : ""}</div>
-            {(lastComm?.outcome || lastCall.jc_summary) && (
-              <div className="ov-val-sub">{lastComm?.outcome || String(lastCall.jc_summary).slice(0, 90)}</div>
-            )}
-          </> : <div className="ov-empty">No calls yet</div>}
-          {livePoints.length > 0 && (
-            <div className="ov-val-sub">{livePoints.length} live contact {livePoints.length === 1 ? "point" : "points"}</div>
-          )}
-        </Glance>
-
-        <Glance label="Intake">
-          {intakeProgress > 0 ? <div className="ov-val-strong">{intakeProgress} answers captured</div> : <div className="ov-empty">Not started</div>}
-          {activeClaim?.grievous_approved && <div className="ov-val-sub" style={{ color: "var(--ok)" }}>✓ Grievous approved</div>}
-        </Glance>
-      </div>
+      {/* the glance rows: only what the file actually has */}
+      {facts.length === 0 ? (
+        <div className="ov2-quiet">Nothing on this file yet. Start the intake below.</div>
+      ) : (
+        <div className="ov2-facts">
+          {facts.map((f) => (
+            <div key={f.k} className="ov2-fact">
+              <span className="ov2-k">{f.k}</span>
+              <span className="ov2-v">{f.v}{f.sub ? <em>{f.sub}</em> : null}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {(identified.length > 0 || stamped || lorLabel) && (
         <>
@@ -129,9 +123,9 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
         </>
       )}
 
-      {/* recent notes */}
-      <div className="ov-section-label">Recent notes</div>
-      {recentNotes.length === 0 ? <div className="ov-empty-block">No notes yet.</div> : (
+      {/* recent notes, only when there are any */}
+      {recentNotes.length > 0 && (<>
+        <div className="ov-section-label">Recent notes</div>
         <div className="ov-notes">
           {recentNotes.map((n: any) => (
             <div key={n.id} className="ov-note">
@@ -140,51 +134,52 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
             </div>
           ))}
         </div>
-      )}
+      </>)}
 
-      {/* the actions — where do you want to go */}
-      <div className="ov-section-label">What do you want to do?</div>
-      <div className="ov-actions">
-        <ActionCard
-          icon="📝"
+      {/* the actions: a clean list, the intake first */}
+      <div className="ov2-acts">
+        <ActionRow
+          icon="pencil"
           title={fileMayEditLead(fence) ? (intakeProgress > 0 ? "Continue intake" : "Start intake") : "Review intake"}
           sub={fileMayEditLead(fence) ? "Work the questionnaire" : "The questions that were asked"}
           onClick={() => onGo("Case Questions")}
           primary
         />
-        <ActionCard icon="👤" title="Contact info" sub="Names, address, emergency contact" onClick={() => onGo("Contact Info")} />
-        <ActionCard icon="📂" title="File details" sub="Routing, dates, case manager" onClick={() => onGo("Case Details")} />
-        <ActionCard
-          icon="✍️"
+        <ActionRow icon="user" title="Contact info" sub="Names, address, emergency contact" onClick={() => onGo("Contact Info")} />
+        <ActionRow icon="folder" title="File details" sub="Routing, dates, case manager" onClick={() => onGo("Case Details")} />
+        <ActionRow
+          icon="sign"
           title="Retainer"
           sub={fileMayEditLead(fence) ? "Generate, send for signature" : "Status and signed copies"}
           onClick={() => onGo("Retainer")}
         />
-        <ActionCard icon="📞" title="Calls" sub={lastCall ? "Review the call timeline" : "No calls yet"} onClick={() => onGo("Calls")} />
-        <ActionCard icon="🗒️" title={fileMayEditLead(fence) ? "Add a note" : "Notes"} sub="Log something on the file" onClick={() => onGo("Notes")} />
+        <ActionRow icon="phone" title="Calls" sub={lastCall ? "Review the call timeline" : "Nothing logged yet"} onClick={() => onGo("Calls")} />
+        <ActionRow icon="note" title={fileMayEditLead(fence) ? "Add a note" : "Notes"} sub="Log something on the file" onClick={() => onGo("Notes")} />
       </div>
     </div>
   );
 }
 
-function Glance({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="ov-glance">
-      <div className="ov-glance-label">{label}</div>
-      {children}
-    </div>
-  );
-}
+const ICONS: Record<string, React.ReactNode> = {
+  pencil: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />,
+  user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" /></>,
+  folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+  sign: <><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" /></>,
+  phone: <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z" />,
+  note: <><path d="M14 3v6h6" /><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /></>,
+};
 
-function ActionCard({ icon, title, sub, onClick, primary }: { icon: string; title: string; sub: string; onClick: () => void; primary?: boolean }) {
+function ActionRow({ icon, title, sub, onClick, primary }: { icon: string; title: string; sub: string; onClick: () => void; primary?: boolean }) {
   return (
-    <button className={`ov-action ${primary ? "primary" : ""}`} onClick={onClick}>
-      <span className="ov-action-icon">{icon}</span>
-      <span className="ov-action-text">
-        <span className="ov-action-title">{title}</span>
-        <span className="ov-action-sub">{sub}</span>
+    <button className={`ov2-act ${primary ? "ov2-primary" : ""}`} onClick={onClick}>
+      <span className="ov2-ico" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{ICONS[icon]}</svg>
       </span>
-      <span className="ov-action-arrow">→</span>
+      <span className="ov2-act-t">
+        <span className="ov2-act-title">{title}</span>
+        <span className="ov2-act-sub">{sub}</span>
+      </span>
+      <svg className="ov2-go" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
     </button>
   );
 }

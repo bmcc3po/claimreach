@@ -158,7 +158,7 @@ export function caseEmailHtml(opts: { title: string; rows: { k: string; v: strin
 <h2 style="color:#16324F;margin:0 0 6px;font-size:20px">${esc(opts.title)}</h2>
 ${opts.note ? `<p style="margin:0 0 12px;color:#334155">${esc(opts.note)}</p>` : ""}
 <table style="border-collapse:collapse;font-size:14px;width:100%">${trs}</table>
-<p style="margin:18px 0 0"><a href="${esc(opts.link)}" style="display:inline-block;background:#D9982A;color:#0E1A2C;font-weight:700;text-decoration:none;padding:11px 18px;border-radius:10px">Open the file in ClaimReach</a></p>
+<p style="margin:18px 0 0"><a href="${esc(opts.link)}" style="display:inline-block;background:#22C55E;color:#06290F;font-weight:700;text-decoration:none;padding:11px 18px;border-radius:10px">Open the file in ClaimReach</a></p>
 <p style="margin:14px 0 0;color:#94a3b8;font-size:12px">The SSN and the signed agreement stay in ClaimReach. Log in to see them.</p>
 </div>`;
 }

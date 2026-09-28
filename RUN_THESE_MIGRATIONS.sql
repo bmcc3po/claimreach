@@ -2664,3 +2664,59 @@ returns table(uid uuid, firm_id uuid, role app_role)
 language sql stable security definer set search_path = public as $$
   select id, firm_id, role from app_users where id = auth.uid() and coalesce(active, true)
 $$;
+
+-- ============================================================================
+-- STATUS UPDATE, Sep 27 2026: 0101 Part B and 0102 are ALREADY APPLIED to the
+-- live database (Claude applied them directly at Brett's direction) and
+-- verified with impersonated-agent probes. You do NOT need to run anything
+-- above. This file stays as the record.
+--
+-- One correction was made during live verification: the three helper
+-- functions just above (is_internal, can_manage_users, can_see_money) caused
+-- infinite recursion as written (the app_users policies call them, and as
+-- invoker functions they re-entered those same policies — "stack depth limit
+-- exceeded"). The versions actually live are SECURITY DEFINER with a pinned
+-- search_path, reading only the caller's own row, anon EXECUTE revoked —
+-- the same pattern my_firm_id/role_is_firm always used. That corrected text
+-- is below and in supabase/migrations/0102_hardening_v2.sql. Already applied;
+-- re-running is harmless.
+-- ============================================================================
+
+create or replace function public.is_internal()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists(
+    select 1 from app_users
+    where id = auth.uid()
+      and coalesce(active, true)
+      and role::text in ('owner','admin','manager','agent','qa')
+  );
+$$;
+
+create or replace function public.can_manage_users()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from app_users u
+    where u.id = auth.uid()
+      and coalesce(u.active, true)
+      and ( u.role in ('owner','admin')
+            or coalesce((u.perm_overrides->>'users.manage')::boolean, false) )
+  );
+$$;
+
+create or replace function public.can_see_money()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from app_users u
+    where u.id = auth.uid()
+      and coalesce(u.active, true)
+      and case
+            when u.perm_overrides ? 'money.view'
+              then (u.perm_overrides->>'money.view')::boolean
+            else u.role::text in ('owner','admin')
+          end
+  );
+$$;
+
+revoke execute on function public.is_internal() from anon;
+revoke execute on function public.can_manage_users() from anon;
+revoke execute on function public.can_see_money() from anon;

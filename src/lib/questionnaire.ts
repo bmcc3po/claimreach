@@ -76,6 +76,10 @@ export interface Field {
   addedBy?: string;
 }
 
+// The one list of US state codes. The contact form's State field and every
+// dropdown that picks a state read this — never a second copy.
+export const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","DC","WV","WI","WY","PR"];
+
 export const INTAKE: Field[] = [
   { id: "s_open", scope: "lead", kind: "section", label: "Opening" },
   {
@@ -139,7 +143,7 @@ export const INTAKE: Field[] = [
   { id: "mail_addr1", surface: "contact", scope: "lead", kind: "address", label: "Mailing address 1", vital: true },
   { id: "mail_addr2", surface: "contact", scope: "lead", kind: "text", label: "Apt, Bldg, Unit #" },
   { id: "mail_city", surface: "contact", scope: "lead", kind: "text", label: "City", vital: true },
-  { id: "mail_state", surface: "contact", scope: "lead", kind: "select", label: "State", vital: true, options: ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","DC","WV","WI","WY","PR"] },
+  { id: "mail_state", surface: "contact", scope: "lead", kind: "select", label: "State", vital: true, options: US_STATES },
   { id: "mail_zip", surface: "contact", scope: "lead", kind: "text", label: "Zip", vital: true },
   { id: "s_ec", scope: "lead", kind: "section", label: "Emergency Contact" },
   { id: "script_ec", surface: "contact", scope: "lead", kind: "script", label: "Emergency contact (read verbatim)",

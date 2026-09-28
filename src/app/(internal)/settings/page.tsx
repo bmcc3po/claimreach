@@ -12,7 +12,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Settings</h2>
+      <div className="cl-head"><div><h1 className="cl-h1">Settings</h1><p className="cl-lede">Your account, campaigns, drips, and the switches behind them.</p></div></div>
       <div className="side-card" style={{ maxWidth: 520 }}>
         <h3>Your account</h3>
         <div className="vrow"><span className="vk">Name</span><span className="vv">{me?.full_name ?? "—"}</span></div>

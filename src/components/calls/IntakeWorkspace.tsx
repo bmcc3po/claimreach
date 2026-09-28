@@ -136,10 +136,10 @@ function nextStep(v: any): { label: string; go: () => void; disabled?: boolean; 
     if (fi.next) return { label: fi.next.label, go: fi.next.go };
     const now = ch?.rows.find((r: any) => r.status === "now" || r.status === "needs" || r.status === "todo");
     if (now) return { label: `Next: ${now.label}`, go: now.go };
-    return ch ? { label: "Finish intake", go: ch.finish.go, finish: true } : null;
+    return ch ? { label: "Finish the call", go: ch.finish.go, finish: true } : null;
   }
   if (v.fullView) return fi.next ? { label: fi.next.label, go: fi.next.go } : { label: fi.finish.label, go: fi.finish.go, finish: true };
-  return { label: v.next.label, go: v.next.go, disabled: !!v.next.disabled, muted: !!v.next.muted };
+  return { label: v.next.label, go: v.next.go, disabled: !!v.next.disabled, muted: !!v.next.muted, finish: !!v.next.finish };
 }
 
 /** Bottom: Help and Note on a phone, and the one next step in every view. */

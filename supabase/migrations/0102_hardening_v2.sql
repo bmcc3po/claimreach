@@ -117,9 +117,17 @@ create trigger trg_guard_case_documents
 -- 3. A deactivated account dies at the DATABASE too, not just in the app:
 -- every RLS helper now treats active=false as no access, so a still-valid
 -- JWT gets nothing through the Data API either.
+--
+-- These three are SECURITY DEFINER on purpose. The app_users policies call
+-- them; if they in turn read app_users under those same policies (invoker),
+-- the database recurses until "stack depth limit exceeded" — hit and fixed
+-- during live verification on Sep 27. DEFINER breaks the loop the same way
+-- the existing my_firm_id/role_is_firm helpers always have. Safe because
+-- each reads ONLY the calling user's own row (auth.uid()) with a pinned
+-- search_path, and anon EXECUTE is revoked below.
 -- ---------------------------------------------------------------------------
 create or replace function public.is_internal()
-returns boolean language sql stable set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists(
     select 1 from app_users
     where id = auth.uid()
@@ -129,7 +137,7 @@ returns boolean language sql stable set search_path = public as $$
 $$;
 
 create or replace function public.can_manage_users()
-returns boolean language sql stable set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from app_users u
     where u.id = auth.uid()
@@ -140,7 +148,7 @@ returns boolean language sql stable set search_path = public as $$
 $$;
 
 create or replace function public.can_see_money()
-returns boolean language sql stable set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from app_users u
     where u.id = auth.uid()
@@ -168,3 +176,18 @@ returns table(uid uuid, firm_id uuid, role app_role)
 language sql stable security definer set search_path = public as $$
   select id, firm_id, role from app_users where id = auth.uid() and coalesce(active, true)
 $$;
+
+-- Recreating a function does not preserve revokes; strip anon again.
+revoke execute on function public.is_internal() from anon;
+revoke execute on function public.can_manage_users() from anon;
+revoke execute on function public.can_see_money() from anon;
+
+-- ---------------------------------------------------------------------------
+-- STATUS: APPLIED to the live database on Sep 27 2026 (this exact text) and
+-- verified with impersonated-JWT probes, all rolled back:
+--   * agent editing own name/phone: allowed
+--   * agent setting own role to owner: blocked by trg_guard_app_users_priv
+--   * deactivated agent: is_internal()=false, my_firm_id()=null, 0 lead rows
+--   * active agent: unchanged access
+-- Running this file again is safe (create-or-replace + drop-trigger-if-exists).
+-- ---------------------------------------------------------------------------

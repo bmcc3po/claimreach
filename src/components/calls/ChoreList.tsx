@@ -338,7 +338,7 @@ export default function ChoreList({ v }: { v: any }) {
               ? <button type="button" className="ch-next" onClick={r.next}>Next section: {r.nextLabel}
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                 </button>
-              : <button type="button" className="ch-btn ch-finish" onClick={ch.finish.go}>Finish intake</button>}
+              : <button type="button" className="ch-btn ch-finish" onClick={ch.finish.go}>Finish the call</button>}
           </div>
           {!r.next && ch.finish.ask && <div className="ch-note ch-note-bad ch-finish-ask" role="alert">{ch.finish.askText}</div>}
         </section>

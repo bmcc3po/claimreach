@@ -39,11 +39,16 @@
   --cl-side-ink:rgba(226,233,242,0.70);
   --cl-side-faint:rgba(226,233,242,0.38);
   --cl-side-line:rgba(255,255,255,0.07);
-  --cl-gold:#D9982A;
-  --cl-gold-ink:#0E1A2C;
-  --cl-gold-bg:#FBF2E1;
-  --cl-gold-text:#8A5A0F;
-  --cl-ring:0 0 0 3px rgba(217,152,42,0.28);
+  /* historical names: cl-gold is the WORKING accent (now vibrant blue),
+     cl-pop is the one big action (bright green). Brett killed the putty gold,
+     Sep 28: blue works, green pops, traffic-light colors stay semantic. */
+  --cl-gold:#2563EB;
+  --cl-gold-ink:#FFFFFF;
+  --cl-gold-bg:#FFFFFF;
+  --cl-gold-text:#1D4FD7;
+  --cl-pop:#22C55E;
+  --cl-pop-ink:#06290F;
+  --cl-ring:0 0 0 3px rgba(37,99,235,0.25);
   --cl-shadow:0 1px 2px rgba(16,24,40,0.04);
   --cl-pop:0 0 0 1px rgba(16,24,40,0.06),0 16px 40px rgba(16,24,40,0.16);
   --cl-good:#15803D;--cl-good-dot:#22A35A;
@@ -73,8 +78,8 @@
   --cl-side-hi:rgba(255,255,255,0.08);
   --cl-side-hover:rgba(255,255,255,0.04);
   --cl-side-line:rgba(255,255,255,0.06);
-  --cl-gold-bg:#2A2112;
-  --cl-gold-text:#E7B863;
+  --cl-gold-bg:#0F1929;
+  --cl-gold-text:#8DB8F2;
   --cl-shadow:0 1px 2px rgba(0,0,0,0.3);
   --cl-pop:0 0 0 1px rgba(255,255,255,0.06),0 18px 44px rgba(0,0,0,0.55);
   --cl-good:#4ADE80;--cl-good-dot:#30C26A;
@@ -98,7 +103,7 @@ html{overflow-x:clip}
 .cl-mark{width:30px;height:30px;border-radius:8px;background:#FFFFFF;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 1px 0 rgba(0,0,0,0.2)}
 .cl-mark img{height:15px;width:auto;display:block}
 .cl-word{font-size:16px;font-weight:650;letter-spacing:-0.02em;color:#FFFFFF;white-space:nowrap}
-.cl-word b{color:#E7AB35;font-weight:650}
+.cl-word b{color:#4ADE80;font-weight:650}
 .cl-nav{flex:1;overflow-y:auto;overflow-x:hidden;padding:6px 10px 16px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.12) transparent}
 .cl-sec{margin-top:18px}
 .cl-sec:first-child{margin-top:4px}
@@ -113,13 +118,13 @@ html{overflow-x:clip}
 .cl-nl.cl-on::before{content:"";position:absolute;left:-10px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--cl-gold)}
 .cl-ico{display:inline-flex;flex-shrink:0;opacity:0.85}
 .cl-ico svg{width:18px;height:18px}
-.cl-nl.cl-on .cl-ico{opacity:1;color:#E7AB35}
+.cl-nl.cl-on .cl-ico{opacity:1;color:#4ADE80}
 .cl-nl-l{overflow:hidden;text-overflow:ellipsis}
 
 .cl-side-foot{border-top:1px solid var(--cl-side-line);padding:10px;position:relative;flex-shrink:0}
 .cl-me-b{display:flex;align-items:center;gap:10px;width:100%;height:46px;padding:0 8px;border:none;border-radius:9px;background:transparent;cursor:pointer;font-family:inherit;color:#FFFFFF;text-align:left}
 .cl-me-b:hover{background:var(--cl-side-hover)}
-.cl-av{width:30px;height:30px;border-radius:50%;background:var(--cl-gold);color:var(--cl-gold-ink);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;letter-spacing:0}
+.cl-av{width:30px;height:30px;border-radius:50%;background:var(--cl-pop);color:var(--cl-pop-ink);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;letter-spacing:0}
 .cl-me-t{display:flex;flex-direction:column;min-width:0;flex:1}
 .cl-me-n{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cl-me-r{font-size:12px;color:var(--cl-side-faint)}
@@ -174,9 +179,9 @@ html{overflow-x:clip}
 .cl-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:8px;border:none;background:var(--surface);color:var(--ink) !important;box-shadow:inset 0 0 0 1px var(--line),var(--cl-shadow);font-size:14px;font-weight:550;font-family:inherit;text-decoration:none;cursor:pointer;white-space:nowrap}
 .cl-btn:hover{background:var(--surface-2);text-decoration:none;opacity:1}
 .cl-btn svg{color:var(--ink-faint)}
-.cl-btn.cl-gold{background:var(--cl-gold);color:var(--cl-gold-ink) !important;box-shadow:inset 0 -1px 0 rgba(0,0,0,0.12),0 1px 2px rgba(138,90,15,0.25)}
-.cl-btn.cl-gold svg{color:var(--cl-gold-ink)}
-.cl-btn.cl-gold:hover{filter:brightness(1.05);background:var(--cl-gold)}
+.cl-btn.cl-gold{background:var(--cl-pop);color:var(--cl-pop-ink) !important;box-shadow:inset 0 -1px 0 rgba(0,0,0,0.12),0 1px 2px rgba(6,41,15,0.25)}
+.cl-btn.cl-gold svg{color:var(--cl-pop-ink)}
+.cl-btn.cl-gold:hover{filter:brightness(1.05);background:var(--cl-pop)}
 .cl-btn.cl-ghost{background:transparent;box-shadow:none;color:var(--ink-soft) !important}
 .cl-btn.cl-ghost:hover{background:var(--surface-3);color:var(--ink) !important}
 .cl-btn.cl-sm{height:30px;padding:0 10px;font-size:13px;border-radius:7px}
@@ -275,6 +280,8 @@ a.cl-kpi:hover{background:var(--surface-2);opacity:1;text-decoration:none}
 .cl-tabs::-webkit-scrollbar{display:none}
 .cl-tab{position:relative;display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 1px;border:none;background:transparent;font-family:inherit;font-size:14px;font-weight:500;color:var(--ink-soft);cursor:pointer;white-space:nowrap}
 .cl-tab:hover{color:var(--ink)}
+a.cl-tab{text-decoration:none}
+a.cl-tab:hover{text-decoration:none;opacity:1}
 .cl-tab span{font-family:var(--mono);font-size:12px;color:var(--ink-faint)}
 .cl-tab.cl-on{color:var(--ink);font-weight:600}
 .cl-tab.cl-on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:var(--cl-gold)}
@@ -309,7 +316,7 @@ a.cl-kpi:hover{background:var(--surface-2);opacity:1;text-decoration:none}
 .cl-table tbody tr:hover .cl-rowacts,.cl-table tbody tr:focus-within .cl-rowacts{opacity:1}
 .cl-rowacts a{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;color:var(--ink-soft)}
 .cl-rowacts a:hover{background:var(--surface-3);color:var(--ink);opacity:1}
-[data-theme="dark"] .cl-check{accent-color:#D9982A}
+[data-theme="dark"] .cl-check{accent-color:#2563EB}
 .cl-check{width:16px;height:16px;accent-color:#16324F;cursor:pointer;margin:0;min-height:0 !important;vertical-align:middle}
 .cl-flag{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--cl-warn)}
 .cl-nocamp{color:var(--cl-bad) !important;font-weight:550}
@@ -338,8 +345,95 @@ a.cl-kpi:hover{background:var(--surface-2);opacity:1;text-decoration:none}
 .cl-body :is(input,textarea,select):not([type=checkbox]):not([type=radio]):focus{box-shadow:inset 0 0 0 1px var(--cl-gold),var(--cl-ring) !important}
 .cl-body table.docket thead th{font-size:11.5px;letter-spacing:0.04em;background:var(--surface-2) !important;padding:11px 14px}
 .cl-body table.docket tbody td{font-size:14px;padding:11px 14px}
-.cl-body .tabs button.active{border-bottom:2px solid var(--cl-gold) !important}
+:is(.cl-body,.m6-file) .tabs button.active{border-bottom:2px solid var(--cl-gold) !important}
 .cl-body .seg-toggle button.active{box-shadow:0 1px 2px rgba(16,24,40,0.12),inset 0 0 0 1px var(--line) !important}
+
+/* ============================================================== the lead file */
+/* The case file, restyled to the same language as the rest of the site: one
+   calm header with the name as the anchor, underline tabs, definition rows. */
+.lf-head{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--cl-shadow);padding:14px 18px;margin-bottom:14px;flex-wrap:wrap}
+.lf-back{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex-shrink:0;border-radius:8px;color:var(--ink-soft);text-decoration:none;box-shadow:inset 0 0 0 1px var(--line)}
+.lf-back:hover{background:var(--surface-2);color:var(--ink);text-decoration:none;opacity:1}
+.lf-id{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.lf-name{display:flex;align-items:baseline;gap:10px;font-size:19px;font-weight:650;letter-spacing:-0.02em;color:var(--ink);line-height:1.15;min-width:0;flex-wrap:wrap}
+.lf-no{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--ink-faint);letter-spacing:0}
+.lf-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--ink-soft);min-width:0}
+.lf-sub .leadhead-dot{color:var(--ink-faint)}
+.lf-sub .leadhead-campaign{font-size:13px}
+.lf-stat{font-size:12.5px;color:var(--ink-faint);white-space:nowrap}
+.lf-stat b{color:var(--ink);font-weight:650;font-variant-numeric:tabular-nums}
+.lf-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+@media (max-width:900px){
+  .lf-head{padding:12px 14px;align-items:flex-start}
+  .lf-back{margin-top:2px}
+  .lf-name{font-size:17px}
+  .lf-sub{gap:4px 10px}
+  .lf-sub .leadhead-dot{display:none}
+  .lf-acts{margin-left:0;width:100%}
+  /* the file's tabs scroll on one line instead of stacking */
+  :is(.cl-body,.m6-file) .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;gap:16px;padding:0 14px}
+  .cl-body .tabs::-webkit-scrollbar{display:none}
+  :is(.cl-body,.m6-file) .tabs button{white-space:nowrap;flex-shrink:0}
+}
+
+/* the file's tab bar and body, retuned to the site's underline tabs */
+:is(.cl-body,.m6-file) .lead-grid .card{border-radius:12px !important;min-width:0;max-width:100%}
+:is(.cl-body,.m6-file) .tabs{gap:18px;padding:0 18px;background:var(--surface-2);border-radius:12px 12px 0 0}
+:is(.cl-body,.m6-file) .tabs button{padding:13px 1px;font-size:14px;font-weight:500;color:var(--ink-soft)}
+:is(.cl-body,.m6-file) .tabs button:hover{color:var(--ink)}
+:is(.cl-body,.m6-file) .tabs button.active{color:var(--ink);font-weight:600}
+:is(.cl-body,.m6-file) .formbody{padding:22px 24px 26px}
+@media (max-width:900px){:is(.cl-body,.m6-file) .formbody{padding:16px 14px 20px}}
+
+/* read view: keep the markup, land the calm type */
+:is(.cl-body,.m6-file) .ro-name{font-size:22px;font-weight:650;letter-spacing:-0.02em}
+:is(.cl-body,.m6-file) .ro-section{color:var(--ink-faint);letter-spacing:0.08em;font-weight:600}
+:is(.cl-body,.m6-file) .ro-label{font-weight:550}
+:is(.cl-body,.m6-file) .ro-tag{border-radius:6px;background:var(--surface-3);font-weight:500}
+:is(.cl-body,.m6-file) .edit-cta,:is(.cl-body,.m6-file) .edit-toggle{font-weight:550;border-radius:8px;border:none;box-shadow:inset 0 0 0 1px var(--line),var(--cl-shadow);background:var(--surface);color:var(--ink)}
+:is(.cl-body,.m6-file) .edit-cta:hover,:is(.cl-body,.m6-file) .edit-toggle:hover{background:var(--surface-2);border:none}
+:is(.cl-body,.m6-file) .edit-toggle.on{background:var(--cl-gold);color:var(--cl-gold-ink);box-shadow:inset 0 -1px 0 rgba(0,0,0,0.12)}
+
+/* pipeline strip: the site's dots, not bespoke ones */
+:is(.cl-body,.m6-file) .pipeline-strip{border-radius:12px;border:1px solid var(--line)}
+:is(.cl-body,.m6-file) .pipe-dot{width:10px;height:10px;border-width:0;background:var(--cl-neut-dot)}
+:is(.cl-body,.m6-file) .pipe-step.done .pipe-dot{background:var(--cl-good-dot)}
+:is(.cl-body,.m6-file) .pipe-step.on .pipe-dot{background:var(--cl-gold);box-shadow:0 0 0 3px rgba(37,99,235,0.20)}
+:is(.cl-body,.m6-file) .pipe-step.done .pipe-bar{background:var(--cl-good-dot)}
+
+/* ============================================================== file Overview, decluttered */
+.ov2-quiet{padding:14px 2px;font-size:14px;color:var(--ink-soft)}
+.ov2-facts{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:14px;background:var(--surface)}
+.ov2-fact{display:flex;gap:16px;align-items:baseline;padding:10px 16px;border-top:1px solid var(--line-soft)}
+.ov2-fact:first-child{border-top:none}
+.ov2-k{flex:0 0 110px;font-size:12px;font-weight:550;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-faint)}
+.ov2-v{font-size:14px;font-weight:500;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.ov2-v em{display:block;font-style:normal;font-size:12.5px;color:var(--ink-faint);font-weight:400;margin-top:1px}
+.ov2-acts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:20px}
+@media (max-width:760px){.ov2-acts{grid-template-columns:minmax(0,1fr)}.ov2-k{flex-basis:92px}}
+.ov2-act{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-family:inherit;text-align:left;cursor:pointer;color:var(--ink)}
+.ov2-act:hover{background:var(--surface-2)}
+.ov2-act:hover .ov2-go{opacity:1;transform:translateX(0)}
+.ov2-act.ov2-primary{border:none;box-shadow:inset 0 0 0 1.5px var(--cl-gold)}
+.ov2-act.ov2-primary .ov2-ico{color:var(--cl-gold)}
+.ov2-ico{display:inline-flex;flex-shrink:0;color:var(--ink-soft)}
+.ov2-act-t{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.ov2-act-title{font-size:14px;font-weight:600}
+.ov2-act-sub{font-size:12.5px;color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ov2-go{color:var(--ink-faint);flex-shrink:0;opacity:0;transform:translateX(-3px);transition:opacity .12s,transform .12s}
+/* the injured-party banner, compact under Overview */
+:is(.cl-body,.m6-file) .pnc{border-radius:12px;padding:12px 14px}
+
+/* ============================================================== Reports */
+.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
+@media (max-width:1000px){.rp-grid{grid-template-columns:minmax(0,1fr)}}
+.rp-bars{padding:6px 16px 14px}
+.rp-bar{padding:8px 0;border-top:1px solid var(--line-soft)}
+.rp-bar:first-child{border-top:none}
+.rp-bar-t{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;font-size:13.5px;color:var(--ink);text-transform:capitalize}
+.rp-bar-t b{font-family:var(--mono);font-size:13px;font-weight:650;font-variant-numeric:tabular-nums}
+.rp-track{height:6px;background:var(--surface-3);border-radius:3px;overflow:hidden}
+.rp-fill{height:100%;background:var(--cl-gold);border-radius:3px}
 
 /* ============================================================== smaller screens */
 @media (max-width:1200px){.cl-grid{grid-template-columns:minmax(0,1fr)}.cl-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cl-kpi:nth-child(3){border-left:none}.cl-kpi:nth-child(n+3){border-top:var(--sep)}}
