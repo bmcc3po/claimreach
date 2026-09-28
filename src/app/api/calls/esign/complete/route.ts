@@ -34,7 +34,14 @@ export async function POST(req: NextRequest) {
   // Step 2 also dates the firm's line, on the office clock.
   const firmDate = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "2-digit", day: "2-digit", year: "numeric" }).format(new Date());
   const res = await completeIntake(row.intake_submitter_id, { "Patient DOB": dobForForm(dob), "Patient SSN": ssn.printed, "Firm Date": firmDate });
-  if (!res.ok) return NextResponse.json({ error: `DocuSeal did not take it: ${res.error}` }, { status: 502 });
+  if (!res.ok) {
+    const msg = res.status === 401 || res.status === 403
+      ? "DocuSeal refused our key, so the DOB and SSN did not go on the agreement. Tell your admin: DOCUSEAL_API_KEY in Cloudflare is wrong or expired."
+      : `DocuSeal did not take the DOB and SSN (${res.error}). Nothing changed. Press it again; if it fails twice, tell your admin.`;
+    await recordAudit({ firm_id: row.firm_id, lead_id: leadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
+      description: `Completing the agreement failed: ${msg}`.slice(0, 500), meta: { submission_id: row.submission_id, status: res.status ?? null, docuseal: res.error } });
+    return NextResponse.json({ error: msg }, { status: 502 });
+  }
 
   const { error } = await sb.from("leads").update({ dob, ssn_last4: ssn.last4 }).eq("id", leadId);
   if (error) return NextResponse.json({ error: `The agreement is complete, but the file did not update: ${error.message}` }, { status: 500 });

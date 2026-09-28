@@ -7,16 +7,18 @@ export const runtime = "edge";
 
 // POST /api/esign/docuseal
 // DocuSeal webhook (form.viewed, form.completed, form.declined,
-// submission.completed). In DocuSeal: Webhooks, this URL, and a secret header
-// named X-CR-Secret whose value is DOCUSEAL_WEBHOOK_SECRET. Fails closed: no
-// secret configured or a wrong one means 401, nothing moves.
+// submission.completed). The secret is DOCUSEAL_WEBHOOK_SECRET, sent either as
+// a header named X-CR-Secret or on the URL as ?key=<secret> (DocuSeal's
+// console has no header box). Fails closed: no secret configured or a wrong
+// one means 401, nothing moves.
 // The payload is only a nudge. We re-read the agreement from DocuSeal's API
 // before changing anything, so a forged body cannot sign a file.
 export async function POST(req: NextRequest) {
   const admin = supabaseAdmin();
   const secret = process.env.DOCUSEAL_WEBHOOK_SECRET;
-  if (!webhookAuthorized(req.headers.get("x-cr-secret"), secret)) {
-    try { await admin.from("webhook_events").insert({ direction: "inbound", event_type: "docuseal.rejected", status: "failed", http_status: 401, error: "bad or missing X-CR-Secret" }); } catch {}
+  const given = req.headers.get("x-cr-secret") || new URL(req.url).searchParams.get("key");
+  if (!webhookAuthorized(given, secret)) {
+    try { await admin.from("webhook_events").insert({ direction: "inbound", event_type: "docuseal.rejected", status: "failed", http_status: 401, error: secret ? "bad or missing secret" : "DOCUSEAL_WEBHOOK_SECRET is not set in Cloudflare" }); } catch {}
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const p = await req.json().catch(() => null);

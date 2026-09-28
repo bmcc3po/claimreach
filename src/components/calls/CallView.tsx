@@ -5,11 +5,10 @@
 import { Fragment } from "react";
 import PlaceField from "./PlaceField";
 import WhereField from "./WhereField";
-import { FiProgress, FiBody, FiBar } from "./FullIntake";
-import { WsLeft, WsSummary } from "./IntakeWorkspace";
-import { OneTop, OneBody, OneBar } from "./OneQuestion";
+import { FiBody } from "./FullIntake";
+import { WsLeft, WsHelper, IxHead, IxBar, IxFoot } from "./IntakeWorkspace";
 import ChoreList from "./ChoreList";
-import { MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
+import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
   return String(cls || "").split(/\s+/).filter(Boolean).map((t) => "cc-" + t).join(" ");
@@ -42,69 +41,24 @@ function GapCard({ g, alone }: { g: any; alone?: boolean }) {
 }
 
 export default function CallView({ v }: { v: any }) {
-  // Simple Chorelist: one numbered form, nothing hidden, no other chrome.
-  if (v.choreView) return (
-<div className="cc-app ch-mode">
-<ChoreList v={v} />
-<Dispo v={v} />
-</div>
-  );
-  // Full Intake on an iPad or a computer: caller on the left, the section in
-  // the middle, what's missing and what's next on the right.
-  // Conversation and Quick Capture share Full Intake's look and its iPad and desktop layouts.
-  const onePage = v.fullView || v.oneQ;
-  const ws = onePage && v.ws ? ` ws ws-${v.ws}` : "";
+  // One frame for Guided, Collapsible and All questions (IntakeWorkspace.tsx):
+  // the same header, progress bar, view switch, side columns and bottom bar.
+  // Only the middle changes with the view.
+  const wide = !!v.ws;
+  const view = v.choreView ? "chore" : v.fullView ? "full" : "guided";
+  const cls = ["cc-app", "ix", `ix-${view}`, `ix-v-${v.view}`, wide ? `ws ws-${v.ws}` : "ix-narrow", v.choreView ? "ch-mode" : "", v.fullView ? "fi-mode" : ""].filter(Boolean).join(" ");
   return (
-<div className={`cc-app${onePage ? " fi-mode" : ""}${v.oneQ ? ` oq-mode oq-${v.oneKind}` : ""}${ws}`}>
-{!!ws && <WsLeft v={v} />}
-{!!ws && v.ws === "ipad" && <aside className="ws-right" aria-label="Summary"><WsSummary v={v} /></aside>}
-<div className="cc-top">
-<div className="cc-nav">
-<div className="cc-nav-l"><a className="cc-navback" href="/app" aria-label="All calls"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a><button className="cc-mode" onClick={v.toggleModeMenu} aria-label="Change view" aria-expanded={!!v.modeMenuOpen}>{v.modeLabel}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div>
-<div className="cc-who"><span className="cc-caller">{v.callerName}</span><span className={cx(v.clockCls)}>{v.clockText}</span>{!!v.callerPhone && <span className="cc-who-phone">{v.callerPhone}</span>}<span className="cc-who-live">Live call</span>{!!v.saveBad && <span className="cc-savebad" role="status">{v.saveError}</span>}</div>
-<div className="cc-nav-r"><button className="cc-circ cc-txt" onClick={v.openText} aria-label={v.textBadge ? `${v.textUnread} new texts from ${v.callerFirst}` : `Text ${v.callerFirst}`}>{!!v.textBadge && <span className="cc-badge">{v.textUnread}</span>}<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3C6.48 3 2 6.58 2 11c0 2.4 1.32 4.55 3.4 6.02L4.6 21l4.33-2.3c.99.2 2.02.3 3.07.3 5.52 0 10-3.58 10-8s-4.48-8-10-8z"></path></svg></button><button className="cc-circ cc-end" onClick={v.openDispo} aria-label="Call ended"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.99.99 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67a.99.99 0 0 1 0 1.41l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85a1 1 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"></path></svg></button></div>
+<div className={cls}>
+{wide && <WsLeft v={v} />}
+{v.ws === "ipad" && <aside className="ws-right" aria-label="Helper"><WsHelper v={v} /></aside>}
+<div className="cc-top ix-top">
+{!wide && <IxHead v={v} />}
+<IxBar v={v} />
 </div>
-{!!(v.modeMenuOpen) && (<>
-<div className="cc-menu" role="menu">
-{(v.modes || []).map((m: any, i1: number) => (<Fragment key={i1}><button className={cx(m.cls)} role="menuitemradio" aria-checked={!!m.on} onClick={m.go}><span>{m.label}</span>{!!(m.on) && (<><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></>)}</button></Fragment>))}
-<a className="cc-menu-b" role="menuitem" href={`/app/${v.leadId}/print`}>Print or email the case</a>
-<a className="cc-menu-b" role="menuitem" href="/app">All calls</a>
-</div>
-</>)}
-{!!(v.fullView) && <FiProgress v={v} />}
-{!!(v.oneQ) && <OneTop v={v} />}
-{!!(v.guided) && (<>
-<div className="cc-gates">
-{(v.gates || []).map((g: any, i2: number) => (<Fragment key={i2}>
-<button className={cx(g.cls)} onClick={g.go} aria-label={g.aria}>{g.label}</button>
-</Fragment>))}
-</div>
-</>)}
-{!!(v.free) && (<>
-<div className="cc-gates">
-{(v.gates || []).map((g: any, i3: number) => (<Fragment key={i3}>
-<a className={cx(g.cls)} href={g.href} aria-label={g.aria}>{g.label}</a>
-</Fragment>))}
-</div>
-</>)}
-</div>
-{!!(v.guided) && (<>
-<nav className="cc-tabs" aria-label="Call steps">
-{(v.tabs || []).map((t: any, i4: number) => (<Fragment key={i4}>
-<button className={cx(t.cls)} onClick={t.go}>{t.label}</button>
-</Fragment>))}
-</nav>
-</>)}
-{!!(v.free) && (<>
-<nav className="cc-tabs" aria-label="Jump to a section">
-{(v.jumps || []).map((t: any, i5: number) => (<Fragment key={i5}>
-<a className={cx(t.cls)} href={t.href}>{t.label}</a>
-</Fragment>))}
-</nav>
-</>)}
-<main className={`cc-main${v.fullView ? " fi-main" : ""}${v.oneQ ? " fi-main oq-main" : ""}`}>
+<main className={`cc-main ix-main${v.fullView ? " fi-main" : ""}${v.choreView ? " ch-main" : ""}`}>
+{!!(v.choreView) && <ChoreList v={v} />}
 {!!(v.fullView) && <FiBody v={v} />}
-{!!(v.oneQ) && <OneBody v={v} />}
+{!v.choreView && (<>
 {!!(v.bare) && (<>
 {(v.bareRows || []).map((r: any, i6: number) => (<Fragment key={i6}>
 {!!(r.isGroup) && (<><div id={r.id} className="cc-q-g">{r.label}</div></>)}
@@ -128,10 +82,10 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.showOpen) && (<>
 {!!(v.free) && (<><div id="fs-open" className="cc-sec-h">Open</div></>)}
 <div className="cc-say">
-<div className="cc-tone">Say it with empathy, warmth, and concern</div>
-<div className="cc-say-line cc-sm">Hi, is this {v.callerFirst}?</div>
-<div className="cc-say-line" style={{marginTop: "10px"}}>{v.callerFirst}, this is {v.agentFirst} with the {v.firmSpoken} Intake Center. I'm reaching out about the car accident information we just received. Tell me what happened.</div>
-<div className="cc-cue">The last four words are the whole open. You do not ask if now is a good time.</div>
+<div className="cc-tone">{OPEN_TONE}</div>
+<div className="cc-say-line cc-sm">{openGreeting(v.callerFirst)}</div>
+<div className="cc-say-line" style={{marginTop: "10px"}}>{openLine(v.callerFirst, v.agentFirst, v.firmSpoken)}</div>
+<div className="cc-cue">{OPEN_CUE}</div>
 </div>
 <div>
 <div className="cc-lab">IF SHE ASKS FIRST</div>
@@ -389,7 +343,7 @@ export default function CallView({ v }: { v: any }) {
 </div>
 </>)}
 {!!(v.signed) && (<>
-<div className="cc-say" style={{border: "2px solid #D9982A", background: "#FDF5E6"}}>
+<div className="cc-say cc-say-win">
 <div className="cc-say-label">{SIGNED.label}</div>
 <div className="cc-say-line">{SIGNED.line}</div>
 <div className="cc-cue">{SIGNED.cue}</div>
@@ -467,13 +421,10 @@ export default function CallView({ v }: { v: any }) {
 </div>
 </>)}
 
-</main>
-<div className={`cc-bar${v.fullView ? " fi-bar" : ""}${v.oneQ ? " fi-bar oq-bar" : ""}`}>
-{v.fullView ? <FiBar v={v} /> : v.oneQ ? <OneBar v={v} /> : (<>
-<button className="cc-btn cc-ghost" onClick={v.openSheet}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>Help</button>
-{!!(v.nudge) && (<div className="cc-nudge" role="alert">{v.nudge}</div>)}
-<button className={`cc-btn cc-go${v.next.muted ? " cc-muted" : ""}`} disabled={!!v.next.disabled} onClick={v.next.go}>{v.next.label}</button>
 </>)}
+</main>
+<div className="cc-bar ix-foot">
+<IxFoot v={v} />
 </div>
 
 {!!(v.sheetOpen) && (<>
@@ -485,6 +436,8 @@ export default function CallView({ v }: { v: any }) {
 <button className="cc-x" onClick={v.closeSheet} aria-label="Close help">Close</button>
 </div>
 <div className="cc-sheet-b">
+
+{!!(v.isNowTab) && <WsHelper v={v} inSheet />}
 
 {!!(v.isAsk) && (<>
 <div className="cc-cue" style={{marginTop: "0"}}>Describe the wreck in plain words. CaseCure tells you what to ask next and whether it looks like it qualifies.</div>

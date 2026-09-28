@@ -8,7 +8,7 @@
 // ============================================================================
 import { useEffect, useRef } from "react";
 import WhereField from "./WhereField";
-import { OPEN_LINE } from "./scripts";
+import { OPEN_LINE, OPEN_TONE, openGreeting, openLine, OPEN_CUE } from "./scripts";
 import DuoIcon from "./DuoIcon";
 
 function Icon({ id }: { id: string }) {
@@ -216,9 +216,10 @@ export function FiBody({ v }: { v: any }) {
     </nav>
 
     <div className="fi-open">
-      <div className="fi-open-k">{OPEN_LINE.label}</div>
-      <div className="fi-open-t">{OPEN_LINE.line}</div>
-      <div className="fi-open-s">{OPEN_LINE.cue}</div>
+      <div className="fi-open-k">{OPEN_TONE}</div>
+      <div className="fi-open-g">{openGreeting(v.callerFirst)}</div>
+      <div className="fi-open-t">{openLine(v.callerFirst, v.agentFirst, v.firmSpoken)}</div>
+      <div className="fi-open-s">{OPEN_CUE} Then stop talking. {OPEN_LINE.cue}</div>
     </div>
 
     {!!fi.lead && !v.ws && (

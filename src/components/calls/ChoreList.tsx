@@ -12,10 +12,10 @@
 // wired to the call engine (fullIntake), so switching views changes nothing.
 // Phone: one long form. iPad: two fields across. Computer: three.
 // ============================================================================
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import WhereField from "./WhereField";
 import PlaceField from "./PlaceField";
-import { OPEN_LINE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
+import { OPEN_LINE, OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 const isOn = (cls: string) => / on(\s|$)/.test(" " + String(cls || "") + " ");
 
@@ -82,14 +82,14 @@ function Control({ c, v }: { c: any; v: any }) {
         {c.items.length > 0 && (
           <ul className="ch-list">
             {c.items.map((it: any, i: number) => (
-              <li key={i}><span>{it.label}</span><button type="button" className="ch-btn ch-line ch-sm" onClick={it.remove}>REMOVE</button></li>
+              <li key={i}><span>{it.label}</span><button type="button" className="ch-btn ch-line ch-sm" onClick={it.remove}>Remove</button></li>
             ))}
           </ul>
         )}
         <div className="ch-addrow">
           <input className="ch-in" aria-label={c.draft.ph} placeholder={c.draft.ph} value={c.draft.value} onChange={c.draft.set}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); c.add(); } }} />
-          <button type="button" className="ch-btn ch-line" onClick={c.add}>ADD</button>
+          <button type="button" className="ch-btn ch-line" onClick={c.add}>Add</button>
         </div>
       </>);
     case "carrier":
@@ -103,14 +103,14 @@ function Control({ c, v }: { c: any; v: any }) {
       return (<>
         <div className="ch-opts">
           <Opt label={c.justMe.label} on={c.justMe.on} pick={c.justMe.pick} />
-          <button type="button" className="ch-btn ch-line" onClick={c.add}>ADD A PASSENGER</button>
+          <button type="button" className="ch-btn ch-line" onClick={c.add}>Add a passenger</button>
         </div>
         {c.people.map((p: any, i: number) => (
           <div key={i} className="ch-person">
             <div className="ch-person-h">Passenger {i + 1}</div>
             <div className="ch-addrow">
               <input className="ch-in" aria-label="Passenger's name" placeholder="Passenger's name" value={p.name ?? ""} onChange={p.setName} />
-              <button type="button" className="ch-btn ch-line" onClick={p.remove}>REMOVE</button>
+              <button type="button" className="ch-btn ch-line" onClick={p.remove}>Remove</button>
             </div>
             <Opts opts={fromCls(p.ages)} />
             <Opts opts={p.hurts.map((a: any) => ({ label: a.label === "Yes" ? "Hurt" : "Not hurt", on: isOn(a.cls), pick: a.pick }))} />
@@ -206,7 +206,7 @@ function Retainer({ v }: { v: any }) {
         {!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener">Preview the agreement before you send it</a>}
         {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
         {v.sendWarn && <div className="ch-note ch-note-bad">{v.sendWarnText}</div>}
-        <button type="button" className="ch-btn" disabled={!!v.sendNext.disabled} onClick={v.sendNext.go}>SEND THE AGREEMENT</button>
+        <button type="button" className="ch-btn ch-send" disabled={!!v.sendNext.disabled} onClick={v.sendNext.go}>Send the agreement</button>
       </div>
     </>);
   }
@@ -221,15 +221,15 @@ function Retainer({ v }: { v: any }) {
     </div>
     {v.notSigned && (<>
       <Say label={STAY.label} line={STAY.line} small />
-      <div className="ch-say ch-wide">
+      <div className="ch-say ch-say-2 ch-wide">
         <div className="ch-say-k">Walk her through it</div>
         {walkThrough(v.firmSpoken).map((t, i) => <div key={i} className="ch-say-t ch-say-sm">{t}</div>)}
       </div>
-      <div className="ch-say ch-wide">
+      <div className="ch-say ch-say-2 ch-wide">
         <div className="ch-say-k">No dead air</div>
         {NO_DEAD_AIR.map((t, i) => <div key={i} className="ch-say-t ch-say-sm">{t}</div>)}
       </div>
-      {v.canResend && <div className="ch-wide"><button type="button" className="ch-btn ch-line" onClick={v.resendLink}>SEND THE LINK AGAIN</button></div>}
+      {v.canResend && <div className="ch-wide"><button type="button" className="ch-btn ch-line" onClick={v.resendLink}>Send the link again</button></div>}
     </>)}
     {v.signed && (<>
       <Say label={SIGNED.label} line={SIGNED.line} cue={SIGNED.cue} />
@@ -244,8 +244,8 @@ function Retainer({ v }: { v: any }) {
       <div className="ch-q ch-wide">
         {v.agreementOpen && (
           <div className="ch-row">
-            <button type="button" className="ch-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>COMPLETE THE AGREEMENT</button>
-            <button type="button" className="ch-btn ch-line" onClick={v.leaveForQa}>LEAVE IT FOR QA IN THE MORNING</button>
+            <button type="button" className="ch-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>Complete the agreement</button>
+            <button type="button" className="ch-btn ch-line" onClick={v.leaveForQa}>Leave it for QA in the morning</button>
           </div>
         )}
         {v.agreementClosed && <div className="ch-note">{v.agreementNote}</div>}
@@ -269,11 +269,11 @@ function Retainer({ v }: { v: any }) {
         <div key={i} className="ch-q ch-wide">
           <div className="ch-q-h"><span className="ch-q-l">{p.title}</span></div>
           <div className="ch-note">{p.note}</div>
-          {p.ready && <button type="button" className="ch-btn" onClick={p.send}>{p.button.toUpperCase()}</button>}
+          {p.ready && <button type="button" className="ch-btn" onClick={p.send}>{p.button}</button>}
           {p.live && <ul className="ch-steps">{(p.steps || []).map((st: any, j: number) => <li key={j}><span>{st.label}</span><b>{stepWord(st.cls)}</b></li>)}</ul>}
         </div>
       ))}
-      <div className="ch-say ch-wide">
+      <div className="ch-say ch-say-2 ch-wide">
         <div className="ch-say-k">Before you hang up, say</div>
         {closeLines(v.callerFirst, v.firmSpoken).map((t, i) => <div key={i} className="ch-say-t ch-say-sm">{t}</div>)}
         <div className="ch-note">{CLOSE_CUE}</div>
@@ -285,63 +285,44 @@ function Retainer({ v }: { v: any }) {
 export default function ChoreList({ v }: { v: any }) {
   const fi = v.fi;
   const ch = fi.chore;
-  const page = useRef<HTMLDivElement | null>(null);
   const first = useRef(true);
-  const [savedIn, setSavedIn] = useState<string | null>(null);
 
-  // GO TO NEXT SECTION, or arriving from another view, puts that section at the top.
+  // Next, a section jump, or arriving from another view puts that spot at the top.
   useEffect(() => {
-    const el = document.getElementById(`ch-sec-${fi.openSec}`);
+    const target = fi.target ? document.getElementById(`ch-q-${fi.target}`) : null;
+    const el = target || document.getElementById(`ch-sec-${fi.openSec}`);
     const arriving = first.current;
     first.current = false;
-    if (!el || (arriving && fi.openSec === "incident")) return;
-    requestAnimationFrame(() => el.scrollIntoView({ behavior: arriving ? "auto" : "smooth", block: "start" }));
+    if (!el || (arriving && !target && fi.openSec === "incident")) return;
+    requestAnimationFrame(() => el.scrollIntoView({ behavior: arriving ? "auto" : "smooth", block: target ? "center" : "start" }));
   }, [fi.jump]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const secQs = (id: string) => (fi.sections.find((s: any) => s.id === id) || { questions: [] }).questions;
   const gap = fi.sections.find((s: any) => s.id === "treatment")?.gap;
-  const save = (id: string) => { setSavedIn(id); v.saveNow?.(); };
 
   return (
-    <div className="ch-page" ref={page}>
-      <header className="ch-head">
-        <div className="ch-who">
-          <div className="ch-name">{v.callerName}</div>
-          <div className="ch-meta">
-            {!!v.callerPhone && <span>Phone: {v.callerPhone}</span>}
-            <span>Call time: {v.clockText}</span>
-          </div>
-          {v.saveBad && <div className="ch-note ch-note-bad">{v.saveError}</div>}
-        </div>
-        <button type="button" className="ch-btn ch-line ch-end" onClick={v.openDispo}>END CALL</button>
-      </header>
-
-      <div className="ch-prog" role="status">
-        <div className="ch-prog-h">Intake Progress</div>
-        <div className="ch-prog-n">{ch.progress.text}</div>
-        <div className="ch-bar" aria-hidden="true"><i style={{ width: `${ch.progress.pct}%` }} /></div>
-        <div className="ch-prog-next">{ch.nextText}</div>
-      </div>
-
+    <div className="ch-page">
       {ch.rows.map((r: any) => (
         <section key={r.id} id={`ch-sec-${r.id}`} className={`ch-sec ch-st-${r.status}`} onPointerDownCapture={r.enter} onFocusCapture={r.enter}>
           <div className="ch-sec-h">
-            <h2 className="ch-sec-t">{r.n}. {r.label}</h2>
-            <span className="ch-st">{r.statusText}</span>
+            <span className="ch-n" aria-hidden="true">{r.n}</span>
+            <h2 className="ch-sec-t">{r.label}</h2>
+            <span className="ch-st">{STATUS_WORD[r.status] || r.statusText}</span>
           </div>
 
           {r.id === "incident" && (<>
-            <div className="ch-say">
-              <div className="ch-say-k">{OPEN_LINE.label}</div>
-              <div className="ch-say-t">{OPEN_LINE.line}</div>
-              <div className="ch-note">{OPEN_LINE.cue}</div>
+            <div className="ch-say ch-say-open">
+              <div className="ch-say-k">{OPEN_TONE}</div>
+              <div className="ch-say-t ch-say-sm">{openGreeting(v.callerFirst)}</div>
+              <div className="ch-say-t">{openLine(v.callerFirst, v.agentFirst, v.firmSpoken)}</div>
+              <div className="ch-note">{OPEN_CUE} Then stop talking. {OPEN_LINE.cue}</div>
             </div>
-            {!!fi.lead && !!fi.lead.tags && <div className="ch-lead"><b>From the lead:</b> {fi.lead.tags}</div>}
+            {!!fi.lead && !!fi.lead.tags && <div className="ch-lead"><b>From the lead</b> {fi.lead.tags}</div>}
           </>)}
 
           <div className="ch-grid">
             {r.id === "treatment" && !!gap && (
-              <div className="ch-q ch-wide ch-gap">
+              <div className={`ch-q ch-wide ch-gap ch-gap-${String(gap.cls || "").replace(/.*gaprow ?/, "") || "none"}`}>
                 <div className="ch-q-h"><span className="ch-q-l">30-day check</span><span className="ch-gap-v">{gap.value}</span></div>
                 {!!gap.sub && <div className="ch-note">{gap.sub}</div>}
               </div>
@@ -350,25 +331,18 @@ export default function ChoreList({ v }: { v: any }) {
           </div>
 
           <div className="ch-actions">
-            <button type="button" className="ch-btn ch-line" onClick={() => save(r.id)}>SAVE PROGRESS</button>
+            {r.status === "now" && <span className={`ch-saved${v.saveBad ? " ch-note-bad" : ""}`} role="status">{v.saveBad ? v.saveError : v.saveText || "Saves as you go"}</span>}
             {r.next
-              ? <button type="button" className="ch-btn" onClick={r.next}>GO TO NEXT SECTION</button>
-              : <button type="button" className="ch-btn ch-finish" onClick={ch.finish.go}>FINISH INTAKE</button>}
-            {savedIn === r.id && !!v.saveText && <span className={`ch-saved${v.saveBad ? " ch-note-bad" : ""}`} role="status">{v.saveBad ? v.saveError : v.saveText}</span>}
+              ? <button type="button" className="ch-next" onClick={r.next}>Next section: {r.nextLabel}
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+                </button>
+              : <button type="button" className="ch-btn ch-finish" onClick={ch.finish.go}>Finish intake</button>}
           </div>
           {!r.next && ch.finish.ask && <div className="ch-note ch-note-bad ch-finish-ask" role="alert">{ch.finish.askText}</div>}
         </section>
       ))}
-
-      <footer className="ch-foot">
-        <div className="ch-foot-t">This is the Simple Chorelist screen.</div>
-        <div className="ch-row">
-          {(v.modes || []).filter((m: any) => !m.on).map((m: any) => (
-            <button key={m.key} type="button" className="ch-btn ch-line ch-sm" onClick={m.go}>USE {String(m.label).toUpperCase()}</button>
-          ))}
-          <a className="ch-btn ch-line ch-sm" href="/app">ALL CALLS</a>
-        </div>
-      </footer>
     </div>
   );
 }
+
+const STATUS_WORD: Record<string, string> = { done: "Done", now: "Do this now", needs: "Needs an answer", todo: "Not started" };
