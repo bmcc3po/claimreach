@@ -21,11 +21,11 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current state
 
-- Status: Rounds 3+4+5 zip (claimreach_round5.zip) cut and delivered; answers the round-3 review handback (PR #35 should be updated with these files); supersedes every earlier zip
+- Status: Rounds 3+4+5 zip (claimreach_round5.zip) cut and delivered, then refreshed Sep 28 with pain notes on the call console (Brett's ask: checking an injury box opens a Pain notes box; saved with the call, in the summary and firm report); answers the round-3 review handback (PR #35 should be updated with these files); supersedes every earlier zip
 - Working branch: astra-round3 (local to Claude's cloud session; delivery is by zip upload, session cannot push)
-- Latest commit: astra-round3 branch on top of origin/main a887ce6 (rounds 3, 4, 5 + speed to lead)
-- Deployment or preview: awaiting Brett's zip upload; DB migrations 0103, 0104, 0105 AND 0106 (locked property replace, doc_count manifest, effective-privilege repair) ALREADY APPLIED live and probe-verified (canonical storage keys, atomic property replace, credentials tables owner/admin-only, drip enrollment server-only)
-- Last verified result: tsc clean; engine 43 pass; SsnDob pass; next-on-pages 190 routes + Build completed; browser token check: primary buttons compute rgb(34,197,94)
+- Latest commit: astra-round3 branch on top of origin/main a887ce6 (rounds 3, 4, 5 + speed to lead + pain notes)
+- Deployment or preview: awaiting Brett's zip upload; DB migrations 0103, 0104, 0105 AND 0106 (locked property replace, doc_count manifest, effective-privilege repair) ALREADY APPLIED live and probe-verified (canonical storage keys, atomic property replace, credentials tables owner/admin-only, drip enrollment server-only); pain notes need NO migration (rides in the saved answers JSON)
+- Last verified result: tsc clean; engine 45 pass; SsnDob pass; next-on-pages Build completed (192 function routes incl. the standing 2 non-page); browser shots: notes box opens under checked injury boxes on iPad and phone, fine-only opens nothing
 
 ## Work completed
 

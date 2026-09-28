@@ -13,6 +13,7 @@ On top of merged main (a887ce6). Round 5 answers Astra's review of the round-3 f
 - **One signed definition for staff AND firm reports**: signedStatusKeys now seeds Delivered/Retained/signed constants and builds on isSignedStatus, so the firm report (which has no status catalog) counts the same files as yours.
 - **Archive-failure honesty**: if the half-made lead cannot be archived, the response says so and names the lead, instead of claiming it was archived.
 - **"medical..pdf" style names** no longer produce a storage key the guard refuses after upload (dots collapse in the safe name).
+- **Pain notes on the call (Brett, Sep 28).** The moment an injury box is checked on the Pain question, a "Pain notes" box opens right under it — in Guided, Collapsible, All questions and the one-question views — so the agent writes what she says about the pain while she is saying it. "Says she's fine" alone opens nothing (the soreness rebuttal owns that moment). The note saves with the call like every other answer, shows in the injury section summary, and rides into the printed case summary and the firm report. 45 engine tests pass.
 
 ## Round 4 (also in this zip)
 

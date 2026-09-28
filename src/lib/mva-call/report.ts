@@ -69,6 +69,7 @@ export function caseReport(lead: any, answers: any, esign?: any): CaseReport {
   const pain = (b.pain || []).filter((p: string) => p !== FINE);
   if (pain.length) hurt.push(`${first} is hurting in the ${andList(pain.map((p: string) => p.toLowerCase()))}.`);
   else if ((b.pain || []).includes(FINE)) hurt.push(`${first} says the pain is minor so far.`);
+  if (String(b.painNote || "").trim()) hurt.push(`Pain notes: ${String(b.painNote).trim()}`);
   const seen = (b.seen || []).filter(Boolean);
   const prov = (b.providers || []).filter(Boolean);
   if (seen.includes("Not yet")) hurt.push("Not seen by anyone yet.");

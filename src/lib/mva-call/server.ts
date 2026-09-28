@@ -126,6 +126,7 @@ export function caseSummaryRows(lead: any, a: any): { k: string; v: string }[] {
     ["Police", st.police],
     ["What happened", st.text],
     ["Pain", (b.pain || []).join(", ")],
+    ["Pain notes", String(b.painNote || "").trim()],
     ["Seen by", (b.seen || []).join(", ")],
     ["First seen", visitText(b.firstAt, st)],
     ["Last seen", visitText(b.lastAt, st) || b.last],
