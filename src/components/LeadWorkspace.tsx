@@ -66,6 +66,10 @@ export default function LeadWorkspace({
   // server props, so an edit cannot resurrect old values (Astra round 3).
   const [leadLive, setLeadLive] = useState<any>(lead);
   const liveUp = (patch: Record<string, any>) => setLeadLive((s: any) => ({ ...s, ...patch }));
+  // A refreshed server record re-syncs the live copy (Astra round-3 review:
+  // init-once ignored router refreshes). Editors initialize their own state
+  // on mount, so this never resets active typing.
+  useEffect(() => { setLeadLive((s: any) => ({ ...s, ...lead })); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [lead.updated_at]);
   const [activeClaimId, setActiveClaimId] = useState(
     claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
   );
@@ -153,7 +157,7 @@ export default function LeadWorkspace({
           </div>
           <div className="formbody">
             {tab === "Overview" && (<>
-              <CaseOverview lead={lead} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} onGo={(t) => { setTab(t); setEditMode(false); }} />
+              <CaseOverview lead={leadLive} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} onGo={(t) => { setTab(t); setEditMode(false); }} />
               {/* Injured-party status and the pipeline live at the bottom of
                   Overview now; the old "File detail" fold bar is gone. */}
               <div style={{ marginTop: 18 }}><PncBanner lead={lead} readOnly={!canEdit} /></div>

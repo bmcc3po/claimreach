@@ -6,7 +6,7 @@
 import { getSubmission, statusFrom, STATUS_RANK, createTemplate, plainDocuSeal } from "@/lib/docuseal";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
-import { uploadSignedDoc } from "@/lib/signed-docs";
+import { listSubmissionDocs,uploadSignedDoc } from "@/lib/signed-docs";
 import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
 import { notifySigned } from "@/lib/notify-signed";
 
@@ -79,10 +79,18 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
 export async function syncSubmission(admin: any, row: any, opts: { actorName?: string; origin?: string } = {}): Promise<string> {
   if (!row?.submission_id) return row?.status || "sent";
   if (row.status === "completed") {
-    // A completed row missing ANY artifact (signed PDF or certificate) keeps
-    // retrying until both land; it used to be stuck forever behind this early
-    // return (Astra audit + review, Sep 27).
-    if (!row.completed_pdf_path || !row.cert_pdf_path) await retryCompletedFiles(admin, row);
+    // A completed row missing ANY expected artifact (primary PDF, any
+    // secondary in the packet per doc_count, or the certificate) keeps
+    // retrying until the full manifest is stored (Astra rounds 2-5).
+    let short = !row.completed_pdf_path || !row.cert_pdf_path || row.doc_count == null;
+    if (!short && row.doc_count > 1) {
+      try {
+        const firmFolder = String(row.completed_pdf_path).split("/")[0];
+        const stored = await listSubmissionDocs(admin, firmFolder, String(row.submission_id));
+        short = stored.length < row.doc_count;
+      } catch { short = true; }
+    }
+    if (short) await retryCompletedFiles(admin, row);
     return "completed";
   }
   const got = await getSubmission(row.submission_id);
@@ -100,6 +108,7 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
   if (next === "completed") {
     patch.completed_at = sub.completed_at || now;
     const docs = sub.documents || [];
+    patch.doc_count = docs.length; // the packet's manifest size, checked at delivery
     const firm = row.firm_id || "master";
     // Store every document in the packet. The first is the primary the app
     // links; extras keep a -2, -3 suffix in the same private bucket.
@@ -162,28 +171,33 @@ async function retryCompletedFiles(admin: any, row: any): Promise<void> {
     const sub = got.data;
     const firm = row.firm_id || "master";
     const recovered: string[] = [];
-    // Only fetch what is actually missing, and land each pointer with its own
-    // guarded write, so a present primary never blocks a missing certificate
-    // (Astra round 3: the old single update matched zero rows in that case
-    // and still logged a recovery).
-    if (!row.completed_pdf_path) {
-      const docs = sub.documents || [];
-      let primary: string | null = null;
-      for (let i = 0; i < docs.length; i++) {
-        const doc = docs[i];
-        if (!doc?.url) continue;
-        const bytes = await fetchBytes(doc.url);
-        if (!bytes) continue;
-        const path = `${firm}/signed-ds-${row.submission_id}${i ? `-${i + 1}` : ""}.pdf`;
-        const stored = await uploadSignedDoc(admin, path, bytes);
-        if (i === 0) primary = stored;
-      }
-      if (primary) {
-        const { data: hit } = await admin.from("esign_submissions")
-          .update({ completed_pdf_path: primary, error: null })
-          .eq("id", row.id).is("completed_pdf_path", null).select("id");
-        if (hit?.length) recovered.push("the signed PDF");
-      }
+    // Recover EVERY missing document in the packet against the manifest, each
+    // pointer with its own guarded write (Astra rounds 3 and 5: a present
+    // primary must not stop a missing secondary or certificate).
+    const docs = sub.documents || [];
+    let have: string[] = [];
+    try { have = row.completed_pdf_path ? await listSubmissionDocs(admin, String(row.completed_pdf_path).split("/")[0], String(row.submission_id)) : []; } catch {}
+    let primary: string | null = null; let extras = 0;
+    for (let i = 0; i < docs.length; i++) {
+      const doc = docs[i];
+      if (!doc?.url) continue;
+      const path = `${firm}/signed-ds-${row.submission_id}${i ? `-${i + 1}` : ""}.pdf`;
+      const missing = i === 0 ? !row.completed_pdf_path : !have.some((h) => h.endsWith(`-${i + 1}.pdf`));
+      if (!missing) continue;
+      const bytes = await fetchBytes(doc.url);
+      if (!bytes) continue;
+      const stored = await uploadSignedDoc(admin, path, bytes);
+      if (i === 0) primary = stored; else extras++;
+    }
+    if (primary) {
+      const { data: hit } = await admin.from("esign_submissions")
+        .update({ completed_pdf_path: primary, error: null })
+        .eq("id", row.id).is("completed_pdf_path", null).select("id");
+      if (hit?.length) recovered.push("the signed PDF");
+    }
+    if (extras) recovered.push(`${extras} more packet PDF${extras === 1 ? "" : "s"}`);
+    if (row.doc_count == null && docs.length) {
+      await admin.from("esign_submissions").update({ doc_count: docs.length }).eq("id", row.id).is("doc_count", null);
     }
     if (!row.cert_pdf_path && sub.audit_log_url) {
       const bytes = await fetchBytes(sub.audit_log_url);
