@@ -63,15 +63,22 @@ export async function POST(req: NextRequest) {
   }
 
   if (b.op === "deactivate") {
-    await admin.from("app_users").update({ active: false }).eq("id", b.id);
-    // Optionally ban at auth level so they can't log in.
-    try { await admin.auth.admin.updateUserById(b.id, { ban_duration: "876000h" }); } catch {}
-    return NextResponse.json({ ok: true });
+    const { error } = await admin.from("app_users").update({ active: false }).eq("id", b.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Ban at auth level too so the login itself dies. The app already treats
+    // active=false as signed out, so a failed ban is a warning, not a lie.
+    let warn: string | null = null;
+    try { const { error: bErr } = await admin.auth.admin.updateUserById(b.id, { ban_duration: "876000h" }); if (bErr) warn = `Deactivated, but the login ban failed: ${bErr.message}`; }
+    catch (e: any) { warn = `Deactivated, but the login ban failed: ${e?.message || e}`; }
+    return NextResponse.json({ ok: true, warning: warn });
   }
   if (b.op === "reactivate") {
-    await admin.from("app_users").update({ active: true }).eq("id", b.id);
-    try { await admin.auth.admin.updateUserById(b.id, { ban_duration: "none" }); } catch {}
-    return NextResponse.json({ ok: true });
+    const { error } = await admin.from("app_users").update({ active: true }).eq("id", b.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    let warn: string | null = null;
+    try { const { error: bErr } = await admin.auth.admin.updateUserById(b.id, { ban_duration: "none" }); if (bErr) warn = `Reactivated, but lifting the login ban failed: ${bErr.message}. They may still be unable to log in.`; }
+    catch (e: any) { warn = `Reactivated, but lifting the login ban failed: ${e?.message || e}.`; }
+    return NextResponse.json({ ok: true, warning: warn });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });

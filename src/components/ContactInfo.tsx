@@ -81,10 +81,15 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
   // Autosave a second after the last edit — no manual Save needed.
   const firstRun = useRef(true);
   const tmr = useRef<any>(null);
+  // Switching case tabs within a second of typing used to cancel the debounce
+  // and drop the edit (Astra audit, Sep 27). Flush on unmount instead.
+  const flushRef = useRef<() => void>(() => {});
+  useEffect(() => () => { flushRef.current(); }, []);
   useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return; }
     if (tmr.current) clearTimeout(tmr.current);
-    tmr.current = setTimeout(() => { save(); }, 1000);
+    tmr.current = setTimeout(() => { tmr.current = null; save(); }, 1000);
+    flushRef.current = () => { if (tmr.current) { clearTimeout(tmr.current); tmr.current = null; void save(); } };
     return () => { if (tmr.current) clearTimeout(tmr.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [f, x]);

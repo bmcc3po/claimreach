@@ -36,10 +36,15 @@ export default function CaseDetails({ lead, staff = [], editMode = true, onReque
   // Autosave a second after the last edit — no manual Save needed.
   const firstRun = useRef(true);
   const t = useRef<any>(null);
+  // Switching case tabs within a second of typing used to cancel the debounce
+  // and drop the edit (Astra audit, Sep 27). Flush on unmount instead.
+  const flushRef = useRef<() => void>(() => {});
+  useEffect(() => () => { flushRef.current(); }, []);
   useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return; }
     if (t.current) clearTimeout(t.current);
-    t.current = setTimeout(() => { save(); }, 1000);
+    t.current = setTimeout(() => { t.current = null; save(); }, 1000);
+    flushRef.current = () => { if (t.current) { clearTimeout(t.current); t.current = null; void save(); } };
     return () => { if (t.current) clearTimeout(t.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [f]);

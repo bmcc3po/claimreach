@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import GuidedIntake from "@/components/GuidedIntake";
 import ClaimIntake from "@/components/ClaimIntake";
 import IntakeReview from "@/components/IntakeReview";
@@ -49,6 +49,11 @@ function StaffIntakeSurface(props: {
 }) {
   const [mode, setMode] = useState<"guided" | "sections">("guided");
   const [allowFull, setAllowFull] = useState(false);
+  // One live copy of the intake, whichever surface is editing it. Switching
+  // Guided <-> All sections used to remount from the server-rendered initial
+  // props, showing stale answers until a reload (Astra audit, Sep 27).
+  const live = useRef<{ a: Record<string, any> | null; p: any[] | null }>({ a: null, p: null });
+  const snap = (a: Record<string, any>, p: any[]) => { live.current = { a, p }; };
 
   useEffect(() => {
     let alive = true;
@@ -89,17 +94,19 @@ function StaffIntakeSurface(props: {
           leadId={props.leadId}
           claimType={props.claimType}
           customFields={props.customFields}
-          initialAnswers={props.initialAnswers}
-          initialProperties={props.initialProperties as any}
+          initialAnswers={live.current.a ?? props.initialAnswers}
+          initialProperties={(live.current.p ?? props.initialProperties) as any}
           claimantName={props.claimantName}
+          onSnapshot={snap}
           onExit={() => { window.location.href = `/leads/${props.leadId}`; }}
         />
       ) : (
         <ClaimIntake
           claimId={props.claimId}
           firmId={props.firmId}
-          initialAnswers={props.initialAnswers ?? {}}
-          initialProperties={(props.initialProperties ?? []) as any}
+          initialAnswers={live.current.a ?? props.initialAnswers ?? {}}
+          initialProperties={(live.current.p ?? props.initialProperties ?? []) as any}
+          onSnapshot={snap}
           claimantName={props.claimantName}
           claimantEmail={props.claimantEmail}
           claimType={props.claimType}

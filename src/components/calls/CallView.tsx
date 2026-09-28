@@ -8,6 +8,7 @@ import WhereField from "./WhereField";
 import { FiBody } from "./FullIntake";
 import { WsLeft, WsHelper, IxHead, IxBar, IxFoot } from "./IntakeWorkspace";
 import ChoreList from "./ChoreList";
+import { DobField, SsnField } from "./SsnDob";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
@@ -359,14 +360,15 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-card">
 <span className="cc-card-h">Finish the agreement</span>
 <div className="cc-cue" style={{marginTop: "0"}}>These print on the HIPAA pages as the patient's. For a child, it's the child's.</div>
-<div><div className="cc-lab">DATE OF BIRTH</div><input className="cc-field" type="text" inputMode="numeric" placeholder="MM/DD/YYYY" aria-label="Date of birth" value={v.f.dob.value ?? ""} onChange={v.f.dob.set} /></div>
-<div><div className="cc-lab">SSN</div><input className="cc-field" type="text" inputMode="numeric" placeholder="Last 4 or all 9" aria-label="Social Security number" value={v.f.ssn.value ?? ""} onChange={v.f.ssn.set} /></div>
+<div><div className="cc-lab">DATE OF BIRTH</div><DobField value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} /></div>
+<div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} /></div>
 {!!(v.agreementOpen) && (<>
 <button className="cc-btn cc-full" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
 <button className="cc-btn cc-soft" onClick={v.leaveForQa}>Leave it for QA in the morning</button>
 </>)}
 {!!v.hasFileError && <div className="cc-cue cc-red">{v.fileError}</div>}
 {!!(v.agreementClosed) && (<><span className="cc-tag">{v.agreementNote}</span></>)}
+{!!(v.agreementParked) && (<><button className="cc-btn cc-soft" onClick={v.reopenAgreement}>Reopen and finish it now</button></>)}
 </div>
 </>)}
 {!!(v.fsInfo) && (<>
@@ -584,7 +586,7 @@ function Dispo({ v }: { v: any }) {
 </div>
 <div className="cc-bar">
 {!!(v.dispo.editing) && (<><button className="cc-btn cc-go" disabled={!!v.dispo.cantSave} onClick={v.dispo.save}>{v.dispo.saveLabel}</button></>)}
-{!!(v.dispo.saved) && (<><button className="cc-btn cc-soft" style={{flex: "1"}} onClick={v.dispo.edit}>Edit</button><button className="cc-btn cc-go" onClick={v.dispo.nextCall}>Next call</button></>)}
+{!!(v.dispo.saved) && (<><button className="cc-btn cc-soft" style={{flex: "1"}} onClick={v.dispo.edit}>Edit</button><a className="cc-btn cc-soft" style={{flex: "1", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none"}} href={`/leads/${v.leadId}?classic=1`}>Open the file</a><button className="cc-btn cc-go" onClick={v.dispo.nextCall}>Next call</button></>)}
 </div>
 </div>
 </>)}

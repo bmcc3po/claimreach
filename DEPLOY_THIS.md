@@ -1,45 +1,38 @@
-# ClaimReach deploy: the agreement sends, and one clean frame for all three call views
+# ClaimReach deploy: Astra audit repairs, round 2
 
-This zip includes the agreement fix. If the agreement zip already went up, this one goes right on top of it. No database steps.
+One zip, on top of what's live. It contains everything from the first repair round plus the fixes from Astra's review of that round. Your steps are at the bottom.
 
-## The agreement sends
+## What Astra's review got right, now fixed
 
-ClaimReach was sending DocuSeal the signing boxes in the wrong place in the request. DocuSeal made the agreement with no boxes, then refused to send it. The boxes now go where DocuSeal reads them. The agreements are renamed v3, so the first send after this upload rebuilds them with every box on them, by itself.
+- **The 0100 Part B trigger really was broken.** Inside a SECURITY DEFINER function, current_user is the function's owner, so my privileged-role exemption fired for everyone and the guard checked nothing. It was never applied, so nothing was ever protected wrongly. The corrected version is migration 0102: it runs as the real caller, and it also blocks self-service INSERT and DELETE on accounts, not just role edits. The old Part B text is marked superseded everywhere.
+- **Deactivation now dies at the database too.** 0102 rewrites the RLS helper functions so active=false means no rows through the Data API, even with a still-valid login token. The app-level check shipped last round. A failed auth-level ban now comes back as a visible warning instead of silence.
+- **Exports are internal staff only**, on top of the Export leads permission, so a firm login given an export override can never pull other firms' files.
+- **Document rows are bound to their stored file.** 0102's case_documents check now also verifies the storage path itself belongs to that firm and lead, not just the labels.
+- **Signed-file recovery now actually runs.** The screen's status check reaches completed agreements too, a missing certificate retries the same as a missing PDF, and the file's history says plainly when the copy has NOT stored yet instead of "Signed copy stored".
+- **Deliveries carry the whole packet.** Extra signed PDFs are found by their stored names and attached, and the no-retainer refusal now holds even on a forced resend. Force only skips the already-sent guard.
+- **Saves are ordered.** A save only lands on the version of the file it merged against; a save from another screen re-reads and re-merges instead of overwriting. Overlapping property saves converge to one set instead of doubling. Contact Info and Case Details flush their pending save when you switch tabs, same as the intake screens. Guided's "Intake complete" screen waits for the save to land and stays put with the error if it fails.
+- **Property completeness follows the real tier rules** on both surfaces: first four Motel 6 properties take the full battery, a 5th+ Motel 6 is name-only, non-Motel-6 takes the abbreviated set. The counter and the section badges use the same rules.
+- **"Open the file" after a dispo goes to the classic case page** (it was bouncing straight back to the call). "Full site" from a call file now opens that file, not the dashboard.
+- **The moving incident date is fixed at the root.** "Today" and "Yesterday" now save as the actual calendar date, so a file reopened tomorrow keeps the real crash day.
+- **Lead creation can't half-succeed.** If the claim row fails twice, the half-made lead is archived and the screen says to add it again. Case type must match the campaign.
+- **The Signed report number uses the status table's own definition** of a signed status (covers custom statuses like Delivered/Retained), not a name prefix.
+- **SSN last-4 mode survives a remount**, and an unreadable campaign SSN rule now fails closed with "try again" instead of quietly acting like the rule is off.
 
-Tested against DocuSeal before this zip was made:
+## What Astra flagged that stays open, and why
 
-- Texas, Florida and the all-other-states agreement each came back with all 8 boxes and both signers.
-- A text send (cell number only) came back with a working signing link, with her name already on the agreement.
-- An email send came back sent.
-- She signed, then Intake added DOB and SSN. It came back complete, with the signed PDF and the audit trail.
-- The webhook on claimreach.com accepted the secret.
+- **DocuSeal for Motel and the other case types.** Still needs each case type's retainer PDFs and field positions from you, same as we built for TMP MVA. That is the one launch gate I cannot build from here.
+- **One shell for CRM, calls and the board; Contact Info and Case Details redesign.** Next block, after you review this round. You also have unsent notes on the ending flow.
+- **Cross-role negative tests, an outage drill, a backup restore drill.** Operational; needs you present.
+- **Grievous "wrote a result while displaying a false failure".** Still not reproduced from the code; needs your screen.
 
-If DocuSeal ever says no, the agent sees what went wrong and what to do, in plain words, and it goes in the file's history. If an agreement in DocuSeal is gone or has no boxes, ClaimReach rebuilds it and sends again by itself.
+## Your steps after the upload deploys
 
-## Three views, one frame
+1. Fix the DocuSeal webhook (still rejecting with 401 every few minutes): in DocuSeal with test mode OFF, set the webhook URL to `https://claimreach.com/api/esign/docuseal?key=` plus your DOCUSEAL_WEBHOOK_SECRET, and tick form.viewed, form.completed, form.declined, submission.completed.
+2. If you added the live DOCUSEAL_API_KEY after 5:48 PM, retry the latest Cloudflare deployment, then send one test agreement. I'll confirm it hit the live account.
+3. Run migration **0101 Part B** and migration **0102** from RUN_THESE_MIGRATIONS.sql (bottom of the file). Do NOT run the old 0100 Part B block; it's marked superseded in the file.
+4. Supabase dashboard, Auth: turn on leaked-password protection (one toggle, no SQL).
+5. Send me the Motel retainer packet PDFs and I'll build Motel on DocuSeal.
 
-The views are now Guided, Collapsible and All questions. They are the same intake, the same questions and the same answers underneath. Nothing about the intake logic changed.
+## Already live (applied directly, disclosed as it happened)
 
-- **Guided** is the easiest one. It shows one step at a time, with the words to say in a big navy card and one big button for the next step.
-- **Collapsible** is built from your renderings. Every section is a card with its progress ring, and you open one at a time.
-- **All questions** is the whole intake open on one page, numbered, with boxes you tick.
-
-Every view now has the same frame:
-
-- **The top:** her name, the call clock, Text and End call.
-- **The progress bar:** the intake progress, with the view switch under it. The switch sits in exactly the same spot in all three views, on every device.
-- **The bottom:** Help, Note, and one big button for the next step.
-- **On an iPad turned sideways or a computer:** the caller and the qualifiers are on the left in every view. The helper is on the right in every view, always open. It shows what to say now, reminders, what's still missing (tap one to jump to it), rebuttals for this part of the call, and Ask CaseCure.
-- **On a computer:** the right side also has tabs for Scripts, Texts, Phone, Agreement, File and Tools.
-- **On a phone:** Help opens on Now, which shows the same helper.
-
-## Cleaned up
-
-- Every view starts with the real opening script.
-- No beige or gold boxes anywhere on the call screens. The palette is white hairline boxes, navy for what to say and the next step, blue for what's picked, green for done, and red only for a problem.
-- The bottom of All questions no longer has the footer of USE buttons or the Save Progress buttons. It saves on its own and says Saved at the top and under the section she's in. Finish intake is still at the end of 7. Retainer. The agreement send is one clean box, with any warning right above the button.
-- Conversation, Quick Capture and Q&A are out of the menu.
-
-## Tested
-
-The tests clicked every button in every view at every step of the call, on a phone, an iPad upright and sideways, and a computer. That was 2,391 clicks with no errors. A small iPad, a small phone, a narrow computer window and a big monitor were checked for layout. They also ran each view start to finish, a send that fails, switching views mid-call (you land on the same section with every answer in place), and a scan of every screen for beige.
+The three exposed views are locked to the server. Signed-out visitors can no longer execute any privileged database function. campaigns.ssn_require_full exists and defaults to off.

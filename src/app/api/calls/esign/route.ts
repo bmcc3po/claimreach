@@ -186,7 +186,10 @@ export async function GET(req: NextRequest) {
   const { data: main } = await sb.from("esign_submissions").select("*")
     .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   let status = main?.status || "ready";
-  if (main && ["sent", "opened", "signed"].includes(main.status)) status = await syncSubmission(admin, main, { origin: url.origin });
+  if (main && (["sent", "opened", "signed"].includes(main.status)
+    || (main.status === "completed" && (!main.completed_pdf_path || !main.cert_pdf_path)))) {
+    status = await syncSubmission(admin, main, { origin: url.origin });
+  }
 
   const pax: Record<string, string> = {};
   if (callId) {

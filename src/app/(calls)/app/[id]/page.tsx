@@ -25,8 +25,12 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   if (!id) notFound();
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", id).maybeSingle();
   if (!lead) notFound();
+  // This console runs the MVA car-wreck script. A Motel or any other case type
+  // opened here got read the wrong script (Astra audit, Sep 27): those files
+  // belong on their own case page.
+  if (String(lead.case_type || "").toLowerCase() !== "mva") redirect(`/leads/${lead.id}`);
 
-  const [{ data: firm }, liveRes, mainRes, reasonsRes, dqRes, ownersRes, tplRes, extraRes, lastRes, routeRes] = await Promise.all([
+  const [{ data: firm }, liveRes, mainRes, reasonsRes, dqRes, ownersRes, tplRes, campRes, extraRes, lastRes, routeRes] = await Promise.all([
     sb.from("firms").select("name, slug").eq("id", lead.firm_id).maybeSingle(),
     // Pick up this agent's own open call on this file only if it was touched in
     // the last 30 minutes (a refresh, a dropped signal). Anything older is a new
@@ -38,6 +42,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
     sb.from("dq_reasons").select("key, label, active").in("key", MVA_DQ_KEYS),
     sb.from("app_users").select("full_name, email").eq("role", "owner").eq("active", true),
     sb.from("esign_templates").select("key").eq("campaign_id", lead.campaign_id ?? "00000000-0000-0000-0000-000000000000").eq("provider", "docuseal"),
+    sb.from("campaigns").select("ssn_require_full").eq("id", lead.campaign_id ?? "00000000-0000-0000-0000-000000000000").maybeSingle(),
     // What the marketer sent. vendor_fields arrives with migration 0098; until
     // then the retry below reads the rest without it.
     sb.from("leads").select("case_description, marketing_source, lawruler_ref_no, vendor_fields").eq("id", lead.id).maybeSingle(),
@@ -99,6 +104,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
       callId: liveRes.data?.id ?? null,
       openText: text === "1",
       canPreview: !!packetsFor(firm?.slug, lead.case_type),
+      ssnRequireFull: campRes?.data?.ssn_require_full === true,
       threeWay,
       startedAt: liveRes.data?.created_at ? Date.parse(liveRes.data.created_at) : Date.now(),
       props: {

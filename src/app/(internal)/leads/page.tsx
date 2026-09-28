@@ -11,7 +11,7 @@ export default async function LeadsPage() {
   // by a column that a pending migration has not added yet.
   const { data: leads } = await sb
     .from("leads")
-    .select("id, lead_no, firm_ref_no, claimant_name, phone, email, address, mail_city, mail_state, stage, supervisor_flag, created_at, updated_at, case_type, firm_id")
+    .select("id, lead_no, firm_ref_no, claimant_name, phone, email, address, mail_city, mail_state, stage, supervisor_flag, created_at, updated_at, case_type, firm_id, campaign")
     // Archived files are hidden everywhere by default. They are recoverable for
     // 90 days; only an owner can destroy one, and only after it is archived.
     .is("archived_at", null)
