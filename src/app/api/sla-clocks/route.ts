@@ -32,7 +32,11 @@ export async function GET(_req: NextRequest) {
 
   // Role scoping.
   if (g.role === "agent") q = q.eq("assigned_agent", g.id);
-  else if (g.role === "firm" && g.firmId) q = q.eq("firm_id", g.firmId);
+  else if (g.role === "firm") {
+    // No firm mapping = no rows, never the whole floor (Astra round 4).
+    if (!g.firmId) return NextResponse.json({ items: [], summary: null });
+    q = q.eq("firm_id", g.firmId);
+  }
 
   const { data: rows, error } = await q.limit(500);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

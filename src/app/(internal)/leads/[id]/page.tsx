@@ -1,6 +1,6 @@
 export const runtime = "edge";
 import { notFound, redirect } from "next/navigation";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import LeadWorkspace from "@/components/LeadWorkspace";
 import { loadIdentifiedForLead } from "@/lib/property-ops";
@@ -19,6 +19,14 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   if (!id) notFound();
 
   const { data: lead } = await sb.from("leads").select("*").eq("id", id).maybeSingle();
+  // Speed to lead, open side: first staff open of the file stamps it (this
+  // layout is internal-only, so a firm view can never stamp).
+  if (lead?.id && !lead.first_opened_at) {
+    try {
+      const { data: { user: opener } } = await sb.auth.getUser();
+      await supabaseAdmin().from("leads").update({ first_opened_at: new Date().toISOString(), first_opened_by: opener?.id ?? null }).eq("id", lead.id).is("first_opened_at", null);
+    } catch {}
+  }
   if (!lead) notFound();
   // INNO MVA files are worked in the App, wide on a computer. The classic page
   // is still one click away (?classic=1) for status, QA, lock and send to firm.

@@ -16,6 +16,8 @@ export async function loadStatuses(): Promise<StatusDef[]> {
 // Set status on every claim under the given lead ids (claims hold status).
 export async function setClaimStatusForLeads(opts: {
   leadIds: string[];
+  /** When set, only these claims change; the lead-level flags still sync. */
+  claimIds?: string[];
   status: string;
   dqReasonKey?: string | null;
   dqNote?: string | null;
@@ -41,7 +43,12 @@ export async function setClaimStatusForLeads(opts: {
     patch.qualification = "clear";
   }
 
-  const { error } = await admin.from("claims").update(patch).in("lead_id", opts.leadIds);
+  // Claim scope: a claim-specific action changes THAT claim, never every
+  // claim on the lead (Astra round 4: an MVA dispo was flipping the Motel
+  // claim on the same person). Lead-wide remains for lead-level operations.
+  let cq = admin.from("claims").update(patch);
+  cq = opts.claimIds?.length ? cq.in("id", opts.claimIds) : cq.in("lead_id", opts.leadIds);
+  const { error } = await cq;
   if (error) return { ok: false, error: error.message };
 
   // Keep the QA-queue flag in sync with the status phase so the QA queue and the

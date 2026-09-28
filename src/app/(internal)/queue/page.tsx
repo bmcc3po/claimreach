@@ -19,7 +19,9 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     leads = data ?? [];
   } else {
     let q = sb.from("leads").select("id, lead_no, claimant_name, stage, updated_at").limit(100);
-    if (mode === "mine") q = q.order("updated_at", { ascending: false });
+    // "My Work" is the files assigned to YOU, not the whole floor sorted by
+    // recency (Astra round 4).
+    if (mode === "mine") q = q.eq("assigned_agent", user!.id).order("updated_at", { ascending: false });
     else q = q.order("updated_at", { ascending: true });
     const { data } = await q;
     leads = data ?? [];

@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (p.op === "enroll") {
-    await sb.rpc("enroll_drips_for_lead", { p_lead: p.lead_id, p_firm: me.firm_id });
+    await supabaseAdmin().rpc("enroll_drips_for_lead", { p_lead: p.lead_id, p_firm: me.firm_id });
     return NextResponse.json({ ok: true });
   }
 

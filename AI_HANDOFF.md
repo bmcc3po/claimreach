@@ -21,10 +21,10 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current state
 
-- Status: Round-3 repair zip cut and delivered to Brett for upload
+- Status: Rounds 3+4 repair zip (claimreach_astra_round4.zip) cut and delivered to Brett for upload; supersedes the round-3 zip
 - Working branch: astra-round3 (local to Claude's cloud session; delivery is by zip upload, session cannot push)
-- Latest commit: on top of origin/main a887ce6
-- Deployment or preview: awaiting Brett's zip upload; DB migration 0103 ALREADY APPLIED live and probe-verified (traversal/percent storage keys refused, atomic property replace)
+- Latest commit: astra-round3 branch on top of origin/main a887ce6 (rounds 3 and 4)
+- Deployment or preview: awaiting Brett's zip upload; DB migrations 0103, 0104 AND 0105 (speed-to-lead columns) ALREADY APPLIED live and probe-verified (canonical storage keys, atomic property replace, credentials tables owner/admin-only, drip enrollment server-only)
 - Last verified result: tsc clean; engine 43 pass; SsnDob pass; next-on-pages 190 routes + Build completed; browser token check: primary buttons compute rgb(34,197,94)
 
 ## Work completed

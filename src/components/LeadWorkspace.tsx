@@ -121,7 +121,7 @@ export default function LeadWorkspace({
             <a className="cl-btn cl-ghost cl-sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
           )}
           {canTools && ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
-          <FileStatusControl leadId={lead.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+          <FileStatusControl leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
           {canTools && <LockFileButton lead={lead} />}
         </div>
       </div>

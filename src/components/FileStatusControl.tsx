@@ -5,7 +5,7 @@ import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, type StatusDef, type DqReason } f
 
 // Clickable status badge on the file. Opens a picker of live statuses; choosing
 // a disqualify status forces a non-dismissable DQ-reason selection before it commits.
-export default function FileStatusControl({ leadId, current, role }: { leadId: string; current: string; role?: string }) {
+export default function FileStatusControl({ leadId, current, role, claimId }: { leadId: string; current: string; role?: string; claimId?: string | null }) {
   const [status, setStatus] = useState(current);
   const [open, setOpen] = useState(false);
   const [statuses, setStatuses] = useState<StatusDef[]>(DEFAULT_STATUSES);
@@ -37,7 +37,7 @@ export default function FileStatusControl({ leadId, current, role }: { leadId: s
     setBusy(true); setMsg("");
     const r = await fetch("/api/leads", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "status", lead_id: leadId, status: statusKey, dq_reason_key: dqReasonKey ?? null }),
+      body: JSON.stringify({ op: "status", lead_id: leadId, claim_id: claimId ?? null, status: statusKey, dq_reason_key: dqReasonKey ?? null }),
     });
     const d = await r.json();
     setBusy(false);

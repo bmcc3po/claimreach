@@ -114,6 +114,10 @@ export async function POST(req: NextRequest) {
     // Blank fields arrive as "" — turn them into NULL so a date/number/uuid
     // column can't reject the entire update and silently drop every change.
     const leadPatch = nullifyEmpty(lead ?? {});
+    // Authorization and verification facts never ride in on a generic form
+    // save; they have their own commands (Astra round 4).
+    for (const k of ["grievous_approved", "grievous_approved_at", "firm_sent_at", "firm_send_result",
+      "archived_at", "archived_by", "firm_id", "campaign_id", "campaign", "lead_no", "created_by", "signed_at"]) delete leadPatch[k];
 
     const { error: leadErr } = await sb.from("leads").update(leadPatch).eq("id", lead_id);
     if (leadErr) {
@@ -166,20 +170,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (Array.isArray(properties)) {
-      // Replace property rows for this lead (simple, idempotent save).
-      await sb.from("lead_properties").delete().eq("lead_id", lead_id);
-      if (properties.length) {
-        // Same coercion the claim-intake route uses: string month-year → int,
-        // empty strings omitted, null not-null bools (has_variance) omitted so
-        // the DB default applies instead of violating the constraint.
-        const rows = properties.map((p: any, i: number) => {
-          const clean: Record<string, any> = {};
-          for (const k of Object.keys(p)) { const c = coercePropCol(k, p[k]); if (c !== undefined) clean[k] = c; }
-          return { ...clean, lead_id, firm_id: lead?.firm_id, sequence_order: i + 1 };
-        });
-        const { error: pErr } = await sb.from("lead_properties").insert(rows);
-        if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
-      }
+      // Properties live in ONE place: claim_properties on the lead's claim,
+      // replaced atomically by the same RPC the intake uses. The old code
+      // here wrote to a lead_properties table that does not exist, so this
+      // path had been failing with a 500 since it was written (Astra round 4,
+      // live-confirmed: no such table).
+      const { data: claimRow } = await sb.from("claims").select("id, firm_id").eq("lead_id", lead_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (!claimRow) return NextResponse.json({ error: "This file has no claim to hold the properties. Open the file and add its claim first." }, { status: 400 });
+      const rows = properties.map((p: any, i: number) => {
+        const clean: Record<string, any> = {};
+        for (const k of Object.keys(p)) { const c = coercePropCol(k, p[k]); if (c !== undefined) clean[k] = c; }
+        return { ...clean, claim_id: claimRow.id, firm_id: claimRow.firm_id, sequence_order: i + 1 };
+      });
+      const { error: pErr } = await sb.rpc("replace_claim_properties", { p_claim_id: claimRow.id, p_rows: rows });
+      if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
     }
     return NextResponse.json({ ok: true });
   }
@@ -201,10 +205,11 @@ export async function POST(req: NextRequest) {
 
   if (op === "status") {
     if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    const { lead_id, status, dq_reason_key, dq_note } = payload;
+    const { lead_id, claim_id, status, dq_reason_key, dq_note } = payload;
     if (!lead_id || !status) return NextResponse.json({ error: "lead_id and status required" }, { status: 400 });
     const res = await setClaimStatusForLeads({
-      leadIds: [lead_id], status, dqReasonKey: dq_reason_key ?? null, dqNote: dq_note ?? null,
+      leadIds: [lead_id], claimIds: claim_id ? [claim_id] : undefined,
+      status, dqReasonKey: dq_reason_key ?? null, dqNote: dq_note ?? null,
       actorId: u.uid, actorName: u.full_name ?? "User",
     });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });

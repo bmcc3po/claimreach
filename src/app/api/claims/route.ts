@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
     const { setClaimStatusForLeads } = await import("@/lib/claim-status");
     const res = await setClaimStatusForLeads({
       leadIds: [cl.lead_id],
+      claimIds: [p.claim_id],
       status: p.status,
       dqReasonKey: p.dq_reason_key ?? null,
       dqNote: p.dq_reason ?? null,
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
     const { loadStatuses } = await import("@/lib/claim-status");
     const def = resolveStatus(p.status, await loadStatuses());
     if (def.qualify === "qualify" || def.track === "esign") {
-      try { await sb.rpc("enroll_drips_for_lead", { p_lead: cl.lead_id, p_firm: cl.firm_id }); } catch {}
+      try { const { supabaseAdmin: adminFor } = await import("@/lib/supabase-server"); await adminFor().rpc("enroll_drips_for_lead", { p_lead: cl.lead_id, p_firm: cl.firm_id }); } catch {}
     }
     return NextResponse.json({ ok: true });
   }

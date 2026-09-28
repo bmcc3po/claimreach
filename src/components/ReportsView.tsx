@@ -49,12 +49,55 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
     return { total, qualified, signed, convRate, byStatus, byType, byCampaign, byTier };
   }, [claims, range]);
 
+  // Speed to lead, per campaign: from the lead dropping in to the first
+  // outbound dial (JustCall webhook) and to the first file open in ClaimReach.
+  const speed = useMemo(() => {
+    const now = Date.now();
+    const inRange = (d: string) => (now - new Date(d).getTime()) / 86400000 <= range;
+    const rows: Record<string, { n: number; open: number[]; dial: number[]; under5: number }> = {};
+    for (const l of leads) {
+      if (!l.created_at || !inRange(l.created_at)) continue;
+      const key = l.campaign || "No campaign";
+      const r = (rows[key] ||= { n: 0, open: [], dial: [], under5: 0 });
+      r.n++;
+      const born = new Date(l.created_at).getTime();
+      if (l.first_opened_at) { const m = (new Date(l.first_opened_at).getTime() - born) / 1000; if (m >= 0) r.open.push(m); }
+      if (l.first_dialed_at) {
+        const m = (new Date(l.first_dialed_at).getTime() - born) / 1000;
+        if (m >= 0) { r.dial.push(m); if (m <= 300) r.under5++; }
+      }
+    }
+    const med = (a: number[]) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor((s.length - 1) / 2)]; };
+    return Object.entries(rows)
+      .map(([campaign, r]) => ({
+        campaign, leads: r.n,
+        opened: r.open.length, medOpen: med(r.open),
+        dialed: r.dial.length, medDial: med(r.dial),
+        under5: r.dial.length ? Math.round((r.under5 / r.dial.length) * 100) : null,
+      }))
+      .sort((a, b) => b.leads - a.leads);
+  }, [leads, range]);
+
+  const fmtSecs = (s: number | null) => {
+    if (s == null) return "—";
+    if (s < 60) return `${Math.round(s)}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`;
+    return `${Math.floor(s / 86400)}d ${Math.round((s % 86400) / 3600)}h`;
+  };
+
   function exportCsv() {
     const rows = [["Metric", "Value"], ["Total claims", data.total], ["Qualified", data.qualified], ["Signed", data.signed], ["Conversion %", data.convRate]];
     for (const [k, v] of Object.entries(data.byStatus)) rows.push([`Status: ${k}`, v]);
     for (const [k, v] of Object.entries(data.byType)) rows.push([`Type: ${k}`, v]);
     for (const [k, v] of Object.entries(data.byCampaign)) rows.push([`Campaign: ${k}`, v]);
     for (const [k, v] of Object.entries(data.byTier)) rows.push([`Tier: ${k}`, v]);
+    for (const s of speed) {
+      rows.push([`Speed to lead: ${s.campaign} leads`, s.leads]);
+      rows.push([`Speed to lead: ${s.campaign} median seconds to first dial`, s.medDial == null ? "" : Math.round(s.medDial)]);
+      rows.push([`Speed to lead: ${s.campaign} median seconds to first open`, s.medOpen == null ? "" : Math.round(s.medOpen)]);
+      rows.push([`Speed to lead: ${s.campaign} dialed under 5 minutes %`, s.under5 == null ? "" : s.under5]);
+    }
     const csv = rows.map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
@@ -105,6 +148,31 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
           <div className="cl-kpi"><div className="cl-kpi-l">Qualified</div><div className="cl-kpi-v">{data.qualified}</div><div className="cl-kpi-f">ready for the firm</div></div>
           <div className="cl-kpi"><div className="cl-kpi-l">Signed</div><div className="cl-kpi-v">{data.signed}</div><div className="cl-kpi-f">retained</div></div>
           <div className="cl-kpi"><div className="cl-kpi-l">Conversion</div><div className="cl-kpi-v">{data.convRate}%</div><div className="cl-kpi-f">qualified + signed of total</div></div>
+        </div>
+      </div>
+
+      <div className="cl-panel" style={{ marginTop: 16 }}>
+        <div className="cl-ph"><h2>Speed to lead</h2><div className="cl-ph-r"><span className="cl-n">from the lead dropping in</span></div></div>
+        <div style={{ overflow: "auto" }}>
+          <table className="cl-table">
+            <thead><tr><th>Campaign</th><th>Leads</th><th>First dial (median)</th><th>Dialed under 5 min</th><th>First open (median)</th><th>Never dialed</th></tr></thead>
+            <tbody>
+              {speed.map((s) => (
+                <tr key={s.campaign}>
+                  <td className="cl-t1">{s.campaign}</td>
+                  <td className="cl-mono">{s.leads}</td>
+                  <td className="cl-t1">{fmtSecs(s.medDial)}</td>
+                  <td>{s.under5 == null ? "—" : <span className="cl-status"><span className={`cl-dot ${s.under5 >= 80 ? "cl-good" : s.under5 >= 50 ? "cl-warn" : "cl-bad"}`} />{s.under5}%</span>}</td>
+                  <td>{fmtSecs(s.medOpen)}</td>
+                  <td className="cl-t2">{s.leads - s.dialed}</td>
+                </tr>
+              ))}
+              {speed.length === 0 && <tr><td colSpan={6}><div className="cl-empty"><b>No leads in range</b>Speed to lead starts counting from the next lead that drops in.</div></td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: "8px 16px 12px", fontSize: 12.5, color: "var(--ink-faint)" }}>
+          First dial comes from the JustCall webhook (first outbound call or voicemail attempt). First open is the first time staff opened the file in ClaimReach. Both clocks start when the lead drops in; leads older than these columns show as never dialed.
         </div>
       </div>
 
