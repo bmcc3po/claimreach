@@ -148,6 +148,7 @@ export async function POST(req: NextRequest) {
         phone: "phone", email: "email", first_name: "first name", last_name: "last name",
         dob: "date of birth", mail_addr1: "mailing address", mail_city: "city", mail_state: "state",
         mail_zip: "ZIP", ec_name: "emergency contact", ec_phone: "emergency contact phone",
+        home_phone: "home phone", work_phone: "work phone", dl_number: "license number",
         pnc_status: "injured-party status", status: "status",
       };
       const changed = Object.keys(lead).filter((k) => k in labels).map((k) => labels[k]);

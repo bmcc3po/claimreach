@@ -40,11 +40,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: row } = await sb.from("esign_submissions").select("*")
-    .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  // This matter's newest agreement that is not voided (a voided one never
+  // gets the DOB and SSN).
+  let rq = sb.from("esign_submissions").select("*")
+    .eq("lead_id", leadId).is("pax_index", null).neq("status", "voided");
+  if (b?.claim_id) rq = rq.or(`claim_id.eq.${String(b.claim_id).replace(/[^0-9a-f-]/gi, "")},claim_id.is.null`);
+  const { data: row } = await rq.order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!row) return NextResponse.json({ error: "No agreement was sent on this file." }, { status: 404 });
   if (row.status === "completed") return NextResponse.json({ ok: true, already: true });
-  if (row.status !== "signed") return NextResponse.json({ error: "She has not signed yet. This unlocks the moment she does." }, { status: 409 });
+  if (row.status !== "signed") return NextResponse.json({ error: "The PNC has not signed yet. This unlocks the moment they do." }, { status: 409 });
   if (!row.intake_submitter_id) return NextResponse.json({ error: "This agreement has no second signer to complete." }, { status: 409 });
 
   // Step 2 also dates the firm's line, on the office clock.

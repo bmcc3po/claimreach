@@ -3,7 +3,8 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { Packet } from "@/lib/esign-packets/tmp-mva";
 
-export const AGREEMENT_NAME: Record<string, string> = { TX: "Texas", FL: "Florida", OTHER: "Alabama/Georgia (every other state)" };
+import { AGREEMENT_NAMES } from "./agreement-names";
+export const AGREEMENT_NAME: Record<string, string> = AGREEMENT_NAMES;
 
 export async function stampPreview(src: Uint8Array, packet: Packet, key: string, input: { signer: string; injured: string; today: string; doi?: string }): Promise<Uint8Array> {
   const { signer, injured, today } = input;

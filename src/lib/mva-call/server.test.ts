@@ -27,6 +27,14 @@ t("lead patch only carries what was filled, never a blank", () => {
   assert.ok(!("ssn" in p) && !("email" in p) && !("mail_addr1" in p));
 });
 
+t("lead patch: home address splits, the cell is the file's cell unless texting another number", () => {
+  const p = leadPatchFromAnswers({ send: { phone: "(708) 916-1007" }, file: { addr: "18475 Zurich Ln, Tinley Park, IL 60477" } });
+  assert.equal(p.phone, "7089161007");
+  assert.deepEqual([p.mail_addr1, p.mail_city, p.mail_state, p.mail_zip], ["18475 Zurich Ln", "Tinley Park", "IL", "60477"]);
+  const q = leadPatchFromAnswers({ send: { phone: "3125550199", toOther: true } });
+  assert.ok(!("phone" in q));
+});
+
 t("crash date from Today and Yesterday", () => {
   const now = new Date(2026, 8, 25, 22, 0, 0);
   assert.equal(crashDateOf({ when: "Today" }, now), "2026-09-25");

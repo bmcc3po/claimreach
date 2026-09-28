@@ -1760,7 +1760,7 @@ div.ws-row{cursor:default}
 .cc-page .sf-btn.sf-line{background:#FFFFFF;color:#14305C;border:1px solid #C8CDD6}
 .cc-page .sf-btn.sf-go{background:#22C55E;color:#06290F;width:100%;padding:12px}
 .cc-page .sf-btn:disabled{opacity:.5;cursor:default}
-.cc-page .sf-link{display:inline-block;margin-bottom:8px;color:#1D4FD7;font-weight:600}
+.cc-page .sf-link{display:block;margin-bottom:8px;color:#1D4FD7;font-weight:600}
 .cc-page .sf-bad{color:#B42318;font-size:13.5px;margin:6px 0}
 .cc-page .sf-steps{display:flex;gap:6px}
 .cc-page .sf-st{flex:1;text-align:center;padding:9px;border-radius:8px;background:#EEF2F8;color:#5B6472;font-size:14px;font-weight:600}
@@ -1769,3 +1769,26 @@ div.ws-row{cursor:default}
   .cc-page .sf-row{grid-template-columns:1fr;gap:4px;padding:10px 12px}
   .cc-page .sf-l{padding-top:0}
 }
+/* The form sits between the caller rail and the tools panel: it stacks by
+   the width it actually has, not the window's (Astra round 6). */
+@container ixmain (max-width: 640px){
+  .cc-page .sf-row{grid-template-columns:1fr;gap:4px;padding:10px 12px}
+  .cc-page .sf-l{padding-top:0}
+  .cc-page .sf-addrow{flex-wrap:wrap}
+}
+.cc-page .sf .ch-in{height:40px;font-size:15px;border-width:1px !important;border-radius:8px !important}
+
+/* Done reads green (Brett, Sep 28). */
+.cc-page .ch-steps b.ch-step-done{color:#15803D}
+/* Simple form, firm-report plain: white boxes, thin lines, radio buttons. */
+.cc-page .sf .sf-in.sf-in,.cc-page .sf .ch-in.ch-in{background:#FFFFFF !important;border:1px solid #C8CDD6 !important;box-shadow:none !important;border-radius:6px !important;height:auto;min-height:36px;padding:6px 10px;font-size:15px;font-weight:400}
+.cc-page .sf .sf-area.sf-in{min-height:64px}
+.cc-page .sf-radios{gap:4px 18px}
+.cc-page .sf-radio{display:inline-flex;align-items:center;gap:7px;font-size:15px;color:#0D1420;cursor:pointer;padding:3px 0;line-height:1.3}
+.cc-page .sf-radio input{width:17px;height:17px;margin:0;accent-color:#14305C;cursor:pointer;flex:none}
+.cc-page .sf-radio.sf-on{font-weight:600}
+.cc-page .sf-rows{border-radius:4px}
+.cc-page .sf-btn.sf-go{max-width:360px}
+.cc-page .sf-st small{display:block;font-size:11.5px;font-weight:600;margin-top:2px;opacity:.8}
+.cc-page .sf-st{background:#F3F4F6;color:#6B7280}
+.cc-page .sf-st.sf-st-on{background:#DCFCE7;color:#15803D}

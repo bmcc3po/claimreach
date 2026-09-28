@@ -69,13 +69,25 @@ export async function fireEvent(
 
   const answers = opts.answers ?? {};
 
+  // The standard record (Brett, Sep 28): every event about a file carries the
+  // same standard field names (cell_phone, address1, incident_date,
+  // sign_date, signing_agent...), so a receiver maps them once. Event fields
+  // still win a name collision; they describe this event.
+  let standard: Record<string, any> = {};
+  if (data?.lead_id) {
+    try {
+      const { buildStandardRecord } = await import("@/lib/standard-fields");
+      standard = (await buildStandardRecord(admin, String(data.lead_id), data.claim_id ? String(data.claim_id) : null)) ?? {};
+    } catch (e) { console.error("standard record failed", e); }
+  }
+
   for (const ep of targets) {
     // Answers sit alongside lead fields in one flat bag so a map can name any of
     // them. Lead columns win a name collision: `phone` is the file's phone, not
     // a question that happens to be called phone.
     const flat: Record<string, any> = ep.include_answers === false
-      ? { ...data }
-      : { ...answers, ...data };
+      ? { ...standard, ...data }
+      : { ...answers, ...standard, ...data };
 
     const mapped = applyFieldMap(flat, ep.field_map);
     const hasMap = ep.field_map && Object.keys(ep.field_map).length > 0;

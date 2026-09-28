@@ -15,17 +15,18 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current objective
 
-- Outcome: Astra's consolidated round-5 review answered as claimreach_round6.zip on top of merged main (cc1b06a, PR #37), together with Brett's Sep 28 live-call asks.
-- Why it matters: MVA launch gates — claim identity, real-route packet recovery, QA evidence, privileged writes — plus the Nevada retainers the desk needs on live calls.
-- Definition of done: every confirmed finding fixed or bounded with test evidence; DB repairs applied and probe-verified; build gate green; zip verified as an overlay on a clean copy of merged main; disposition table delivered for Astra.
+- Outcome: claimreach_round7b.zip for the launched MVA desk: standard fields (one name and one column per field on every screen, export and webhook), void a sent or signed agreement, plus the round 7 hotfix (hard-mapped contact, address split, Simple form radio buttons + File section).
+- Why it matters: Brett cannot build webhooks without standardized default mappings; TMP-1186 had the wrong agreement out with no way to change it.
+- Definition of done: tsc clean, suites green, next-on-pages build, overlay verified on origin/main 23f7f38, zip delivered.
 
 ## Current state
 
-- Status: Round-6 zip (claimreach_round6.zip) built on top of merged main cc1b06a (PR #37): Astra's consolidated round-5 review triaged and repaired (claim identity, real-route packet recovery, QA evidence, privileged writes, contact state, notify retry, honest metrics) PLUS Brett's Sep 28 live-call asks (Nevada tiered/non-tiered retainers with approval-reason gate, passenger-as-own-PNC with own cell + linked files, PNC wording sweep, console contact card, MMS auto-filing, Simple form view, clickable missing items, quick case-type filters, pain notes carried from round 5)
-- Working branch: round6 (local to Claude's cloud session; delivery is by zip upload, session cannot push)
-- Latest commit: round6 branch on top of origin/main cc1b06a
-- Deployment or preview: awaiting Brett's zip upload; DB migrations 0103-0107 ALL APPLIED live and probe-verified (0107 = move_leads_to_firm whole-graph transaction, service_role only); LawRuler MVA hook still posting 401 (bad/missing x-lr-secret in LawRuler — Brett fixing; replay route recovers the rejected posts)
-- Last verified result: tsc clean; engine 46 pass; lead-ingest 10 pass; SsnDob 3 pass; browser shots (Simple form, passenger card, NV chooser blocking send without reason); next-on-pages Build completed; overlay on clean main verified
+- Status: round7b built. Still open from Astra round 6: #57 delivery by claim, #58 QA evidence, #59 dirty autosave, #62 MMS inbound_media, #63 signed classifier/drip/notify lease, #65 cadence, #66 classic Retainer tab.
+- Working branch: round7 (local; delivery by zip upload; git push is 403 from this session)
+- Deployment or preview: 0108 and 0109 (+0109b) APPLIED live. 0108 dropped the old two-argument move_leads_to_firm, so bulk "Move to firm" fails on the deployed round-6 code until round 7 is live.
+- Live data actions on Brett's request: TMP-1186's unsigned Alabama/Georgia agreement set to expired with an audit entry so the Nevada one can be sent; Brett to archive DocuSeal submission 11647066.
+- Nevada templates: NV and NV_FLAT now exist for INNO MVA (Brett ran Set up agreements).
+- Last verified result: tsc clean; standard-fields 7, us-address 9, server 13, engine 51, lead-ingest 10, SsnDob 3, docuseal 12 pass; standard record columns checked against live schema
 
 ## Work completed
 

@@ -3025,3 +3025,32 @@ grant execute on function public.current_app_user() to authenticated, service_ro
 -- Record only — nothing for you to run. Full text:
 -- supabase/migrations/0107_round6_hardening.sql
 -- ============================================================================
+
+-- ============================================================================
+-- 0108 — Round 7 (Sep 28 2026): matter identity. claim_id on intake_calls,
+-- esign_submissions, retainers and firm_deliveries; claim-level firm_sent_at /
+-- firm_send_result; signed-notice lease columns on esign_submissions
+-- (notify_state; the two rows claimed with no send recorded are marked
+-- legacy_unknown); inbound_media (one row per MMS attachment, internal read
+-- only); move_leads_to_firm replaced by a campaign-aware version that moves
+-- documents with their storage paths and claim_properties, and refuses a
+-- move that would leave a stored document under the old firm's path.
+-- ACL note, corrected (Astra round 6): CREATE OR REPLACE on an existing
+-- function with the same identity KEEPS its grants. 0108 drops and recreates
+-- move_leads_to_firm because the argument list changed, then grants
+-- service_role only. STATUS: APPLIED live on Sep 28 2026 and probe-verified
+-- (unrelocated document refused and rolled back; wrong-firm campaign refused;
+-- full transfer checked; privileges checked). Record only, nothing to run.
+-- Full text: supabase/migrations/0108_round7_matter_identity.sql
+-- ============================================================================
+
+-- ============================================================================
+-- 0109 — Standard fields + void (Sep 28 2026). leads gains home_phone,
+-- work_phone, dl_number, incident_city, incident_state (one column per
+-- standard field; cell stays leads.phone). esign_submissions gains
+-- voided_at, voided_by, void_reason: a voided agreement is kept, never
+-- deleted, and its DocuSeal link is archived. Additive only.
+-- STATUS: APPLIED live on Sep 28 2026 (0109_standard_fields + 0109b_esign_void);
+-- columns checked, authenticated can read and update them. Record only.
+-- Full text: supabase/migrations/0109_standard_fields.sql
+-- ============================================================================

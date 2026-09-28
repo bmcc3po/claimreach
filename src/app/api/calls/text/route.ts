@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  if (lead.perm_text === false) return NextResponse.json({ error: "She asked not to be texted. This file is marked do not contact." }, { status: 409 });
+  if (lead.perm_text === false) return NextResponse.json({ error: "The PNC asked not to be texted. This file is marked do not contact." }, { status: 409 });
   if (lead.comms_monitored) {
     const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
     if (!safe.includes("Text")) return NextResponse.json({ error: "Texting is not a safe channel for this caller." }, { status: 409 });

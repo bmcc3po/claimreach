@@ -449,6 +449,15 @@ export default function CallView({ v }: { v: any }) {
 <input className="cc-field" type="tel" inputMode="tel" placeholder="Their own cell (the agreement texts there)" aria-label="Passenger's own cell" value={p.cell.value ?? ""} onChange={p.cell.set} />
 <div className="cc-cue cc-red" style={{marginTop: "4px"}}>Add their own cell first. It never texts to the caller&apos;s phone.</div>
 </>)}
+{!!(p.needEmail && p.ready) && (<>
+<input className="cc-field" type="email" inputMode="email" autoComplete="off" placeholder="Their own email (the agreement goes there)" aria-label="Passenger's own email" value={p.email.value ?? ""} onChange={p.email.set} />
+<div className="cc-cue cc-red" style={{marginTop: "4px"}}>Add their own email first. It never goes to the caller&apos;s email.</div>
+</>)}
+{!!(p.shared && p.ready) && (
+<label className="cc-cue" style={{display: "flex", gap: 8, alignItems: "center", marginTop: "6px"}}>
+<input type="checkbox" checked={!!p.shareOk} onChange={p.confirmShare} />
+That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passenger confirmed they share it.
+</label>)}
 {!!(p.ready) && (<><button className={cx("cc-btn cc-full" + (p.needCell ? " cc-soft" : ""))} onClick={p.send}>{p.button}</button></>)}
 {!!(p.live) && (<><div className="cc-steps">{(p.steps || []).map((st: any, i38: number) => (<Fragment key={i38}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div></>)}
 </div>
@@ -561,6 +570,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.textEmpty) && (<><div className="cc-cue" style={{textAlign: "center", margin: "28px 0"}}>No texts with {v.callerFirst} yet.</div></>)}
 {(v.texts || []).map((m: any, i44: number) => (<Fragment key={i44}><div className={cx(m.cls)}><div>{m.body}</div>{!!(m.hasStatus) && (<><div className="cc-bub-s">{m.status}</div></>)}</div></Fragment>))}
 {!!(v.canResend) && (<><div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div></>)}
+{!!(v.canVoid) && (<div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip" onClick={v.voidAgreement}>{v.voidLabel}</button></div>)}
 {!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.textError}</div></div>}
 </div>
 <div className="cc-compose">

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
+import { splitUsAddress, joinUsAddress, mailColumnsFrom } from "@/lib/us-address";
 
 export type DeskTab = "summary" | "know" | "texts" | "phone" | "retainer" | "file" | "tools";
 export interface PhoneRow { label: string; number: string; pretty: string; kind: "caller" | "threeway" }
@@ -266,6 +267,7 @@ function Texts({ v }: { v: any }) {
           </div>
         ))}
         {!!v.canResend && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div>}
+        {!!v.canVoid && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button className="cc-chip" onClick={v.voidAgreement}>{v.voidLabel}</button></div>}
         {!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{ marginTop: 0 }}>{v.textError}</div></div>}
         <div ref={end} />
       </div>
@@ -346,33 +348,86 @@ const fmtWhen = (iso?: string | null) => {
 // Saves to the LEAD (the same generic contact save the CRM uses), so a
 // callback, a report or a prefill reads exactly what the agent typed here.
 function ContactCard({ leadId, initial }: { leadId: string; initial: Record<string, string> }) {
-  const [f, setF] = useState<Record<string, string>>({
-    phone: initial.phone || "", email: initial.email || "",
-    mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
-    mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
-  });
+  // A record that came in with the whole address on the street line
+  // ("18475 Zurich Ln, Tinley Park, IL 60477") shows split, and is saved
+  // split the first time the card sees it (Brett, Sep 28).
+  const first = (() => {
+    const f = {
+      phone: initial.phone || "", email: initial.email || "",
+      home_phone: initial.home_phone || "", work_phone: initial.work_phone || "",
+      mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
+      mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
+    };
+    const cols = mailColumnsFrom(f, f.mail_addr1);
+    return { f: cols ? { ...f, ...cols } : f, tidied: !!cols };
+  })();
+  const [f, setF] = useState<Record<string, string>>(first.f);
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [msg, setMsg] = useState("");
   const t = useRef<any>(null);
-  const set = (k: string) => (e: any) => {
-    const v = e.target.value;
-    setF((s) => ({ ...s, [k]: v }));
-    setState("dirty");
-    if (t.current) clearTimeout(t.current);
-    t.current = setTimeout(() => { void save({ ...f, [k]: v }); }, 900);
-  };
+  // What the record holds, so a save sends only the fields that changed and
+  // the Activity Log says what really changed.
+  const saved = useRef<Record<string, string>>({
+    phone: initial.phone || "", email: initial.email || "",
+    home_phone: initial.home_phone || "", work_phone: initial.work_phone || "",
+    mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
+    mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
+  });
+  const last = useRef<Record<string, string>>({ phone: initial.phone || "", email: initial.email || "" });
   const save = async (data: Record<string, string>) => {
+    const diff: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data)) if (saved.current[k] !== v) diff[k] = v;
+    if (!Object.keys(diff).length) { setState("saved"); return; }
     setState("saving"); setMsg("");
     try {
       const r = await fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ op: "save", lead_id: leadId, lead: data }) });
+        body: JSON.stringify({ op: "save", lead_id: leadId, lead: diff }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) throw new Error(j.error || "The contact did not save.");
+      saved.current = { ...saved.current, ...diff };
       setState("saved");
+      // The call's own copy follows (the File step's home address, the send).
+      try {
+        window.dispatchEvent(new CustomEvent("cr:contact", { detail: {
+          leadId, addr: joinUsAddress({ street: data.mail_addr1, city: data.mail_city, state: data.mail_state, zip: data.mail_zip }),
+          phone: data.phone, email: data.email, prevPhone: last.current.phone, prevEmail: last.current.email,
+        } }));
+      } catch { /* the console is not on this page */ }
+      last.current = { phone: data.phone, email: data.email };
     } catch (e: any) { setState("error"); setMsg(e.message); }
   };
-  const addr = [f.mail_addr1, f.mail_city, f.mail_state, f.mail_zip].filter(Boolean).join(", ");
+  useEffect(() => { if (first.tidied) void save(first.f); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // The call saved a contact field onto the record (the PNC's email typed on
+  // the send step, the home address on the File step): show it here too.
+  useEffect(() => {
+    const on = (e: any) => {
+      const d = e?.detail || {};
+      if (d.leadId !== leadId) return;
+      const upd: Record<string, string> = {};
+      for (const k of ["phone", "email", "mail_addr1", "mail_city", "mail_state", "mail_zip"]) if (typeof d[k] === "string") upd[k] = d[k];
+      if (!Object.keys(upd).length) return;
+      saved.current = { ...saved.current, ...upd };
+      last.current = { phone: saved.current.phone, email: saved.current.email };
+      setF((cur) => ({ ...cur, ...upd }));
+    };
+    window.addEventListener("cr:record", on);
+    return () => window.removeEventListener("cr:record", on);
+  }, [leadId]);
+  const set = (k: string) => (e: any) => {
+    const v = e.target.value;
+    // Pasting a whole address into the street box fills city, state and ZIP.
+    const split = k === "mail_addr1" ? splitUsAddress(v) : null;
+    const next = split
+      ? { ...f, mail_addr1: split.street, mail_city: split.city, mail_state: split.state, mail_zip: split.zip || f.mail_zip }
+      : { ...f, [k]: k === "mail_state" ? v.toUpperCase() : v };
+    setF(next);
+    setState("dirty");
+    if (t.current) clearTimeout(t.current);
+    t.current = setTimeout(() => { void save(next); }, 900);
+  };
+  const addr = joinUsAddress({ street: f.mail_addr1, city: f.mail_city, state: f.mail_state, zip: f.mail_zip });
+  const gaps = [!f.phone && "cell", !f.mail_addr1 && "street", !f.mail_city && "city", !f.mail_state && "state", !f.mail_zip && "ZIP"].filter(Boolean) as string[];
   return (
     <div className="cc-card" style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -381,20 +436,27 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
       </div>
       {!open && (<>
         <div className="cc-chk"><span className="cc-chk-k">Cell</span><span className="cc-chk-v">{f.phone || "Not on file"}</span></div>
+        {!!f.home_phone && <div className="cc-chk"><span className="cc-chk-k">Home phone</span><span className="cc-chk-v">{f.home_phone}</span></div>}
+        {!!f.work_phone && <div className="cc-chk"><span className="cc-chk-k">Work phone</span><span className="cc-chk-v">{f.work_phone}</span></div>}
         <div className="cc-chk"><span className="cc-chk-k">Email</span><span className="cc-chk-v">{f.email || "Not on file"}</span></div>
         <div className="cc-chk"><span className="cc-chk-k">Address</span><span className="cc-chk-v">{addr || "Not on file"}</span></div>
+        {gaps.length > 0 && <button type="button" className="cc-cue cc-red" style={{ background: "none", border: 0, padding: 0, marginTop: 6, cursor: "pointer", textAlign: "left" }} onClick={() => setOpen(true)}>Missing {gaps.join(", ")}. Tap to add.</button>}
       </>)}
       {open && (<>
         <div className="cc-lab">CELL</div>
         <input className="cc-field" type="tel" inputMode="tel" aria-label="Cell" value={f.phone} onChange={set("phone")} />
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}><div className="cc-lab">HOME PHONE</div><input className="cc-field" type="tel" inputMode="tel" aria-label="Home phone" value={f.home_phone} onChange={set("home_phone")} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}><div className="cc-lab">WORK PHONE</div><input className="cc-field" type="tel" inputMode="tel" aria-label="Work phone" value={f.work_phone} onChange={set("work_phone")} /></div>
+        </div>
         <div className="cc-lab" style={{ marginTop: 8 }}>EMAIL</div>
         <input className="cc-field" type="email" inputMode="email" autoComplete="off" aria-label="Email" value={f.email} onChange={set("email")} />
-        <div className="cc-lab" style={{ marginTop: 8 }}>MAILING ADDRESS</div>
-        <input className="cc-field" type="text" placeholder="Street address" aria-label="Street address" value={f.mail_addr1} onChange={set("mail_addr1")} />
+        <div className="cc-lab" style={{ marginTop: 8 }}>STREET</div>
+        <input className="cc-field" type="text" placeholder="Street, or paste the whole address" aria-label="Street address" value={f.mail_addr1} onChange={set("mail_addr1")} />
         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-          <input className="cc-field" style={{ flex: 2 }} type="text" placeholder="City" aria-label="City" value={f.mail_city} onChange={set("mail_city")} />
-          <input className="cc-field" style={{ flex: 1 }} type="text" placeholder="ST" maxLength={2} aria-label="State" value={f.mail_state} onChange={set("mail_state")} />
-          <input className="cc-field" style={{ flex: 1 }} type="text" inputMode="numeric" placeholder="ZIP" maxLength={10} aria-label="ZIP" value={f.mail_zip} onChange={set("mail_zip")} />
+          <input className="cc-field" style={{ flex: 2, minWidth: 0 }} type="text" placeholder="City" aria-label="City" value={f.mail_city} onChange={set("mail_city")} />
+          <input className="cc-field" style={{ flex: 1, minWidth: 0 }} type="text" placeholder="ST" maxLength={2} aria-label="State" value={f.mail_state} onChange={set("mail_state")} />
+          <input className="cc-field" style={{ flex: 1, minWidth: 0 }} type="text" inputMode="numeric" placeholder="ZIP" maxLength={10} aria-label="ZIP" value={f.mail_zip} onChange={set("mail_zip")} />
         </div>
       </>)}
       {state === "saving" && <div className="cc-cue" style={{ marginTop: 6 }}>Saving</div>}
@@ -430,6 +492,22 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
       setNote(""); await load();
     } catch (e: any) { setErr(e.message); } finally { setSaving(false); }
   };
+  // Void one agreement (Brett, Sep 28). The console's send block opens again
+  // on the next refresh; the voided row stays in the list, marked.
+  const voidOne = async (a: any) => {
+    const signed = a.status === "completed" || a.status === "signed";
+    const why = window.prompt(signed
+      ? "The PNC already signed this one. Why are you voiding it? The signed copy stays in the file history, marked Voided."
+      : "Why are you voiding this agreement? (For example: wrong agreement, wrong number.)");
+    if (!why || !why.trim()) return;
+    try {
+      const r = await fetch("/api/calls/esign/void", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: a.id, reason: why.trim() }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error || "The agreement did not void.");
+      await load();
+      try { window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, pax: a.pax } })); } catch { /* no console on this page */ }
+    } catch (e: any) { setErr(e.message); }
+  };
   if (!d) return <div className="cc-side-b">{err ? <div className="cc-cue cc-red">{err}</div> : <div className="cc-cue" style={{ textAlign: "center", marginTop: 24 }}>Loading the file</div>}</div>;
   const L = d.lead || {};
   const row = (k: string, val: any) => (val ? <div className="cc-chk" key={k}><span className="cc-chk-k">{k}</span><span className="cc-chk-v">{val}</span></div> : null);
@@ -455,7 +533,8 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
         <div className="cc-grp">
           {d.agreements.map((a: any) => (
             <div key={a.id} className="cc-callrow">
-              <div className="cc-callrow-t"><span>{a.injured || a.signer}{a.pax != null ? " (passenger)" : ""}</span><span className="cc-done-k">{a.status === "completed" ? "Signed" : a.status}</span></div>
+              <div className="cc-callrow-t"><span>{a.injured || a.signer}{a.pax != null ? " (passenger)" : ""}{a.name ? `, ${a.name}` : ""}</span><span className="cc-done-k" style={a.status === "voided" ? { color: "#B42318" } : a.status === "completed" || a.status === "signed" ? { color: "#15803D" } : undefined}>{a.status === "completed" ? "Signed" : a.status === "voided" ? "Voided" : a.status}</span></div>
+              {a.status === "voided" && <div className="cc-cue" style={{ marginTop: 2 }}>Voided {fmtWhen(a.voided)}{a.void_reason ? `: ${a.void_reason}` : ""}</div>}
               <div className="cc-cue" style={{ marginTop: 2 }}>
                 {[a.sent && `Sent ${fmtWhen(a.sent)} by ${String(a.via || "").toLowerCase()}`, a.opened && `opened ${fmtWhen(a.opened)}`, a.signed && `signed ${fmtWhen(a.signed)}`].filter(Boolean).join(", ")}
               </div>
@@ -463,7 +542,8 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
                 {a.signed_url && <a className="cc-chip cc-sm" href={a.signed_url} target="_blank" rel="noopener">Signed agreement</a>}
                 {a.cert_url && <a className="cc-chip cc-sm" href={a.cert_url} target="_blank" rel="noopener">Audit trail</a>}
               </div>}
-              {a.error && <div className="cc-cue cc-red">{a.error}</div>}
+              {a.error && a.status !== "voided" && <div className="cc-cue cc-red">{a.error}</div>}
+              {a.can_void && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button type="button" className="cc-chip cc-sm" onClick={() => voidOne(a)}>{a.status === "completed" || a.status === "signed" ? "Void the signed agreement" : "Void"}</button></div>}
             </div>
           ))}
         </div>

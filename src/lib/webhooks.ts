@@ -60,6 +60,16 @@ const DEFAULT_INBOUND: Record<string, string> = {
   name: "claimant_full_name", full_name: "claimant_full_name",
   phone_number: "claimant_phone", email_address: "claimant_email",
   claim_type: "case_type", campaign: "campaign_name", external_id: "external_id", id: "external_id",
+  // ClaimReach's own standard field names (Brett, Sep 28): a sender that
+  // uses our documented names needs no mapping at all.
+  cell_phone: "claimant_phone", home_phone: "claimant_home_phone",
+  work_phone: "claimant_work_phone", alt_phone: "claimant_phone_alt", phone_alt: "claimant_phone_alt",
+  address2: "mail_address2", dl_number: "claimant_dl_number",
+  incident_date: "date_of_incident", date_of_incident: "date_of_incident",
+  incident_city: "incident_city", incident_state: "incident_state", state_of_incident: "incident_state",
+  case_summary: "injury_description", marketing_source: "marketing_source", handling_attorney: "handling_attorney",
+  lawruler_id: "vendor_lead_id", source_link: "source_lead_link",
+  ec_name: "ec_name", ec_phone: "ec_phone", ec_relationship: "ec_relationship",
 };
 function applyTransform(field: string, value: any, transforms: Record<string, any>): any {
   const t = transforms?.[field];
@@ -131,5 +141,13 @@ export function canonicalToLeadColumns(c: Record<string, any>) {
     dob: c.claimant_dob ?? null,
     handling_attorney: c.handling_attorney ?? null,
     marketing_source: c.marketing_source ?? null,
+    // Standard fields (0109). A sender that leaves them out writes nothing.
+    home_phone: c.claimant_home_phone ?? null,
+    work_phone: c.claimant_work_phone ?? null,
+    phone_alt: c.claimant_phone_alt ?? null,
+    dl_number: c.claimant_dl_number ?? null,
+    incident_start: c.date_of_incident ?? null,
+    incident_city: c.incident_city ?? null,
+    incident_state: c.incident_state ?? null,
   };
 }

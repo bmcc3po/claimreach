@@ -3,6 +3,8 @@
 // so the lead lookup, who-may-call rule and lead mirroring are defined once.
 // ============================================================================
 import { gateUser, type GatedUser } from "@/lib/gate";
+import { mailColumnsFrom } from "../us-address";
+import { stateCodeOf } from "./state";
 import { isInternalRole } from "@/lib/permissions";
 import { leadKeyOf } from "@/lib/lead-key";
 
@@ -78,6 +80,20 @@ export function crashDateOf(story: any, now: Date = new Date()): string | null {
  * filled go in, so a blank never wipes something the file already had. Every
  * key here is a real leads column (a phantom column rejects the whole update).
  */
+/**
+ * Only what CHANGED since the last save. Autosave runs every few seconds; a
+ * value the agent then corrected on the File tab's contact card must not be
+ * put back by the next autosave carrying the call's older copy.
+ */
+export function leadPatchSince(a: any, prev: any): Record<string, any> {
+  const now = leadPatchFromAnswers(a);
+  if (!prev || typeof prev !== "object") return now;
+  const was = leadPatchFromAnswers(prev);
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(now)) if (was[k] !== v) out[k] = v;
+  return out;
+}
+
 export function leadPatchFromAnswers(a: any): Record<string, any> {
   const out: Record<string, any> = {};
   const client = String(a?.send?.client || "").trim();
@@ -89,10 +105,28 @@ export function leadPatchFromAnswers(a: any): Record<string, any> {
   }
   const email = String(a?.send?.email || "").trim();
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) out.email = email;
+  // The PNC's cell IS the file's cell (hard-mapped, Brett Sep 28), unless the
+  // agent chose to text the agreement to another number (a spouse signing).
+  const cell = String(a?.send?.phone || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  if (a?.send?.toOther !== true && cell.length === 10) out.phone = cell;
   const dob = parseDob(a?.file?.dob);
   if (dob) out.dob = dob;
+  // The File step's one-line home address is split into street, city, state
+  // and ZIP (Brett, Sep 28: the whole line landed in the street column and
+  // the file showed city and state blank).
   const addr = String(a?.file?.addr || "").trim();
-  if (addr) out.mail_addr1 = addr;
+  if (addr) Object.assign(out, mailColumnsFrom({}, addr, true) ?? { mail_addr1: addr });
+  // Standard fields (Brett, Sep 28): the license number and where the wreck
+  // happened live on the record, not only inside the call.
+  const dl = String(a?.file?.dl || "").trim();
+  if (dl) out.dl_number = dl.slice(0, 40);
+  const where = String(a?.story?.city || "").trim();
+  const code = stateCodeOf(where);
+  if (code) {
+    out.incident_state = code;
+    const city = where.indexOf(",") > 0 ? where.slice(0, where.lastIndexOf(",")).trim() : "";
+    if (city) out.incident_city = city.slice(0, 80);
+  }
   const ecName = String(a?.file?.ecName || "").trim();
   if (ecName) out.ec_name = ecName;
   const ecPhone = String(a?.file?.ecPhone || "").trim();

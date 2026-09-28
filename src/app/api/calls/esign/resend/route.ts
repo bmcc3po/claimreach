@@ -19,10 +19,10 @@ export async function POST(req: NextRequest) {
   const { data: row } = await sb.from("esign_submissions").select("*")
     .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!row || !["sent", "opened"].includes(row.status)) return NextResponse.json({ error: "There's no open agreement to resend." }, { status: 409 });
-  if (!row.sign_url || !row.phone) return NextResponse.json({ error: "This one went by email. Ask her to check her inbox and spam." }, { status: 409 });
+  if (!row.sign_url || !row.phone) return NextResponse.json({ error: "This one went by email. Ask the PNC to check their inbox and spam." }, { status: 409 });
 
   const { data: lead } = await sb.from("leads").select("perm_text").eq("id", leadId).maybeSingle();
-  if (lead?.perm_text === false) return NextResponse.json({ error: "She asked not to be texted." }, { status: 409 });
+  if (lead?.perm_text === false) return NextResponse.json({ error: "The PNC asked not to be texted." }, { status: 409 });
   const admin = supabaseAdmin();
   const { data: firm } = await admin.from("firms").select("name").eq("id", row.firm_id).maybeSingle();
   const from = process.env.JUSTCALL_DEFAULT_FROM || "";

@@ -124,6 +124,12 @@ export async function getSubmission(id: string | number, fetchImpl?: typeof fetc
   }>(`/submissions/${encodeURIComponent(String(id))}`, {}, fetchImpl);
 }
 
+/** Archive a submission: its signing link stops working. A signed packet
+ *  stays in DocuSeal's archive; ClaimReach keeps its own copy either way. */
+export async function archiveSubmission(id: string | number, fetchImpl?: typeof fetch) {
+  return ds<any>(`/submissions/${encodeURIComponent(String(id))}`, { method: "DELETE" }, fetchImpl);
+}
+
 /** Second signer: fill DOB and SSN, then mark Intake complete. */
 export async function completeIntake(submitterId: string | number, values: Record<string, string>, fetchImpl?: typeof fetch) {
   return ds<DsSubmitter>(`/submitters/${encodeURIComponent(String(submitterId))}`, {

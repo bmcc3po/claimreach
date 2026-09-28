@@ -37,16 +37,46 @@ export async function POST(req: NextRequest) {
       // nothing instead of leaving a half-owned file (Astra rounds 4-5).
       if (!["owner", "admin"].includes(me!.role)) return NextResponse.json({ error: "Only an owner or admin can move files between firms." }, { status: 403 });
       if (!b.firmId) return NextResponse.json({ error: "Pick the firm to move to." }, { status: 400 });
+      // A complete transfer needs the file's new campaign at the new firm
+      // (Astra round 6: campaign relationships were left pointing at the old
+      // firm). The database refuses a campaign from another firm.
+      if (!b.campaignId) return NextResponse.json({ error: "Pick the campaign at the new firm these files move into." }, { status: 400 });
       const { supabaseAdmin } = await import("@/lib/supabase-server");
-      const { data: moved, error } = await supabaseAdmin().rpc("move_leads_to_firm", { p_lead_ids: ids, p_firm_id: b.firmId });
-      if (error) return NextResponse.json({ error: `Nothing moved: ${error.message}` }, { status: 500 });
-      return NextResponse.json({ ok: true, count: moved ?? ids.length });
+      const admin = supabaseAdmin();
+      // Documents: every stored file is relocated under the new firm's folder
+      // FIRST, then the database re-points every row in one transaction under
+      // the unchanged storage guard. If the database refuses, the objects are
+      // moved back — nothing ends up half-owned (Astra round 6).
+      const { data: docs, error: dErr } = await admin.from("case_documents").select("id, lead_id, firm_id, storage_path").in("lead_id", ids).not("storage_path", "is", null);
+      if (dErr) return NextResponse.json({ error: `Nothing moved: could not read the files' documents (${dErr.message}).` }, { status: 500 });
+      const moves: { id: string; from: string; new_path: string }[] = [];
+      for (const d of docs ?? []) {
+        const prefix = `${d.firm_id}/${d.lead_id}/`;
+        if (!String(d.storage_path).startsWith(prefix)) {
+          return NextResponse.json({ error: `Nothing moved: document ${d.id} is not stored under its file's folder, so it cannot be relocated safely.` }, { status: 409 });
+        }
+        moves.push({ id: d.id, from: d.storage_path, new_path: `${b.firmId}/${d.lead_id}/${String(d.storage_path).slice(prefix.length)}` });
+      }
+      const done: typeof moves = [];
+      const undo = async () => { for (const m of done.reverse()) { try { await admin.storage.from("case-docs").move(m.new_path, m.from); } catch {} } };
+      for (const m of moves) {
+        const { error: mErr } = await admin.storage.from("case-docs").move(m.from, m.new_path);
+        if (mErr) { await undo(); return NextResponse.json({ error: `Nothing moved: a document could not be relocated (${mErr.message}).` }, { status: 500 }); }
+        done.push(m);
+      }
+      const { data: moved, error } = await admin.rpc("move_leads_to_firm", {
+        p_lead_ids: ids, p_firm_id: b.firmId, p_campaign_id: b.campaignId,
+        p_doc_moves: moves.map((m) => ({ id: m.id, new_path: m.new_path })),
+      });
+      if (error) { await undo(); return NextResponse.json({ error: `Nothing moved: ${error.message}` }, { status: 500 }); }
+      return NextResponse.json({ ok: true, count: moved ?? ids.length, documents_moved: moves.length });
     }
     if (b.op === "set_status") {
       // status lives on the claim; the helper enforces the DQ-reason gate and audits.
       const { data: meName } = await sb.from("app_users").select("full_name").eq("id", auth.user.id).maybeSingle();
+      // An explicit lead-wide command: every matter on every selected file.
       const res = await setClaimStatusForLeads({
-        leadIds: ids,
+        leadIds: ids, leadWide: true,
         status: b.status,
         dqReasonKey: b.dq_reason_key ?? null,
         dqNote: b.dq_note ?? null,

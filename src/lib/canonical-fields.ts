@@ -53,6 +53,7 @@ export const SPINE: CanonField[] = [
   { id: "claimant_last_name", label: "Last name", kind: "text", group: "identity" },
   { id: "claimant_dob", label: "Date of birth", kind: "date", group: "identity" },
   { id: "claimant_ssn", label: "SSN", kind: "text", group: "identity", sensitive: true },
+  { id: "claimant_dl_number", label: "Driver's license number", kind: "text", group: "identity" },
   { id: "claimant_gender", label: "Gender", kind: "select", group: "identity", options: ["Male", "Female", "Other", "Prefer not to say"] },
   { id: "claimant_marital_status", label: "Marital status", kind: "select", group: "identity", options: ["Single", "Married", "Divorced", "Widowed", "Separated"] },
   { id: "claimant_language", label: "Preferred language", kind: "select", group: "identity", options: ["English", "Spanish", "Other"] },
@@ -60,6 +61,8 @@ export const SPINE: CanonField[] = [
   // C. Contact
   { id: "claimant_phone", label: "Primary phone", kind: "phone", group: "contact" },
   { id: "claimant_phone_alt", label: "Alternate phone", kind: "phone", group: "contact" },
+  { id: "claimant_home_phone", label: "Home phone", kind: "phone", group: "contact" },
+  { id: "claimant_work_phone", label: "Work phone", kind: "phone", group: "contact" },
   { id: "claimant_email", label: "Email", kind: "email", group: "contact" },
   { id: "mail_address1", label: "Address line 1", kind: "text", group: "contact" },
   { id: "mail_address2", label: "Address line 2", kind: "text", group: "contact" },
@@ -83,6 +86,7 @@ export const SPINE: CanonField[] = [
   // E. Incident / Injury Core
   { id: "date_of_incident", label: "Date of incident / first exposure", kind: "date", group: "incident", vital: true },
   { id: "incident_state", label: "State where it occurred", kind: "select", group: "incident" },
+  { id: "incident_city", label: "City where it occurred", kind: "text", group: "incident" },
   { id: "qualified_injury", label: "Qualified injury / diagnosis", kind: "select", group: "incident", vital: true },
   { id: "date_of_diagnosis", label: "Date of diagnosis", kind: "date", group: "incident" },
   { id: "injury_description", label: "Injury / what happened", kind: "longtext", group: "incident" },
