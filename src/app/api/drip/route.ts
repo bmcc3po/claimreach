@@ -3,6 +3,8 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import {
   M6_DRIP_CAMPAIGN, collectDripCampaignKeys, dripCampaignClause, dripStepKey, sortDripRules,
 } from "@/lib/drip-rules";
+import { gateUser } from "@/lib/gate";
+import { dripDispatchEnabled, dripOffResult, enrollLeadInDrips, mayManageDrips } from "@/lib/drip-dispatch";
 export const runtime = "edge";
 
 const RULE_COLS = "id, name, channel, every_days, template, assign_to, active, campaign, stage, step_key, delay_days, subject, kind, method_note, fire_once";
@@ -29,12 +31,14 @@ export async function GET(req: NextRequest) {
 
 // POST { op:'enroll', lead_id } — enroll a lead in active drip rules.
 // POST { op:'process' } — fire all due drips (text/email), advance next_due.
+// Every op needs an ACTIVE account (gateUser treats a deactivated login as
+// signed out). enroll and process also need drips.manage; process also needs
+// the kill switch on (src/lib/drip-dispatch.ts).
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { data: me } = await sb.from("app_users").select("role, firm_id").eq("id", auth.user.id).maybeSingle();
-  if (!me || me.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const me = await gateUser(sb);
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (me.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const p = await req.json();
 
   // ---- Manage drip RULES (owner/admin). create / update / toggle / delete ----
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
     const assign = ["agent", "case_manager", "both"].includes(p.assign_to) ? p.assign_to : "agent";
     const row: Record<string, any> = {
       name, channel, every_days: every, template: p.template ?? null,
-      assign_to: assign, active: p.active !== false, firm_id: me.firm_id,
+      assign_to: assign, active: p.active !== false, firm_id: me.firmId,
       subject: (p.subject ?? "").trim() || null,
       delay_days: every,
     };
@@ -82,22 +86,19 @@ export async function POST(req: NextRequest) {
   }
 
   if (p.op === "enroll") {
-    // The enrollment belongs to the TARGET lead: load it, use ITS firm (never
-    // the operator's), and report a real failure instead of a blind ok
-    // (Astra rounds 4-5: caller-supplied identity was forwarded unchecked and
-    // RPC errors were swallowed).
-    const leadId = String(p.lead_id || "");
-    if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
-    const admin = supabaseAdmin();
-    const { data: lead, error: leadErr } = await admin.from("leads").select("id, firm_id").eq("id", leadId).maybeSingle();
-    if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });
-    if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-    const { error } = await admin.rpc("enroll_drips_for_lead", { p_lead: lead.id, p_firm: lead.firm_id });
-    if (error) return NextResponse.json({ error: `Enrollment failed: ${error.message}` }, { status: 500 });
-    return NextResponse.json({ ok: true });
+    // Active account with drips.manage, and the TARGET lead must be visible
+    // through the caller's own session before the service client writes.
+    // The enrollment uses that lead's stored firm and reports real failures
+    // (Astra rounds 4-7b).
+    const r = await enrollLeadInDrips(sb, supabaseAdmin(), me, p.lead_id);
+    return NextResponse.json(r.body, { status: r.status });
   }
 
   if (p.op === "process") {
+    if (!mayManageDrips(me)) return NextResponse.json({ error: "You do not have permission to run drips." }, { status: 403 });
+    // Kill switch: with sending off nothing fires, nothing is noted and no
+    // next_due moves. 409 so the button never reads it as a successful run.
+    if (!dripDispatchEnabled()) return NextResponse.json(dripOffResult(), { status: 409 });
     const admin = supabaseAdmin();
     const { data: due } = await sb.from("drips_due").select("*").limit(100);
     let fired = 0;

@@ -66,6 +66,8 @@ export default function QaPanel({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [dupOverride, setDupOverride] = useState<any | null>(null);
+  // Approval found signed agreements with no matter recorded: offer them.
+  const [assoc, setAssoc] = useState<{ claimId: string; error: string; candidates: any[] } | null>(null);
 
   async function load() {
     const r = await (await fetch(`/api/qa?lead_id=${leadId}`)).json();
@@ -116,7 +118,7 @@ export default function QaPanel({
       setMsg("Cannot approve with a red hard gate. Route to WIP or Flag, or decline.");
       return;
     }
-    setBusy(true); setMsg("");
+    setBusy(true); setMsg(""); setAssoc(null);
     const r = await fetch("/api/qa", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -134,10 +136,35 @@ export default function QaPanel({
       setMsg("Approval held: override not acknowledged.");
       return;
     }
+    if (d.needs_association) {
+      setAssoc({ claimId: d.claim_id || claimId || "", error: d.error || "", candidates: d.candidates ?? [] });
+      setMsg("");
+      return;
+    }
     if (!r.ok) { setMsg(d.error || "Could not submit"); return; }
     setMsg(`Routed: ${decision}. Status now ${d.status}.`);
     setDeclineReason(null);
     setTimeout(() => window.location.reload(), 800);
+  }
+
+  async function attach(c: any) {
+    if (!assoc) return;
+    setBusy(true); setMsg("");
+    try {
+      const r = await fetch("/api/qa", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          op: "associate_evidence", lead_id: leadId, claim_id: assoc.claimId,
+          ...(c.kind === "retainer" ? { retainer_id: c.id } : { submission_id: c.id }),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg(d.error || "Could not attach it. Nothing changed."); return; }
+      setAssoc(null);
+      setMsg("Attached to this matter. Press Approve again to finish.");
+    } catch {
+      setMsg("Could not reach the server. Nothing changed.");
+    } finally { setBusy(false); }
   }
 
   function onDecline() {
@@ -191,6 +218,17 @@ export default function QaPanel({
       </div>
 
       {msg && <div className="qa-msg">{msg}</div>}
+      {assoc && (
+        <div className="qa-msg">
+          <div>{assoc.error}</div>
+          {assoc.candidates.map((c) => (
+            <div key={`${c.kind}-${c.id}`} className="row" style={{ gap: 8, alignItems: "center", marginTop: 8 }}>
+              <span style={{ flex: 1 }}>{c.label}</span>
+              <button className="btn ghost" disabled={busy} onClick={() => attach(c)}>Attach to this matter</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="qa-actions">
         <button className="btn" disabled={busy || anyRed || !gatesSet} title={anyRed ? "A red hard gate blocks approval" : !gatesSet ? "Set all three hard gates first" : ""} onClick={() => submit("approve")}>Approve (unlock firm)</button>

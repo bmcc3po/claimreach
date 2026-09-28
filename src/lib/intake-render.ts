@@ -3,7 +3,6 @@
 // a one-row CSV, from the resolved questionnaire. Used by the export routes and
 // by firm delivery so there is one source of truth for the artifact shape.
 // ============================================================================
-import { supabaseAdmin } from "@/lib/supabase-server";
 
 const SKIP_KINDS = ["section", "script", "gate"];
 
@@ -66,15 +65,29 @@ export interface IntakeBundle {
   fields: any[];
 }
 
-// Load everything needed to render one lead's intake.
-export async function loadIntakeBundle(sb: any, leadId: string): Promise<IntakeBundle | null> {
-  const admin = supabaseAdmin();
-  const { data: lead } = await admin.from("leads").select("*").eq("id", leadId).maybeSingle();
+// Load everything needed to render ONE matter's intake: the named claim's
+// answers, case type and campaign form, never whichever claim the database
+// returned first (Astra round 7b #57: a file with two matters rendered the
+// first one's answers into the second one's delivery).
+//   null   = the file, or that claim on that file, does not exist
+//   throws = a read failed (the caller must not treat it as "nothing to send")
+// `sb` does every read; firm delivery passes its service client.
+export async function loadIntakeBundle(sb: any, leadId: string, claimId: string): Promise<IntakeBundle | null> {
+  if (!leadId || !claimId) return null;
+  const { data: lead, error: leadErr } = await sb.from("leads").select("*").eq("id", leadId).maybeSingle();
+  if (leadErr) throw new Error(`Could not read the file: ${leadErr.message}`);
   if (!lead) return null;
-  const { data: claim } = await admin.from("claims").select("answers, claim_type, campaign").eq("lead_id", leadId).limit(1).maybeSingle();
-  const answers = claim?.answers ?? {};
-  const caseType = (claim?.claim_type || lead.case_type || "").toLowerCase();
-  const fields = await resolveFields(sb, caseType, lead?.campaign_id ?? null);
+  const { data: claim, error: claimErr } = await sb.from("claims")
+    .select("id, lead_id, answers, claim_type, campaign, campaign_id")
+    .eq("id", claimId).eq("lead_id", leadId).maybeSingle();
+  if (claimErr) throw new Error(`Could not read the matter: ${claimErr.message}`);
+  if (!claim) return null;
+  const answers = claim.answers ?? {};
+  const caseType = (claim.claim_type || lead.case_type || "").toLowerCase();
+  // The claim's own campaign decides its form; a legacy claim with no
+  // campaign recorded falls back to the file's, the same order
+  // resolveFormKey uses.
+  const fields = await resolveFields(sb, caseType, claim.campaign_id || lead.campaign_id || null);
   return { lead, claim, answers, caseType, fields };
 }
 
@@ -135,7 +148,7 @@ export function buildIntakeCsvSingle(b: IntakeBundle): string {
   const header = ["Lead #", "Claimant", "Campaign", "Created", ...cols.map((f) => f.label || f.id)];
   const l = b.lead;
   const row = [
-    l.lead_no, l.claimant_name, l.campaign || b.claim?.campaign || "", l.created_at ? new Date(l.created_at).toLocaleDateString() : "",
+    l.lead_no, l.claimant_name, b.claim?.campaign || l.campaign || "", l.created_at ? new Date(l.created_at).toLocaleDateString() : "",
     ...cols.map((f) => displayValue(f, resolveRaw(f, l, b.answers), "")),
   ];
   return [header.map(esc).join(","), row.map(esc).join(",")].join("\n");

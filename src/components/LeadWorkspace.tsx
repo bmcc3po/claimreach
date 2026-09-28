@@ -125,7 +125,7 @@ export default function LeadWorkspace({
           {fileMayExportPdf(fence) && (
             <a className="cl-btn cl-ghost cl-sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
           )}
-          {canTools && ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
+          {canTools && ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} claimId={activeClaim?.id} />}
           <FileStatusControl leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
           {canTools && <LockFileButton lead={lead} />}
         </div>
@@ -415,37 +415,42 @@ function LockFileButton({ lead }: { lead: any }) {
   );
 }
 
-function SendToFirmButton({ leadId }: { leadId: string }) {
+// Sends the matter this screen is showing (the active claim tab), never the
+// whole person: each matter has its own sent state (Astra round 7b #57).
+function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: string }) {
   const [state, setState] = useState<{ sentAt: string | null; result: string | null }>({ sentAt: null, result: null });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const q = `lead_id=${encodeURIComponent(leadId)}${claimId ? `&claim_id=${encodeURIComponent(claimId)}` : ""}`;
 
   useEffect(() => {
     let alive = true;
+    setState({ sentAt: null, result: null }); setMsg("");
     (async () => {
       try {
-        const r = await fetch(`/api/firm-delivery?lead_id=${leadId}`);
+        const r = await fetch(`/api/firm-delivery?${q}`);
         if (!r.ok) return;
         const d = await r.json();
         if (alive) setState({ sentAt: d.firm_sent_at ?? null, result: d.firm_send_result ?? null });
       } catch {}
     })();
     return () => { alive = false; };
-  }, [leadId]);
+  }, [q]);
 
   async function send(force: boolean) {
     const already = !!state.sentAt;
-    if (already && !force) { if (!confirm("This file was already sent to the firm. Resend it?")) return; force = true; }
-    if (!force && !confirm("Send this file to the firm now?")) return;
+    if (already && !force) { if (!confirm("This matter was already sent to the firm. Resend it?")) return; force = true; }
+    if (!force && !confirm("Send this matter to the firm now?")) return;
     setBusy(true); setMsg("");
     try {
-      const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, force }) });
+      const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId || undefined, force }) });
       const d = await r.json();
       setBusy(false);
       if (!r.ok) { setMsg(d.error || "Send failed"); return; }
-      if (d.skipped) { setMsg(`Skipped: ${d.skipped}`); return; }
+      if (d.skipped) { setMsg(d.skipped); return; }
       setState({ sentAt: new Date().toISOString(), result: "sent" });
-      setMsg(`Sent to ${d.to || "firm"} (${(d.attachments || []).length} attachment${(d.attachments || []).length === 1 ? "" : "s"})`);
+      const n = (d.attachments || []).length;
+      setMsg(`Sent to ${d.to || "firm"} (${n} attachment${n === 1 ? "" : "s"})${d.warning ? `. ${d.warning}` : ""}`);
     } catch (e: any) { setBusy(false); setMsg(e?.message || "Send error"); }
   }
 
@@ -453,7 +458,7 @@ function SendToFirmButton({ leadId }: { leadId: string }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
       <button className="cl-btn cl-ghost cl-sm" onClick={() => send(false)} disabled={busy}
-        title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this file's documents"}>
+        title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this matter's documents"}>
         {label}
       </button>
       {msg && <span className="muted" style={{ fontSize: 11.5 }}>{msg}</span>}

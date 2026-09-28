@@ -343,6 +343,9 @@ const fmtWhen = (iso?: string | null) => {
 
 // The file: status, agreements, notes, documents and history, without leaving
 // the call. Loads when the tab opens.
+// ContactCard's autosave, the same one the CRM's Contact Info and Case
+// Details tabs use.
+import { useFieldAutosave } from "../useFieldAutosave";
 // The traditional contact card (Brett, Sep 28): the record's phone, email
 // and mailing address, right on the File tab, editable during the call.
 // Saves to the LEAD (the same generic contact save the CRM uses), so a
@@ -359,47 +362,53 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
       mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
     };
     const cols = mailColumnsFrom(f, f.mail_addr1);
-    return { f: cols ? { ...f, ...cols } : f, tidied: !!cols };
+    return { f: cols ? { ...f, ...cols } : f, tidy: cols };
   })();
-  const [f, setF] = useState<Record<string, string>>(first.f);
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
-  const [msg, setMsg] = useState("");
-  const t = useRef<any>(null);
-  // What the record holds, so a save sends only the fields that changed and
-  // the Activity Log says what really changed.
+  // What the record holds, so the call's own copy follows a save exactly.
   const saved = useRef<Record<string, string>>({
     phone: initial.phone || "", email: initial.email || "",
     home_phone: initial.home_phone || "", work_phone: initial.work_phone || "",
     mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
     mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
   });
-  const last = useRef<Record<string, string>>({ phone: initial.phone || "", email: initial.email || "" });
-  const save = async (data: Record<string, string>) => {
-    const diff: Record<string, string> = {};
-    for (const [k, v] of Object.entries(data)) if (saved.current[k] !== v) diff[k] = v;
-    if (!Object.keys(diff).length) { setState("saved"); return; }
-    setState("saving"); setMsg("");
-    try {
-      const r = await fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ op: "save", lead_id: leadId, lead: diff }) });
+  // A save sends only the fields the agent changed, with what they hold when
+  // it goes out, so the Activity Log says what really changed and a phone the
+  // call just saved is never sent back as its old value (Astra round 7b).
+  const { values: f, status, error: msg, edit, incoming } = useFieldAutosave<Record<string, string>>(() => first.f, {
+    delay: 900,
+    send: async (patch) => {
+      let r: Response;
+      try {
+        r = await fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ op: "save", lead_id: leadId, lead: patch }) });
+      } catch {
+        throw new Error("Could not reach the server. The contact did not save.");
+      }
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) throw new Error(j.error || "The contact did not save.");
-      saved.current = { ...saved.current, ...diff };
-      setState("saved");
+    },
+    onSaved: (patch) => {
+      const prev = saved.current;
+      const s = { ...prev, ...(patch as Record<string, string>) };
+      saved.current = s;
       // The call's own copy follows (the File step's home address, the send).
       try {
         window.dispatchEvent(new CustomEvent("cr:contact", { detail: {
-          leadId, addr: joinUsAddress({ street: data.mail_addr1, city: data.mail_city, state: data.mail_state, zip: data.mail_zip }),
-          phone: data.phone, email: data.email, prevPhone: last.current.phone, prevEmail: last.current.email,
+          leadId, addr: joinUsAddress({ street: s.mail_addr1, city: s.mail_city, state: s.mail_state, zip: s.mail_zip }),
+          phone: s.phone, email: s.email, prevPhone: prev.phone, prevEmail: prev.email,
         } }));
       } catch { /* the console is not on this page */ }
-      last.current = { phone: data.phone, email: data.email };
-    } catch (e: any) { setState("error"); setMsg(e.message); }
-  };
-  useEffect(() => { if (first.tidied) void save(first.f); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+    },
+  });
+  const tidied = useRef(false);
+  useEffect(() => {
+    if (first.tidy && !tidied.current) { tidied.current = true; edit(first.tidy, true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // The call saved a contact field onto the record (the PNC's email typed on
-  // the send step, the home address on the File step): show it here too.
+  // the send step, the home address on the File step): show it here too. A
+  // box with unsaved typing keeps it, and that typing still saves.
   useEffect(() => {
     const on = (e: any) => {
       const d = e?.detail || {};
@@ -408,23 +417,20 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
       for (const k of ["phone", "email", "mail_addr1", "mail_city", "mail_state", "mail_zip"]) if (typeof d[k] === "string") upd[k] = d[k];
       if (!Object.keys(upd).length) return;
       saved.current = { ...saved.current, ...upd };
-      last.current = { phone: saved.current.phone, email: saved.current.email };
-      setF((cur) => ({ ...cur, ...upd }));
+      incoming(upd);
     };
     window.addEventListener("cr:record", on);
     return () => window.removeEventListener("cr:record", on);
-  }, [leadId]);
+  }, [leadId, incoming]);
   const set = (k: string) => (e: any) => {
     const v = e.target.value;
     // Pasting a whole address into the street box fills city, state and ZIP.
+    // A pasted address with no ZIP clears the old ZIP instead of keeping one
+    // that belonged to the previous address.
     const split = k === "mail_addr1" ? splitUsAddress(v) : null;
-    const next = split
-      ? { ...f, mail_addr1: split.street, mail_city: split.city, mail_state: split.state, mail_zip: split.zip || f.mail_zip }
-      : { ...f, [k]: k === "mail_state" ? v.toUpperCase() : v };
-    setF(next);
-    setState("dirty");
-    if (t.current) clearTimeout(t.current);
-    t.current = setTimeout(() => { void save(next); }, 900);
+    edit(split
+      ? { mail_addr1: split.street, mail_city: split.city, mail_state: split.state, mail_zip: split.zip }
+      : { [k]: k === "mail_state" ? v.toUpperCase() : v });
   };
   const addr = joinUsAddress({ street: f.mail_addr1, city: f.mail_city, state: f.mail_state, zip: f.mail_zip });
   const gaps = [!f.phone && "cell", !f.mail_addr1 && "street", !f.mail_city && "city", !f.mail_state && "state", !f.mail_zip && "ZIP"].filter(Boolean) as string[];
@@ -459,9 +465,9 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
           <input className="cc-field" style={{ flex: 1, minWidth: 0 }} type="text" inputMode="numeric" placeholder="ZIP" maxLength={10} aria-label="ZIP" value={f.mail_zip} onChange={set("mail_zip")} />
         </div>
       </>)}
-      {state === "saving" && <div className="cc-cue" style={{ marginTop: 6 }}>Saving</div>}
-      {state === "saved" && <div className="cc-cue" style={{ marginTop: 6 }}>Saved to the file.</div>}
-      {state === "error" && <div className="cc-cue cc-red" style={{ marginTop: 6 }}>{msg}</div>}
+      {status === "saving" && <div className="cc-cue" style={{ marginTop: 6 }}>Saving</div>}
+      {status === "saved" && <div className="cc-cue" style={{ marginTop: 6 }}>Saved to the file.</div>}
+      {status === "error" && <div className="cc-cue cc-red" style={{ marginTop: 6 }}>{msg}</div>}
     </div>
   );
 }

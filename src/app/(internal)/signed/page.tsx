@@ -1,5 +1,5 @@
 export const runtime = "edge";
-import { signedStatusKeys } from "@/lib/statuses";
+import { isSignedKey } from "@/lib/statuses";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import { isInternalRole } from "@/lib/permissions";
@@ -51,18 +51,21 @@ export default async function LeadsPage() {
   const { data: agents } = await sb.from("app_users").select("id, full_name").in("role", ["agent", "admin", "owner", "manager"]).order("full_name");
   const { data: firms } = await sb.from("firms").select("id, name").order("name");
 
-  // Live, owner-editable status set drives badges, filters, and bulk actions.
-  const { data: statuses } = await sb.from("statuses").select("*").eq("active", true).order("sort");
+  // The whole status table, retired rows too: the signed rule needs a retired
+  // custom signed status to keep its meaning. Badges, filters and bulk
+  // actions still get only the live (active) set, exactly as before.
+  const { data: catalog } = await sb.from("statuses").select("*").order("sort");
+  const statuses = (catalog ?? []).filter((s: any) => s.active === true);
   const { data: dqReasons } = await sb.from("dq_reasons").select("*").eq("active", true).order("sort");
-  // One signed definition, catalog-aware: the list splits exactly the way the
-  // report counts (Astra round 5: the two disagreed on legacy and custom keys).
-  const signedKeys = signedStatusKeys((statuses ?? []) as any);
+  // One signed definition (isSignedKey), the same call Reports makes: the
+  // lists split exactly the way the report counts, including retired and
+  // unlisted signed_* keys and a missing catalog (Astra rounds 5-7b).
 
   // The mirror of /leads: only files that have signed. Same view, opposite side
   // of the same one predicate, so a file is on exactly one of the two pages.
   const signedOnly = (withClaims as any[]).filter(
-    (l) => signedKeys.has(String(l.claims?.[0]?.status ?? l.status ?? ""))
+    (l) => isSignedKey(l.claims?.[0]?.status ?? l.status, catalog)
   );
 
-  return <LeadsView leads={signedOnly} title="Signed" basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} statuses={statuses ?? []} dqReasons={dqReasons ?? []} />;
+  return <LeadsView leads={signedOnly} title="Signed" basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} statuses={statuses} dqReasons={dqReasons ?? []} />;
 }

@@ -1,6 +1,7 @@
 // npx tsx src/lib/lead-ingest.test.ts
 import assert from "node:assert/strict";
-import { normalizeLead, chooseCampaign, isSensitiveKey, redactForLog, type CampaignRow } from "./lead-ingest";
+import { normalizeLead, chooseCampaign, isSensitiveKey, redactForLog, ingestLead, type CampaignRow } from "./lead-ingest";
+import { standardFromRows } from "./standard-fields";
 import { readLeadStory, storyTags, prefillFromStory, isoDate } from "./mva-call/lead-story";
 import { safeAppNext } from "./mva-call/links";
 import { resolveLeadKey, leadKeyOf } from "./lead-key";
@@ -146,4 +147,60 @@ async function lk() {
   assert.equal(leadKeyOf({ id: "x", lead_no: null }), "x");
   pass++; console.log("ok lead URLs: /app/TMP-1042 and /leads/TMP-1042 find the file");
 }
-lk().then(() => console.log(`${pass} passed`));
+// A stand-in admin client for ingestLead: leads found by LawRuler id, and
+// every insert and update recorded.
+function fakeAdmin(existing: any[] = []) {
+  const writes: { table: string; op: string; value: any }[] = [];
+  const from = (table: string) => {
+    let op = "read"; let val: any = null;
+    const filters: ((r: any) => boolean)[] = [];
+    const q: any = {
+      select: () => q, is: () => q, gte: () => q, order: () => q, limit: () => q, maybeSingle: () => q, single: () => q,
+      eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; },
+      or: (s: string) => { const ids = s.split(",").map((x) => x.split(".").slice(2).join(".")); filters.push((r) => ids.includes(r.lawruler_ref_no) || ids.includes(r.external_id)); return q; },
+      insert: (v: any) => { op = "insert"; val = v; return q; },
+      update: (v: any) => { op = "update"; val = v; return q; },
+      then: (res: any, rej: any) => Promise.resolve().then(() => {
+        if (op !== "read") { writes.push({ table, op, value: val }); return { data: op === "insert" ? { id: "NEW", lead_no: "T-1" } : null, error: null }; }
+        if (table === "leads") return { data: existing.filter((r) => filters.every((f) => f(r))), error: null };
+        return { data: null, error: null };
+      }).then(res, rej),
+    };
+    return q;
+  };
+  return { from, rpc: async () => ({ data: "T-1", error: null }), writes };
+}
+const MVA_CAMP = CAMPS[0];
+const SENT = { LeadID: "7001", CaseType: "INNO MVA", FirstName: "Test", LastName: "Person", email: "test.person@example.test",
+  home_phone: "2025550101", work_phone: "2025550102", alt_phone: "2025550103",
+  incident_date: "09/03/2026", incident_state: "Nevada", incident_city: "Reno" };
+
+async function promotion() {
+  const n = normalizeLead(SENT);
+  assert.equal(n.homePhone, "2025550101"); assert.equal(n.workPhone, "2025550102"); assert.equal(n.altPhone, "2025550103");
+  const fresh = fakeAdmin();
+  const r = await ingestLead(fresh, { lead: n, campaign: MVA_CAMP, via: "lawruler" });
+  assert.equal(r.ok, true, r.error);
+  const ins = fresh.writes.find((w) => w.table === "leads" && w.op === "insert")!.value;
+  assert.equal(ins.incident_start, "2026-09-03");
+  assert.equal(ins.incident_state, "NV");
+  assert.equal(ins.incident_city, "Reno");
+  assert.equal(ins.home_phone, "2025550101"); assert.equal(ins.work_phone, "2025550102"); assert.equal(ins.phone_alt, "2025550103");
+  // What the standard record (export and webhooks) then says for the new file's only matter.
+  const std = standardFromRows({ lead: { id: "NEW", ...ins }, claim: { id: "c1", campaign: ins.campaign, claim_type: ins.case_type }, sole: true });
+  assert.equal(std.incident_date, "2026-09-03"); assert.equal(std.incident_state, "NV"); assert.equal(std.home_phone, "2025550101");
+  pass++; console.log("ok ingest promotes incident date, city, state and home/work/alternate phones into their columns");
+
+  const had = fakeAdmin([{ id: "X", firm_id: "tmp", lead_no: "T-9", lawruler_ref_no: "7001", external_id: "7001", campaign_id: "tmp-mva", first_name: "Test",
+    home_phone: "7025559999", work_phone: null, phone_alt: "", incident_start: null, incident_city: null, incident_state: "TX" }]);
+  const r2 = await ingestLead(had, { lead: n, campaign: MVA_CAMP, via: "lawruler" });
+  assert.equal(r2.ok, true, r2.error);
+  const patch = had.writes.find((w) => w.table === "leads" && w.op === "update" && !("vendor_fields" in w.value))!.value;
+  assert.equal(patch.home_phone, undefined, "an existing home phone is never overwritten");
+  assert.equal(patch.work_phone, "2025550102"); assert.equal(patch.phone_alt, "2025550103");
+  assert.equal(patch.incident_start, "2026-09-03", "a blank incident date is filled");
+  assert.ok(!("incident_city" in patch) && !("incident_state" in patch), "a file with a state keeps its place; no Reno with Texas");
+  pass++; console.log("ok ingest fills blanks on an existing file and overwrites nothing");
+}
+
+lk().then(promotion).then(() => console.log(`${pass} passed`)).catch((e) => { console.error(e); process.exit(1); });

@@ -1,91 +1,86 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { fileMaySeeMoney, type FileFence } from "@/lib/file-fence";
+import { useFieldAutosave } from "./useFieldAutosave";
+
+const KEYS = ["marketing_source", "referring_attorney", "handling_attorney", "intake_agent_id",
+  "qa_agent_id", "case_manager_id", "office_location", "case_rating", "call_outcome", "esign_date",
+  "case_summary", "case_description", "case_tags"];
+
+// The editable values from a lead record (tags as the comma list the box shows).
+function fromLead(lead: any): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const k of KEYS) out[k] = k === "case_tags" ? (lead.case_tags ?? []).join(", ") : (lead[k] ?? "");
+  return out;
+}
+
+// What the save route stores for these fields: tags as a list, and a blank
+// person, date or uuid as NULL so the update is not rejected wholesale.
+function toPayload(patch: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = { ...patch };
+  if ("case_tags" in out) out.case_tags = String(out.case_tags ?? "").split(",").map((t: string) => t.trim()).filter(Boolean);
+  for (const k of ["intake_agent_id", "qa_agent_id", "case_manager_id", "esign_date"]) if (k in out) out[k] = out[k] || null;
+  return out;
+}
 
 // Case-management layer: routing/people, content, dates, tags, events. Separate
 // from the intake questionnaire. Saves to the leads row + case_events.
 export default function CaseDetails({ lead, staff = [], editMode = true, onRequestEdit, fence, onSaved }: { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void; fence?: FileFence; onSaved?: (patch: Record<string, any>) => void }) {
-  const [f, setF] = useState<any>({
-    marketing_source: lead.marketing_source ?? "",
-    referring_attorney: lead.referring_attorney ?? "",
-    handling_attorney: lead.handling_attorney ?? "",
-    intake_agent_id: lead.intake_agent_id ?? "",
-    qa_agent_id: lead.qa_agent_id ?? "",
-    case_manager_id: lead.case_manager_id ?? "",
-    office_location: lead.office_location ?? "",
-    case_rating: lead.case_rating ?? "",
-    call_outcome: lead.call_outcome ?? "",
-    esign_date: lead.esign_date ?? "",
-    case_summary: lead.case_summary ?? "",
-    case_description: lead.case_description ?? "",
-    case_tags: (lead.case_tags ?? []).join(", "),
-  });
-  // A refreshed server record updates every CLEAN field while this tab is
-  // mounted; unsaved typing stays (Astra round 5: a read-only tab kept old
-  // outcome/date after refreshed props).
-  const dirty = useRef<Set<string>>(new Set());
-  const refreshing = useRef(false);
-  const seenUpdatedAt = useRef<any>(lead.updated_at);
-  useEffect(() => {
-    if (lead.updated_at === seenUpdatedAt.current) return;
-    seenUpdatedAt.current = lead.updated_at;
-    refreshing.current = true;
-    setF((s: any) => {
-      const next = { ...s };
-      for (const k of Object.keys(s)) {
-        if (dirty.current.has(k)) continue;
-        next[k] = k === "case_tags" ? (lead.case_tags ?? []).join(", ") : (lead[k] ?? "");
+  // The record's values as this tab last saw them in its props.
+  const seen = useRef<Record<string, any> | null>(null);
+  // Autosave a second after the last edit, no manual Save needed. Only the
+  // fields a person changed are sent, with their values when the save goes
+  // out, so a field this person did not touch (or cannot see, like the case
+  // tier) is never written back from this tab's copy. A failed write keeps
+  // them unsaved and says so.
+  // Switching tabs sends what is pending (Astra audits, Sep 27, round 7b).
+  const { values: f, status, error, edit, incoming } = useFieldAutosave<Record<string, any>>(() => fromLead(lead), {
+    delay: 1000,
+    send: async (patch) => {
+      let r: Response;
+      try {
+        r = await fetch("/api/case/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead.id, ...toPayload(patch) }) });
+      } catch {
+        throw new Error("Could not reach the server. Nothing was saved.");
       }
-      return next;
-    });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || String(r.status));
+    },
+    onSaved: (patch) => {
+      const saved = toPayload(patch);
+      // This save coming back through the parent's copy is not a refresh, so
+      // it never rewrites what is in the box (tags keep a trailing comma).
+      const echo = fromLead(saved);
+      if (seen.current) for (const k of Object.keys(saved)) seen.current[k] = echo[k];
+      onSaved?.(saved);
+    },
+  });
+  // A refreshed server record fills every CLEAN field whose value on the
+  // record changed, while this tab is mounted (Astra round 5: a read-only tab
+  // kept old outcome/date after refreshed props). Unsaved typing stays and its
+  // pending save still goes out (Astra round 7b: a refresh used to cancel it).
+  useEffect(() => {
+    const now = fromLead(lead);
+    const before = seen.current;
+    seen.current = now;
+    if (!before) return; // the first render started from these same values
+    const changed: Record<string, any> = {};
+    for (const k of KEYS) if (now[k] !== before[k]) changed[k] = now[k];
+    if (Object.keys(changed).length) incoming(changed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lead.updated_at]);
+  }, [lead]);
   const [opts, setOpts] = useState<Record<string, string[]>>({});
   const [events, setEvents] = useState<any[]>([]);
   const [newEvent, setNewEvent] = useState({ title: "", event_at: "", notes: "" });
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
+  const saving = status === "saving";
+  const msg = error ? `Save failed: ${error}` : status === "saved" ? "Saved." : "";
 
   useEffect(() => { (async () => {
     try { const r = await fetch("/api/case/options"); const d = await r.json(); setOpts(d.options ?? {}); } catch {}
     try { const r = await fetch(`/api/case/events?lead_id=${lead.id}`); const d = await r.json(); setEvents(d.events ?? []); } catch {}
   })(); }, [lead.id]);
 
-  function set(k: string, v: any) { dirty.current.add(k); setF((s: any) => ({ ...s, [k]: v })); }
-
-  // Autosave a second after the last edit — no manual Save needed.
-  const firstRun = useRef(true);
-  const t = useRef<any>(null);
-  // Switching case tabs within a second of typing used to cancel the debounce
-  // and drop the edit (Astra audit, Sep 27). Flush on unmount instead.
-  const flushRef = useRef<() => void>(() => {});
-  useEffect(() => () => { flushRef.current(); }, []);
-  useEffect(() => {
-    if (firstRun.current) { firstRun.current = false; return; }
-    if (refreshing.current) { refreshing.current = false; return; }
-    if (t.current) clearTimeout(t.current);
-    t.current = setTimeout(() => { t.current = null; save(); }, 1000);
-    flushRef.current = () => { if (t.current) { clearTimeout(t.current); t.current = null; void save(); } };
-    return () => { if (t.current) clearTimeout(t.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [f]);
-
-  async function save() {
-    setSaving(true); setMsg("");
-    const KEYS = ["marketing_source","referring_attorney","handling_attorney","intake_agent_id",
-      "qa_agent_id","case_manager_id","office_location","case_rating","call_outcome","esign_date",
-      "case_summary","case_description","case_tags"];
-    const base: Record<string, any> = {};
-    for (const k of KEYS) base[k] = (f as any)[k] ?? "";
-    const payload = { ...base, ...f, case_tags: String(f.case_tags ?? "").split(",").map((t: string) => t.trim()).filter(Boolean),
-      intake_agent_id: f.intake_agent_id || null, qa_agent_id: f.qa_agent_id || null, case_manager_id: f.case_manager_id || null,
-      esign_date: f.esign_date || null };
-    const r = await fetch("/api/case/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: lead.id, ...payload }) });
-    const d = await r.json().catch(() => ({}));
-    setSaving(false);
-    setMsg(r.ok ? "Saved." : `Save failed: ${d.error || r.status}`);
-    if (r.ok) { dirty.current.clear(); onSaved?.({ ...payload, case_tags: payload.case_tags }); }
-  }
+  function set(k: string, v: any) { edit({ [k]: v }); }
 
   async function addEvent() {
     if (!newEvent.title || !newEvent.event_at) return;

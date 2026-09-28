@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import DripManager from "@/components/DripManager";
 import DripRulesManager from "@/components/DripRulesManager";
+import InboundMediaReview from "@/components/InboundMediaReview";
 
 export default async function SettingsPage() {
   const sb = await supabaseServer();
@@ -19,6 +20,7 @@ export default async function SettingsPage() {
         <div className="vrow"><span className="vk">Role</span><span className="vv">{me?.role ?? "—"}</span></div>
         <div className="vrow"><span className="vk">Email</span><span className="vv">{user?.email}</span></div>
       </div>
+      <InboundMediaReview />
       <div style={{ maxWidth: 880, marginBottom: 16 }}>
         <DripRulesManager canEdit={!!isAdmin} />
       </div>

@@ -240,20 +240,24 @@ export async function POST(req: NextRequest) {
     case_type: clean(cols.case_type),
     campaign,
     source_system: clean(fields.source_system) || "lawruler",
-    lawruler_url: clean(fields.leadlink),
+    lawruler_url: firstNonEmpty(fields.leadlink, cols.lawruler_url),
     lawruler_created_at: toDate(fields.leadcreated),
+    // Writable standard fields (Astra round 7b): a value sent under our
+    // standard name lands in its column on this path too.
+    preferred_language: clean(cols.preferred_language),
+    client_time_zone: clean(cols.client_time_zone),
     phone_alt: firstNonEmpty(fields.phone_alt, cols.phone_alt),
     home_phone: firstNonEmpty(cols.home_phone, fields.home_phone, fields.homephone),
     work_phone: firstNonEmpty(cols.work_phone, fields.work_phone, fields.workphone),
     dl_number: firstNonEmpty(cols.dl_number, fields.dl_number, fields.drivers_license),
     incident_city: firstNonEmpty(cols.incident_city, fields.incident_city, fields.accident_city),
     incident_state: firstNonEmpty(cols.incident_state, fields.incident_state, fields.accident_state),
-    ec_name: clean(fields.ec_name),
-    ec_relationship: clean(fields.ec_relationship),
-    ec_phone: clean(fields.ec_phone),
+    ec_name: firstNonEmpty(cols.ec_name, fields.ec_name),
+    ec_relationship: firstNonEmpty(cols.ec_relationship, fields.ec_relationship),
+    ec_phone: firstNonEmpty(cols.ec_phone, fields.ec_phone),
     ec_email: clean(fields.ec_email),
     ec_message_script: clean(fields.ec_message_script),
-    gender: firstNonEmpty(fields.gender, fields.claimant_gender),
+    gender: firstNonEmpty(cols.gender, fields.gender, fields.claimant_gender),
     incident_start: toDateOnly(firstNonEmpty(fields.incident_start, fields.incidentstart, cols.incident_start)),
     incident_end: toDateOnly(firstNonEmpty(fields.incident_end, fields.incidentend)),
     property_name: firstNonEmpty(fields.property_name, fields.propertyname),
@@ -278,7 +282,7 @@ export async function POST(req: NextRequest) {
 
   // ---- upsert by vendor lead id -------------------------------------------
   const { data: existing } = await admin
-    .from("leads").select("id, lead_no, case_description")
+    .from("leads").select("id, lead_no, case_description, case_summary")
     .eq("firm_id", firmId).eq("external_id", vendorId).maybeSingle();
 
   let leadId: string;
@@ -286,6 +290,9 @@ export async function POST(req: NextRequest) {
   let created = false;
 
   const narrative = clean(fields.description);
+  // A case summary sent under the standard name is filled like the
+  // narrative: set when empty, never over a summary someone wrote here.
+  const summary = clean(cols.case_summary);
 
   if (existing) {
     leadId = existing.id;
@@ -296,6 +303,7 @@ export async function POST(req: NextRequest) {
     // is never clobbered by LawRuler resending the original intake text.
     const upd: any = { ...base };
     if (narrative && !clean(existing.case_description)) upd.case_description = narrative;
+    if (summary && !clean(existing.case_summary)) upd.case_summary = summary;
     const { error } = await admin.from("leads").update(upd).eq("id", leadId);
     if (error) {
       await log(admin, firmId, "failed", 500, envelope, `update: ${error.message}`);
@@ -307,6 +315,7 @@ export async function POST(req: NextRequest) {
       external_id: vendorId,
       lawruler_ref_no: vendorId,
       case_description: narrative,
+      ...(summary ? { case_summary: summary } : {}),
       // leads has no `status` column. `stage` is the pipeline and it already
       // defaults to 'referral_received'. Naming a phantom column made Postgres
       // reject the entire insert, which is why every fire failed.

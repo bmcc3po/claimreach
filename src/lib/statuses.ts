@@ -110,36 +110,48 @@ export const DEFAULT_DQ_REASONS: DqReason[] = [
 // lead any more, and leaving them on the Leads page turns a work queue into a
 // list of everyone who ever called.
 //
-// Defined once, here, because the Leads page and the Signed page both have to
-// answer the same question and must never answer it differently.
+// Defined once, here, because the Leads page, the Signed page and Reports all
+// answer the same question and must never answer it differently. Every one of
+// them calls isSignedKey; nothing keeps a local rule or a report-only fallback.
 //
 // Covers the whole post-signature track: the QA states a signed file passes
 // through, approval, delivery and retention. Deliberately includes
 // signed_dropped, because a file that signed and then fell apart is still not
 // something an agent should be calling back.
+
+/** The name family alone: every signed_* key, plus signed, delivered, retained. No catalog needed. */
 export function isSignedStatus(key: string | null | undefined): boolean {
-  const k = String(key ?? "");
+  const k = String(key ?? "").trim().toLowerCase();
   if (!k) return false;
   if (k.startsWith("signed_")) return true;
   return k === "signed" || k === "delivered" || k === "retained";
 }
 
-// The one definition of "this status means the file carries a signature".
-// From the status table's own flags (an e-sign status past the pre-signature
-// phase), plus the post-QA outcomes a signed file lands in (Delivered,
-// Retained), plus the signed_* name family as the fallback when flags are
-// not loaded. Reports and any future counter read THIS, never a local rule
-// (Astra round 3: a local predicate dropped Delivered/Retained).
-export function signedStatusKeys(statuses: { key: string; phase?: string | null; requires_esign?: boolean | null }[]): Set<string> {
-  // Seeded from isSignedStatus's constant family so a caller with no status
-  // catalog (the firm report) still counts Delivered and Retained, then
-  // widened by the table's own e-sign flags.
-  const keys = new Set<string>(["signed", "delivered", "retained"]);
-  for (const s of statuses ?? []) {
-    if (s.requires_esign === true && s.phase && s.phase !== "pre_qa") keys.add(s.key);
-    if (isSignedStatus(s.key)) keys.add(s.key);
-  }
-  keys.delete("esign_sent");
-  return keys;
-}
+/** The status-table fields the signed rule reads. */
+export interface SignedCatalogRow { key: string; phase?: string | null; requires_esign?: boolean | null }
 
+/**
+ * THE one definition of "this status means the file carries a signature".
+ *
+ *   1. The name family (isSignedStatus) ALWAYS counts, whether or not the key
+ *      is in the catalog, active, retired or unknown. History keeps its
+ *      meaning when a status stops being selectable.
+ *   2. The status table's own flags widen it: an e-sign status past the
+ *      pre-signature phase (requires_esign and phase is not pre_qa), which
+ *      is how a firm's custom signed status counts.
+ *   3. esign_sent is never signed, whatever the catalog says.
+ *
+ * A missing or failed catalog only loses rule 2; it never drops a signed_*
+ * key. Pass the WHOLE catalog (retired rows too) so a retired custom signed
+ * status still counts.
+ */
+export function isSignedKey(key: string | null | undefined, catalog?: SignedCatalogRow[] | null): boolean {
+  const k = String(key ?? "").trim().toLowerCase();
+  if (!k || k === "esign_sent") return false;
+  if (isSignedStatus(k)) return true;
+  for (const s of catalog ?? []) {
+    if (String(s?.key ?? "").trim().toLowerCase() !== k) continue;
+    if (s.requires_esign === true && !!s.phase && s.phase !== "pre_qa") return true;
+  }
+  return false;
+}

@@ -4,6 +4,15 @@ import { useRouter } from "next/navigation";
 import { fieldVisible, contactFieldsForType, US_STATES } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
 import PhoneInput, { formatUsPhone } from "./PhoneInput";
+import { useFieldAutosave } from "./useFieldAutosave";
+
+// The structured contact columns this tab always shows (names split,
+// preferences, emergency contact), next to the form's own contact fields.
+const CORE_KEYS = [
+  "first_name", "last_name", "phone", "email", "dob", "mail_addr1", "mail_addr2", "mail_city", "mail_state", "mail_zip",
+  "preferred_language", "preferred_time", "preferred_contact_method", "client_time_zone",
+  "ec_name", "ec_relationship", "ec_phone", "ec_email", "ec_mail", "ec_permission_to_discuss",
+];
 
 // Contact Info tab — caller information + emergency contact. These fields are
 // the single source of truth (stored on the lead). Any inline-in-intake copy
@@ -28,40 +37,61 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     caller_ssn:        (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
     caller_type:       (v) => String(v.caller_is_self ?? "").toLowerCase() !== "yes",
   };
-  const [f, setF] = useState<Record<string, any>>(() => {
+  // One value per column. The form's contact fields and the structured
+  // fields below name some of the same columns (mailing address, emergency
+  // contact phone). They share this one value instead of two copies where
+  // the second overwrote the first on every save.
+  const fromLead = (): Record<string, any> => {
     const init: Record<string, any> = {};
     for (const fld of allFields) if (fld.kind !== "section" && fld.kind !== "script") init[fld.id] = lead[fld.id] ?? "";
+    for (const k of CORE_KEYS) init[k] = lead[k] ?? (k === "ec_permission_to_discuss" ? false : "");
     return init;
+  };
+  // The record's values as this tab last saw them in its props.
+  const seen = useRef<Record<string, any> | null>(null);
+  // Autosave a second after the last edit, no manual Save needed. Only the
+  // fields a person changed are sent, with their values when the save goes
+  // out. A failed write keeps them unsaved and says so. Switching tabs sends
+  // what is pending instead of dropping it (Astra audits, Sep 27, round 7b).
+  const { values: vals, status, error: saveErr, savedAt, edit, incoming } = useFieldAutosave(fromLead, {
+    delay: 1000,
+    send: async (patch) => {
+      let r: Response;
+      try {
+        r = await fetch("/api/leads", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "save", lead_id: lead.id, lead: patch }),
+        });
+      } catch {
+        throw new Error("Could not reach the server. Nothing was saved.");
+      }
+      const d = await r.json().catch(() => ({}));
+      // This used to swallow every error and then print "Saved" anyway, so a
+      // failed write looked identical to a successful one. Never again: if it
+      // did not save, the screen says so.
+      if (!r.ok || d.error) throw new Error(d.error || "Could not save. Nothing was written.");
+    },
+    onSaved: (patch) => {
+      // This save coming back through the parent's copy is not a refresh.
+      if (seen.current) for (const k of Object.keys(patch)) seen.current[k] = patch[k];
+      onSaved?.(patch);
+    },
   });
-  const dirty = useRef<Set<string>>(new Set());
-  const seenUpdatedAt = useRef<any>(lead.updated_at);
-  const refreshing = useRef(false);
+  function set(k: string, v: any) { edit({ [k]: v }); }
+  // A refreshed record fills every CLEAN field whose value on the record
+  // changed. Unsaved typing stays on screen and its pending save still goes
+  // out (Astra round 7b: a refresh used to cancel the save and drop it).
   useEffect(() => {
-    if (lead.updated_at === seenUpdatedAt.current) return;
-    seenUpdatedAt.current = lead.updated_at;
-    refreshing.current = true;
-    // A refreshed record updates every CLEAN field; unsaved typing stays.
-    setF((s) => {
-      const next = { ...s };
-      for (const fld of allFields) {
-        if (fld.kind === "section" || fld.kind === "script") continue;
-        if (!dirty.current.has(fld.id)) next[fld.id] = lead[fld.id] ?? "";
-      }
-      return next;
-    });
-    setX((s) => {
-      const next: Record<string, any> = { ...s };
-      for (const k of Object.keys(s)) {
-        if (!dirty.current.has("x:" + k)) next[k] = lead[k] ?? (k === "ec_permission_to_discuss" ? false : "");
-      }
-      return next;
-    });
+    const now = fromLead();
+    const before = seen.current;
+    seen.current = now;
+    if (!before) return; // the first render started from these same values
+    const changed: Record<string, any> = {};
+    for (const k of Object.keys(now)) if (JSON.stringify(now[k]) !== JSON.stringify(before[k])) changed[k] = now[k];
+    if (Object.keys(changed).length) incoming(changed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lead.updated_at]);
+  }, [lead, claimType]);
   const [ssnRevealed, setSsnRevealed] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [saveErr, setSaveErr] = useState("");
   const [feeds, setFeeds] = useState<Record<string, string>>({});
   useEffect(() => {
     const cid = lead.campaign_id;
@@ -92,59 +122,6 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     return undefined;
   }
 
-  // New structured contact fields (names split + preferences + emergency permission).
-  const [x, setX] = useState<Record<string, any>>({
-    first_name: lead.first_name ?? "", last_name: lead.last_name ?? "",
-    phone: lead.phone ?? "", email: lead.email ?? "",
-    dob: lead.dob ?? "", mail_addr1: lead.mail_addr1 ?? "", mail_addr2: lead.mail_addr2 ?? "",
-    mail_city: lead.mail_city ?? "", mail_state: lead.mail_state ?? "", mail_zip: lead.mail_zip ?? "",
-    preferred_language: lead.preferred_language ?? "", preferred_time: lead.preferred_time ?? "",
-    preferred_contact_method: lead.preferred_contact_method ?? "", client_time_zone: lead.client_time_zone ?? "",
-    ec_name: lead.ec_name ?? "", ec_relationship: lead.ec_relationship ?? "", ec_phone: lead.ec_phone ?? "",
-    ec_email: lead.ec_email ?? "", ec_mail: lead.ec_mail ?? "", ec_permission_to_discuss: lead.ec_permission_to_discuss ?? false,
-  });
-  function setx(k: string, v: any) { dirty.current.add("x:" + k); setX((s) => ({ ...s, [k]: v })); }
-
-  // Autosave a second after the last edit — no manual Save needed.
-  const firstRun = useRef(true);
-  const tmr = useRef<any>(null);
-  // Switching case tabs within a second of typing used to cancel the debounce
-  // and drop the edit (Astra audit, Sep 27). Flush on unmount instead.
-  const flushRef = useRef<() => void>(() => {});
-  useEffect(() => () => { flushRef.current(); }, []);
-  useEffect(() => {
-    if (firstRun.current) { firstRun.current = false; return; }
-    if (refreshing.current) { refreshing.current = false; return; }
-    if (tmr.current) clearTimeout(tmr.current);
-    tmr.current = setTimeout(() => { tmr.current = null; save(); }, 1000);
-    flushRef.current = () => { if (tmr.current) { clearTimeout(tmr.current); tmr.current = null; void save(); } };
-    return () => { if (tmr.current) clearTimeout(tmr.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [f, x]);
-
-  function set(k: string, v: any) { dirty.current.add(k); setF((s) => ({ ...s, [k]: v })); }
-
-  async function save() {
-    setSaving(true); setSaveErr("");
-    try {
-      const r = await fetch("/api/leads", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "save", lead_id: lead.id, lead: { ...f, ...x } }),
-      });
-      const d = await r.json().catch(() => ({}));
-      // This used to swallow every error and then print "Saved" anyway, so a
-      // failed write looked identical to a successful one. Never again: if it
-      // did not save, the screen says so.
-      if (!r.ok) { setSaveErr(d.error || "Could not save. Nothing was written."); setSaving(false); return; }
-      setSavedAt(new Date().toLocaleTimeString());
-      dirty.current.clear();
-      onSaved?.({ ...f, ...x });
-    } catch {
-      setSaveErr("Could not reach the server. Nothing was saved.");
-    }
-    setSaving(false);
-  }
-
   async function revealSsn(field: string) {
     const r = await fetch("/api/ssn-reveal", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -168,13 +145,13 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
               <div className="field" key={fld.id}>
                 <label style={{ fontSize: 13 }}>{fld.label}</label>
                 <div className="row" style={{ gap: 8 }}>
-                  <input type={ssnRevealed[fld.id] ? "text" : "password"} value={f[fld.id] ?? ""} onChange={(e) => set(fld.id, e.target.value)} style={{ flex: 1 }} />
+                  <input type={ssnRevealed[fld.id] ? "text" : "password"} value={vals[fld.id] ?? ""} onChange={(e) => set(fld.id, e.target.value)} style={{ flex: 1 }} />
                   {!ssnRevealed[fld.id] && <button className="btn ghost" onClick={() => revealSsn(fld.id)}>Reveal</button>}
                 </div>
               </div>
             );
           }
-          return <FieldRenderer key={fld.id} field={fld} value={f[fld.id]} onChange={(v) => set(fld.id, v)} feeds={feedFor(fld.id)} />;
+          return <FieldRenderer key={fld.id} field={fld} value={vals[fld.id]} onChange={(v) => set(fld.id, v)} feeds={feedFor(fld.id)} />;
         })}
       </div>
     );
@@ -183,7 +160,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
 
   // Recomputed on every keystroke, so answering "deceased: yes" reveals the
   // date of death immediately rather than on a reload.
-  const merged: Record<string, any> = { ...lead, ...f, ...x };
+  const merged: Record<string, any> = { ...lead, ...vals };
   const fields = allFields.filter((fld) => {
     const rule = HIDE_UNLESS[fld.id];
     if (rule && !rule(merged)) return false;
@@ -194,14 +171,14 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     if (fld.kind === "section") { flush(`s${i}`); blocks.push(<div className="section-title" key={fld.id} style={{ marginTop: 18 }}>{fld.label}</div>); }
     else if (fld.kind === "script") { flush(`s${i}`); blocks.push(<FieldRenderer key={fld.id} field={fld} value={null} onChange={() => {}} />); }
     else if (SHORT.has(fld.kind)) bucket.push(fld);
-    else { flush(`s${i}`); blocks.push(<FieldRenderer key={fld.id} field={fld} value={f[fld.id]} onChange={(v) => set(fld.id, v)} />); }
+    else { flush(`s${i}`); blocks.push(<FieldRenderer key={fld.id} field={fld} value={vals[fld.id]} onChange={(v) => set(fld.id, v)} />); }
   });
   flush("end");
 
   // ---- READ-ONLY VIEW MODE (default) ----
   if (!editMode) {
-    const fullName = [x.first_name, x.last_name].filter(Boolean).join(" ") || lead.claimant_name || "";
-    const addr = [x.mail_addr1, [x.mail_city, x.mail_state].filter(Boolean).join(", "), x.mail_zip].filter(Boolean).join(" · ");
+    const fullName = [vals.first_name, vals.last_name].filter(Boolean).join(" ") || lead.claimant_name || "";
+    const addr = [vals.mail_addr1, [vals.mail_city, vals.mail_state].filter(Boolean).join(", "), vals.mail_zip].filter(Boolean).join(" · ");
     const V = ({ label, value }: { label: string; value: any }) => (
       <div className="ro-field">
         <span className="ro-label">{label}</span>
@@ -218,26 +195,26 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
         <div className="ro-section">Mailing Address</div>
         <div className="ro-grid">
           <V label="Address" value={addr} />
-          <V label="Date of birth" value={x.dob} />
+          <V label="Date of birth" value={vals.dob} />
         </div>
 
         <div className="ro-section">Contact Preferences</div>
         <div className="ro-grid">
-          <V label="Preferred language" value={x.preferred_language} />
-          <V label="Preferred time" value={x.preferred_time} />
-          <V label="Preferred method" value={x.preferred_contact_method} />
-          <V label="Time zone" value={x.client_time_zone} />
+          <V label="Preferred language" value={vals.preferred_language} />
+          <V label="Preferred time" value={vals.preferred_time} />
+          <V label="Preferred method" value={vals.preferred_contact_method} />
+          <V label="Time zone" value={vals.client_time_zone} />
         </div>
 
         <div className="ro-section">Emergency Contact</div>
         <div className="ro-grid">
-          <V label="Name" value={x.ec_name} />
-          <V label="Relationship" value={x.ec_relationship} />
-          <V label="Phone" value={x.ec_phone ? formatUsPhone(x.ec_phone) : ""} />
-          <V label="Email" value={x.ec_email} />
+          <V label="Name" value={vals.ec_name} />
+          <V label="Relationship" value={vals.ec_relationship} />
+          <V label="Phone" value={vals.ec_phone ? formatUsPhone(vals.ec_phone) : ""} />
+          <V label="Email" value={vals.ec_email} />
         </div>
         <div className="ro-grid">
-          <V label="Permission to discuss" value={x.ec_permission_to_discuss ? "Yes" : "No"} />
+          <V label="Permission to discuss" value={vals.ec_permission_to_discuss ? "Yes" : "No"} />
         </div>
 
         {points.length > 0 && <ContactPointsList points={points} />}
@@ -250,57 +227,58 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     <div>
       <div className="section-title">Client Name</div>
       <div className="grid2">
-        <div className="field"><label style={{ fontSize: 13 }}>First name</label><input value={x.first_name} onChange={(e) => setx("first_name", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Last name</label><input value={x.last_name} onChange={(e) => setx("last_name", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>First name</label><input value={vals.first_name} onChange={(e) => set("first_name", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Last name</label><input value={vals.last_name} onChange={(e) => set("last_name", e.target.value)} /></div>
       </div>
-      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Full name (auto): <strong>{[x.first_name, x.last_name].filter(Boolean).join(" ") || "—"}</strong></div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Full name (auto): <strong>{[vals.first_name, vals.last_name].filter(Boolean).join(" ") || "—"}</strong></div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Phone & Email</div>
       <div className="grid2">
         <div className="field">
           <label style={{ fontSize: 13 }}>Cell phone (US)</label>
-          <PhoneInput value={x.phone} onChange={(e164) => setx("phone", e164)} />
+          <PhoneInput value={vals.phone} onChange={(e164) => set("phone", e164)} />
         </div>
-        <div className="field"><label style={{ fontSize: 13 }}>Email</label><input type="email" value={x.email} onChange={(e) => setx("email", e.target.value)} placeholder="name@email.com" /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Email</label><input type="email" value={vals.email} onChange={(e) => set("email", e.target.value)} placeholder="name@email.com" /></div>
       </div>
       <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>US numbers only. Type the 10 digits, the +1 and formatting are added automatically so every file matches.</div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Mailing Address</div>
-      <div className="field"><label style={{ fontSize: 13 }}>Address</label><input value={x.mail_addr1} onChange={(e) => setx("mail_addr1", e.target.value)} /></div>
+      <div className="field"><label style={{ fontSize: 13 }}>Address</label><input value={vals.mail_addr1} onChange={(e) => set("mail_addr1", e.target.value)} /></div>
       <div className="grid2">
-        <div className="field"><label style={{ fontSize: 13 }}>City</label><input value={x.mail_city} onChange={(e) => setx("mail_city", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>State</label><PickOrKeep value={x.mail_state} onChange={(v) => setx("mail_state", v)} options={US_STATES} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>ZIP</label><input value={x.mail_zip} onChange={(e) => setx("mail_zip", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Date of birth</label><input type="date" value={x.dob ?? ""} onChange={(e) => setx("dob", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>City</label><input value={vals.mail_city} onChange={(e) => set("mail_city", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>State</label><PickOrKeep value={vals.mail_state} onChange={(v) => set("mail_state", v)} options={US_STATES} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>ZIP</label><input value={vals.mail_zip} onChange={(e) => set("mail_zip", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Date of birth</label><input type="date" value={vals.dob ?? ""} onChange={(e) => set("dob", e.target.value)} /></div>
       </div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Contact Preferences</div>
       <div className="grid2">
-        <div className="field"><label style={{ fontSize: 13 }}>Preferred language</label><PickOrKeep value={x.preferred_language} onChange={(v) => setx("preferred_language", v)} options={["English", "Spanish", "Other"]} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Preferred time</label><PickOrKeep value={x.preferred_time} onChange={(v) => setx("preferred_time", v)} options={["Morning", "Afternoon", "Evening", "Any time"]} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Preferred contact method</label><PickOrKeep value={x.preferred_contact_method} onChange={(v) => setx("preferred_contact_method", v)} options={["Phone", "Text", "Email"]} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Client time zone</label><PickOrKeep value={x.client_time_zone} onChange={(v) => setx("client_time_zone", v)} options={["Eastern", "Central", "Mountain", "Pacific", "Alaska", "Hawaii"]} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred language</label><PickOrKeep value={vals.preferred_language} onChange={(v) => set("preferred_language", v)} options={["English", "Spanish", "Other"]} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred time</label><PickOrKeep value={vals.preferred_time} onChange={(v) => set("preferred_time", v)} options={["Morning", "Afternoon", "Evening", "Any time"]} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Preferred contact method</label><PickOrKeep value={vals.preferred_contact_method} onChange={(v) => set("preferred_contact_method", v)} options={["Phone", "Text", "Email"]} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Client time zone</label><PickOrKeep value={vals.client_time_zone} onChange={(v) => set("client_time_zone", v)} options={["Eastern", "Central", "Mountain", "Pacific", "Alaska", "Hawaii"]} /></div>
       </div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Emergency Contact</div>
       <div className="grid2">
-        <div className="field"><label style={{ fontSize: 13 }}>Name</label><input value={x.ec_name} onChange={(e) => setx("ec_name", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Relationship to client</label><input value={x.ec_relationship} onChange={(e) => setx("ec_relationship", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Phone</label><PhoneInput value={x.ec_phone} onChange={(e164) => setx("ec_phone", e164)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Email</label><input value={x.ec_email} onChange={(e) => setx("ec_email", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Name</label><input value={vals.ec_name} onChange={(e) => set("ec_name", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Relationship to client</label><input value={vals.ec_relationship} onChange={(e) => set("ec_relationship", e.target.value)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Phone</label><PhoneInput value={vals.ec_phone} onChange={(e164) => set("ec_phone", e164)} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Email</label><input value={vals.ec_email} onChange={(e) => set("ec_email", e.target.value)} /></div>
       </div>
-      <div className="field"><label style={{ fontSize: 13 }}>Mailing address</label><input value={x.ec_mail} onChange={(e) => setx("ec_mail", e.target.value)} /></div>
-      <label className="fld-row"><input type="checkbox" checked={!!x.ec_permission_to_discuss} onChange={(e) => setx("ec_permission_to_discuss", e.target.checked)} /> Permission to discuss the case with this contact</label>
+      <div className="field"><label style={{ fontSize: 13 }}>Mailing address</label><input value={vals.ec_mail} onChange={(e) => set("ec_mail", e.target.value)} /></div>
+      <label className="fld-row"><input type="checkbox" checked={!!vals.ec_permission_to_discuss} onChange={(e) => set("ec_permission_to_discuss", e.target.checked)} /> Permission to discuss the case with this contact</label>
 
       {points.length > 0 && <ContactPointsList points={points} />}
       {blocks.length > 0 && <div className="section-title" style={{ marginTop: 18 }}>Additional Contact Fields</div>}
       {blocks}
       <div className="seg-nav">
         <div className="spacer" />
-        {savedAt && !saveErr && <span className="muted">Saved {savedAt}</span>}
+        {/* "Saved" only when nothing is waiting to save and the last write landed. */}
+        {status === "saved" && savedAt != null && <span className="muted">Saved {new Date(savedAt).toLocaleTimeString()}</span>}
         {saveErr
           ? <span style={{ color: "#b91c1c", fontWeight: 700, fontSize: 12.5, maxWidth: 520, lineHeight: 1.4 }}>{saveErr}</span>
-          : <span className="muted" style={{ fontSize: 12 }}>{saving ? "Saving…" : "Changes save automatically."}</span>}
+          : <span className="muted" style={{ fontSize: 12 }}>{status === "saving" ? "Saving…" : "Changes save automatically."}</span>}
       </div>
     </div>
   );

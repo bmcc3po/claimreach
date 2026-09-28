@@ -1,18 +1,27 @@
 // Minimal email sender via Resend. Works on Cloudflare edge (single fetch).
 // Requires env RESEND_API_KEY and EMAIL_FROM (e.g. "ClaimReach <noreply@claimreach.com>").
 // Returns { ok, error? } so callers can report real delivery status.
+//
+// idempotencyKey (optional) rides as Resend's Idempotency-Key header: a retry
+// with the same key and the same payload inside Resend's 24 hour window gets
+// the first answer back instead of a second email. A retry with the same key
+// and DIFFERENT content is refused by Resend (409). This makes a retry safe,
+// not exactly-once: past the window, or with changed content, it can send again.
 
-export async function sendEmail(opts: { to: string | string[]; cc?: string[]; subject: string; html: string; text?: string; replyTo?: string; attachments?: { filename: string; content: string }[] }): Promise<{ ok: boolean; error?: string }> {
+export async function sendEmail(opts: { to: string | string[]; cc?: string[]; subject: string; html: string; text?: string; replyTo?: string; attachments?: { filename: string; content: string }[]; idempotencyKey?: string }): Promise<{ ok: boolean; error?: string }> {
   const key = (globalThis as any)?.process?.env?.RESEND_API_KEY;
   const from = (globalThis as any)?.process?.env?.EMAIL_FROM || "ClaimReach <noreply@claimreach.com>";
   if (!key) return { ok: false, error: "email not configured (RESEND_API_KEY missing)" };
   const to = (Array.isArray(opts.to) ? opts.to : [opts.to]).filter(Boolean);
   const cc = (opts.cc || []).filter(Boolean);
   if (!to.length) return { ok: false, error: "no recipient email" };
+  const headers: Record<string, string> = { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" };
+  const idem = String(opts.idempotencyKey ?? "").trim();
+  if (idem) headers["Idempotency-Key"] = idem;
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         from, to, cc: cc.length ? cc : undefined, subject: opts.subject, html: opts.html,
         text: opts.text || undefined, reply_to: opts.replyTo || undefined,

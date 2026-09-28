@@ -7,6 +7,10 @@ export default async function StaffReports() {
   const ids = (leads ?? []).map((l) => l.id);
   let claims: any[] = [];
   if (ids.length) { const { data } = await sb.from("claims").select("lead_id, status, claim_type, campaign, tier, created_at").in("lead_id", ids); claims = data ?? []; }
-  const { data: statuses } = await sb.from("statuses").select("key, label, tone, lawruler_group, requires_esign, phase").eq("active", true).order("sort");
-  return <ReportsView leads={leads ?? []} claims={claims} scope="staff" statuses={statuses ?? []} />;
+  // The whole status table, retired rows too, so a retired custom signed
+  // status still counts (one signed rule, isSignedKey). Labels and the status
+  // picker still get only the live (active) set, exactly as before.
+  const { data: catalog } = await sb.from("statuses").select("key, label, tone, lawruler_group, requires_esign, phase, active").order("sort");
+  const statuses = (catalog ?? []).filter((s: any) => s.active === true);
+  return <ReportsView leads={leads ?? []} claims={claims} scope="staff" statuses={statuses} catalog={catalog ?? []} />;
 }

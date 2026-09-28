@@ -135,6 +135,24 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   if (fCreatedTo) active.push({ label: "Created to", value: fCreatedTo, clear: () => setFCreatedTo("") });
   if (fSignedFrom) active.push({ label: "Signed from", value: fSignedFrom, clear: () => setFSignedFrom("") });
   if (fSignedTo) active.push({ label: "Signed to", value: fSignedTo, clear: () => setFSignedTo("") });
+  // The standard Export carries the Filters set here, so the file holds the
+  // matters this list is narrowed to (campaign, case type and status are
+  // tested on each matter). The tabs and the search box are not sent.
+  const exportHref = (() => {
+    const p = new URLSearchParams();
+    if (fCampaign !== "all") p.set("campaign", fCampaign);
+    if (fType !== "all") p.set("case_type", fType);
+    if (fStatus !== "all") p.set("status", fStatus);
+    if (fFirm !== "all") p.set("firm_id", fFirm);
+    if (fState !== "all") p.set("state", fState);
+    if (fCity !== "all") p.set("city", fCity);
+    if (fCreatedFrom) p.set("since", fCreatedFrom);
+    if (fCreatedTo) p.set("until", fCreatedTo);
+    if (fSignedFrom) p.set("signed_from", fSignedFrom);
+    if (fSignedTo) p.set("signed_to", fSignedTo);
+    const s = p.toString();
+    return `/api/export/standard${s ? `?${s}` : ""}`;
+  })();
   function clearFilters() {
     setFType("all"); setFState("all"); setFStatus("all"); setFFirm("all");
     setFCampaign("all"); setFCity("all");
@@ -263,7 +281,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
               <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>
             </div>
           )}
-          {!isFirm && <a className="cl-btn" href="/api/export/standard" title="Every standard field, the same names every webhook uses"><Icon name="download" size={16} />Export</a>}
+          {!isFirm && <a className="cl-btn" href={exportHref} title={active.length ? "Every standard field for the matters these filters show (the tab and search box are not applied)" : "Every standard field, the same names every webhook uses"}><Icon name="download" size={16} />Export</a>}
           {!isFirm && <a className="cl-btn" href="/api/export?format=neos" title="The older NEOS column layout">NEOS export</a>}
           {!isFirm && addPath && addPath !== basePath && <Link className="cl-btn" href={addPath}><Icon name="userplus" size={16} />Add lead</Link>}
         </div>

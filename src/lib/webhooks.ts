@@ -2,6 +2,7 @@
 // key generation, and field mapping. Shared by inbound hooks, outbound delivery,
 // and the REST API.
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { STANDARD_KEYS, WRITABLE_FIELDS, incidentColumns } from "@/lib/standard-fields";
 
 // ---- HMAC (SHA-256) over the raw body, hex digest. ----
 async function hmacHex(secret: string, body: string): Promise<string> {
@@ -44,32 +45,33 @@ export async function lookupKey(key_id: string) {
 // ---- Field mapping: translate an external object into our lead shape. ----
 // Default inbound map: external field name -> canonical id. Covers LawRuler's
 // standard webhook plus common variants. Per-firm overrides layer on top.
-const DEFAULT_INBOUND: Record<string, string> = {
+// A key that is one of OUR standard names is never an alias here: standard
+// names come from STANDARD_FIELDS below, and only the WRITABLE ones (Astra
+// round 7b: ids, status, ownership and SSN are never set from outside, so
+// `status`, `lead_no`, `claim_id`, `lawruler_id` and `ssn_last4` map to
+// nothing).
+const ALIASES: Record<string, string> = {
   // LawRuler standard webhook
   leadid: "vendor_lead_id", leadcreated: "date_referred",
-  first_name: "claimant_first_name", firstname: "claimant_first_name",
-  lastname: "claimant_last_name", last_name: "claimant_last_name",
-  dob: "claimant_dob", email: "claimant_email", phone: "claimant_phone",
-  address1: "mail_address1", city: "mail_city", state: "mail_state", zip: "mail_zip",
+  firstname: "claimant_first_name", lastname: "claimant_last_name",
+  phone: "claimant_phone",
   postal: "mail_zip", postal_code: "mail_zip", zipcode: "mail_zip", mail_zip: "mail_zip",
-  assignee: "handling_attorney", source: "marketing_source", case_type: "case_type",
-  status: "lead_status", description: "injury_description",
+  assignee: "handling_attorney", source: "marketing_source",
+  description: "injury_description",
   signeddate: "esign_signed_date", signedconfirm: "signed_contract_received", leadlink: "source_lead_link",
   // common generic variants
   firstName: "claimant_first_name", lastName: "claimant_last_name",
-  name: "claimant_full_name", full_name: "claimant_full_name",
+  name: "claimant_full_name",
   phone_number: "claimant_phone", email_address: "claimant_email",
-  claim_type: "case_type", campaign: "campaign_name", external_id: "external_id", id: "external_id",
+  claim_type: "case_type", id: "external_id",
+  phone_alt: "claimant_phone_alt", date_of_incident: "date_of_incident", state_of_incident: "incident_state",
+};
+const STANDARD_NAMES = new Set(STANDARD_KEYS);
+const DEFAULT_INBOUND: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(ALIASES).filter(([k]) => !STANDARD_NAMES.has(k))),
   // ClaimReach's own standard field names (Brett, Sep 28): a sender that
   // uses our documented names needs no mapping at all.
-  cell_phone: "claimant_phone", home_phone: "claimant_home_phone",
-  work_phone: "claimant_work_phone", alt_phone: "claimant_phone_alt", phone_alt: "claimant_phone_alt",
-  address2: "mail_address2", dl_number: "claimant_dl_number",
-  incident_date: "date_of_incident", date_of_incident: "date_of_incident",
-  incident_city: "incident_city", incident_state: "incident_state", state_of_incident: "incident_state",
-  case_summary: "injury_description", marketing_source: "marketing_source", handling_attorney: "handling_attorney",
-  lawruler_id: "vendor_lead_id", source_link: "source_lead_link",
-  ec_name: "ec_name", ec_phone: "ec_phone", ec_relationship: "ec_relationship",
+  ...Object.fromEntries(WRITABLE_FIELDS.map((f) => [f.key, f.inbound])),
 };
 function applyTransform(field: string, value: any, transforms: Record<string, any>): any {
   const t = transforms?.[field];
@@ -118,8 +120,13 @@ export function mapInbound(body: Record<string, any>, mapping?: { map?: Record<s
   return out;
 }
 
-// Translate canonical-id keys into the actual `leads` table columns the hook writes.
+// Translate canonical-id keys into the actual `leads` table columns the hook
+// writes. Every writable standard field lands in its own column here (the
+// standard-fields test round-trips each one), so a value we accept is a
+// value we store.
 export function canonicalToLeadColumns(c: Record<string, any>) {
+  const incident = incidentColumns({ date: c.date_of_incident, city: c.incident_city, state: c.incident_state });
+  const link = typeof c.source_lead_link === "string" && /^https?:\/\//i.test(c.source_lead_link.trim()) ? c.source_lead_link.trim() : null;
   return {
     first_name: c.claimant_first_name ?? null,
     last_name: c.claimant_last_name ?? null,
@@ -146,8 +153,17 @@ export function canonicalToLeadColumns(c: Record<string, any>) {
     work_phone: c.claimant_work_phone ?? null,
     phone_alt: c.claimant_phone_alt ?? null,
     dl_number: c.claimant_dl_number ?? null,
-    incident_start: c.date_of_incident ?? null,
-    incident_city: c.incident_city ?? null,
-    incident_state: c.incident_state ?? null,
+    gender: c.claimant_gender ?? null,
+    preferred_language: c.claimant_language ?? null,
+    client_time_zone: c.client_time_zone ?? null,
+    // Where and when, read one way: a real date, a state code, the city alone.
+    incident_start: incident.incident_start,
+    incident_city: incident.incident_city,
+    incident_state: incident.incident_state,
+    ec_name: c.ec_name ?? null,
+    ec_phone: c.ec_phone ?? null,
+    ec_relationship: c.ec_relationship ?? null,
+    case_summary: c.case_summary ?? null,
+    lawruler_url: link,
   };
 }
