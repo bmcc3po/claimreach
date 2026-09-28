@@ -6,7 +6,9 @@ import { createSubmission, agreementKey, docusealConfigured, MISSING_DOCUSEAL, p
 import { syncSubmission, packetsFor, templateFor } from "@/lib/mva-call/esign";
 import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
-import { setClaimStatusForLeads, claimScopeFor } from "@/lib/claim-status";
+import { setClaimStatusForLeads } from "@/lib/claim-status";
+import { resolveMatter } from "@/lib/matter";
+import { sameName } from "@/lib/linked-files";
 import { recordAudit } from "@/lib/audit";
 
 export const runtime = "edge";
@@ -49,18 +51,37 @@ async function send(req: NextRequest) {
   const via = b?.via === "Email" ? "Email" : "Text";
   const email = String(b?.email || "").trim().toLowerCase();
   const paxIndex = Number.isInteger(b?.pax_index) ? Number(b.pax_index) : null;
+  // A passenger's STABLE key (given when they were added on the Car step);
+  // legacy calls fall back to their list position (round 7).
+  const paxKey = paxIndex == null ? null
+    : (/^[A-Za-z0-9_-]{1,40}$/.test(String(b?.pax_key || "")) ? String(b.pax_key) : String(paxIndex));
+  const paxMinor = b?.pax_minor === true;
   const today = TODAY_RE.test(String(b?.today || "")) ? String(b.today) : null;
   const doi = TODAY_RE.test(String(b?.doi || "")) ? String(b.doi) : null;
   if (!leadId || !signer) return NextResponse.json({ error: "Add the signer's full name." }, { status: 400 });
   if (!today) return NextResponse.json({ error: "Your phone's date looks off. Refresh and try again." }, { status: 400 });
   if (!doi) return NextResponse.json({ error: "Add the date of the wreck. It prints on the agreement." }, { status: 400 });
-  if (via === "Email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Add her email to send it by email." }, { status: 400 });
+  if (via === "Email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Add the PNC's email to send it by email." }, { status: 400 });
 
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  const phone = toE164(String(b?.phone || lead.phone || ""));
-  if (via === "Text" && !phone) return NextResponse.json({ error: "Add her cell number to text it." }, { status: 400 });
-  if (via === "Text" && lead.perm_text === false) return NextResponse.json({ error: "She asked not to be texted. Send it by email." }, { status: 409 });
+  // An ADULT passenger's link goes to THEIR own phone or email, never falls
+  // back to the caller's, and a destination equal to the caller's needs an
+  // explicit "they share it" confirmation (Astra round 6). A minor's goes to
+  // the guardian on the line.
+  const adultPax = paxIndex != null && !paxMinor;
+  const phone = toE164(String(b?.phone || (adultPax ? "" : lead.phone) || ""));
+  if (adultPax && b?.pax_recipient_confirmed !== true) {
+    const callerDigits = String(lead.phone || "").replace(/\D/g, "").slice(-10);
+    if (via === "Text" && phone && callerDigits && String(phone).replace(/\D/g, "").slice(-10) === callerDigits) {
+      return NextResponse.json({ error: "That is the caller's number. Confirm the passenger shares it, or add the passenger's own cell.", needs_recipient_confirm: true }, { status: 409 });
+    }
+    if (via === "Email" && email && String(lead.email || "").trim().toLowerCase() === email) {
+      return NextResponse.json({ error: "That is the caller's email. Confirm the passenger shares it, or add the passenger's own email.", needs_recipient_confirm: true }, { status: 409 });
+    }
+  }
+  if (via === "Text" && !phone) return NextResponse.json({ error: adultPax ? "Add the passenger's own cell number to text it." : "Add the PNC's cell number to text it." }, { status: 400 });
+  if (via === "Text" && lead.perm_text === false && !adultPax) return NextResponse.json({ error: "The PNC asked not to be texted. Send it by email." }, { status: 409 });
 
   let key: string | null = agreementKey(stateCodeOf(b?.city));
   if (!key) return NextResponse.json({ error: "Add the city and state on Story so we know which agreement to send." }, { status: 400 });
@@ -95,8 +116,13 @@ async function send(req: NextRequest) {
   // A passenger is their own file.
   let fileLeadId = lead.id;
   if (paxIndex != null) {
-    const ext = `${lead.id}:pax:${paxIndex}`;
-    const { data: existing } = await admin.from("leads").select("id").eq("firm_id", lead.firm_id).eq("external_id", ext).maybeSingle();
+    const ext = `${lead.id}:pax:${paxKey}`;
+    const { data: existing } = await admin.from("leads").select("id, claimant_name").eq("firm_id", lead.firm_id).eq("external_id", ext).maybeSingle();
+    if (existing && !sameName(existing.claimant_name, injured)) {
+      // The passenger list changed under an old position: never attach one
+      // person's agreement to another person's file (Astra round 6).
+      return NextResponse.json({ error: `That passenger spot already belongs to ${existing.claimant_name || "someone else"}. Remove this passenger on the Car step and add them again.` }, { status: 409 });
+    }
     if (existing) fileLeadId = existing.id;
     else {
       const parts = injured.split(/\s+/).filter(Boolean);
@@ -119,10 +145,25 @@ async function send(req: NextRequest) {
       if (leadNo) ins.lead_no = leadNo;
       const { data: pl, error } = await sb.from("leads").insert(ins).select("id").single();
       if (error) return NextResponse.json({ error: `Could not open the passenger's file: ${error.message}` }, { status: 500 });
-      await sb.from("claims").insert({ firm_id: lead.firm_id, lead_id: pl.id, claim_type: lead.case_type, campaign: lead.campaign, campaign_id: lead.campaign_id, status: "new", is_this_file: true, created_by: me.id });
+      const { error: cErr } = await sb.from("claims").insert({ firm_id: lead.firm_id, lead_id: pl.id, claim_type: lead.case_type, campaign: lead.campaign, campaign_id: lead.campaign_id, status: "new", is_this_file: true, created_by: me.id });
+      if (cErr) {
+        // Never leave a claimless passenger file behind (Astra round 6).
+        await admin.from("leads").update({ archived_at: new Date().toISOString(), archived_by: me.id, archive_reason: "claim failed at birth" }).eq("id", pl.id);
+        return NextResponse.json({ error: `Could not open the passenger's file: ${cErr.message}. Nothing was sent.` }, { status: 500 });
+      }
       fileLeadId = pl.id;
     }
   }
+
+  // The signing's ONE matter, resolved BEFORE anything goes to DocuSeal: the
+  // call's pinned claim for the main agreement, the passenger file's own
+  // claim for a passenger. It is stamped on the signing row, so the signed
+  // transition, QA and delivery read it instead of guessing (round 7).
+  const matter = paxIndex != null
+    ? await resolveMatter(sb, fileLeadId, {})
+    : await resolveMatter(sb, lead.id, { claimId: b?.claim_id ? String(b.claim_id) : null, campaignId: lead.campaign_id ?? null });
+  if (!matter.ok) return NextResponse.json({ error: `${matter.error} Nothing was sent.`, ambiguous: !!matter.ambiguous }, { status: matter.status });
+  const signClaimId = matter.claim.id;
 
   const { data: auth } = await sb.auth.getUser();
   const submit = (templateId: string) => createSubmission({
@@ -154,7 +195,7 @@ async function send(req: NextRequest) {
 
   const { data: row, error: rowErr } = await admin.from("esign_submissions").insert({
     firm_id: lead.firm_id, lead_id: fileLeadId, call_id: b?.call_id || null, campaign_id: lead.campaign_id,
-    provider: "docuseal", template_key: key, template_id: String(tpl.template_id),
+    provider: "docuseal", template_key: key, template_id: String(tpl.template_id), claim_id: signClaimId,
     submission_id: String(client.submission_id ?? ""), client_submitter_id: String(client.id), intake_submitter_id: intake ? String(intake.id) : null,
     signer_name: signer, injured_name: injured, phone, email: email || null, via, pax_index: paxIndex,
     status: "sent", sign_url: client.embed_src || null, sent_by: me.id,
@@ -178,10 +219,9 @@ async function send(req: NextRequest) {
 
   const nowIso = new Date().toISOString();
   await admin.from("leads").update({ esign_sent_at: nowIso }).eq("id", fileLeadId);
-  // The send moves THIS campaign's matter only (Astra round 5: signing
-  // transitions must not touch a sibling claim on the same person).
+  // The send moves THIS matter only (Astra rounds 5-6).
   const st = await setClaimStatusForLeads({
-    leadIds: [fileLeadId], claimIds: await claimScopeFor(fileLeadId, lead.campaign_id ?? undefined),
+    leadIds: [fileLeadId], claimIds: [signClaimId],
     status: "esign_sent", actorId: me.id, actorName: me.name ?? "Agent",
   });
   if (!st.ok) console.error("esign_sent status failed", st.error);
@@ -213,9 +253,15 @@ export async function GET(req: NextRequest) {
   // pointer, or an unknown doc_count, and repairs it (Astra round 5: the real
   // route never invoked the recovery it told operators to use).
   const LIVE = ["sent", "opened", "signed", "completed"];
-  const { data: main } = await sb.from("esign_submissions").select("*")
-    .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  let status = main?.status || "ready";
+  const claimId = (url.searchParams.get("claim_id") || "").replace(/[^0-9a-f-]/gi, "");
+  let mq = sb.from("esign_submissions").select("*").eq("lead_id", leadId).is("pax_index", null);
+  if (claimId) mq = mq.or(`claim_id.eq.${claimId},claim_id.is.null`);
+  const { data: main } = await mq.order("created_at", { ascending: false }).limit(1).maybeSingle();
+  // Nothing live (voided, expired, declined, failed): the send is open again,
+  // on every screen, without a reload (Brett, Sep 28: TMP-1186 showed three
+  // gray boxes for an agreement that was none of those).
+  const DEAD = ["voided", "expired", "declined", "failed"];
+  let status = !main || DEAD.includes(main.status) ? "ready" : main.status;
   if (main && LIVE.includes(main.status)) {
     status = await syncSubmission(admin, main, { origin: url.origin });
   }
@@ -225,12 +271,14 @@ export async function GET(req: NextRequest) {
     const { data: rows } = await sb.from("esign_submissions").select("*").eq("call_id", callId).not("pax_index", "is", null)
       .order("created_at", { ascending: false }).limit(6);
     for (const r of rows ?? []) {
-      if (pax[String(r.pax_index)]) continue;
+      if (String(r.pax_index) in pax) continue; // newest row per passenger only
+      if (r.status === "voided") { pax[String(r.pax_index)] = ""; continue; } // voided: that passenger's send opens again
       // Passengers recover the same way as the main agreement (Astra round 5:
       // signed/completed passenger packets never reached the repair path).
       pax[String(r.pax_index)] = LIVE.includes(r.status) ? await syncSubmission(admin, r, { origin: url.origin }) : r.status;
     }
   }
+  for (const k of Object.keys(pax)) if (!pax[k]) delete pax[k];
   // The console shows signed for anything signed or complete.
   return NextResponse.json({ status: status === "completed" ? "signed" : status, complete: status === "completed", pax });
 }

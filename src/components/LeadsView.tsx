@@ -161,6 +161,18 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const targetIds = allMatching ? pageIds : Array.from(sel);
   const selCount = targetIds.length;
 
+  const [moveFirm, setMoveFirm] = useState("");
+  const [moveCamps, setMoveCamps] = useState<{ id: string; name: string }[]>([]);
+  async function pickMoveFirm(firmId: string) {
+    setBulkMsg(""); setBulkErr(false);
+    try {
+      const d = await (await fetch("/api/campaigns")).json();
+      const list = (d.campaigns ?? []).filter((c: any) => c.firm_id === firmId).map((c: any) => ({ id: c.id, name: c.name }));
+      if (!list.length) { setBulkErr(true); setBulkMsg("That firm has no campaign to move these files into. Add one first."); return; }
+      setMoveCamps(list); setMoveFirm(firmId);
+    } catch { setBulkErr(true); setBulkMsg("Could not load that firm's campaigns. Nothing was changed."); }
+  }
+
   async function runBulk(body: any) {
     if (selCount === 0) return;
     setBusy(true); setBulkMsg(""); setBulkErr(false);
@@ -251,7 +263,8 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
               <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>
             </div>
           )}
-          {!isFirm && <a className="cl-btn" href="/api/export?format=neos"><Icon name="download" size={16} />Export</a>}
+          {!isFirm && <a className="cl-btn" href="/api/export/standard" title="Every standard field, the same names every webhook uses"><Icon name="download" size={16} />Export</a>}
+          {!isFirm && <a className="cl-btn" href="/api/export?format=neos" title="The older NEOS column layout">NEOS export</a>}
           {!isFirm && addPath && addPath !== basePath && <Link className="cl-btn" href={addPath}><Icon name="userplus" size={16} />Add lead</Link>}
         </div>
       </div>
@@ -432,9 +445,17 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
             </select>
           )}
           {firms.length > 1 && (
-            <select className="cl-select" defaultValue="" aria-label="Move to firm" onChange={(e) => { if (e.target.value) { runBulk({ op: "move_firm", firmId: e.target.value }); e.target.value = ""; } }}>
+            <select className="cl-select" defaultValue="" aria-label="Move to firm" onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v) void pickMoveFirm(v); }}>
               <option value="">Move to firm</option>
               {firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          )}
+          {!!moveFirm && (
+            /* A move lands the files on a campaign AT the new firm (the
+               database refuses one from another firm). */
+            <select className="cl-select" defaultValue="" aria-label="Campaign at the new firm" onChange={(e) => { const v = e.target.value; if (v) { runBulk({ op: "move_firm", firmId: moveFirm, campaignId: v }); setMoveFirm(""); } }}>
+              <option value="">Into which campaign?</option>
+              {moveCamps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
           <button className="cl-danger" onClick={() => { if (confirm(`Archive ${selCount} file(s)? They stay recoverable for 90 days and only the Operator can delete them for good.`)) runBulk({ op: "delete" }); }}>Archive</button>

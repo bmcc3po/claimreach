@@ -5,7 +5,8 @@ import { requireStaff, LEAD_CALL_COLS } from "@/lib/mva-call/server";
 import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/report";
 import { signedPdfAttachment } from "@/lib/signed-docs";
 import { validateDispo, DISPO_STATUS, DISPO_FIXED_DQ_KEY, DISPO_LABEL, DEFAULT_CALL_REASONS } from "@/lib/mva-call/dispo";
-import { setClaimStatusForLeads, claimScopeFor } from "@/lib/claim-status";
+import { setClaimStatusForLeads } from "@/lib/claim-status";
+import { resolveMatter } from "@/lib/matter";
 import { recordAudit } from "@/lib/audit";
 import { fireEvent } from "@/lib/webhook-deliver";
 import { sendEmail } from "@/lib/email";
@@ -34,11 +35,25 @@ export async function POST(req: NextRequest) {
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
   const admin = supabaseAdmin();
 
+  // The call's ONE matter: the claim the console pinned, else the claim the
+  // call session was pinned to, else the file's single matter. Ambiguity
+  // stops here (Astra round 6: a campaign-derived scope could widen).
+  let pinned: string | null = raw?.claim_id ? String(raw.claim_id) : null;
+  if (!pinned && raw?.call_id) {
+    const { data: cs } = await sb.from("intake_calls").select("claim_id").eq("id", String(raw.call_id)).eq("lead_id", lead.id).maybeSingle();
+    pinned = cs?.claim_id ?? null;
+  }
+  const matter = await resolveMatter(sb, lead.id, { claimId: pinned, campaignId: lead.campaign_id ?? null });
+  if (!matter.ok) return NextResponse.json({ error: matter.error, ambiguous: !!matter.ambiguous }, { status: matter.status });
+  const claimId = matter.claim.id;
+
   // Signed means a real signature. The agent cannot declare one; an owner or
   // admin can, for a file signed outside ClaimReach.
   if (d.dispo === "signed" && !["owner", "admin"].includes(me.role)) {
     const { data: sig } = await admin.from("esign_submissions").select("id, status")
-      .eq("lead_id", lead.id).in("status", ["signed", "completed"]).limit(1).maybeSingle();
+      .eq("lead_id", lead.id).in("status", ["signed", "completed"])
+      .or(matter.via === "only" ? `claim_id.eq.${claimId},claim_id.is.null` : `claim_id.eq.${claimId}`)
+      .limit(1).maybeSingle();
     if (!sig) return NextResponse.json({ error: "There's no signed agreement on this file yet. Pick E-sign sent." }, { status: 409 });
   }
 
@@ -57,6 +72,21 @@ export async function POST(req: NextRequest) {
     const bad = d.reasons.filter((k) => !byKey.has(k));
     if (bad.length) return NextResponse.json({ error: `Unknown reason: ${bad.join(", ")}` }, { status: 400 });
     labels = d.reasons.map((k) => byKey.get(k) as string);
+  }
+
+  // Status FIRST, through the one setter, on THIS matter only. A failure here
+  // leaves the call open so the agent can fix it and press Save again —
+  // it used to close the call and then fail (Astra round 5). Signed is left
+  // alone: the signature moved it.
+  const status = DISPO_STATUS[d.dispo];
+  if (status) {
+    const dqKey = d.dispo === "dq" ? d.reasons[0] : DISPO_FIXED_DQ_KEY[d.dispo] ?? null;
+    const res = await setClaimStatusForLeads({
+      leadIds: [lead.id], claimIds: [claimId], status, dqReasonKey: dqKey,
+      dqNote: labels.length ? labels.join(", ") : null,
+      actorId: me.id, actorName: me.name ?? "Agent",
+    });
+    if (!res.ok) return NextResponse.json({ error: `Nothing was closed; the status did not change: ${res.error}` }, { status: 500 });
   }
 
   // Close the call session (create it if autosave never got one in).
@@ -81,30 +111,13 @@ export async function POST(req: NextRequest) {
     const { data: ins, error } = await sb.from("intake_calls").insert({
       firm_id: lead.firm_id, campaign_id: lead.campaign_id, lead_id: lead.id,
       agent_id: me.id, agent_name: me.name, caller_id: lead.phone || lead.lead_no || "unknown",
-      first_name: lead.first_name, call_type: "mva_console", answers: {}, ...close,
+      first_name: lead.first_name, call_type: "mva_console", claim_id: claimId, answers: {}, ...close,
     }).select("id").single();
     if (error) {
       const hint = /column .* does not exist/i.test(error.message) ? " Run migration 0097, then try again." : "";
-      return NextResponse.json({ error: error.message + hint }, { status: 500 });
+      return NextResponse.json({ error: `The status changed, but the call record did not close: ${error.message}${hint}` }, { status: 500 });
     }
     callId = ins.id;
-  }
-
-  // Status through the one setter. Signed is left alone: the signature moved it.
-  // The dispo belongs to THIS call's matter: the claim the console named, or
-  // the lead's claim on its current campaign — never a sibling matter
-  // (Astra rounds 4-5: an MVA dispo must not flip the Motel claim).
-  const status = DISPO_STATUS[d.dispo];
-  if (status) {
-    const dqKey = d.dispo === "dq" ? d.reasons[0] : DISPO_FIXED_DQ_KEY[d.dispo] ?? null;
-    const postedClaim = raw?.claim_id ? String(raw.claim_id) : "";
-    const claimIds = postedClaim ? [postedClaim] : await claimScopeFor(lead.id, lead.campaign_id);
-    const res = await setClaimStatusForLeads({
-      leadIds: [lead.id], claimIds, status, dqReasonKey: dqKey,
-      dqNote: labels.length ? labels.join(", ") : null,
-      actorId: me.id, actorName: me.name ?? "Agent",
-    });
-    if (!res.ok) return NextResponse.json({ error: `Dispo saved on the call, status did not change: ${res.error}`, call_id: callId }, { status: 500 });
   }
 
   // DNC: every channel off, today.
@@ -123,7 +136,7 @@ export async function POST(req: NextRequest) {
 
   try {
     await fireEvent(lead.firm_id, "call.dispositioned", {
-      lead_id: lead.id, lead_no: lead.lead_no, call_id: callId, dispo: d.dispo, dispo_label: DISPO_LABEL[d.dispo],
+      lead_id: lead.id, claim_id: claimId, lead_no: lead.lead_no, call_id: callId, dispo: d.dispo, dispo_label: DISPO_LABEL[d.dispo],
       reasons: d.reasons, reason_labels: labels, callback_at: d.callbackAt, note: d.note,
       agent: me.name, claimant_name: lead.claimant_name, phone: lead.phone, email: lead.email,
       campaign: lead.campaign, status: status ?? null,
@@ -139,7 +152,9 @@ export async function POST(req: NextRequest) {
     const [{ data: call }, { data: sub }] = await Promise.all([
       sb.from("intake_calls").select("answers").eq("id", callId).maybeSingle(),
       sb.from("esign_submissions").select("id, status, template_key, signer_name, injured_name, sent_at, signed_at, completed_at, completed_pdf_path")
-        .eq("lead_id", lead.id).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        .eq("lead_id", lead.id).is("pax_index", null).neq("status", "voided")
+        .or(matter.via === "only" ? `claim_id.eq.${claimId},claim_id.is.null` : `claim_id.eq.${claimId}`)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     const origin = new URL(req.url).origin;
     const report = caseReport(lead, call?.answers || {}, sub);

@@ -15,6 +15,8 @@ import { callbackAt } from "@/lib/mva-call/dispo";
 
 export interface ConsoleInit {
   leadId: string;
+  /** The ONE matter this call works, pinned when the call opened (round 7). */
+  claimId: string;
   callId: string | null;
   startedAt: number;
   /** Open the text sheet on arrival (from a text on the home screen). */
@@ -33,9 +35,13 @@ export interface ConsoleInit {
 async function post(url: string, body: unknown): Promise<any> {
   const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok || d?.error) throw new Error(d?.error || (r.status >= 500
-    ? `The server did not answer (${r.status}). Nothing went out. Try again in a moment.`
-    : `That did not go through (${r.status}).`));
+  if (!r.ok || d?.error) {
+    const err: any = new Error(d?.error || (r.status >= 500
+      ? `The server did not answer (${r.status}). Nothing went out. Try again in a moment.`
+      : `That did not go through (${r.status}).`));
+    err.status = r.status; err.ended = !!d?.ended;
+    throw err;
+  }
   return d;
 }
 
@@ -78,7 +84,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         const s = e().state;
         e().setState({ send: { ...s.send, status: "sending", error: "" } });
         post("/api/calls/esign", {
-          lead_id: leadId, call_id: callId.current,
+          lead_id: leadId, claim_id: init.claimId, call_id: callId.current,
           signer_name: s.send.client, injured_name: s.send.who === "Someone else" ? s.send.injured : s.send.client,
           via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
           nv_variant: s.send.nvVariant, nv_reason: s.send.nvReason,
@@ -99,10 +105,13 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         post("/api/calls/esign", {
           lead_id: leadId, call_id: callId.current, pax_index: i,
           signer_name: minor ? s.send.client : name, injured_name: name,
-          // An adult passenger's agreement texts to THEIR cell; only a minor's
-          // goes to the caller, who signs as parent or guardian.
-          via: s.send.via, phone: minor ? s.send.phone : (p.cell || ""), email: s.send.email,
+          // An adult passenger's agreement goes to THEIR cell or email; only a
+          // minor's goes to the caller, who signs as parent or guardian. The
+          // server refuses the caller's own destination for an adult unless
+          // someone confirmed they share it (round 7).
+          via: s.send.via, phone: minor ? s.send.phone : (p.cell || ""), email: minor ? s.send.email : (p.email || ""),
           city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
+          pax_key: p.pid || String(i), pax_minor: minor, pax_recipient_confirmed: !!p.shareOk,
           pax_same_addr: p.sameAddr === "Same address",
           nv_variant: s.send.nvVariant, nv_reason: s.send.nvReason,
         }).then(() => mark("sent")).catch((err) => {
@@ -113,9 +122,22 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
       completeAgreement() {
         const f = e().state.file;
         e().setState({ file: { ...f, error: "" } });
-        post("/api/calls/esign/complete", { lead_id: leadId, dob: f.dob, ssn: f.ssn })
+        post("/api/calls/esign/complete", { lead_id: leadId, claim_id: init.claimId, dob: f.dob, ssn: f.ssn })
           .then(() => e().setState({ file: { ...e().state.file, agreement: "done", ssn: "", error: "" } }))
           .catch((err) => e().setState({ file: { ...e().state.file, error: err.message } }));
+      },
+      voidAgreement() {
+        const signed = e().state.send.status === "signed";
+        const why = typeof window !== "undefined" ? window.prompt(signed
+          ? "The PNC already signed this one. Why are you voiding it? (Owner or admin only. The signed copy stays in the file history.)"
+          : "Why are you voiding this agreement? (For example: wrong agreement, wrong number.)") : null;
+        if (!why || !why.trim()) return;
+        post("/api/calls/esign/void", { lead_id: leadId, claim_id: init.claimId, reason: why.trim() })
+          .then((d) => e().setState({
+            send: { ...e().state.send, status: "ready", error: d?.note ? `Voided. ${d.note}` : "Voided. Pick the right agreement and send it." },
+            file: { ...e().state.file, agreement: "open" },
+          }))
+          .catch((err) => e().setState({ send: { ...e().state.send, error: err.message } }));
       },
       resendLink() {
         const t = e().state.text;
@@ -146,7 +168,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         flushSave().then((saved) => {
           if (!saved) throw new Error("The answers have not saved yet. Check the connection; they retry automatically, then press Save again.");
           return post("/api/calls/dispo", {
-          lead_id: leadId, call_id: callId.current, dispo: d.pick, reasons: d.why,
+          lead_id: leadId, claim_id: init.claimId, call_id: callId.current, dispo: d.pick, reasons: d.why,
           callback_at: at ? at.toISOString() : null, note: d.note,
           notify: d.pick === "signed" ? d.notify.filter((n: any) => n.on).map((n: any) => n.how) : [],
           });
@@ -180,7 +202,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   useEffect(() => {
     try {
       const pref = localStorage.getItem(viewKey);
-      if (pref && ["guided", "full", "chore"].includes(pref) && pref !== engine.state.view) engine.setView(pref);
+      if (pref && ["guided", "full", "chore", "form"].includes(pref) && pref !== engine.state.view) engine.setView(pref);
     } catch { /* private mode */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -215,13 +237,26 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     if (saving.current) return false;
     saving.current = true;
     try {
-      const d = await post("/api/calls/save", { lead_id: init.leadId, call_id: callId.current, answers: JSON.parse(snap), mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
+      const d = await post("/api/calls/save", { lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, answers: JSON.parse(snap), mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
       callId.current = d.call_id || callId.current;
       lastSaved.current = snap;
+      // What this save put on the record goes to every open screen.
+      const c = d.contact || {};
+      if (Object.keys(c).length) {
+        if (typeof c.phone === "string") engine.props.callerPhone = c.phone;
+        if (typeof c.email === "string") engine.props.callerEmail = c.email;
+        try { window.dispatchEvent(new CustomEvent("cr:record", { detail: { leadId: init.leadId, ...c } })); } catch { /* no listeners */ }
+      }
       setSavedAt(Date.now());
       if (engine.state.net?.saveError) engine.setState({ net: { saveError: "" } });
       return true;
     } catch (err: any) {
+      // A call already closed (another screen) or pinned to another matter is
+      // not retried forever: say what happened and stop (round 7).
+      if (err?.ended) {
+        engine.setState({ net: { saveError: err.message } });
+        return false;
+      }
       engine.setState({ net: { saveError: "Not saved. Retrying." } });
       console.error("autosave failed", err?.message);
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -262,13 +297,35 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     const flush = () => {
       const snap = JSON.stringify(engine.persistable());
       if (snap === lastSaved.current) return;
-      const body = JSON.stringify({ lead_id: init.leadId, call_id: callId.current, answers: JSON.parse(snap) });
+      const body = JSON.stringify({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, answers: JSON.parse(snap) });
       try { navigator.sendBeacon("/api/calls/save", body); } catch { /* the debounced save already tried */ }
     };
     const onHide = () => { if (document.visibilityState === "hidden") flush(); };
     document.addEventListener("visibilitychange", onHide);
     window.addEventListener("pagehide", flush);
     return () => { document.removeEventListener("visibilitychange", onHide); window.removeEventListener("pagehide", flush); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The File tab's contact card saved the record: the call follows it at
+  // once. Cell, email and home address are the record's on every screen
+  // (hard-mapped, Brett Sep 28), never a separate copy the call keeps.
+  useEffect(() => {
+    const on = (e: any) => {
+      const d = e?.detail || {};
+      if (d.leadId !== init.leadId) return;
+      engine.applyRecord({ phone: d.phone, email: d.email, addr: d.addr });
+    };
+    // An agreement voided from the File tab opens the send again here.
+    const onVoid = (e: any) => {
+      const d = e?.detail || {};
+      if (d.leadId !== init.leadId) return;
+      if (d.pax == null) engine.setState({ send: { ...engine.state.send, status: "ready", error: "Voided. Pick the right agreement and send it." }, file: { ...engine.state.file, agreement: "open" } });
+      else { const pax = { ...(engine.state.file.pax || {}) }; delete pax[String(d.pax)]; engine.setState({ file: { ...engine.state.file, pax } }); }
+    };
+    window.addEventListener("cr:contact", on);
+    window.addEventListener("cr:voided", onVoid);
+    return () => { window.removeEventListener("cr:contact", on); window.removeEventListener("cr:voided", onVoid); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -280,12 +337,16 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     if (!waiting) return;
     const t = setInterval(async () => {
       try {
-        const q = new URLSearchParams({ lead_id: init.leadId, call_id: callId.current || "" });
+        const q = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current || "" });
         const r = await fetch(`/api/calls/esign?${q}`);
         const d = await r.json();
         if (!r.ok || d.error) return;
         const cur = engine.state;
         if (d.status && d.status !== "ready" && d.status !== cur.send.status) engine.setState({ send: { ...cur.send, status: d.status } });
+        // Voided or expired somewhere else: the send opens again here.
+        if (d.status === "ready" && (cur.send.status === "sent" || cur.send.status === "opened")) {
+          engine.setState({ send: { ...cur.send, status: "ready", error: "That agreement is no longer live (voided or expired). Pick the right one and send it." } });
+        }
         if (d.complete && cur.file.agreement === "open") engine.setState({ file: { ...engine.state.file, agreement: "done" } });
         if (d.pax && Object.keys(d.pax).length) engine.setState({ file: { ...engine.state.file, pax: { ...engine.state.file.pax, ...d.pax } } });
       } catch { /* next tick */ }

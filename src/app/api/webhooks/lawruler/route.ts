@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mailColumnsFrom } from "@/lib/us-address";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { mapInbound, canonicalToLeadColumns, firstNonEmpty } from "@/lib/webhooks";
 import { isLorReadyStatus, isLorStatus, lrAttachmentPlan, mergeLorIngest, type LorStatus } from "@/lib/m6";
@@ -241,14 +242,19 @@ export async function POST(req: NextRequest) {
     source_system: clean(fields.source_system) || "lawruler",
     lawruler_url: clean(fields.leadlink),
     lawruler_created_at: toDate(fields.leadcreated),
-    phone_alt: clean(fields.phone_alt),
+    phone_alt: firstNonEmpty(fields.phone_alt, cols.phone_alt),
+    home_phone: firstNonEmpty(cols.home_phone, fields.home_phone, fields.homephone),
+    work_phone: firstNonEmpty(cols.work_phone, fields.work_phone, fields.workphone),
+    dl_number: firstNonEmpty(cols.dl_number, fields.dl_number, fields.drivers_license),
+    incident_city: firstNonEmpty(cols.incident_city, fields.incident_city, fields.accident_city),
+    incident_state: firstNonEmpty(cols.incident_state, fields.incident_state, fields.accident_state),
     ec_name: clean(fields.ec_name),
     ec_relationship: clean(fields.ec_relationship),
     ec_phone: clean(fields.ec_phone),
     ec_email: clean(fields.ec_email),
     ec_message_script: clean(fields.ec_message_script),
     gender: firstNonEmpty(fields.gender, fields.claimant_gender),
-    incident_start: toDateOnly(firstNonEmpty(fields.incident_start, fields.incidentstart)),
+    incident_start: toDateOnly(firstNonEmpty(fields.incident_start, fields.incidentstart, cols.incident_start)),
     incident_end: toDateOnly(firstNonEmpty(fields.incident_end, fields.incidentend)),
     property_name: firstNonEmpty(fields.property_name, fields.propertyname),
     property_street: firstNonEmpty(fields.property_street, fields.property_address, fields.propertystreet),
@@ -258,6 +264,13 @@ export async function POST(req: NextRequest) {
   });
   const ecPerm = toBool(fields.ec_permission_to_discuss);
   if (ecPerm !== null) (base as any).ec_permission_to_discuss = ecPerm;
+  // LawRuler sends the whole mailing address on the street line; split it so
+  // city, state and ZIP are on the file (Brett, Sep 28). Blanks only.
+  {
+    const b: any = base;
+    const cols = mailColumnsFrom(b, b.mail_addr1);
+    if (cols) Object.assign(b, cols);
+  }
 
   // never write generated columns
   delete (base as any).full_name;

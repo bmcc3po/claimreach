@@ -78,6 +78,9 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
  */
 export async function syncSubmission(admin: any, row: any, opts: { actorName?: string; origin?: string } = {}): Promise<string> {
   if (!row?.submission_id) return row?.status || "sent";
+  // A voided agreement stays voided: a late DocuSeal event never brings it
+  // back or signs the matter with it (Brett, Sep 28).
+  if (row.status === "voided" || row.voided_at) return "voided";
   // Durable notify retry: a signed agreement whose team email never went out
   // (failed send, crash after claiming) retries on ANY later sync, not only
   // the first signed transition (Astra round 5). notifySigned claims the
@@ -145,9 +148,18 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
   if (!wasSigned && STATUS_RANK[next] >= STATUS_RANK.signed) {
     // The signature belongs to THIS submission's matter: the lead's claim on
     // the submission's campaign, never a sibling claim (Astra round 5).
-    const claimIds = await claimScopeFor(row.lead_id, row.campaign_id ?? undefined);
-    const res = await setClaimStatusForLeads({ leadIds: [row.lead_id], claimIds, status: "signed_grievous", actorName: row.signer_name || "Client" });
-    if (!res.ok) console.error("signed status failed", res.error);
+    // The signing's own matter: the claim stamped on the submission at send
+    // (round 7), else the lead's one matter on the submission's campaign.
+    // Ambiguity stops here rather than signing a sibling (Astra round 6).
+    const scope = await claimScopeFor(row.lead_id, row.campaign_id ?? null, { claimId: row.claim_id ?? null, db: admin });
+    const res = scope.ok
+      ? await setClaimStatusForLeads({ leadIds: [row.lead_id], claimIds: scope.claimIds, status: "signed_grievous", actorName: row.signer_name || "Client" })
+      : { ok: false, error: scope.error };
+    if (!res.ok) {
+      console.error("signed status failed", res.error);
+      await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: "ClaimReach", category: "retainer",
+        description: `The agreement is signed, but the file's status did not move: ${res.error}`, meta: { submission_id: row.submission_id } });
+    }
     await admin.from("leads").update({ esign_date: officeDateISO() }).eq("id", row.lead_id);
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: row.signer_name || "Client", category: "retainer",
       description: `${row.signer_name || "The client"} signed the agreement (DocuSeal).`, meta: { submission_id: row.submission_id } });

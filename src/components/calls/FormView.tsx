@@ -6,16 +6,20 @@
 // answers, same controls; the frame around it (caller rail, helper, bottom
 // bar) is the shared IntakeWorkspace, so tools stay one click away.
 // ============================================================================
-import { Fragment } from "react";
 import WhereField from "./WhereField";
+import PlaceField from "./PlaceField";
+import { DobField, SsnField } from "./SsnDob";
 
-function Chips({ opts }: { opts: any[] }) {
+// Plain radio buttons (checkboxes for a pick-several question), like the
+// firm report: no pills (Brett, Sep 28).
+function Chips({ opts, multi }: { opts: any[]; multi?: boolean }) {
   return (
-    <div className="sf-chips">
+    <div className="sf-chips sf-radios">
       {(opts || []).map((o: any, i: number) => (
-        <button key={i} type="button" className={`sf-chip${o.on ? " sf-on" : ""}`} aria-pressed={!!o.on} onClick={o.pick}>
-          {o.label}{!!o.sub && <small> {o.sub}</small>}
-        </button>
+        <label key={i} className={`sf-radio${o.on ? " sf-on" : ""}`}>
+          <input type={multi ? "checkbox" : "radio"} checked={!!o.on} onChange={() => {}} onClick={o.pick} />
+          <span>{o.label}{!!o.sub && <small> {o.sub}</small>}</span>
+        </label>
       ))}
     </div>
   );
@@ -26,7 +30,7 @@ function Control({ c, v }: { c: any; v: any }) {
     case "chips":
     case "multi":
       return (<>
-        <Chips opts={c.opts} />
+        <Chips opts={c.opts} multi={c.kind === "multi"} />
         {!!c.note && <textarea className="sf-in sf-area" rows={2} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />}
         {!!c.other && <input className="sf-in" placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value} onChange={c.other.set} />}
       </>);
@@ -70,8 +74,8 @@ function Control({ c, v }: { c: any; v: any }) {
     case "people":
       return (<>
         <div className="sf-chips">
-          <button type="button" className={`sf-chip${c.justMe.on ? " sf-on" : ""}`} onClick={c.justMe.pick}>{c.justMe.label}</button>
-          <button type="button" className="sf-chip" onClick={c.add}>+ Add a passenger</button>
+          <label className="sf-radio"><input type="checkbox" checked={!!c.justMe.on} onChange={() => {}} onClick={c.justMe.pick} /><span>{c.justMe.label}</span></label>
+          <button type="button" className="sf-btn sf-line" onClick={c.add}>+ Add a passenger</button>
         </div>
         {c.people.map((p: any, i: number) => (
           <div key={i} className="sf-person">
@@ -105,10 +109,16 @@ function Control({ c, v }: { c: any; v: any }) {
 }
 
 /** The retainer block, form-plain: signer, injured, how it sends, send. */
-function SendBlock({ v }: { v: any }) {
+function SendBlock({ v, where }: { v: any; where: any }) {
   return (
     <div className="sf-rows">
-      <div className="sf-row"><label className="sf-l">Agreement</label><div className="sf-c"><b>{v.agreement}</b></div></div>
+      <div className={`sf-row${v.agreementKnown ? "" : " sf-need"}`}><label className="sf-l">Agreement</label><div className="sf-c">
+        <b>{v.agreement}</b>
+        {!v.agreementKnown && where && (<>
+          <div className="sf-mini">The agreement follows the state where the wreck happened, not the home address</div>
+          <Control c={where.c} v={v} />
+        </>)}
+      </div></div>
       <div className="sf-row"><label className="sf-l">Signer&apos;s full name</label><div className="sf-c"><input className="sf-in" aria-label="Signer's full name" value={v.f.client.value ?? ""} onChange={v.f.client.set} /></div></div>
       <div className="sf-row"><label className="sf-l">Injured person</label><div className="sf-c">
         <Chips opts={(v.injuredWho || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />
@@ -134,21 +144,107 @@ function SendBlock({ v }: { v: any }) {
         {v.sendWarn && <div className="sf-bad">{v.sendWarnText}</div>}
         {v.sendReady
           ? <button type="button" className="sf-btn sf-go" disabled={!!v.sendNext.disabled} onClick={v.sendNext.go}>Send the agreement</button>
-          : <div className="sf-steps">{(v.sendSteps || []).map((st: any, i: number) => <span key={i} className={/done/.test(st.cls) ? "sf-st sf-st-on" : "sf-st"}>{st.label}</span>)}</div>}
+          : <div className="sf-steps">{(v.sendSteps || []).map((st: any, i: number) => <span key={i} className={/done/.test(st.cls) ? "sf-st sf-st-on" : "sf-st"}>{st.label}<small>{/done/.test(st.cls) ? "Done" : "Not yet"}</small></span>)}</div>}
       </div></div>
     </div>
   );
 }
 
+/** After the send: where the agreement is, then the File (DOB, SSN, complete
+ *  it, home address, license, emergency contact), each passenger's own
+ *  agreement, and Finish. Plain rows like the rest of the form; nothing is
+ *  hidden behind a view switch (Astra round 6, Brett Sep 28). */
+function FileBlock({ v, finish }: { v: any; finish: any }) {
+  const row = (label: string, body: any, need = false) => (
+    <div className={`sf-row${need ? " sf-need" : ""}`}><label className="sf-l">{label}</label><div className="sf-c">{body}</div></div>
+  );
+  const chips = (list: any[]) => <Chips opts={(list || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />;
+  return (<>
+    {v.sendLive && (
+      <div className="sf-rows" style={{ marginBottom: 12 }}>
+        {row("Agreement status", (<>
+          <div className="sf-steps">{(v.sendSteps || []).map((st: any, i: number) => {
+            const done = /done/.test(st.cls);
+            return <span key={i} className={done ? "sf-st sf-st-on" : "sf-st"}>{st.label}<small>{done ? "Done" : "Not yet"}</small></span>;
+          })}</div>
+          {v.hasSendError && <div className="sf-bad">{v.sendError}</div>}
+          <div className="sf-addrow" style={{ marginTop: 8 }}>
+            {v.canResend && <button type="button" className="sf-btn sf-line" onClick={v.resendLink}>Send the link again</button>}
+            {v.canVoid && <button type="button" className="sf-btn sf-line" onClick={v.voidAgreement}>{v.voidLabel}</button>}
+          </div>
+        </>))}
+      </div>
+    )}
+    <div className="sf-rows">
+      {row("Date of birth", <DobField cls="ch" value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} />, !v.f.dob.value)}
+      {row("Social Security number", <SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} />)}
+      {row("Finish the agreement", (<>
+        {v.agreementOpen && (
+          <div className="sf-addrow">
+            <button type="button" className="sf-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
+            <button type="button" className="sf-btn sf-line" onClick={v.leaveForQa}>Leave it for QA</button>
+          </div>
+        )}
+        {v.agreementClosed && <div>{v.agreementNote}</div>}
+        {v.agreementParked && <button type="button" className="sf-btn sf-line" style={{ marginTop: 6 }} onClick={v.reopenAgreement}>Reopen and finish it now</button>}
+        {v.hasFileError && <div className="sf-bad">{v.fileError}</div>}
+      </>))}
+      {row("Home address", <PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} />, !v.f.addr.value)}
+      {row("Driver's license", <input className="sf-in" aria-label="Driver's license number" value={v.f.dl.value ?? ""} onChange={v.f.dl.set} />)}
+      {row("Emergency contact", (<>
+        <div className="sf-addrow">
+          <input className="sf-in" placeholder="Name" aria-label="Emergency contact name" value={v.f.ecName.value ?? ""} onChange={v.f.ecName.set} />
+          <input className="sf-in" type="tel" inputMode="tel" placeholder="Phone" aria-label="Emergency contact phone" value={v.f.ecPhone.value ?? ""} onChange={v.f.ecPhone.set} />
+        </div>
+        <div style={{ marginTop: 6 }}>{chips(v.ecRel)}</div>
+      </>))}
+      {v.signed && (v.paxSend || []).map((p: any, i: number) => row(p.title, (<>
+        <div>{p.note}</div>
+        {p.needCell && p.ready && (<>
+          <input className="sf-in" type="tel" inputMode="tel" placeholder="Their own cell" aria-label="Passenger's own cell" value={p.cell.value ?? ""} onChange={p.cell.set} />
+          <div className="sf-bad">Add their own cell first. It never texts to the caller&apos;s phone.</div>
+        </>)}
+        {p.needEmail && p.ready && (<>
+          <input className="sf-in" type="email" inputMode="email" autoComplete="off" placeholder="Their own email" aria-label="Passenger's own email" value={p.email.value ?? ""} onChange={p.email.set} />
+          <div className="sf-bad">Add their own email first. It never goes to the caller&apos;s email.</div>
+        </>)}
+        {p.shared && p.ready && (
+          <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+            <input type="checkbox" checked={!!p.shareOk} onChange={p.confirmShare} />
+            That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passenger confirmed they share it.
+          </label>
+        )}
+        {p.ready && <button type="button" className="sf-btn" style={{ marginTop: 6 }} onClick={p.send}>{p.button}</button>}
+        {p.live && <div className="sf-steps" style={{ marginTop: 6 }}>{(p.steps || []).map((st: any, j: number) => <span key={j} className={/done/.test(st.cls) ? "sf-st sf-st-on" : "sf-st"}>{st.label}</span>)}</div>}
+      </>)))}
+    </div>
+    {finish && (
+      <div className="sf-rows" style={{ marginTop: 12 }}>
+        <div className="sf-row sf-send"><label className="sf-l">{v.saveBad ? <span className="sf-bad">{v.saveError}</span> : (v.saveText || "Saves as you go")}</label><div className="sf-c">
+          <button type="button" className="sf-btn sf-go" disabled={!!finish.disabled} onClick={finish.go}>{finish.label || "Finish the call"}</button>
+          {finish.ask && <div className="sf-bad" role="alert">{finish.askText}</div>}
+        </div></div>
+      </div>
+    )}
+  </>);
+}
+
 export default function FormView({ v }: { v: any }) {
   const fi = v.fi;
   const secQs = (id: string) => (fi.sections.find((s: any) => s.id === id) || { questions: [] }).questions;
+  // The crash-place question, wherever its section keeps it, so the send
+  // block can ask it when the agreement is still unknown.
+  const where = (fi.sections || []).flatMap((x: any) => x.questions || []).find((q: any) => q?.c?.kind === "where") || null;
+  const rows = fi.chore?.rows || [];
   return (
     <div className="sf">
-      {(fi.chore?.rows || []).map((r: any) => (
+      {rows.map((r: any) => (
         <section key={r.id} id={`sf-sec-${r.id}`} className="sf-sec" onPointerDownCapture={r.enter} onFocusCapture={r.enter}>
           <h2 className="sf-h">{r.label}</h2>
-          {r.id === "retainer" ? <SendBlock v={v} /> : (
+          {r.id === "retainer" ? (<>
+            {v.sendReady && <SendBlock v={v} where={where} />}
+            <FileBlock v={v} finish={r.next ? null : fi.chore?.finish} />
+          </>) : (
             <div className="sf-rows">
               {secQs(r.id).map((q: any) => (
                 <div key={q.id} className={`sf-row${q.answered ? "" : " sf-need"}`}>
@@ -160,7 +256,6 @@ export default function FormView({ v }: { v: any }) {
           )}
         </section>
       ))}
-      <Fragment />
     </div>
   );
 }

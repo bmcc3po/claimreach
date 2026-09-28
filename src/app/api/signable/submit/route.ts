@@ -137,8 +137,10 @@ export async function POST(req: NextRequest) {
     }
     if (doc.lead_id) {
       try {
-        const { setClaimStatusForLeads, claimScopeFor } = await import("@/lib/claim-status");
-        await setClaimStatusForLeads({ leadIds: [doc.lead_id], claimIds: await claimScopeFor(doc.lead_id), status: "signed_grievous", actorName: doc.signer_name || "Client" });
+        // The setter resolves this lead's ONE matter or refuses (never widens).
+        const { setClaimStatusForLeads } = await import("@/lib/claim-status");
+        const st = await setClaimStatusForLeads({ leadIds: [doc.lead_id], status: "signed_grievous", actorName: doc.signer_name || "Client" });
+        if (!st.ok) console.error(`signable ${b.id}: signed status not set: ${st.error}`);
       } catch {
         await admin.from("leads").update({ signed_at: now, esign_sent_at: null }).eq("id", doc.lead_id);
       }

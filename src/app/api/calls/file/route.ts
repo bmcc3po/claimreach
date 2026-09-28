@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { agreementName } from "@/lib/mva-call/agreement-names";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
 import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
@@ -17,13 +18,13 @@ export async function GET(req: NextRequest) {
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const leadId = new URL(req.url).searchParams.get("lead_id") || "";
   const { data: lead } = await sb.from("leads")
-    .select("id, firm_id, lead_no, claimant_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, email, mail_addr1, mail_city, mail_state, mail_zip, firms(name)")
+    .select("id, firm_id, lead_no, claimant_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, home_phone, work_phone, email, mail_addr1, mail_city, mail_state, mail_zip, firms(name)")
     .eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
   const [claimRes, esignRes, notesRaw, auditRes, docsRes, staffRes, statuses] = await Promise.all([
     sb.from("claims").select("id, status, dq_reason_key, created_at").eq("lead_id", leadId).order("created_at", { ascending: true }).limit(1).maybeSingle(),
-    sb.from("esign_submissions").select("id, signer_name, injured_name, via, status, pax_index, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error")
+    sb.from("esign_submissions").select("id, template_key, signer_name, injured_name, via, status, pax_index, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error, voided_at, void_reason")
       .eq("lead_id", leadId).order("created_at", { ascending: false }).limit(20),
     loadFileNotes(sb, leadId, lead.firm_id),
     sb.from("audit_log").select("id, created_at, actor_name, category, description").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(100),
@@ -51,13 +52,17 @@ export async function GET(req: NextRequest) {
     // (Brett, Sep 28).
     contact: {
       phone: lead.phone || "", email: lead.email || "",
+      home_phone: (lead as any).home_phone || "", work_phone: (lead as any).work_phone || "",
       mail_addr1: lead.mail_addr1 || "", mail_city: lead.mail_city || "",
       mail_state: lead.mail_state || "", mail_zip: lead.mail_zip || "",
     },
     status: st ? { key: st, label: resolveStatus(st, statuses).label, tone: resolveStatus(st, statuses).tone } : null,
     claim_id: claimRes.data?.id ?? null,
     agreements: (esignRes.data ?? []).map((a: any) => ({
-      id: a.id, signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status, pax: a.pax_index,
+      id: a.id, name: agreementName(a.template_key), signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status, pax: a.pax_index,
+      voided: a.voided_at, void_reason: a.void_reason,
+      // Void: anyone for an unsigned one; owner/admin for a signed one.
+      can_void: a.status !== "voided" && (["signed", "completed"].includes(a.status) ? ["owner", "admin"].includes(me.role) : ["sent", "opened", "failed", "declined", "expired"].includes(a.status)),
       sent: a.sent_at, opened: a.opened_at, signed: a.signed_at || a.completed_at, error: a.error,
       signed_url: a.completed_pdf_path ? `/api/calls/esign/doc/${a.id}/signed` : null,
       cert_url: a.cert_pdf_path ? `/api/calls/esign/doc/${a.id}/cert` : null,

@@ -30,7 +30,9 @@ function fakeFetch(answer: { status: number; body: any }, seen: any[]) {
       const roles = new Set(b.documents[0].fields.map((f: any) => f.role));
       assert.deepEqual([...roles].sort(), ["Client", "Intake"]);
       for (const f of b.documents[0].fields) for (const a of f.areas) {
-        assert.ok(a.page >= 1 && a.page <= 6, `${key} ${f.name}: page ${a.page}`);
+        // Nevada's contract runs 4 pages before the 3 HIPAA pages (7 in all).
+        const last = key.startsWith("NV") ? 7 : 6;
+        assert.ok(a.page >= 1 && a.page <= last, `${key} ${f.name}: page ${a.page}`);
         for (const n of [a.x, a.y, a.w, a.h]) assert.ok(n > 0 && n < 1, `${key} ${f.name}: area inside the page`);
         assert.ok(a.x + a.w <= 1 && a.y + a.h <= 1, `${key} ${f.name}: area fits`);
       }
@@ -38,7 +40,12 @@ function fakeFetch(answer: { status: number; body: any }, seen: any[]) {
   });
 
   await t("packets are v3 so the empty v2 templates are replaced on the next send", () => {
-    for (const p of Object.values(TMP_MVA_PACKETS)) { assert.match(p.name, / v3$/); assert.match(p.external_id, /-v3$/); }
+    // TX, FL and OTHER went to v3 to replace the empty v2 templates. The two
+    // Nevada packets were born correct as v1 (Sep 28).
+    for (const [k, p] of Object.entries(TMP_MVA_PACKETS)) {
+      const ver = k.startsWith("NV") ? "v1" : "v3";
+      assert.match(p.name, new RegExp(` ${ver}$`)); assert.match(p.external_id, new RegExp(`-${ver}$`));
+    }
   });
 
   await t("the send request: client first, intake second, no made-up params", () => {

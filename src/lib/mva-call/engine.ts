@@ -128,6 +128,10 @@ export const BODYQ: any[] = [
   { key: 'rep', label: 'Signed elsewhere', line: "Has anybody else already had you sign anything on this, another firm or an attorney?", cue: 'Say it flat and warm, same pace as their zip code.', opts: ['No', 'Yes'] }
 ];
 
+// A stable id for a passenger, given once when they are added, so their
+// file stays theirs even if the list is edited (round 7).
+function newPid() { return 'p' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+
 function fmtPhone(raw) {
   var d = String(raw || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
   return d.length === 10 ? '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6) : (raw || 'their phone');
@@ -204,8 +208,11 @@ function chipsCls(opts: any, multi: any) {
 
 export interface CallProps {
   callerName: string;
+  /** The record's contact fields. Hard-mapped (Brett, Sep 28): the PNC's
+   *  cell, email and home address ARE the file's, on every screen. */
   callerPhone?: string;
   callerEmail?: string;
+  homeAddress?: string;
   /** The campaign and file number, shown on the caller card on a computer or iPad. */
   campaign?: string;
   leadNo?: string;
@@ -230,6 +237,8 @@ export interface CallApi {
   sendPax(i: number): void;
   completeAgreement(): void;
   resendLink(): void;
+  /** Void the matter's live agreement (asks for the reason). Optional so older harnesses still build. */
+  voidAgreement?(): void;
   sendText(body: string): void;
   saveDispo(): void;
   home(): void;
@@ -278,7 +287,7 @@ export class CallEngine {
         ? Object.assign({}, s.story, { when: 'Pick a date', date: crashIsoOf(s.story) })
         : s.story,
       body: s.body, car: s.car,
-      send: { via: s.send.via, client: s.send.client, who: s.send.who, injured: s.send.injured, phone: s.send.phone, email: s.send.email, nvVariant: s.send.nvVariant, nvReason: s.send.nvReason },
+      send: { via: s.send.via, client: s.send.client, who: s.send.who, injured: s.send.injured, phone: s.send.phone, email: s.send.email, toOther: s.send.toOther ?? null, nvVariant: s.send.nvVariant, nvReason: s.send.nvReason },
       file: file
     };
   }
@@ -317,7 +326,35 @@ export class CallEngine {
       s.file.pax = Object.assign({}, this.props.esign.pax);
       s.file.ssn = '';
     }
+    this.bindRecord(s);
     return s;
+  }
+
+  // The contact fields are the RECORD's, not a copy the call keeps (Brett,
+  // Sep 28: an old call's blank email hid the email on file). The record
+  // wins on open; the call's value is kept only where the record is blank.
+  // A text going to "another number" (a spouse signing) is not the cell.
+  bindRecord(s: any) {
+    var email = String(this.props.callerEmail || '').trim();
+    if (email) s.send = Object.assign({}, s.send, { email: email });
+    var cell = String(this.props.callerPhone || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    if (cell.length === 10 && s.send.toOther !== true) s.send = Object.assign({}, s.send, { phone: cell });
+    var addr = String(this.props.homeAddress || '').trim();
+    if (addr) s.file = Object.assign({}, s.file, { addr: addr });
+    return s;
+  }
+
+  // Another screen (the File tab's contact card) changed the record: the
+  // call follows it at once.
+  applyRecord(r: { phone?: string; email?: string; addr?: string }) {
+    if (typeof r.phone === 'string') this.props.callerPhone = r.phone;
+    if (typeof r.email === 'string') this.props.callerEmail = r.email;
+    if (typeof r.addr === 'string') this.props.homeAddress = r.addr;
+    var s: any = { send: Object.assign({}, this.state.send), file: Object.assign({}, this.state.file) };
+    if (typeof r.email === 'string') s.send.email = r.email;
+    if (typeof r.phone === 'string' && this.state.send.toOther !== true) s.send.phone = String(r.phone).replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    if (typeof r.addr === 'string') s.file.addr = r.addr;
+    this.setState(s);
   }
 
   // Call ended: open the dispo screen, guessing the obvious answer from the send status.
@@ -832,7 +869,7 @@ export class CallEngine {
     });
 
     rows.push(G('send', 'Agreement'));
-    rows.push({ isInfo: true, label: 'Agreement', value: this.agreementFor(st.city) || 'Needs city and state' });
+    rows.push({ isInfo: true, label: 'Agreement', value: this.agreementFor(st.city) || 'Needs where the wreck happened (city, state)' });
     rows.push(I('Signer full name', 'send', 'client', ''));
     rows.push(C('Injured person', 'send', 'who', ['Same as signer', 'Someone else']));
     if (s.send.who === 'Someone else') rows.push(I('Injured full name', 'send', 'injured', ''));
@@ -1004,6 +1041,10 @@ export class CallEngine {
     if (p.wantsRep === 'No') { this.setState({ file: Object.assign({}, this.state.file, { error: (p.name || 'This passenger') + ' said no to representation. Change it on the Car step if that changed.' }) }); return; }
     if (!minor && this.state.send.via !== 'Email' && String(p.cell || '').replace(/\D/g, '').length < 10) {
       this.setState({ file: Object.assign({}, this.state.file, { error: 'Add ' + (p.name || 'the passenger') + "'s own cell first. Their agreement goes to their phone, never the caller's." }) });
+      return;
+    }
+    if (!minor && this.state.send.via === 'Email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(p.email || ''))) {
+      this.setState({ file: Object.assign({}, this.state.file, { error: 'Add ' + (p.name || 'the passenger') + "'s own email first. Their agreement goes to their email, never the caller's." }) });
       return;
     }
     this.api.sendPax(i);
@@ -1738,7 +1779,7 @@ export class CallEngine {
       bodyComplete: !q && (b.rep !== 'Yes' || this.repGood(b)),
       justMeCls: 'chip' + (s.car.justMe ? ' on' : ''),
       justMe: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }),
-      addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ name: '', rel: null, age: null, hurt: null, cell: '', wantsRep: null, willing: null, sameAddr: null }]) } }),
+      addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
       people: s.car.people.map((p, i) => ({
         title: p.name ? p.name : 'Passenger ' + (i + 1),
         name: p.name,
@@ -1755,6 +1796,9 @@ export class CallEngine {
         // caller's address (prefills their file). Brett, Sep 28.
         cell: { value: p.cell || '', set: (e: any) => this.setPerson(i, 'cell', e.target.value.replace(/[^\d() +-]/g, '').slice(0, 16)) },
         cellOk: String(p.cell || '').replace(/\D/g, '').length >= 10,
+        // Their OWN email, for an agreement sent by email (Astra round 6: an
+        // adult passenger's link was addressed to the caller's email).
+        email: { value: p.email || '', set: (e: any) => this.setPerson(i, 'email', String(e.target.value).trim().slice(0, 120)) },
         minor: p.age === 'Under 18',
         wantsReps: ['Yes', 'Maybe', 'No'].map((r) => ({ label: r, cls: 'chip sm' + (p.wantsRep === r ? ' on' : ''), pick: () => this.setPerson(i, 'wantsRep', p.wantsRep === r ? null : r) })),
         willings: ['Yes', 'Maybe', 'No'].map((r) => ({ label: r, cls: 'chip sm' + (p.willing === r ? ' on' : ''), pick: () => this.setPerson(i, 'willing', p.willing === r ? null : r) })),
@@ -1766,7 +1810,11 @@ export class CallEngine {
       notSigned: s.send.status !== 'signed',
       signed: s.send.status === 'signed',
       sendSteps: this.stepsFor(s.send.status),
-      agreement: agreement ? agreement : 'Needs the state',
+      agreement: agreement ? agreement : 'Needs where the wreck happened',
+      // The retainer follows the state where the WRECK happened, not the
+      // PNC's home address (Brett, Sep 25). The form shows the crash-place
+      // box right here when it is missing (Brett, Sep 28).
+      agreementKnown: !!agreement,
       needState: !agreement,
       needDoi: noDoi,
       injuredWho: this.chips('send', 'who', ['Same as signer', 'Someone else']),
@@ -1832,17 +1880,27 @@ export class CallEngine {
         var minor = x.p.age === 'Under 18';
         var nm = x.p.name || 'Passenger ' + (x.i + 1);
         var cellDigits = String(x.p.cell || '').replace(/\D/g, '');
-        var needCell = !minor && s.send.via !== 'Email' && cellDigits.length < 10;
+        var byEmail = s.send.via === 'Email';
+        var needCell = !minor && !byEmail && cellDigits.length < 10;
+        var needEmail = !minor && byEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(x.p.email || ''));
+        var callerDigits = String(this.props.callerPhone || '').replace(/\D/g, '').slice(-10);
+        var shared = !minor && ((!byEmail && cellDigits.length >= 10 && cellDigits.slice(-10) === callerDigits)
+          || (byEmail && String(x.p.email || '').toLowerCase() === String(this.props.callerEmail || '').toLowerCase() && !!x.p.email));
         var noRep = x.p.wantsRep === 'No';
         return {
           title: nm + (minor ? ', under 18' : ''),
           note: minor ? this.callerFirst() + ' signs as parent or guardian. ' + nm + ' goes on the HIPAA pages.'
             : noRep ? nm + ' said no to representation. Nothing sends unless that changes on the Car step.'
+            : byEmail ? nm + ' signs their own agreement. It goes to THEIR email' + (x.p.email ? ' (' + x.p.email + ')' : '') + ', never the caller\'s.'
             : nm + ' signs their own agreement. It goes to THEIR phone' + (cellDigits.length >= 10 ? ' (' + fmtPhone(x.p.cell) + ')' : '') + ', never the caller\'s.',
           button: 'Send ' + nm + "'s agreement",
           ready: !status && !noRep, live: !!status, noRep: noRep,
-          needCell: needCell,
+          needCell: needCell, needEmail: needEmail,
           cell: { value: x.p.cell || '', set: (e: any) => this.setPerson(x.i, 'cell', e.target.value.replace(/[^\d() +-]/g, '').slice(0, 16)) },
+          email: { value: x.p.email || '', set: (e: any) => this.setPerson(x.i, 'email', String(e.target.value).trim().slice(0, 120)) },
+          // Same destination as the caller: allowed only once someone says so.
+          shared: shared, shareOk: !!x.p.shareOk,
+          confirmShare: () => this.setPerson(x.i, 'shareOk', !x.p.shareOk),
           send: () => this.sendPax(x.i),
           steps: this.stepsFor(status)
         };
@@ -1877,6 +1935,12 @@ export class CallEngine {
       sendText: () => this.sendText(String(this.state.text.draft || '').trim()),
       canResend: s.send.status === 'sent' || s.send.status === 'opened',
       resendLink: () => this.api.resendLink(),
+      // Wrong agreement, wrong number, or the PNC signed it wrong: void it and
+      // the send opens again (Brett, Sep 28). A signed one is owner/admin only
+      // (the server says so if an agent tries).
+      canVoid: ['sent', 'opened', 'signed'].indexOf(s.send.status) >= 0 && !!this.api.voidAgreement,
+      voidLabel: s.send.status === 'signed' ? 'Void the signed agreement' : 'Void this agreement',
+      voidAgreement: () => { if (this.api.voidAgreement) this.api.voidAgreement(); },
       dispoOpen: !!d.open,
       dispo: {
         back: () => this.set('dispo', 'open', false),

@@ -12,6 +12,7 @@
 // phone on the same campaign in the last 30 days.
 // ============================================================================
 import { normPhone } from "@/lib/comms";
+import { mailColumnsFrom } from "./us-address";
 
 export type Fields = Record<string, unknown>;
 
@@ -198,6 +199,7 @@ export async function ingestLead(admin: any, opts: {
     email: n.email ? n.email.toLowerCase() : null,
     dob: dateOnly(n.dob),
     mail_addr1: n.addr1, mail_city: n.city, mail_state: n.state, mail_zip: n.zip,
+    ...(mailColumnsFrom({ mail_city: n.city, mail_state: n.state, mail_zip: n.zip }, n.addr1) ?? {}),
     marketing_source: n.channel || n.marketer || opts.marketerName || null,
     case_description: n.description,
     lawruler_url: n.leadLink && /^https?:\/\//i.test(n.leadLink) ? n.leadLink : null,

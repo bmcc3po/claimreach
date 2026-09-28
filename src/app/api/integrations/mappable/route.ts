@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
+import { STANDARD_FIELDS } from "@/lib/standard-fields";
 export const runtime = "edge";
 
 // ============================================================================
@@ -15,26 +16,9 @@ export const runtime = "edge";
 // twice with nothing keeping the copies honest.
 // ============================================================================
 
-/** On every file regardless of case type. */
-const LEAD_FIELDS: { id: string; label: string }[] = [
-  { id: "lead_id", label: "Lead id (internal)" },
-  { id: "lead_no", label: "Lead number" },
-  { id: "external_id", label: "External id (from the source)" },
-  { id: "claimant_name", label: "Full name" },
-  { id: "first_name", label: "First name" },
-  { id: "last_name", label: "Last name" },
-  { id: "phone", label: "Phone" },
-  { id: "email", label: "Email" },
-  { id: "dob", label: "Date of birth" },
-  { id: "mail_address1", label: "Mailing address" },
-  { id: "mail_city", label: "City" },
-  { id: "mail_state", label: "State" },
-  { id: "mail_zip", label: "Zip" },
-  { id: "case_type", label: "Case type" },
-  { id: "campaign", label: "Campaign" },
-  { id: "status", label: "Status" },
-  { id: "signed_at", label: "Signed at" },
-];
+/** On every file regardless of case type: the standard fields, the same
+ *  names every webhook carries (Brett, Sep 28). */
+const LEAD_FIELDS: { id: string; label: string; group?: string }[] = STANDARD_FIELDS.map((f) => ({ id: f.key, label: f.label, group: f.group }));
 
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();

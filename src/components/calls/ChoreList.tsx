@@ -230,9 +230,10 @@ function Retainer({ v }: { v: any }) {
     <div className="ch-q ch-wide">
       <div className="ch-q-h"><span className="ch-q-l">The agreement</span></div>
       <ul className="ch-steps">
-        {(v.sendSteps || []).map((st: any, i: number) => <li key={i}><span>{st.label}</span><b>{stepWord(st.cls)}</b></li>)}
+        {(v.sendSteps || []).map((st: any, i: number) => <li key={i}><span>{st.label}</span><b className={/done/.test(st.cls) ? "ch-step-done" : undefined}>{stepWord(st.cls)}</b></li>)}
       </ul>
       {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
+      {v.canVoid && <button type="button" className="ch-btn ch-line ch-void" style={{ marginTop: 10 }} onClick={v.voidAgreement}>{v.voidLabel}</button>}
     </div>
     {v.notSigned && (<>
       <Say label={STAY.label} line={STAY.line} small />
@@ -246,8 +247,11 @@ function Retainer({ v }: { v: any }) {
       </div>
       {v.canResend && <div className="ch-wide"><button type="button" className="ch-btn ch-line" onClick={v.resendLink}>Send the link again</button></div>}
     </>)}
-    {v.signed && (<>
-      <Say label={SIGNED.label} line={SIGNED.line} cue={SIGNED.cue} />
+    {v.signed && <Say label={SIGNED.label} line={SIGNED.line} cue={SIGNED.cue} />}
+    {/* The File is always here once the agreement is out: DOB and SSN can go
+        in the moment the PNC gives them (Brett, Sep 28: "I can't find where
+        to put her DOB and SSN"). Completing still waits for the signature. */}
+    <>
       <div className="ch-q">
         <div className="ch-q-h"><span className="ch-q-l">Date of birth</span></div>
         <DobField cls="ch" value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} />
@@ -259,7 +263,7 @@ function Retainer({ v }: { v: any }) {
       <div className="ch-q ch-wide">
         {v.agreementOpen && (
           <div className="ch-row">
-            <button type="button" className="ch-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>Complete the agreement</button>
+            <button type="button" className="ch-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel || "Complete the agreement"}</button>
             <button type="button" className="ch-btn ch-line" onClick={v.leaveForQa}>Leave it for QA in the morning</button>
           </div>
         )}
@@ -281,7 +285,7 @@ function Retainer({ v }: { v: any }) {
         <Field label="Phone"><input className="ch-in" type="tel" value={v.f.ecPhone.value ?? ""} onChange={v.f.ecPhone.set} /></Field>
         <Opts opts={fromCls(v.ecRel)} />
       </div>
-      {(v.paxSend || []).map((p: any, i: number) => (
+      {v.signed && (v.paxSend || []).map((p: any, i: number) => (
         <div key={i} className="ch-q ch-wide">
           <div className="ch-q-h"><span className="ch-q-l">{p.title}</span></div>
           <div className="ch-note">{p.note}</div>
@@ -289,16 +293,28 @@ function Retainer({ v }: { v: any }) {
             <Field label="Their own cell"><input className="ch-in" type="tel" inputMode="tel" value={p.cell.value ?? ""} onChange={p.cell.set} /></Field>
             <div className="ch-note ch-note-bad">Add their own cell first. It never texts to the caller&apos;s phone.</div>
           </>)}
+          {p.needEmail && p.ready && (<>
+            <Field label="Their own email"><input className="ch-in" type="email" inputMode="email" autoComplete="off" value={p.email.value ?? ""} onChange={p.email.set} /></Field>
+            <div className="ch-note ch-note-bad">Add their own email first. It never goes to the caller&apos;s email.</div>
+          </>)}
+          {p.shared && p.ready && (
+            <label className="ch-note" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="checkbox" checked={!!p.shareOk} onChange={p.confirmShare} />
+              That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passenger confirmed they share it.
+            </label>
+          )}
           {p.ready && <button type="button" className="ch-btn" onClick={p.send}>{p.button}</button>}
-          {p.live && <ul className="ch-steps">{(p.steps || []).map((st: any, j: number) => <li key={j}><span>{st.label}</span><b>{stepWord(st.cls)}</b></li>)}</ul>}
+          {p.live && <ul className="ch-steps">{(p.steps || []).map((st: any, j: number) => <li key={j}><span>{st.label}</span><b className={/done/.test(st.cls) ? "ch-step-done" : undefined}>{stepWord(st.cls)}</b></li>)}</ul>}
         </div>
       ))}
-      <div className="ch-say ch-say-2 ch-wide">
-        <div className="ch-say-k">Before you hang up, say</div>
-        {closeLines(v.callerFirst, v.firmSpoken).map((t, i) => <div key={i} className="ch-say-t ch-say-sm">{t}</div>)}
-        <div className="ch-note">{CLOSE_CUE}</div>
-      </div>
-    </>)}
+      {v.signed && (
+        <div className="ch-say ch-say-2 ch-wide">
+          <div className="ch-say-k">Before you hang up, say</div>
+          {closeLines(v.callerFirst, v.firmSpoken).map((t, i) => <div key={i} className="ch-say-t ch-say-sm">{t}</div>)}
+          <div className="ch-note">{CLOSE_CUE}</div>
+        </div>
+      )}
+    </>
   </>);
 }
 

@@ -733,4 +733,46 @@ t("PNC wording: calls saved with the old her/she answer strings still light thei
   assert.equal(e.state.body.repUnhappy, "The PNC says they're unhappy with them");
 });
 
+t("contact is the record's: an old call's blank email never hides the email on file", () => {
+  const e = mk({ callerPhone: "(708) 916-1007", callerEmail: "pnc@example.com", homeAddress: "18475 Zurich Ln, Tinley Park, IL 60477",
+    saved: { phase: "send", send: { email: "", phone: "", via: "Email" }, file: { addr: "" } } });
+  assert.equal(e.state.send.email, "pnc@example.com");
+  assert.equal(e.state.send.phone, "7089161007");
+  assert.equal(e.state.file.addr, "18475 Zurich Ln, Tinley Park, IL 60477");
+});
+t("contact: a text going to another number stays on that number", () => {
+  const e = mk({ callerPhone: "7089161007", saved: { phase: "send", send: { phone: "3125550199", toOther: true } } });
+  assert.equal(e.state.send.phone, "3125550199");
+  assert.equal(JSON.parse(JSON.stringify(e.persistable())).send.toOther, true);
+});
+t("contact: the File tab's card updates the call at once", () => {
+  const e = mk({ callerPhone: "7089161007", callerEmail: "" });
+  e.onChange = () => {};
+  e.applyRecord({ email: "new@example.com", phone: "7085550000", addr: "1 A St, Joliet, IL 60431" });
+  assert.equal(e.state.send.email, "new@example.com");
+  assert.equal(e.state.send.phone, "7085550000");
+  assert.equal(e.state.file.addr, "1 A St, Joliet, IL 60431");
+  assert.equal(e.props.callerEmail, "new@example.com");
+});
+t("agreement row names the crash place, not the home address", () => {
+  const e = mk({ homeAddress: "18475 Zurich Ln, Tinley Park, IL 60477" });
+  const v = e.renderVals();
+  assert.equal(v.agreementKnown, false);
+  assert.match(v.agreement, /where the wreck happened/);
+});
+
+t("void: offered once an agreement is out or signed, never before", () => {
+  const e = mk({ esign: { status: "ready", configured: true, pax: {} } });
+  (e.api as any).voidAgreement = () => calls.push("void");
+  assert.equal(e.renderVals().canVoid, false);
+  e.setState({ send: { ...e.state.send, status: "opened" } });
+  let v = e.renderVals();
+  assert.equal(v.canVoid, true);
+  assert.equal(v.voidLabel, "Void this agreement");
+  v.voidAgreement();
+  assert.equal(calls[calls.length - 1], "void");
+  e.setState({ send: { ...e.state.send, status: "signed" } });
+  assert.equal(e.renderVals().voidLabel, "Void the signed agreement");
+});
+
 console.log(passed, "passed");
