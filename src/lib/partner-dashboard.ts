@@ -35,10 +35,12 @@ export function buildPartnerRows(opts: {
   agreements: any[];
   agents: any[];
   statuses: any[];
+  dqReasons?: any[];
 }): PartnerDashboardRow[] {
   const agents = new Map(opts.agents.map(a => [a.id, a.full_name]));
   const labels = new Map(opts.statuses.map(s => [s.key, s.label]));
   const statusDefs = new Map(opts.statuses.map(s => [s.key, s]));
+  const dqLabels = new Map((opts.dqReasons || []).map(r => [r.key, r.label]));
   return opts.refs.map(ref => {
     const matches = opts.leads.filter(l => sourceRefMatchesLead(ref, l));
     const lead = matches.length === 1 ? matches[0] : null;
@@ -51,7 +53,9 @@ export function buildPartnerRows(opts: {
     ) : [];
     const agreement = completed.sort((a, b) => Date.parse(b.completed_at || b.signed_at || '') - Date.parse(a.completed_at || a.signed_at || ''))[0];
     const calls = lead ? opts.calls.filter(c => c.lead_id === lead.id && c.firm_id === ref.firm_id && c.direction === 'outbound') : [];
-    const receivedAt = lead?.lawruler_created_at || lead?.created_at || null;
+    // Import time is not the source receipt time. Never use it to claim a
+    // speed-to-lead result for a historical LawRuler lead.
+    const receivedAt = lead?.lawruler_created_at || null;
     const syncState: PartnerDashboardRow['syncState'] = matches.length > 1 ? 'identity_review' : !lead ? 'import_pending' : matters.length !== 1 ? 'matter_review' : 'imported';
     const sourceStatus = typeof lead?.vendor_fields?.lawruler_status === 'string'
       ? lead.vendor_fields.lawruler_status.trim() : null;
@@ -76,7 +80,7 @@ export function buildPartnerRows(opts: {
       signed: !!agreement,
       disqualified: !!claim && statusDefs.get(claim.status)?.qualify === 'disqualify',
       sourceStatus, sourceSignedReported, sourceDqReported, sourceDqReason,
-      dqReason: claim?.dq_reason || claim?.dq_reason_key || null,
+      dqReason: claim?.dq_reason || (claim?.dq_reason_key ? dqLabels.get(claim.dq_reason_key) || claim.dq_reason_key : null),
       signedAt: agreement?.signed_at || null,
       syncState,
     };

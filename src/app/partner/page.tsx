@@ -67,9 +67,13 @@ export default async function PartnerPage() {
       agents = result.data || [];
     }
   }
-  const statusResult = await admin.from("statuses").select("key, label, qualify, phase");
-  if (statusResult.error) throw new Error("Could not load case statuses.");
-  const rows = buildPartnerRows({ refs, leads, claims, calls, agreements, agents, statuses: statusResult.data || [] });
+  const [statusResult, dqReasonResult] = await Promise.all([
+    admin.from("statuses").select("key, label, qualify, phase"),
+    admin.from("dq_reasons").select("key, label"),
+  ]);
+  if (statusResult.error || dqReasonResult.error) throw new Error("Could not load case status labels.");
+  const rows = buildPartnerRows({ refs, leads, claims, calls, agreements, agents,
+    statuses: statusResult.data || [], dqReasons: dqReasonResult.data || [] });
   const imported = rows.filter(r => r.syncState === "imported").length;
   const signed = rows.filter(r => r.signed).length;
   const dq = rows.filter(r => r.disqualified).length;
@@ -98,7 +102,7 @@ export default async function PartnerPage() {
         <td>{row.phone || "Phone not synced"}<small>{row.email || "Email not synced"}</small></td>
         <td><strong>{row.claimStatus || (row.syncState === "import_pending" ? "Import pending" : "Review needed")}</strong><small>LawRuler: {row.sourceStatus || "Not synced"}</small>{row.signedAt && <small>Signed record: {formatTime(row.signedAt)}</small>}</td>
         <td>{row.disqualified ? (row.dqReason || "Standard reason missing") : row.sourceDqReported ? (row.sourceDqReason ? `LawRuler: ${row.sourceDqReason}` : "LawRuler reason not supplied; owner review pending") : "—"}</td>
-        <td>{row.speedMinutes === null ? "Not recorded here" : `${row.speedMinutes} min`}<small>Received: {formatTime(row.receivedAt)}</small><small>First dial: {formatTime(row.firstDialedAt)}</small></td>
+        <td>{row.speedMinutes === null ? "Not verifiable" : `${row.speedMinutes} min`}<small>Source receipt: {formatTime(row.receivedAt)}</small><small>First dial: {formatTime(row.firstDialedAt)}</small></td>
         <td>{row.agentName || "Unassigned"}<small>ClaimReach calls: {row.claimReachCalls ?? "—"}</small><small>Last call: {formatTime(row.lastCalledAt)}</small></td>
       </tr>)}</tbody>
     </table></div>
