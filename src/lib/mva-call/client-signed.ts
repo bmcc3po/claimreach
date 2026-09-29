@@ -24,24 +24,13 @@ export function allowedDocuSealFileUrl(raw: string): boolean {
 type SnapshotRow = { firm_id: string | null; submission_id: string | number; signed_at: string | null; status: string };
 type SnapshotResult = { ok: true; path: string } | { ok: false; error: string };
 
-function unsupportedCacheOption(error: unknown): boolean {
-  return error instanceof TypeError
-    && (/^The ['"]?cache['"]? field on ['"]?RequestInitializerDict['"]? is not implemented(?: in fetch)?\.?$/.test(error.message)
-      || /^Unsupported cache mode: no-store\.?$/.test(error.message));
-}
-
 async function fetchPrivatePdf(url: string, fetchPdf: typeof fetch): Promise<Response> {
-  try {
-    return await fetchPdf(url, { cache: "no-store" });
-  } catch (error) {
-    // Older Workers compatibility dates reject this option before issuing a
-    // request. Retry only that known runtime error, never an HTTP/network error.
-    if (!unsupportedCacheOption(error)) throw error;
-    return fetchPdf(url, {
-      headers: { "Cache-Control": "no-store, no-cache", Pragma: "no-cache" },
-      next: { revalidate: 0 },
-    });
-  }
+  // Use portable HTTP headers, as the existing DocuSeal API client does.
+  // Older Workers reject RequestInit.cache; exception type/message vary across
+  // runtimes, so testing for one exact TypeError did not reliably recover.
+  // This is a dynamic authenticated route and the provider URL is freshly
+  // issued. No Next cache/revalidate option is needed for this one-time read.
+  return fetchPdf(url, { headers: { "Cache-Control": "no-store, no-cache", Pragma: "no-cache" } });
 }
 
 /** Save a merged, partially signed PDF once. Reopening the file recovers older
