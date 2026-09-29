@@ -3431,4 +3431,17 @@ begin
   nxt := nextval('public.global_lead_seq');
   return pfx || '-' || nxt::text;
 end $$;
+
+-- The existing authenticated self-provisioning RPC must not turn a partner
+-- identity into a firm account if its email is later added to firm_access.
+create or replace function public.provision_self_from_firm_access()
+returns boolean language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); em text; account_type text;
+begin
+  if uid is null then return false; end if;
+  select email, raw_app_meta_data->>'account_type' into em, account_type
+    from auth.users where id = uid;
+  if account_type = 'partner' then return false; end if;
+  return public.provision_firm_user_for(uid, em);
+end $$;
 commit;
