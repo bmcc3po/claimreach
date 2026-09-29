@@ -22,7 +22,12 @@ export type LrAttachmentPlan =
 export function parseLrFilenameLeadId(filename: string): string | null {
   const name = String(filename ?? "").replace(/^.*[/\\]/, "").trim();
   const m = name.match(/^(\d+)-/);
-  return m ? m[1] : null;
+  if (m) return m[1];
+  // LawRuler's attached contract names can be "Claimant-266949-SignedContract.pdf".
+  // Accept a single delimited source ID, but never guess between multiple
+  // number-like segments (for example an ID and a date/phone).
+  const ids = [...name.matchAll(/(?:^|[-_])(\d{6,30})(?=[-_.]|$)/g)].map(x => x[1]);
+  return ids.length === 1 ? ids[0] : null;
 }
 
 export function classifyLrAttachment(filename: string): {
