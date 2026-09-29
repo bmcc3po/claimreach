@@ -223,7 +223,7 @@ export async function ingestLead(admin: any, opts: {
   let assignedAgent: string | null = null;
   if (via === "lawruler" && n.assignee) {
     try { assignedAgent = await resolveLawRulerAssignee(admin, n.assignee); }
-    catch (e) { return { ok: false, status: 500, error: e instanceof Error ? e.message : "assignee lookup failed" }; }
+    catch (e) { console.error("LawRuler assignee lookup failed; lead will still be ingested", e); }
   }
   const want: Record<string, any> = {
     assigned_agent: assignedAgent,
