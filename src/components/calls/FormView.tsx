@@ -6,7 +6,9 @@
 // answers, same controls; the frame around it (caller rail, helper, bottom
 // bar) is the shared IntakeWorkspace, so tools stay one click away.
 // ============================================================================
-import WhereField from "./WhereField";
+import { useEffect } from "react";
+import IntakeQuestion, { QuestionControl, AgreementRecipient } from "./IntakeQuestion";
+import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, OPEN_LINE, MONEY, SEND_LINE, STAY, SIGNED, walkThrough, NO_DEAD_AIR, closeLines, CLOSE_CUE } from "./scripts";
 import PlaceField from "./PlaceField";
 import { DobField, SsnField } from "./SsnDob";
 
@@ -25,89 +27,6 @@ function Chips({ opts, multi }: { opts: any[]; multi?: boolean }) {
   );
 }
 
-function Control({ c, v }: { c: any; v: any }) {
-  switch (c?.kind) {
-    case "chips":
-    case "multi":
-      return (<>
-        <Chips opts={c.opts} multi={c.kind === "multi"} />
-        {!!c.note && <textarea className="sf-in sf-area" rows={2} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />}
-        {!!c.other && <input className="sf-in" placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value} onChange={c.other.set} />}
-      </>);
-    case "visit":
-      return (<>
-        <Chips opts={c.opts} />
-        <input className="sf-in sf-date" type="date" min={c.date.min || undefined} max={c.date.max || undefined} value={c.date.value ?? ""} onChange={c.date.set} aria-label="Date" />
-        {!!c.date.why && <div className="sf-bad">{c.date.why}</div>}
-      </>);
-    case "crashdate":
-      return (<>
-        <Chips opts={c.opts} />
-        {!!c.date.show && <input className="sf-in sf-date" type="date" max={c.date.max} aria-label="Date of the wreck" value={c.date.value ?? ""} onChange={c.date.set} />}
-      </>);
-    case "where":
-      return <WhereField value={c.where.value} agreement={v.agreement} onChange={c.where.set} onDone={c.where.done} />;
-    case "text":
-      return <input className="sf-in" placeholder={c.field.ph} aria-label={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />;
-    case "notes":
-      return <textarea className="sf-in sf-area" rows={3} aria-label="Notes" placeholder={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />;
-    case "providers":
-      return (<>
-        {c.items.length > 0 && (
-          <div className="sf-chips">
-            {c.items.map((it: any, i: number) => (
-              <span key={i} className="sf-tag">{it.label}<button type="button" aria-label={`Remove ${it.label}`} onClick={it.remove}>×</button></span>
-            ))}
-          </div>
-        )}
-        <div className="sf-addrow">
-          <input className="sf-in" placeholder={c.draft.ph} aria-label={c.draft.ph} value={c.draft.value} onChange={c.draft.set}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); c.add(); } }} />
-          <button type="button" className="sf-btn sf-line" onClick={c.add}>Add</button>
-        </div>
-      </>);
-    case "carrier":
-      return (<>
-        <input className="sf-in" placeholder={c.query.ph} aria-label="Search insurance companies" value={c.query.value} onChange={c.query.set} />
-        <Chips opts={c.opts} />
-      </>);
-    case "people":
-      return (<>
-        <div className="sf-chips">
-          <label className="sf-radio"><input type="checkbox" checked={!!c.justMe.on} onChange={() => {}} onClick={c.justMe.pick} /><span>{c.justMe.label}</span></label>
-          <button type="button" className="sf-btn sf-line" onClick={c.add}>+ Add a passenger</button>
-        </div>
-        {c.people.map((p: any, i: number) => (
-          <div key={i} className="sf-person">
-            <div className="sf-addrow">
-              <input className="sf-in" placeholder="Passenger's name" aria-label="Passenger's name" value={p.name ?? ""} onChange={p.setName} />
-              <button type="button" className="sf-btn sf-line" onClick={p.remove}>Remove</button>
-            </div>
-            <div className="sf-mini">Age</div><Chips opts={(p.ages || []).map((a: any) => ({ label: a.label, on: / on/.test(a.cls), pick: a.pick }))} />
-            <div className="sf-mini">Hurt</div><Chips opts={(p.hurts || []).map((a: any) => ({ label: a.label, on: / on/.test(a.cls), pick: a.pick }))} />
-            {p.ownFile && (<>
-              {!p.minor && (<><div className="sf-mini">Their own cell</div>
-              <input className="sf-in" type="tel" inputMode="tel" aria-label={`${p.first}'s cell`} value={p.cell.value ?? ""} onChange={p.cell.set} /></>)}
-              <div className="sf-mini">Wants representation</div><Chips opts={(p.wantsReps || []).map((a: any) => ({ label: a.label, on: / on/.test(a.cls), pick: a.pick }))} />
-              <div className="sf-mini">Willing to treat</div><Chips opts={(p.willings || []).map((a: any) => ({ label: a.label, on: / on/.test(a.cls), pick: a.pick }))} />
-              <div className="sf-mini">Home address</div><Chips opts={(p.sameAddrs || []).map((a: any) => ({ label: a.label, on: / on/.test(a.cls), pick: a.pick }))} />
-            </>)}
-          </div>
-        ))}
-      </>);
-    case "car":
-      return (
-        <div className="sf-addrow">
-          <select className="sf-in" aria-label="Year" value={c.year.value ?? ""} onChange={c.year.set}>{(c.year.options || []).map((o: any, i: number) => <option key={i} value={o}>{o}</option>)}</select>
-          <input className="sf-in" placeholder="Make" aria-label="Make" value={c.make.value ?? ""} onChange={c.make.set} />
-          <input className="sf-in" placeholder="Model" aria-label="Model" value={c.model.value ?? ""} onChange={c.model.set} />
-        </div>
-      );
-    default:
-      return null;
-  }
-}
-
 /** The retainer block, form-plain: signer, injured, how it sends, send. */
 function SendBlock({ v, where }: { v: any; where: any }) {
   return (
@@ -116,7 +35,7 @@ function SendBlock({ v, where }: { v: any; where: any }) {
         <b>{v.agreement}</b>
         {!v.agreementKnown && where && (<>
           <div className="sf-mini">The agreement follows the state where the wreck happened, not the home address</div>
-          <Control c={where.c} v={v} />
+          <QuestionControl c={where.c} v={v} presentation="form" />
         </>)}
       </div></div>
       <div className="sf-row"><label className="sf-l">Signer&apos;s full name</label><div className="sf-c"><input className="sf-in" aria-label="Signer's full name" value={v.f.client.value ?? ""} onChange={v.f.client.set} /></div></div>
@@ -135,8 +54,7 @@ function SendBlock({ v, where }: { v: any; where: any }) {
       )}
       <div className="sf-row"><label className="sf-l">Send it by</label><div className="sf-c">
         <Chips opts={(v.via || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />
-        {v.viaText && <input className="sf-in" type="tel" inputMode="tel" placeholder="Cell to text it to" aria-label="Cell to text it to" value={v.f.phone.value ?? ""} onChange={v.f.phone.set} />}
-        {v.viaEmail && <input className="sf-in" type="email" inputMode="email" autoComplete="off" placeholder="PNC's email" aria-label="PNC's email" value={v.f.email.value ?? ""} onChange={v.f.email.set} />}
+        <AgreementRecipient v={v} presentation="form" />
       </div></div>
       <div className="sf-row sf-send"><label className="sf-l" aria-hidden="true"></label><div className="sf-c">
         {!!v.previewHref && <a className="sf-link" href={v.previewHref} target="_blank" rel="noopener">Preview the agreement</a>}
@@ -155,8 +73,8 @@ function SendBlock({ v, where }: { v: any; where: any }) {
  *  agreement, and Finish. Plain rows like the rest of the form; nothing is
  *  hidden behind a view switch (Astra round 6, Brett Sep 28). */
 function FileBlock({ v, finish }: { v: any; finish: any }) {
-  const row = (label: string, body: any, need = false) => (
-    <div className={`sf-row${need ? " sf-need" : ""}`}><label className="sf-l">{label}</label><div className="sf-c">{body}</div></div>
+  const row = (label: string, body: any, need = false, key = label) => (
+    <div key={key} className={`sf-row${need ? " sf-need" : ""}`}><label className="sf-l">{label}</label><div className="sf-c">{body}</div></div>
   );
   const chips = (list: any[]) => <Chips opts={(list || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />;
   return (<>
@@ -182,7 +100,7 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
         {v.agreementOpen && (
           <div className="sf-addrow">
             <button type="button" className="sf-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
-            <button type="button" className="sf-btn sf-line" onClick={v.leaveForQa}>Leave it for QA</button>
+            <button type="button" className="sf-btn sf-line" onClick={v.leaveForQa}>Finish later</button>
           </div>
         )}
         {v.agreementClosed && <div>{v.agreementNote}</div>}
@@ -216,7 +134,7 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
         )}
         {p.ready && <button type="button" className="sf-btn" style={{ marginTop: 6 }} onClick={p.send}>{p.button}</button>}
         {p.live && <div className="sf-steps" style={{ marginTop: 6 }}>{(p.steps || []).map((st: any, j: number) => <span key={j} className={/done/.test(st.cls) ? "sf-st sf-st-on" : "sf-st"}>{st.label}</span>)}</div>}
-      </>)))}
+      </>), false, `passenger-${i}`))}
     </div>
     {finish && (
       <div className="sf-rows" style={{ marginTop: 12 }}>
@@ -231,6 +149,11 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
 
 export default function FormView({ v }: { v: any }) {
   const fi = v.fi;
+  useEffect(() => {
+    const target = fi.target ? document.getElementById(`sf-q-${fi.target}`) : null;
+    const el = target || document.getElementById(`sf-sec-${fi.openSec}`);
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ block: target ? "center" : "start" }));
+  }, [fi.jump]); // eslint-disable-line react-hooks/exhaustive-deps
   const secQs = (id: string) => (fi.sections.find((s: any) => s.id === id) || { questions: [] }).questions;
   // The crash-place question, wherever its section keeps it, so the send
   // block can ask it when the agreement is still unknown.
@@ -241,16 +164,17 @@ export default function FormView({ v }: { v: any }) {
       {rows.map((r: any) => (
         <section key={r.id} id={`sf-sec-${r.id}`} className="sf-sec" onPointerDownCapture={r.enter} onFocusCapture={r.enter}>
           <h2 className="sf-h">{r.label}</h2>
+          {r.id === "incident" && <div className="iq-script"><div className="iq-field-label">{OPEN_TONE}</div><p>{openGreeting(v.callerFirst)}</p><p>{openLine(v.callerFirst, v.agentFirst, v.firmSpoken)}</p><div className="iq-cue">{OPEN_CUE} Then stop talking. {OPEN_LINE.cue}</div></div>}
           {r.id === "retainer" ? (<>
+            {v.sendReady ? <div className="iq-script"><div className="iq-field-label">{MONEY.label}</div><p>{MONEY.line}</p><div className="iq-cue">{MONEY.cue}</div><p>{SEND_LINE}</p></div> : v.notSigned ? <div className="iq-script"><div className="iq-field-label">{STAY.label}</div><p>{STAY.line}</p>{walkThrough(v.firmSpoken).map((line: string, i: number) => <p key={i}>{line}</p>)}<div className="iq-cue">{NO_DEAD_AIR.map((line: string, i: number) => <p key={i}>{line}</p>)}</div></div> : <div className="iq-script"><div className="iq-field-label">{SIGNED.label}</div><p>{SIGNED.line}</p><div className="iq-cue">{SIGNED.cue}</div></div>}
             {v.sendReady && <SendBlock v={v} where={where} />}
             <FileBlock v={v} finish={r.next ? null : fi.chore?.finish} />
+            {v.signed && <div className="iq-script">{closeLines(v.callerFirst, v.firmSpoken).map((line: string, i: number) => <p key={i}>{line}</p>)}<div className="iq-cue">{CLOSE_CUE}</div></div>}
           </>) : (
             <div className="sf-rows">
+              {r.id === "treatment" && !!fi.sections.find((s: any) => s.id === r.id)?.gap && <div className="iq-cue"><b>30-day check: {fi.sections.find((s: any) => s.id === r.id).gap.value}</b> {fi.sections.find((s: any) => s.id === r.id).gap.sub}</div>}
               {secQs(r.id).map((q: any) => (
-                <div key={q.id} className={`sf-row${q.answered ? "" : " sf-need"}`}>
-                  <label className="sf-l">{q.label}{q.optional ? <span className="sf-opt"> (optional)</span> : null}</label>
-                  <div className="sf-c"><Control c={q.c} v={v} /></div>
-                </div>
+                <IntakeQuestion key={q.id} q={q} v={v} presentation="form" />
               ))}
             </div>
           )}

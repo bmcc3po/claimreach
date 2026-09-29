@@ -7,7 +7,7 @@
 // same one Guided and Q&A read, so switching views never changes a thing.
 // ============================================================================
 import { useEffect, useRef } from "react";
-import WhereField from "./WhereField";
+import IntakeQuestion from "./IntakeQuestion";
 import { OPEN_LINE, OPEN_TONE, openGreeting, openLine, OPEN_CUE } from "./scripts";
 import DuoIcon from "./DuoIcon";
 
@@ -28,127 +28,6 @@ function Status({ status, count, bad }: { status: string; count: string; bad: bo
       {!!count && status !== "empty" && <span className="fi-count">{count}</span>}
       <span className="fi-st fi-st-ring" />
     </span>
-  );
-}
-
-function Chips({ opts }: { opts: any[] }) {
-  return (
-    <div className="fi-chips">
-      {opts.map((o, i) => (
-        <button key={i} type="button" className={`fi-chip${o.on ? " fi-on" : ""}`} aria-pressed={!!o.on} onClick={o.pick}>
-          <span>{o.label}</span>{!!o.sub && <small>{o.sub}</small>}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Control({ c, v }: { c: any; v: any }) {
-  switch (c.kind) {
-    case "chips":
-    case "multi":
-      return (<>
-        <Chips opts={c.opts} />
-        {!!c.note && <textarea className="fi-in fi-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />}
-        {!!c.other && <input className="fi-in" placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value} onChange={c.other.set} />}
-        {!!c.cue && <div className="fi-cue fi-cue-bad">{c.cue}</div>}
-      </>);
-    case "visit":
-      return (<>
-        <Chips opts={c.opts} />
-        <label className="fi-date"><span>Or the date</span>
-          <input className="fi-in" type="date" min={c.date.min || undefined} max={c.date.max || undefined} value={c.date.value ?? ""} onChange={c.date.set} />
-        </label>
-        {!!c.date.why && <div className="fi-cue fi-cue-bad">{c.date.why}</div>}
-      </>);
-    case "crashdate":
-      return (<>
-        <Chips opts={c.opts} />
-        {!!c.date.show && <input className="fi-in fi-in-date" type="date" max={c.date.max} aria-label="Date of the wreck" value={c.date.value ?? ""} onChange={c.date.set} />}
-      </>);
-    case "where":
-      return <WhereField value={c.where.value} agreement={v.agreement} onChange={c.where.set} onDone={c.where.done} />;
-    case "text":
-      return <input className="fi-in" placeholder={c.field.ph} aria-label={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />;
-    case "notes":
-      return <textarea className="fi-in fi-area" rows={4} placeholder={c.field.ph} aria-label="Notes" value={c.field.value ?? ""} onChange={c.field.set} />;
-    case "providers":
-      return (<>
-        {c.items.length > 0 && (
-          <div className="fi-chips">
-            {c.items.map((it: any, i: number) => (
-              <span key={i} className="fi-tag">{it.label}<button type="button" aria-label={`Remove ${it.label}`} onClick={it.remove}>×</button></span>
-            ))}
-          </div>
-        )}
-        <div className="fi-addrow">
-          <input className="fi-in" placeholder={c.draft.ph} aria-label={c.draft.ph} value={c.draft.value} onChange={c.draft.set}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); c.add(); } }} />
-          <button type="button" className="fi-add" onClick={c.add}>Add</button>
-        </div>
-      </>);
-    case "carrier":
-      return (<>
-        <input className="fi-in" placeholder={c.query.ph} aria-label="Search insurance companies" value={c.query.value} onChange={c.query.set} />
-        <Chips opts={c.opts} />
-      </>);
-    case "people":
-      return (<>
-        <div className="fi-chips">
-          <button type="button" className={`fi-chip${c.justMe.on ? " fi-on" : ""}`} onClick={c.justMe.pick}>{c.justMe.label}</button>
-          <button type="button" className="fi-chip fi-chip-add" onClick={c.add}>+ Add a passenger</button>
-        </div>
-        {c.people.map((p: any, i: number) => (
-          <div key={i} className="fi-person">
-            <div className="fi-addrow">
-              <input className="fi-in" placeholder="Passenger's name" aria-label="Passenger's name" value={p.name ?? ""} onChange={p.setName} />
-              <button type="button" className="fi-add fi-remove" onClick={p.remove}>Remove</button>
-            </div>
-            <Chips opts={p.ages.map((a: any) => ({ label: a.label, on: / on/.test(a.cls), pick: a.pick }))} />
-            <Chips opts={p.hurts.map((a: any) => ({ label: a.label === "Yes" ? "Hurt" : "Not hurt", on: / on/.test(a.cls), pick: a.pick }))} />
-          </div>
-        ))}
-      </>);
-    case "car":
-      return (
-        <div className="fi-car">
-          <select className="fi-in" aria-label="Vehicle year" value={c.year.value} onChange={c.year.set}>{c.year.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
-          <input className="fi-in" placeholder="Make" aria-label="Vehicle make" value={c.make.value} onChange={c.make.set} />
-          <input className="fi-in" placeholder="Model" aria-label="Vehicle model" value={c.model.value} onChange={c.model.set} />
-        </div>
-      );
-    default:
-      return null;
-  }
-}
-
-function Question({ q, v }: { q: any; v: any }) {
-  if (!q.editing) {
-    return (
-      <button type="button" id={`fi-q-${q.id}`} className={`fi-q fi-q-row${q.flash ? " fi-flash" : ""}`} onClick={q.edit}>
-        <span className="fi-q-k">{q.label}</span>
-        <span className={`fi-q-v${q.tone ? " fi-tone-" + q.tone : ""}`}>{q.value}</span>
-        <Chev />
-      </button>
-    );
-  }
-  return (
-    <div id={`fi-q-${q.id}`} className={`fi-q fi-q-edit${q.flash ? " fi-flash" : ""}`}>
-      <div className="fi-q-h">
-        <span className="fi-q-k">{q.label}{q.optional && <em> Optional</em>}</span>
-        {q.answered && <button type="button" className="fi-q-done" onClick={q.edit}>Done</button>}
-      </div>
-      {q.showAsk && <div className="fi-ask">{q.ask}</div>}
-      <Control c={q.c} v={v} />
-      {q.rep && (
-        <div className="fi-rep">
-          <div className="fi-cue">{v.rep.head}. Do not go looking for it. The PNC has to be the one who says they're unhappy.</div>
-          <Chips opts={(v.rep.unhappy || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />
-          {v.rep.isUnhappy && <Chips opts={(v.rep.kind || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />}
-          {v.rep.fender && <div className="fi-cue">The firm charges these back. Close it warm and let it go.</div>}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -249,7 +128,7 @@ export function FiBody({ v }: { v: any }) {
                 {!!s.gap.sub && <div className="fi-gap-s">{s.gap.sub}</div>}
               </div>
             )}
-            {s.questions.map((q: any) => <Question key={q.id} q={q} v={v} />)}
+            {s.questions.map((q: any) => <IntakeQuestion key={q.id} q={q} v={v} presentation="full" />)}
           </div>
         )}
       </section>

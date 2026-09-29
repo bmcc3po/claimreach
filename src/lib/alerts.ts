@@ -51,15 +51,17 @@ export async function leadsWithOutbound(admin: any, ids: string[]): Promise<Set<
 // Alerts are the same for every staff login, and the bell asks every minute
 // from every open tab. Hold the answer for 30 seconds per server instance.
 let cached: { at: number; p: Promise<Alert[]> } | null = null;
-export function computeAlerts(): Promise<Alert[]> {
+export function computeAlerts(db?: any): Promise<Alert[]> {
+  // Caller-scoped dashboards never share another user's cached rows.
+  if (db) return computeAlertsFresh(db);
   if (cached && Date.now() - cached.at < 30000) return cached.p;
   const p = computeAlertsFresh().catch((e) => { cached = null; throw e; });
   cached = { at: Date.now(), p };
   return p;
 }
 
-async function computeAlertsFresh(): Promise<Alert[]> {
-  const admin = supabaseAdmin();
+async function computeAlertsFresh(db?: any): Promise<Alert[]> {
+  const admin = db ?? supabaseAdmin();
   const sla = await loadSla();
   const alerts: Alert[] = [];
 

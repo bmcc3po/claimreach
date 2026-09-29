@@ -1,0 +1,41 @@
+const {PGlite}=require('@electric-sql/pglite');
+const fs=require('node:fs');const path=require('node:path');const assert=require('node:assert/strict');
+const app=path.resolve(__dirname,'..');
+const id='10000000-0000-4000-8000-000000000001',other='10000000-0000-4000-8000-000000000002',firm='30000000-0000-4000-8000-000000000001',lead='40000000-0000-4000-8000-000000000001';
+const hash='a'.repeat(64),hash2='b'.repeat(64);
+let passed=0;
+const main=async()=>{
+const db=new PGlite();
+await db.exec(`create role anon;create role authenticated;create role service_role;create schema storage;
+create table storage.objects(bucket_id text,name text);
+create table signable_documents(id uuid primary key,firm_id uuid,lead_id uuid,title text,status text,provider text,certified boolean,signature_data text,signed_name text,signed_at timestamptz,signed_ip text,signature_type text,doc_hash text,consent_at timestamptz,audit jsonb,completed_pdf_path text,cert_pdf_path text,completed_pdf_url text,cert_pdf_url text,envelope_id text,packet_group text,created_at timestamptz default now(),signer_name text,signer_email text,signer_phone text,sender_ip text,sent_at timestamptz);
+create table notifications(firm_id uuid,sender_name text,lead_id uuid,body text);`);
+await db.exec(fs.readFileSync(path.join(app,'supabase/migrations/0111_emergency_signing_evidence.sql'),'utf8'));
+const test=async(name,fn)=>{await fn();passed++;console.log('ok',name)};
+const seed=async(status='sent')=>{
+await db.exec('truncate signable_documents,notifications,storage.objects;');
+for(const [i,x] of [id,other].entries()) await db.query('insert into signable_documents(id,firm_id,lead_id,title,status,provider,certified,envelope_id,packet_group,audit)values($1,$2,$3,$4,$5,$6,false,$7,$8,$9)',[x,firm,lead,'Agreement',status,'builtin','CR-'+x,'PKT-test',{emergency:{version:1,claim_id:'claim',campaign_id:'campaign',packet_manifest:[id,other],snapshot:{source_sha256:'c'.repeat(64)}}}]);
+};
+const evidence={signed_name:'CHAT TESTER',signature_data:'data:image/png;base64,FAKE',signature_type:'drawn',consent_version:'emergency-v1',consent_accepted:true,ip:'offline',ua:'test'};
+const begin=(ids=[id,other],h=hash,e=evidence)=>db.query('select begin_emergency_signing($1,$2,$3) result',[ids,h,e]);
+const artifacts=[id,other].map(x=>({id:x,completed_pdf_path:firm+'/signed-CR-'+x+'.pdf',cert_pdf_path:firm+'/cert-CR-'+x+'.pdf'}));
+const finish=(ids=[id,other],h=hash,a=artifacts)=>db.query('select finish_emergency_signing($1,$2,$3) result',[ids,h,JSON.stringify(a)]);
+const store=async()=>{for(const a of artifacts)for(const p of [a.completed_pdf_path,a.cert_pdf_path])await db.query('insert into storage.objects values($1,$2)',['signed-docs',p]);};
+await test('migration compiles and RPC privileges are service-only',async()=>{
+const r=await db.query(`select has_function_privilege('anon','begin_emergency_signing(uuid[],text,jsonb)','execute') a,has_function_privilege('authenticated','finish_emergency_signing(uuid[],text,jsonb)','execute') u,has_function_privilege('service_role','begin_emergency_signing(uuid[],text,jsonb)','execute') s`);assert.deepEqual(r.rows[0],{a:false,u:false,s:true});});
+await test('missing consent changes no packet rows',async()=>{await seed();await assert.rejects(begin(undefined,hash,{...evidence,consent_accepted:false}));assert.equal((await db.query("select count(*)::int n from signable_documents where status='sent'")).rows[0].n,2);});
+await test('missing member is rejected atomically',async()=>{await seed();await assert.rejects(begin([id]));assert.equal((await db.query("select count(*)::int n from signable_documents where status='sent'")).rows[0].n,2);});
+await test('cancelled packet never signs',async()=>{await seed('cancelled');await assert.rejects(begin());});
+await test('first valid signature freezes evidence on every member',async()=>{await seed();await begin();assert.equal((await db.query("select count(*)::int n from signable_documents where status='signing' and consent_at is not null and signed_name='CHAT TESTER'")).rows[0].n,2);});
+await test('same signature retry preserves first evidence and timestamp',async()=>{const before=await db.query('select signed_at,audit from signable_documents order by id');await begin(undefined,hash,{...evidence,ip:'different-retry'});assert.deepEqual((await db.query('select signed_at,audit from signable_documents order by id')).rows,before.rows);});
+await test('different signature retry rejects without overwriting',async()=>{await assert.rejects(begin(undefined,hash2));assert.equal((await db.query("select audit->'emergency'->'evidence'->>'hash' hash from signable_documents limit 1")).rows[0].hash,hash);});
+await test('missing artifacts never finalize or notify',async()=>{await assert.rejects(finish());assert.equal((await db.query('select count(*)::int n from notifications')).rows[0].n,0);});
+await test('wrong artifact identity never finalizes',async()=>{await store();await assert.rejects(finish(undefined,hash,[{...artifacts[0],completed_pdf_path:artifacts[1].completed_pdf_path},artifacts[1]]));});
+await test('complete stored packet finalizes atomically with one provisional notice',async()=>{await finish();assert.equal((await db.query("select count(*)::int n from signable_documents where status='signed'")).rows[0].n,2);assert.equal((await db.query('select count(*)::int n from notifications')).rows[0].n,1);});
+await test('finalize retry never duplicates notice',async()=>{await finish();assert.equal((await db.query('select count(*)::int n from notifications')).rows[0].n,1);});
+await test('signed evidence cannot change/delete or reopen',async()=>{await assert.rejects(db.query("update signable_documents set signature_data='new' where id=$1",[id]));await assert.rejects(db.query('delete from signable_documents where id=$1',[id]));await assert.rejects(db.query("update signable_documents set status='sent' where id=$1",[id]));});
+await test('snapshot version and issuing date cannot be stripped to evade guard',async()=>{await assert.rejects(db.query("update signable_documents set audit=jsonb_set(audit,'{emergency,version}','0') where id=$1",[id]));await assert.rejects(db.query("update signable_documents set created_at=now()+interval '1 day' where id=$1",[id]));});
+await test('direct signed status cannot skip signature recording',async()=>{await seed();await assert.rejects(db.query("update signable_documents set status='signed' where id=$1",[id]));});
+await test('authenticated table write cannot forge signing evidence',async()=>{await seed();await db.exec('grant select,update on signable_documents to authenticated;set role authenticated;');try{await assert.rejects(db.query("update signable_documents set status='signing',signature_data='forged' where id=$1",[id]));}finally{await db.exec('reset role');}});
+console.log(passed+' SQL scenarios passed');await db.close();};
+main().catch(e=>{console.error(e);process.exit(1)});

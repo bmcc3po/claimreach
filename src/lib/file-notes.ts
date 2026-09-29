@@ -43,9 +43,12 @@ export async function loadFileNotes(
   sb: any,
   leadId: string,
   firmId: string | null | undefined,
+  claimId?: string | null,
 ): Promise<{ notes: any[]; deskNotes: any[] }> {
+  let query = sb.from("notes").select("*").eq("lead_id", leadId);
+  if (claimId) query = query.or(`claim_id.eq.${claimId},claim_id.is.null`);
   const [{ data: notes }, { data: deskNotes }] = await Promise.all([
-    sb.from("notes").select("*").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(100),
+    query.order("created_at", { ascending: false }).limit(100),
     firmId
       ? sb.from("lead_notes").select("id, body, created_at, author, pinned, source")
           .eq("lead_id", leadId).eq("firm_id", firmId)

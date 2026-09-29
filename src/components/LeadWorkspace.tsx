@@ -6,6 +6,7 @@ import IntakeSurface from "./IntakeSurface";
 import CaseOverview from "./CaseOverview";
 import StatusBadge from "./ui/StatusBadge";
 import FileStatusControl from "./FileStatusControl";
+import FileArchiveButton from "./FileArchiveButton";
 import ActivityLog from "./ActivityLog";
 import ContactInfo from "./ContactInfo";
 import CaseDetails from "./CaseDetails";
@@ -34,13 +35,29 @@ interface Claim {
 }
 
 const TABS_HELP = "tabs are computed once in file-fence.ts";
+type AppCall = { rows: { k: string; v: string }[]; answered: number; href: string; hasOld: boolean; when: string | null; agent: string | null; dispo: string | null };
+const NAV_GROUPS = [
+  { label: "Overview", tabs: ["Overview"] },
+  { label: "Intake & details", tabs: ["Case Questions", "Contact Info", "Case Details"] },
+  { label: "Documents & signing", tabs: ["Retainer"] },
+  { label: "Communications", tabs: ["Messages", "Calls"] },
+  { label: "History", tabs: ["Timeline", "Activity Log", "Notes"] },
+  { label: "QA", tabs: ["QA"] },
+];
 
-export default function LeadWorkspace({
+export default function LeadWorkspace(props: Parameters<typeof LeadWorkspaceRecord>[0]) {
+  return <LeadWorkspaceRecord key={props.lead.id} {...props} />;
+}
+
+function LeadWorkspaceRecord({
   lead, claims, activity, stats, claimProperties, audit, notes, callLogs, staff = [], formsByType = {},
   fence = INTERNAL_STAFF_FENCE, headerActions, retainers, signables, identified = [], lor = null,
-  points = [], lastComm = null, appCall = null, linked = [],
+  points = [], lastComm = null, appCall: defaultAppCall = null, appCalls = {}, linked = [], initialClaimId, formsByClaim = {},
 }: {
-  appCall?: { rows: { k: string; v: string }[]; answered: number; href: string; hasOld: boolean; when: string | null; agent: string | null; dispo: string | null } | null;
+  appCall?: AppCall | null;
+  appCalls?: Record<string, AppCall>;
+  initialClaimId?: string;
+  formsByClaim?: Record<string, any[]>;
   linked?: { id: string; lead_no: string | null; name: string; label: string }[];
   lead: any;
   claims: Claim[];
@@ -72,15 +89,23 @@ export default function LeadWorkspace({
   // on mount, so this never resets active typing.
   useEffect(() => { setLeadLive((s: any) => ({ ...s, ...lead })); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [lead.updated_at]);
   const [activeClaimId, setActiveClaimId] = useState(
-    claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
+    claims.find((c) => c.id === initialClaimId)?.id ?? claims.find((c) => c.is_this_file)?.id ?? claims[0]?.id ?? null
   );
   const [tab, setTab] = useState("Overview");
   const [editMode, setEditMode] = useState(false);
   const activeClaim = claims.find((c) => c.id === activeClaimId);
+  const appCall = activeClaimId ? appCalls[activeClaimId] ?? defaultAppCall : null;
+  const matterNotes = notes.filter((n: any) => !n.claim_id || n.claim_id === activeClaimId);
+  const matterAudit = audit.filter((a: any) => {
+    const claimId = a.claim_id ?? a.meta?.claim_id;
+    return claimId == null || claimId === activeClaimId;
+  });
   const [showAddClaim, setShowAddClaim] = useState(false);
   const canEdit = fileMayEditLead(fence);
   const canTools = fileMayUseStaffTools(fence);
   const TABS = fileTabs(lead.current_user_role, fence);
+  const navigation = NAV_GROUPS.map((g) => ({ ...g, tabs: g.tabs.filter((t) => TABS.includes(t as any)) })).filter((g) => g.tabs.length);
+  const group = navigation.find((g) => g.tabs.includes(tab));
   const backHref = fileBackHref(fence);
   const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
 
@@ -92,7 +117,7 @@ export default function LeadWorkspace({
   }
 
   return (
-    <div>
+    <div className="case-workspace">
       {/* The file header: name as the anchor, everything else calm around it. */}
       <div className="lf-head">
         <a className="lf-back" href={backHref} title="Back to your queue" aria-label="Back to your queue">
@@ -100,11 +125,11 @@ export default function LeadWorkspace({
         </a>
         <div className="lf-id">
           <div className="lf-name">
-            <span>{lead.claimant_name ?? "Unnamed claimant"}</span>
+            <span>{leadLive.claimant_name ?? "Unnamed claimant"}</span>
             <span className="lf-no">{lead.lead_no}</span>
           </div>
           <div className="lf-sub">
-            <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={lead.current_user_role} />
+            <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={claims.length === 1 ? lead.current_user_role : undefined} />
             {appCall && lead.firm_name && (<>
               <span className="leadhead-dot">·</span>
               <span title="The attorney this case signs with">Attorney: {lead.firm_name}</span>
@@ -122,18 +147,20 @@ export default function LeadWorkspace({
         </div>
         <div className="lf-acts">
           {headerActions}
+          {canTools && appCall && <a className="cl-btn cl-sm" href={appCall.href}>Resume intake</a>}
           {fileMayExportPdf(fence) && (
-            <a className="cl-btn cl-ghost cl-sm" href={`/api/export/intake-pdf?lead_id=${lead.id}`} target="_blank" rel="noopener noreferrer" title="Download this claimant's full intake as a PDF">Export PDF</a>
+            <a className="cl-btn cl-ghost cl-sm" href={`/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${activeClaimId || ""}`} target="_blank" rel="noopener noreferrer" title="Download this matter's full intake as a PDF">Export PDF</a>
           )}
-          {canTools && ["owner", "admin", "manager", "qa"].includes(lead.current_user_role || "") && <SendToFirmButton leadId={lead.id} />}
-          <FileStatusControl leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+          {canTools && ["owner", "admin", "manager", "qa", "agent"].includes(lead.current_user_role || "") && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
+          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
           {canTools && <LockFileButton lead={lead} />}
+          {canTools && <FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} />}
         </div>
       </div>
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
           {claims.map((c) => (
-            <button key={c.id} className={`claimtab ${activeClaimId === c.id ? "on" : ""}`} onClick={() => setActiveClaimId(c.id)}>
+            <button key={c.id} className={`claimtab ${activeClaimId === c.id ? "on" : ""}`} onClick={() => { setActiveClaimId(c.id); setShowOldForm(false); setEditMode(false); const url = new URL(window.location.href); url.searchParams.set("claim", c.id); window.history.replaceState(window.history.state, "", url); }}>
               {(c.campaign || c.claim_type)}
             </button>
           ))}
@@ -152,14 +179,14 @@ export default function LeadWorkspace({
       )}
 
       {/* WIP fix banner: QA sent this back. Resubmit returns it to the QA queue. */}
-      {canTools && lead.wip_pending && <WipBanner lead={lead} claimId={activeClaim?.id} signed={/^signed_/.test(activeClaim?.status || "")} />}
+      {canTools && activeClaim?.claim_type !== "mva" && lead.wip_pending && <WipBanner lead={lead} claimId={activeClaim?.id} signed={/^signed_/.test(activeClaim?.status || "")} />}
 
       {/* Main grid */}
       <div className="lead-grid solo">
         <div className="card" style={{ padding: 0 }}>
           <div className="tabs">
-            {TABS.map((t) => (
-              <button key={t} className={tab === t ? "active" : ""} onClick={() => { setTab(t); setEditMode(false); }}>{t}</button>
+            {navigation.map((g) => (
+              <button key={g.label} className={group === g ? "active" : ""} onClick={() => { setTab(g.tabs[0]); setEditMode(false); }}>{g.label}</button>
             ))}
             {canEdit && (tab === "Contact Info" || tab === "Case Details") && (
               <button className={`edit-toggle ${editMode ? "on" : ""}`} onClick={() => setEditMode((v) => !v)} title={editMode ? "Done editing" : "Edit"} style={{ alignSelf: "center", marginRight: 8, marginLeft: "auto" }}>
@@ -167,13 +194,14 @@ export default function LeadWorkspace({
               </button>
             )}
           </div>
+          {group && group.tabs.length > 1 && <div className="case-subnav" aria-label={group.label}>{group.tabs.map((t) => <button type="button" className={tab === t ? "active" : ""} key={t} onClick={() => { setTab(t); setEditMode(false); }}>{t === "Messages" ? "Texts & emails" : t === "Activity Log" ? "Audit table" : t}</button>)}</div>}
           <div className="formbody">
             {tab === "Overview" && (<>
-              <CaseOverview lead={leadLive} activeClaim={activeClaim} notes={notes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} onGo={(t) => { setTab(t); setEditMode(false); }} />
+              <CaseOverview lead={leadLive} activeClaim={activeClaim} notes={matterNotes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} intakeAnswered={appCall?.answered} onGo={(t) => { setTab(t); setEditMode(false); }} />
               {/* Injured-party status and the pipeline live at the bottom of
                   Overview now; the old "File detail" fold bar is gone. */}
               <div style={{ marginTop: 18 }}><PncBanner lead={leadLive} readOnly={!canEdit} /></div>
-              <div style={{ marginTop: 12 }}><PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} /></div>
+              <div style={{ marginTop: 12 }}><PipelineStrip status={activeClaim?.status ?? lead.status ?? "new"} mva={activeClaim?.claim_type === "mva"} /></div>
             </>)}
             {tab === "Case Questions" && appCall && !showOldForm && (
               <AppAnswers call={appCall} onShowOld={appCall.hasOld ? () => setShowOldForm(true) : undefined} />
@@ -197,8 +225,8 @@ export default function LeadWorkspace({
                   claimantEmail={lead.email ?? undefined}
                   claimType={activeClaim.claim_type}
                   leadId={lead.id}
-                  customFields={formsByType?.[activeClaim.claim_type]}
-                  readOnly={!canEdit}
+                  customFields={formsByClaim[activeClaim.id] ?? formsByType?.[activeClaim.claim_type]}
+                  readOnly={!canEdit || !!appCall}
                 />
               </div>
             )}
@@ -209,16 +237,15 @@ export default function LeadWorkspace({
             {tab === "Case Details" && (
               <>
                 <CaseDetails lead={leadLive} staff={staff} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} onSaved={liveUp} />
-                <CaseDocuments leadId={lead.id} claimId={activeClaim?.id} />
               </>
             )}
             {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
-            {tab === "Retainer" && <RetainerTab leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} fence={fence} initialRetainers={retainers} initialSignables={signables} />}
-            {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="sms" fence={fence} />}
+            {tab === "Retainer" && <><RetainerTab key={activeClaimId} leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} fence={fence} initialRetainers={retainers} initialSignables={signables} /><CaseDocuments key={`docs-${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} /></>}
+            {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="messages" fence={fence} />}
             {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="call" fence={fence} />}
-            {tab === "Notes" && <NotesTab leadId={lead.id} claimId={activeClaim?.id} initial={notes} fence={fence} />}
-            {tab === "Timeline" && <CaseTimeline entries={audit} />}
-            {tab === "Activity Log" && <ActivityLog entries={audit} />}
+            {tab === "Notes" && <NotesTab key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} initial={matterNotes} fence={fence} />}
+            {tab === "Timeline" && <CaseTimeline entries={matterAudit} />}
+            {tab === "Activity Log" && <ActivityLog entries={matterAudit} />}
           </div>
         </div>
 
@@ -262,9 +289,9 @@ function CampaignPicker({ leadId, current, role }: { leadId: string; current?: s
   );
 }
 
-function PipelineStrip({ status }: { status: string }) {
+function PipelineStrip({ status, mva = false }: { status: string; mva?: boolean }) {
   // Map any status to one of five pipeline stages.
-  const stages = ["Intake", "Grievous", "QA", "Approved", "Firm"];
+  const stages = mva ? ["Intake", "Agreement", "Agent review", "Firm"] : ["Intake", "Grievous", "QA", "Approved", "Firm"];
   let active = 0;
   if (/grievous/.test(status)) active = 1;
   else if (/^(qa|signed_qa)$/.test(status)) active = 2;
@@ -272,6 +299,7 @@ function PipelineStrip({ status }: { status: string }) {
   else if (/approved/.test(status)) active = 3;
   else if (/delivered|retained|dropped|dq/.test(status)) active = 4;
   else active = 0;
+  if (mva) active = /delivered|retained/.test(status) ? 3 : /signed|approved/.test(status) ? 2 : /esign/.test(status) ? 1 : 0;
   return (
     <div className="pipeline-strip">
       {stages.map((s, i) => (
@@ -415,47 +443,71 @@ function LockFileButton({ lead }: { lead: any }) {
   );
 }
 
-function SendToFirmButton({ leadId }: { leadId: string }) {
+// Sends the matter this screen is showing (the active claim tab), never the
+// whole person: each matter has its own sent state (Astra round 7b #57).
+function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: string }) {
   const [state, setState] = useState<{ sentAt: string | null; result: string | null }>({ sentAt: null, result: null });
+  const [delivery, setDelivery] = useState<any>(null);
+  const [dispatch, setDispatch] = useState<any>(null);
+  const [canReconcile, setCanReconcile] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const q = `lead_id=${encodeURIComponent(leadId)}${claimId ? `&claim_id=${encodeURIComponent(claimId)}` : ""}`;
 
   useEffect(() => {
     let alive = true;
+    setState({ sentAt: null, result: null }); setMsg(""); setLoaded(false);
     (async () => {
       try {
-        const r = await fetch(`/api/firm-delivery?lead_id=${leadId}`);
-        if (!r.ok) return;
+        const r = await fetch(`/api/firm-delivery?${q}`);
         const d = await r.json();
-        if (alive) setState({ sentAt: d.firm_sent_at ?? null, result: d.firm_send_result ?? null });
-      } catch {}
+        if (!r.ok || d.error) throw new Error(d.error || "Delivery status could not load.");
+        if (alive) { setState({ sentAt: d.firm_sent_at ?? null, result: d.firm_send_result ?? null }); setDelivery(d.delivery); setDispatch(d.dispatch); setCanReconcile(!!d.can_reconcile); setLoaded(true); }
+      } catch (e: any) { if (alive) setMsg(e.message); }
     })();
     return () => { alive = false; };
-  }, [leadId]);
+  }, [q]);
 
   async function send(force: boolean) {
     const already = !!state.sentAt;
-    if (already && !force) { if (!confirm("This file was already sent to the firm. Resend it?")) return; force = true; }
-    if (!force && !confirm("Send this file to the firm now?")) return;
+    if (already && !force) { if (!confirm("This matter was already sent to the firm. Resend it?")) return; force = true; }
+    if (!force && !confirm(`Send this matter's packet to ${delivery?.firm || "the firm"}?\n\nTo: ${delivery?.to || "Configured recipient"}${delivery?.cc?.length ? `\nCC: ${delivery.cc.join(", ")}` : ""}`)) return;
     setBusy(true); setMsg("");
     try {
-      const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, force }) });
+      const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId || undefined, force }) });
       const d = await r.json();
       setBusy(false);
-      if (!r.ok) { setMsg(d.error || "Send failed"); return; }
-      if (d.skipped) { setMsg(`Skipped: ${d.skipped}`); return; }
+      if (!r.ok || !d.ok) { setMsg(d.error || d.skipped || "Send failed"); try { const state = await (await fetch(`/api/firm-delivery?${q}`)).json(); setDispatch(state.dispatch); } catch {} return; }
+      if (d.skipped) { setMsg(d.skipped); return; }
       setState({ sentAt: new Date().toISOString(), result: "sent" });
-      setMsg(`Sent to ${d.to || "firm"} (${(d.attachments || []).length} attachment${(d.attachments || []).length === 1 ? "" : "s"})`);
+      const n = (d.attachments || []).length;
+      setMsg(`Sent to ${d.to || "firm"} (${n} attachment${n === 1 ? "" : "s"})${d.warning ? `. ${d.warning}` : ""}`);
     } catch (e: any) { setBusy(false); setMsg(e?.message || "Send error"); }
   }
+  async function reconcile(delivered: boolean) {
+    const note = window.prompt(`Record this attempt as ${delivered ? "delivered" : "NOT delivered"}. Check the email provider's delivery log first. Describe the evidence (at least 10 characters). This does not send an email.`);
+    if (!note || note.trim().length < 10) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "reconcile", lead_id: leadId, claim_id: claimId, attempt_key: dispatch?.attempt_key, delivered, note: note.trim() }) });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "Reconciliation failed.");
+      const fresh = await (await fetch(`/api/firm-delivery?${q}`)).json();
+      setDispatch(fresh.dispatch); setState({ sentAt: fresh.firm_sent_at, result: fresh.firm_send_result }); setMsg(d.message);
+    } catch (e: any) { setMsg(e.message); }
+    finally { setBusy(false); }
+  }
+  const unresolved = ["sending", "uncertain"].includes(dispatch?.state);
 
   const label = busy ? "Sending…" : state.sentAt ? "Resend to firm" : "Send to firm";
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <button className="cl-btn cl-ghost cl-sm" onClick={() => send(false)} disabled={busy}
-        title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this file's documents"}>
+      <button className="cl-btn cl-ghost cl-sm" onClick={() => send(false)} disabled={busy || !loaded || unresolved}
+        title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this matter's documents"}>
         {label}
       </button>
+      {unresolved && <span className="muted" role="status">Delivery outcome needs review.{canReconcile && <><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(true)}>Record delivered</button><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(false)}>Record not delivered</button></>}</span>}
       {msg && <span className="muted" style={{ fontSize: 11.5 }}>{msg}</span>}
     </span>
   );
@@ -473,23 +525,23 @@ function AppAnswers({ call, onShowOld }: {
     <div>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontWeight: 600 }}>Answered in the App</div>
+          <div style={{ fontWeight: 600 }}>Intake answers</div>
           <div className="muted" style={{ fontSize: 13 }}>
             {call.answered ? `${call.answered} answers` : "Nothing answered yet"}{when ? `, last saved ${when}` : ""}{call.agent ? ` by ${call.agent}` : ""}{call.dispo ? `. Dispo: ${call.dispo}` : ""}
           </div>
         </div>
         <div className="row" style={{ gap: 8 }}>
-          {onShowOld && <button className="btn ghost sm" onClick={onShowOld}>Show the old intake form</button>}
-          <a className="btn sm" href={call.href}>Open in the App</a>
+          {onShowOld && <button className="btn ghost sm" onClick={onShowOld}>Earlier intake answers · read only</button>}
+          <a className="btn sm" href={call.href}>Resume intake</a>
         </div>
       </div>
       {call.rows.length === 0 ? (
-        <p className="muted">No call on this file yet. Open it in the App to take the call.</p>
+        <p className="muted">No intake answers on this matter yet. Start the intake to capture them.</p>
       ) : (
         <table className="docket" style={{ width: "100%" }}>
           <tbody>
-            {call.rows.map((r) => (
-              <tr key={r.k}><td className="muted" style={{ width: 200, verticalAlign: "top" }}>{r.k}</td><td style={{ fontWeight: 500 }}>{r.v}</td></tr>
+            {call.rows.map((r, i) => (
+              <tr key={`${r.k}-${i}`}><td className="muted" style={{ width: 200, verticalAlign: "top" }}>{r.k}</td><td style={{ fontWeight: 500 }}>{r.v}</td></tr>
             ))}
           </tbody>
         </table>

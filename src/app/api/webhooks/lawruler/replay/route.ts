@@ -1,42 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
-import { normalizeLead, loadCampaigns, chooseCampaign, ingestLead } from "@/lib/lead-ingest";
+import { normalizeLead, loadCampaigns, chooseCampaign } from "@/lib/lead-ingest";
 export const runtime = "edge";
 
-// GET /api/webhooks/lawruler/replay?hours=48   (owners and admins, signed in)
-//
-// LawRuler posts that were turned away before the App knew their case type
-// (MVA leads sent while the hook was being set up) sit in the webhook log with
-// everything they carried. This runs them through the ingest now. Safe to run
-// twice: a lead is matched by its LawRuler lead ID, never made a second time.
+// Historical failed envelopes are diagnostic evidence, not a safe substitute for
+// original attachments. GET never replays ingestion or starts communications.
 export async function GET(req: NextRequest) {
-  const sb = await supabaseServer();
-  const me = await requireStaff(sb);
-  if (!me || !["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "Owners and admins only." }, { status: 403 });
-
-  const hours = Math.min(Math.max(Number(new URL(req.url).searchParams.get("hours")) || 48, 1), 24 * 14);
-  const since = new Date(Date.now() - hours * 3600000).toISOString();
+  const me = await requireStaff(await supabaseServer());
+  if (!me || !["owner", "admin"].includes(me.role) || !me.can("settings.manage") || !me.can("leads.view")) return NextResponse.json({ error: "Owners and admins with settings and file access only." }, { status: 403 });
+  const q = new URL(req.url).searchParams, firmId = q.get("firm_id") || "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(firmId)) return NextResponse.json({ error: "Select a firm." }, { status: 400 });
+  const hours = Math.min(Math.max(Number(q.get("hours")) || 48, 1), 24 * 14);
   const admin = supabaseAdmin();
-  const { data: events, error } = await admin.from("webhook_events")
-    .select("id, created_at, payload, error")
-    .eq("event_type", "lawruler.lead").eq("status", "failed").gte("created_at", since)
-    .order("created_at", { ascending: true }).limit(500);
+  const { data: events, error } = await admin.from("webhook_events").select("id, firm_id, created_at, payload, error")
+    .eq("event_type", "lawruler.lead").eq("status", "failed").or(`firm_id.eq.${firmId},firm_id.is.null`)
+    .gte("created_at", new Date(Date.now() - hours * 3600000).toISOString()).order("created_at", { ascending: false }).limit(500);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const camps = await loadCampaigns(admin);
-  const seen = new Set<string>();
-  const out: any[] = [];
-  for (const ev of events ?? []) {
-    const fields = (ev as any).payload?.fields;
-    if (!fields || typeof fields !== "object") continue;
-    const norm = normalizeLead(fields);
-    const camp = chooseCampaign(norm.caseType, camps);
-    if (!camp || !norm.leadId) continue;
-    if (seen.has(norm.leadId)) continue;
-    seen.add(norm.leadId);
-    const r = await ingestLead(admin, { lead: norm, campaign: camp, via: "lawruler" });
-    out.push({ lawruler_lead_id: norm.leadId, name: norm.name || [norm.first, norm.last].filter(Boolean).join(" "), campaign: camp.name, ok: r.ok, created: r.created ?? false, lead_no: r.lead_no ?? null, error: r.ok ? (r.error ?? null) : r.error });
-  }
-  return NextResponse.json({ looked_at: (events ?? []).length, replayed: out.length, results: out });
+  try {
+    const campaigns = (await loadCampaigns(admin)).filter(c => c.firm_id === firmId);
+    const results: any[] = [];
+    for (const event of events || []) {
+      const fields = event.payload?.fields;
+      if (!fields || typeof fields !== "object" || Array.isArray(fields)) continue;
+      const normalized = normalizeLead(fields), campaign = chooseCampaign(normalized.caseType, campaigns);
+      if (!campaign || !normalized.leadId) continue;
+      results.push({ event_id: event.id, created_at: event.created_at, lawruler_lead_id: normalized.leadId, campaign: campaign.name,
+        source_status: normalized.status || null, originals_recoverable_from_log: false,
+        next_action: "Review status-sync for an existing exact matter; request original attachments or an authenticated source resend for missing intake/documents." });
+    }
+    return NextResponse.json({ dry_run: true, looked_at: (events || []).length, history_truncated: (events || []).length >= 500, results, actions_executed: false }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Could not preview failed envelopes." }, { status: 500 }); }
 }

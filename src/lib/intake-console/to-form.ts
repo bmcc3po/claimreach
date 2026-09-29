@@ -27,10 +27,17 @@ const REFERRAL_SOURCES = ["ref_attorney", "ref_friend", "ref_firm", "ref_marketi
 
 const is = (fieldId: string, value: string): ShowIf => ({ match: "all", rules: [{ fieldId, op: "is", value }] });
 const all = (...rules: ShowIf["rules"]): ShowIf => ({ match: "all", rules });
+const COMMIT_APPOINTMENT = all(
+  { fieldId: "injured", op: "is", value: "yes" },
+  { fieldId: "treatment", op: "is", value: "never" },
+  { fieldId: "willing", op: "is", value: "yes" },
+  { fieldId: "date", op: "date_bucket", value: "mid" },
+);
 
 // questionApplies(), expressed as data. Keyed by case type then question key.
 const SHOW_IF: Record<string, Record<string, ShowIf>> = {
   mva: {
+    commit_appointment: COMMIT_APPOINTMENT,
     poa: is("authority", "alive"),
     injuries: is("injured", "yes"),
     surgery: is("injured", "yes"),
@@ -62,6 +69,7 @@ const SHOW_IF: Record<string, Record<string, ShowIf>> = {
     ins_forms_said: is("ins_forms_signed", "yes"),
   },
   prem: {
+    commit_appointment: COMMIT_APPOINTMENT,
     injuries: is("injured", "yes"),
     surgery: is("injured", "yes"),
     treatment: is("injured", "yes"),

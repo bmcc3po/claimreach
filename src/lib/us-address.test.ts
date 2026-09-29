@@ -39,4 +39,13 @@ t("tidying fills blanks only; a fresh address replaces all", () => {
   assert.deepEqual(mailColumnsFrom({ mail_city: "Chicago", mail_state: "IL", mail_zip: "60601" }, "18475 Zurich Ln, Tinley Park, IL 60477", true), { mail_addr1: "18475 Zurich Ln", mail_city: "Tinley Park", mail_state: "IL", mail_zip: "60477" });
   assert.equal(mailColumnsFrom({}, "18475 Zurich Ln"), null);
 });
+t("a fresh address with no ZIP clears the old ZIP; tidying never clears", () => {
+  const old = { mail_addr1: "1 Old St", mail_city: "Austin", mail_state: "TX", mail_zip: "78701" };
+  const patch = mailColumnsFrom(old, "2 New St, Reno, NV", true);
+  assert.deepEqual(patch, { mail_addr1: "2 New St", mail_city: "Reno", mail_state: "NV", mail_zip: null });
+  const next = { ...old, ...patch };
+  assert.equal(next.mail_zip, null, "Reno, NV never keeps Austin's 78701");
+  assert.deepEqual(mailColumnsFrom(old, "2 New St, Reno, NV"), { mail_addr1: "2 New St" }, "tidying keeps what the record has");
+  assert.deepEqual(mailColumnsFrom({}, "9 Elm Rd, Houston, TX"), { mail_addr1: "9 Elm Rd", mail_city: "Houston", mail_state: "TX" }, "tidying adds no empty ZIP");
+});
 console.log(`${pass} passed`);

@@ -1,0 +1,63 @@
+const fs = require('node:fs'), path=require('node:path'), assert=require('node:assert/strict');
+const {PGlite}=require('@electric-sql/pglite');
+global.fetch=()=>{throw Error('NETWORK FORBIDDEN');};
+let n=0;const pass=s=>{n++;console.log('ok '+s)};
+const lead='11111111-1111-4111-8111-111111111111',claim='22222222-2222-4222-8222-222222222222',owner='33333333-3333-4333-8333-333333333333',agent='44444444-4444-4444-8444-444444444444';
+const firm='55555555-5555-4555-8555-555555555555',campaign='66666666-6666-4666-8666-666666666666';
+(async()=>{
+ const db=new PGlite();
+ await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
+ create table public.leads(id uuid primary key,firm_id uuid,campaign_id uuid,archived_at timestamptz);
+ create table public.app_users(id uuid primary key,role text,active boolean,full_name text);
+ create table public.claims(id uuid primary key,lead_id uuid,campaign_id uuid,firm_id uuid,firm_sent_at timestamptz,firm_send_result text);
+ create table public.firm_deliveries(id uuid default gen_random_uuid(),lead_id uuid,claim_id uuid,campaign_id uuid,firm_id uuid,ok boolean,error text,triggered_by text,actor_name text);
+ grant usage on schema public to service_role,anon,authenticated;
+ grant all on all tables in schema public to service_role;
+ grant select,update on leads,claims to authenticated;
+ insert into leads(id,firm_id,campaign_id) values('${lead}','${firm}','${campaign}'),('${owner}','${firm}','${campaign}');
+ insert into claims(id,lead_id,firm_id,campaign_id) values('${claim}','${lead}','${firm}','${campaign}');
+ insert into app_users values('${owner}','owner',true,'Synthetic owner'),('${agent}','agent',true,'Synthetic agent');`);
+ const migration=fs.readFileSync(path.resolve(__dirname,'../supabase/migrations/0110_firm_delivery_dispatch.sql'),'utf8');
+ await db.exec(migration);await db.exec(migration);pass('migration0110 applies twice to synthetic PostgreSQL schema');
+ const acl=(await db.query(`select has_table_privilege('anon','public.firm_delivery_dispatch','SELECT') a,
+ has_table_privilege('authenticated','public.firm_delivery_dispatch','UPDATE') b,
+ has_function_privilege('authenticated','public.begin_firm_delivery(uuid,uuid,uuid,uuid,boolean)','EXECUTE') c,
+ has_function_privilege('anon','public.reconcile_firm_delivery(uuid,uuid,uuid,boolean,uuid,text)','EXECUTE') d,
+ has_function_privilege('service_role','public.begin_firm_delivery(uuid,uuid,uuid,uuid,boolean)','EXECUTE') e`)).rows[0];
+ assert.deepEqual(acl,{a:false,b:false,c:false,d:false,e:true});pass('new table/functions refuse anon and authenticated; service execution granted');
+ const guardAcl=(await db.query(`select has_schema_privilege('authenticated','claimreach_delivery_private','USAGE') a, has_function_privilege('authenticated','claimreach_delivery_private.guard_delivery_binding()','EXECUTE') b`)).rows[0];
+ assert.deepEqual(guardAcl,{a:false,b:false});
+ await db.exec(`set role authenticated;update leads set campaign_id='${owner}' where id='${lead}';update leads set campaign_id='${campaign}' where id='${lead}';reset role;set role service_role`);
+ pass('private read-only guard is inaccessible directly but permits normal authorized session updates');
+ const begin=async force=>(await db.query('select public.begin_firm_delivery($1,$2,$3,$4,$5) as r',[lead,claim,firm,campaign,force])).rows[0].r;
+ const finish=async(key,state)=>(await db.query('select public.finish_firm_delivery($1,$2,$3,$4) as r',[claim,key,state,state==='sent'?null:'synthetic problem'])).rows[0].r;
+ const reconcile=async(key,delivered,who,note='Checked synthetic provider record')=>(await db.query('select public.reconcile_firm_delivery($1,$2,$3,$4,$5,$6) as r',[lead,claim,key,delivered,who,note])).rows[0].r;
+ let first=await begin(false);assert.equal(first.state,'acquired');assert.equal((await begin(false)).state,'blocked');assert.equal((await begin(true)).state,'blocked');pass('SQL reservation blocks regular and forced repeat while first attempt active');
+ await assert.rejects(()=>db.query('select public.begin_firm_delivery($1,$2,$3,$4,false)',[owner,claim,firm,campaign]),/does not belong/);pass('lead/claim mismatch rejected by SQL before reservation');
+ await assert.rejects(()=>db.query('select public.begin_firm_delivery($1,$2,$3,$4,false)',[lead,claim,owner,campaign]),/changed while preparing/);
+ await assert.rejects(()=>db.query('select public.begin_firm_delivery($1,$2,$3,$4,false)',[lead,claim,firm,owner]),/changed while preparing/);pass('reservation verifies recipient firm and campaign snapshot');
+ await db.exec('reset role;set role authenticated');
+ await assert.rejects(()=>db.query('update leads set firm_id=$1 where id=$2',[owner,lead]),/Resolve the active/);
+ await assert.rejects(()=>db.query('update claims set campaign_id=$1 where id=$2',[owner,claim]),/Resolve the active/);
+ await assert.rejects(()=>db.query('update leads set archived_at=now() where id=$1',[lead]),/Resolve the active/);
+ await db.exec('reset role;set role service_role');
+ await assert.rejects(()=>db.query('update leads set firm_id=$1 where id=$2',[owner,lead]),/Resolve the active/);
+ pass('active dispatch prevents ordinary or privileged recipient reassignment and archive');
+ assert.equal(await finish(owner,'sent'),false);assert.equal((await begin(false)).state,'blocked');pass('wrong attempt key cannot settle another send');
+ assert.equal(await finish(first.attempt_key,'failed'),true);
+ await db.query('update leads set archived_at=now() where id=$1',[lead]);
+ await assert.rejects(()=>begin(false),/archived/);await db.query('update leads set archived_at=null where id=$1',[lead]);pass('known failure permits archive, but archived file cannot reserve delivery');
+ const second=await begin(false);assert.equal(second.state,'acquired');assert.notEqual(first.attempt_key,second.attempt_key);pass('definite rejection permits fresh attempt key');
+ assert.equal(await finish(second.attempt_key,'uncertain'),true);assert.equal((await begin(true)).state,'blocked');
+ await assert.rejects(()=>db.query('update claims set lead_id=$1 where id=$2',[owner,claim]),/Resolve the active/);pass('uncertain outcome blocks forced repeat and matter reassignment');
+ await assert.rejects(()=>reconcile(second.attempt_key,true,agent),/owner or admin/);await assert.rejects(()=>reconcile(second.attempt_key,true,owner,'short'),/Explain/);pass('reconciliation enforces owner/admin and meaningful provider-check note');
+ assert.equal(await reconcile(second.attempt_key,true,owner),true);assert.equal((await begin(false)).state,'sent');pass('confirmed delivery atomically stamps claim and holds sent guard');
+ const history=(await db.query('select dispatch_key,ok from public.firm_deliveries')).rows;assert.equal(history.length,1);assert.equal(history[0].dispatch_key,second.attempt_key);assert.equal(history[0].ok,true);pass('reconciliation is recorded transactionally with original attempt key');
+ let third=await begin(true);assert.equal(third.state,'acquired');await assert.rejects(()=>reconcile(third.attempt_key,false,owner),/Wait two minutes/);pass('intentional resend gets new key but actively sending attempt cannot be reconciled immediately');
+ await db.query(`update public.firm_delivery_dispatch set started_at=now()-interval '3 minutes' where claim_id=$1`,[claim]);
+ assert.equal(await reconcile(third.attempt_key,false,owner),true);third=await begin(true);assert.equal(third.state,'acquired');pass('after provider check, non-delivery unlocks a deliberate retry');
+ await db.exec('reset role');await db.exec(`create function public.synthetic_claim_fail() returns trigger language plpgsql as $$begin raise exception 'synthetic claim stamp failure';end$$; create trigger synthetic_fail before update on public.claims for each row execute function public.synthetic_claim_fail();set role service_role;`);
+ await assert.rejects(()=>finish(third.attempt_key,'sent'),/synthetic claim stamp failure/);
+ assert.equal((await begin(true)).state,'blocked');pass('claim-stamp failure rolls back settle transaction, leaving durable active reservation');
+ await db.close();console.log(`${n} actual SQL checks passed on synthetic in-memory PostgreSQL; no Supabase/live data; multi-session concurrency not emulated.`);
+})().catch(e=>{console.error(e);process.exitCode=1});

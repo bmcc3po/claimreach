@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from "react";
 export default function PacketSignPage({ group }: { group: string }) {
   const [docs, setDocs] = useState<any[]>([]);
   const [signerName, setSignerName] = useState("");
-  const [step, setStep] = useState<"start" | "review" | "sign" | "done">("start");
+  const [step, setStep] = useState<"start" | "review" | "sign" | "recover" | "done">("start");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [inserted, setInserted] = useState(false);
@@ -19,8 +19,10 @@ export default function PacketSignPage({ group }: { group: string }) {
     (async () => {
       try {
         const d = await (await fetch(`/api/signable/packet?group=${group}`)).json();
-        if (d.error) { setErr("This signing link is invalid or expired."); return; }
+        if (d.error) { setErr(d.error); return; }
         setDocs(d.docs || []); setSignerName(d.signer_name || "");
+        if (d.docs?.length && d.docs.every((r: any) => r.status === "signed")) setStep("done");
+        else if (d.docs?.some((r: any) => r.status === "signing")) setStep("recover");
       } catch { setErr("Could not load your documents."); }
     })();
   }, [group]);
@@ -46,10 +48,18 @@ export default function PacketSignPage({ group }: { group: string }) {
     setBusy(true); setErr("");
     const sig = canvasRef.current!.toDataURL("image/png");
     try {
-      const r = await fetch("/api/signable/packet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "sign", group, signature_data: sig, signed_name: signerName, signature_type: "drawn" }) });
+      const r = await fetch("/api/signable/packet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "sign", group, signature_data: sig, signed_name: signerName, signature_type: "drawn", consent_accepted: true, consent_version: "emergency-v1" }) });
       const d = await r.json();
       if (d.ok) setStep("done"); else setErr(d.error || "Could not submit. Please try again.");
     } catch { setErr("Could not submit. Please try again."); }
+    finally { setBusy(false); }
+  }
+  async function recover() {
+    setBusy(true); setErr("");
+    try {
+      const d = await (await fetch("/api/signable/packet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ group, op: "resume" }) })).json();
+      if (d.ok) setStep("done"); else setErr(d.error || "Could not finish saving the packet.");
+    } catch { setErr("Could not finish saving the packet. Please try again."); }
     finally { setBusy(false); }
   }
 
@@ -58,6 +68,7 @@ export default function PacketSignPage({ group }: { group: string }) {
   return (
     <div className="sign-shell">
       <div className="sign-card">
+        {step === "recover" && <><h1>Your signature is recorded</h1><p>Finish saving the signed documents and certificates. Your signature will stay the same.</p><button className="btn gold lg" disabled={busy} onClick={recover}>{busy ? "Saving…" : "Finish saving agreement"}</button>{err && <p className="sign-err">{err}</p>}</>}
         {step === "start" && (
           <>
             <h1 style={{ marginTop: 0 }}>You have {docs.length} document{docs.length === 1 ? "" : "s"} to sign</h1>
@@ -97,7 +108,7 @@ export default function PacketSignPage({ group }: { group: string }) {
             </div>
             {err && <p className="sign-err">{err}</p>}
             <label className="chk" style={{ marginTop: 14, fontSize: 14 }}>
-              <input type="checkbox" id="agree" /> I have read and agree to all {docs.length} documents, and adopt the signature above as my legal electronic signature.
+              <input type="checkbox" id="agree" /> I have reviewed these documents, consent to electronic records and signatures, and adopt this signature as my electronic signature. This is an emergency in-house agreement; I may be asked to sign again through DocuSeal.
             </label>
             <button className="btn gold lg" disabled={busy} onClick={() => { const a = document.getElementById("agree") as HTMLInputElement; if (!a?.checked) { setErr("Please check the box to agree."); return; } submit(); }}>{busy ? "Submitting…" : "I Agree & Submit"}</button>
           </>

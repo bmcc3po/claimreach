@@ -45,7 +45,7 @@ export default function FloatingDock({ lead, claimId, claimType }: { lead: any; 
       )}
 
       <button className={`dock-tools-pill ${trayOpen ? "active" : ""}`} onClick={() => { setTrayOpen(!trayOpen); setOpen(null); }} aria-label="Tools" title="Tools">
-        🔨
+        Assistants & tools
       </button>
 
       {/* Crissi lives in the tray now; mounted controlled, no separate FAB */}
@@ -70,7 +70,7 @@ function GrievousPanel({ leadId, claimId }: { leadId: string; claimId?: string }
   }
   return (
     <div>
-      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>Grievous is the hard-ass. He grades the intake against doctrine. A FULL approval is required before you can send the eSign.</p>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>Grievous reviews intake quality and flags missing information. Follow this campaign’s review requirements before delivery.</p>
       <div className="row" style={{ gap: 8 }}>
         <button className="btn ghost sm" onClick={() => grade("quick")} disabled={busy}>{busy ? "…" : "Quick check"}</button>
         <button className="btn sm" onClick={() => grade("full")} disabled={busy}>{busy ? "Grading…" : "Full review & approve"}</button>

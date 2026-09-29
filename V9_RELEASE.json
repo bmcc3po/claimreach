@@ -1,0 +1,24 @@
+{
+  "candidate": "ClaimReach v9",
+  "branch": "codex/claimreach-v9",
+  "commit": "f0ee5bbe0de524bc98edd44a802b5f64db13253e",
+  "v8_import_commit": "ab63de6",
+  "base_main": "822338f76517c616befb3ddceabafcf00855ba11",
+  "deployed": false,
+  "merged": false,
+  "production_migrations_applied": false,
+  "required_migrations": [
+    "0110_firm_delivery_dispatch.sql",
+    "0111_emergency_signing_evidence.sql"
+  ],
+  "tests": {
+    "suites_passed": 54,
+    "suites_total": 54,
+    "typescript": "passed",
+    "cloudflare_edge_routes": 193
+  },
+  "source_files": 684,
+  "excluded_tracked_generated_files": [
+    "tsconfig.tsbuildinfo"
+  ]
+}

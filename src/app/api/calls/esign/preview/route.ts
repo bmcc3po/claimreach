@@ -5,6 +5,7 @@ import { stateCodeOf } from "@/lib/mva-call/state";
 import { packetsFor } from "@/lib/mva-call/esign";
 import { agreementKey } from "@/lib/docuseal";
 import { stampPreview } from "@/lib/mva-call/preview";
+import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
 
 export const runtime = "edge";
 
@@ -25,9 +26,11 @@ export async function GET(req: NextRequest) {
   const today = /^\d{2}\/\d{2}\/\d{4}$/.test(q("today")) ? q("today") : "";
   const doi = /^\d{2}\/\d{2}\/\d{4}$/.test(q("doi")) ? q("doi") : "";
 
-  const { data: lead } = await sb.from("leads").select("id, firm_id, case_type, firms(slug)").eq("id", leadId).maybeSingle();
-  if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  const packets = packetsFor((lead as any).firms?.slug, lead.case_type);
+  const context = await resolveSigningMatter(sb, leadId, { claimId: q("claim_id") || null });
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  const { data: firm, error: firmError } = await sb.from("firms").select("slug").eq("id", context.lead.firm_id).maybeSingle();
+  if (firmError) return NextResponse.json({ error: "The firm could not be read. Try the preview again." }, { status: 500 });
+  const packets = packetsFor(firm?.slug, context.matter.claim.claim_type ?? context.lead.case_type);
   if (!packets) return NextResponse.json({ error: "This campaign has no agreement set up to preview." }, { status: 404 });
   let key: string | null = agreementKey(stateCodeOf(q("city")));
   if (!key) return NextResponse.json({ error: "Add the city and state on Story first. That picks the agreement." }, { status: 400 });

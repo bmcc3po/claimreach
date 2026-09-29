@@ -8,7 +8,7 @@
 // lands on the same question with every answer in place.
 // ============================================================================
 import { useEffect, useRef } from "react";
-import WhereField from "./WhereField";
+import IntakeQuestion, { QuestionDetails } from "./IntakeQuestion";
 import { OPEN_LINE } from "./scripts";
 import DuoIcon from "./DuoIcon";
 
@@ -34,73 +34,6 @@ function Ico({ id, size = 18 }: { id: string; size?: number }) {
     case "check": return <svg {...p} strokeWidth={3}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>;
     default: return null;
   }
-}
-
-/** A picture for each answer, so the list scans at a glance. */
-function iconFor(q: any, label: string): string {
-  const t = String(label || "").toLowerCase();
-  if (/^(not sure|not clear|maybe)/.test(t)) return "question";
-  if (q.isDate || /^(today|yesterday|same day|earlier)$/.test(t) || /^(mon|tue|wed|thu|fri|sat|sun) \d+$/.test(t)) return "calendar";
-  if (t === "yes" || t === "came out") return "yes";
-  if (t === "no" || t === "no insurance") return "no";
-  if (["driver", "passenger", "pedestrian", "caller", "just them", "just her"].includes(t)) return "person";
-  if (t === "other driver" || t === "hit and run") return "vehicle";
-  return q.sec || "incident";
-}
-
-function Option({ o, q, big }: { o: any; q: any; big: boolean }) {
-  return (
-    <button type="button" className={`oq-opt${o.on ? " oq-on" : ""}${big ? " oq-big" : ""}`} aria-pressed={!!o.on} onClick={o.pick}>
-      {!big && <span className="oq-ico"><Ico id={iconFor(q, o.label)} /></span>}
-      <span className="oq-opt-t">
-        <span className="oq-opt-l">{o.label}</span>
-        {!!o.sub && <span className="oq-opt-s">{o.sub}</span>}
-      </span>
-      <span className="oq-opt-r">{o.on ? <span className="oq-tick"><Ico id="check" size={14} /></span> : <Ico id="chev" size={16} />}</span>
-    </button>
-  );
-}
-
-function Answers({ q, v, big }: { q: any; v: any; big: boolean }) {
-  const c = q.c;
-  if (c.kind === "where") return <div className="oq-field"><WhereField value={c.where.value} agreement={v.agreement} onChange={c.where.set} onDone={c.where.done} /></div>;
-  if (c.kind === "people") {
-    return (<>
-      <div className="oq-opts">
-        <Option o={{ label: c.justMe.label, on: c.justMe.on, pick: c.justMe.pick }} q={q} big={big} />
-        <button type="button" className={`oq-opt oq-add${big ? " oq-big" : ""}`} onClick={c.add}>
-          {!big && <span className="oq-ico"><Ico id="person" /></span>}
-          <span className="oq-opt-t"><span className="oq-opt-l">Add a passenger</span></span>
-          <span className="oq-opt-r"><Ico id="chev" size={16} /></span>
-        </button>
-      </div>
-      {c.people.map((p: any, i: number) => (
-        <div key={i} className="oq-person">
-          <div className="oq-addrow">
-            <input className="fi-in" placeholder="Passenger's name" aria-label="Passenger's name" value={p.name ?? ""} onChange={p.setName} />
-            <button type="button" className="oq-small" onClick={p.remove}>Remove</button>
-          </div>
-          <div className="oq-pills">{p.ages.map((a: any, j: number) => <button key={j} type="button" className={`oq-pill${/ on/.test(a.cls) ? " oq-on" : ""}`} onClick={a.pick}>{a.label}</button>)}</div>
-          <div className="oq-pills">{p.hurts.map((a: any, j: number) => <button key={j} type="button" className={`oq-pill${/ on/.test(a.cls) ? " oq-on" : ""}`} onClick={a.pick}>{a.label === "Yes" ? "Hurt" : "Not hurt"}</button>)}</div>
-        </div>
-      ))}
-    </>);
-  }
-  const grid = c.kind === "crashdate";
-  return (<>
-    <div className={`oq-opts${grid ? " oq-grid" : ""}`}>
-      {(c.opts || []).map((o: any, i: number) => <Option key={i} o={o} q={q} big={big && !grid} />)}
-    </div>
-    {!!c.note && <textarea className="fi-in fi-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />}
-    {!!c.other && <input className="fi-in" placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value} onChange={c.other.set} />}
-    {(c.kind === "visit" || (c.kind === "crashdate" && c.date.show)) && (
-      <label className="oq-date"><Ico id="calendar" /><span>Or pick the date</span>
-        <input className="fi-in" type="date" min={c.date.min || undefined} max={c.date.max || undefined} value={c.date.value ?? ""} onChange={c.date.set} />
-      </label>
-    )}
-    {!!c.date?.why && <div className="oq-cue oq-bad">{c.date.why}</div>}
-    {!!c.cue && <div className="oq-cue oq-bad">{c.cue}</div>}
-  </>);
 }
 
 /** Under the caller's name: where the agent is, the lights, the view. */
@@ -174,15 +107,7 @@ export function OneBody({ v }: { v: any }) {
           <b>30-day check: {q.gap.value}</b>{!!q.gap.sub && <span>{q.gap.sub}</span>}
         </div>
       )}
-      <Answers q={q} v={v} big={quick} />
-      {q.rep && (
-        <div className="oq-rep">
-          <div className="oq-cue">{v.rep.head}. Do not go looking for it. The PNC has to be the one who says they&apos;re unhappy.</div>
-          <div className="oq-pills">{(v.rep.unhappy || []).map((c: any, i: number) => <button key={i} type="button" className={`oq-pill${/ on/.test(c.cls) ? " oq-on" : ""}`} onClick={c.pick}>{c.label}</button>)}</div>
-          {v.rep.isUnhappy && <div className="oq-pills">{(v.rep.kind || []).map((c: any, i: number) => <button key={i} type="button" className={`oq-pill${/ on/.test(c.cls) ? " oq-on" : ""}`} onClick={c.pick}>{c.label}</button>)}</div>}
-          {v.rep.fender && <div className="oq-cue">The firm charges these back. Close it warm and let it go.</div>}
-        </div>
-      )}
+      <QuestionDetails q={{ ...q, ask: "", cue: "" }} v={v} presentation="guided" />
       {q.needDone && <button type="button" className="oq-done" disabled={!q.answered} onClick={q.done}>Done</button>}
     </>) : (
       <div className="oq-card oq-card-done">
@@ -217,4 +142,19 @@ export function OneBar({ v }: { v: any }) {
       ? <button type="button" className="oq-nav oq-skip" onClick={one.skip}>Skip<Ico id="chev" size={17} /></button>
       : <button type="button" className="fi-next oq-finish" onClick={v.fi.finish.go}>{v.fi.finish.label}</button>}
   </>);
+}
+
+/** Guided is one question from the same spine, never a separate form. */
+export function GuidedIntake({ v }: { v: any }) {
+  const guided = v.fi.guided;
+  const q = guided?.q;
+  const top = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { top.current?.closest(".cc-main")?.scrollTo({ top: 0 }); }, [q?.id]);
+  if (!q) return null;
+  return <div ref={top} className="iq-guided">
+    {v.isStory && <div className="iq-script"><div className="iq-field-label">{OPEN_LINE.label}</div><p>{OPEN_LINE.line}</p><div className="iq-cue">{OPEN_LINE.cue}</div></div>}
+    <div className="iq-position"><span>{guided.sectionLabel} &middot; {guided.n} of {guided.total}</span>{guided.previous && <button type="button" className="fi-add" onClick={guided.previous}>Previous</button>}</div>
+    <IntakeQuestion q={q} v={v} presentation="guided" />
+    {!!q.gap && <div className="iq-cue"><b>30-day check: {q.gap.value}</b> {q.gap.sub}</div>}
+  </div>;
 }

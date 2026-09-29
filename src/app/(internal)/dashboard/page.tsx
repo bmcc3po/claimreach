@@ -22,8 +22,7 @@ export default async function Dashboard() {
   const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user!.id).maybeSingle();
   const role = me?.role ?? "agent";
-  // Agents work from the App. Everyone else lands here.
-  if (role === "agent") redirect("/app");
+  // Every staff role starts on the same dashboard; queries retain caller RLS.
 
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 86400000).toISOString();
@@ -46,7 +45,7 @@ export default async function Dashboard() {
     { data: highTier },
     { data: awaitingFirm },
   ] = await Promise.all([
-    computeAlerts().catch(() => [] as Alert[]),
+    computeAlerts(sb).catch(() => [] as Alert[]),
     sb.from("claims").select("id", { count: "exact", head: true }).in("status", ["new", "contacting"]),
     sb.from("leads").select("id", { count: "exact", head: true }).gte("signed_at", weekAgo).is("archived_at", null),
     sb.from("leads").select("created_at").gte("created_at", since).is("archived_at", null).limit(5000),

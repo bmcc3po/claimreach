@@ -149,6 +149,16 @@ export function caseReport(lead: any, answers: any, esign?: any): CaseReport {
     { q: "Emergency contact", a: [f.ecName, fmtPhone(f.ecPhone), f.ecRel].filter(Boolean).join(", ") },
   ].filter((r) => String(r.a || "").trim());
   sections.unshift({ id: "contact", title: "Client", rows: contact });
+  // The file step captures details beyond the intake questionnaire. Keep those
+  // saved values in every shared report/export without including the SSN.
+  const fileRows: ReportRow[] = [
+    { q: "Other driver's insurance", a: carrier },
+    { q: "Police report number", a: String(f.report || "").trim() },
+    { q: "Vehicle year", a: f.vYear !== "Year" ? String(f.vYear || "") : "" },
+    { q: "Vehicle make", a: String(f.vMake || "") },
+    { q: "Vehicle model", a: String(f.vModel || "") },
+  ].filter((r) => r.a.trim());
+  if (fileRows.length) sections.push({ id: "file-details", title: "File details", rows: fileRows });
 
   return {
     name,

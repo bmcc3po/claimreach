@@ -3,7 +3,7 @@
 // a one-row CSV, from the resolved questionnaire. Used by the export routes and
 // by firm delivery so there is one source of truth for the artifact shape.
 // ============================================================================
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { caseReport, type ReportSection } from "@/lib/mva-call/report";
 
 const SKIP_KINDS = ["section", "script", "gate"];
 
@@ -66,15 +66,58 @@ export interface IntakeBundle {
   fields: any[];
 }
 
-// Load everything needed to render one lead's intake.
-export async function loadIntakeBundle(sb: any, leadId: string): Promise<IntakeBundle | null> {
-  const admin = supabaseAdmin();
-  const { data: lead } = await admin.from("leads").select("*").eq("id", leadId).maybeSingle();
+// Compiled MVA calls are stored under answers.mva_call, not the form builder's
+// flat field IDs. The existing call report runs those answers through the same
+// engine as the agent screen. Keep that question/branch definition shared and
+// never dump the raw object (which may contain sensitive transient fields).
+export function intakeSections(b: IntakeBundle): ReportSection[] {
+  const call = b.answers?.mva_call;
+  if (b.caseType === "mva" && call && typeof call === "object" && !Array.isArray(call)) {
+    return caseReport({ ...b.lead, campaign: b.claim?.campaign ?? b.lead.campaign }, call).sections;
+  }
+  const sections: ReportSection[] = [];
+  let section: ReportSection = { id: "intake", title: "Intake", rows: [] };
+  sections.push(section);
+  for (const f of b.fields ?? []) {
+    if (f.kind === "section") {
+      section = { id: f.id, title: String(f.label || "Intake"), rows: [] };
+      sections.push(section);
+    } else if (!SKIP_KINDS.includes(f.kind)) {
+      section.rows.push({ q: f.label || f.id, a: answerText(f, b.lead, b.answers) });
+    }
+  }
+  return sections.filter((s) => s.rows.length > 0);
+}
+
+export function hasIntakeQuestions(b: IntakeBundle): boolean {
+  return intakeSections(b).some((s) => s.rows.length > 0);
+}
+
+// Load everything needed to render ONE matter's intake: the named claim's
+// answers, case type and campaign form, never whichever claim the database
+// returned first (Astra round 7b #57: a file with two matters rendered the
+// first one's answers into the second one's delivery).
+//   null   = the file, or that claim on that file, does not exist
+//   throws = a read failed (the caller must not treat it as "nothing to send")
+// `sb` does every read; firm delivery passes its service client.
+export async function loadIntakeBundle(sb: any, leadId: string, claimId: string): Promise<IntakeBundle | null> {
+  if (!leadId || !claimId) return null;
+  const { data: lead, error: leadErr } = await sb.from("leads").select("*").eq("id", leadId).maybeSingle();
+  if (leadErr) throw new Error(`Could not read the file: ${leadErr.message}`);
   if (!lead) return null;
-  const { data: claim } = await admin.from("claims").select("answers, claim_type, campaign").eq("lead_id", leadId).limit(1).maybeSingle();
-  const answers = claim?.answers ?? {};
-  const caseType = (claim?.claim_type || lead.case_type || "").toLowerCase();
-  const fields = await resolveFields(sb, caseType, lead?.campaign_id ?? null);
+  const { data: claim, error: claimErr } = await sb.from("claims")
+    .select("id, lead_id, firm_id, answers, claim_type, campaign, campaign_id")
+    .eq("id", claimId).eq("lead_id", leadId).maybeSingle();
+  if (claimErr) throw new Error(`Could not read the matter: ${claimErr.message}`);
+  if (!claim) return null;
+  if (claim.firm_id && claim.firm_id !== lead.firm_id) throw new Error("This matter and file belong to different firms.");
+  const answers = claim.answers ?? {};
+  const caseType = (claim.claim_type || lead.case_type || "").toLowerCase();
+  // The claim's own campaign decides its form; a legacy claim with no
+  // campaign recorded falls back to the file's, the same order
+  // resolveFormKey uses.
+  const fields = caseType === "mva" && answers.mva_call && typeof answers.mva_call === "object"
+    ? [] : await resolveFields(sb, caseType, claim.campaign_id || lead.campaign_id || null);
   return { lead, claim, answers, caseType, fields };
 }
 
@@ -115,12 +158,13 @@ export async function buildIntakePdf(b: IntakeBundle): Promise<Uint8Array> {
   y -= 6;
   page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 1, color: rgb(0.9, 0.92, 0.95) }); y -= 18;
 
-  for (const f of fields) {
-    if (f.kind === "section") { y -= 6; draw(String(f.label || "").toUpperCase(), bold, 11, accent); y -= 2; continue; }
-    if (SKIP_KINDS.includes(f.kind)) continue;
-    draw(f.label || f.id, bold, 10.5, ink);
-    draw(answerText(f, lead, answers), font, 10.5, rgb(0.15, 0.18, 0.24), 10);
-    y -= 6;
+  for (const section of intakeSections(b)) {
+    y -= 6; draw(section.title.toUpperCase(), bold, 11, accent); y -= 2;
+    for (const row of section.rows) {
+      draw(row.q, bold, 10.5, ink);
+      draw(row.a, font, 10.5, rgb(0.15, 0.18, 0.24), 10);
+      y -= 6;
+    }
   }
   return await pdf.save();
 }
@@ -131,12 +175,12 @@ export function buildIntakeCsvSingle(b: IntakeBundle): string {
     const s = v === undefined || v === null ? "" : Array.isArray(v) ? v.join("; ") : typeof v === "boolean" ? (v ? "Yes" : "No") : String(v);
     return `"${s.replace(/"/g, '""')}"`;
   };
-  const cols = b.fields.filter((f) => !SKIP_KINDS.includes(f.kind));
-  const header = ["Lead #", "Claimant", "Campaign", "Created", ...cols.map((f) => f.label || f.id)];
+  const rows = intakeSections(b).flatMap((s) => s.rows);
+  const header = ["Lead #", "Claimant", "Campaign", "Created", ...rows.map((r) => r.q)];
   const l = b.lead;
   const row = [
-    l.lead_no, l.claimant_name, l.campaign || b.claim?.campaign || "", l.created_at ? new Date(l.created_at).toLocaleDateString() : "",
-    ...cols.map((f) => displayValue(f, resolveRaw(f, l, b.answers), "")),
+    l.lead_no, l.claimant_name, b.claim?.campaign || l.campaign || "", l.created_at ? new Date(l.created_at).toLocaleDateString() : "",
+    ...rows.map((r) => r.a === "—" ? "" : r.a),
   ];
   return [header.map(esc).join(","), row.map(esc).join(",")].join("\n");
 }

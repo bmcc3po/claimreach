@@ -127,7 +127,30 @@ export async function POST(req: NextRequest) {
       "dq_reason_key", "dq_reason", "qualification", "esign_sent_at", "esign_date",
       "first_dialed_at", "first_opened_at", "first_opened_by", "signed_notified_at"]) delete leadPatch[k];
 
-    const { error: leadErr } = await sb.from("leads").update(leadPatch).eq("id", lead_id);
+    // Contact Info owns split names; every header/search/export also reads the
+    // legacy display column. Save those identities together, guarded against
+    // another editor changing either name between our read and write.
+    const renaming = "first_name" in leadPatch || "last_name" in leadPatch;
+    let beforeName: { first_name: string | null; last_name: string | null } | null = null;
+    if (renaming) {
+      const prior = await sb.from("leads").select("first_name,last_name").eq("id", lead_id).maybeSingle();
+      if (prior.error) return NextResponse.json({ error: prior.error.message }, { status: 500 });
+      if (!prior.data) return NextResponse.json({ error: "File not found." }, { status: 404 });
+      beforeName = prior.data;
+      for (const key of ["first_name", "last_name"] as const) {
+        if (key in leadPatch) {
+          if (leadPatch[key] != null && typeof leadPatch[key] !== "string") return NextResponse.json({ error: "Names must be text." }, { status: 400 });
+          leadPatch[key] = String(leadPatch[key] ?? "").trim() || null;
+        }
+      }
+      leadPatch.claimant_name = ["first_name", "last_name"].map((key) => key in leadPatch ? leadPatch[key] : (prior.data as any)[key]).filter(Boolean).join(" ").trim();
+      if (!leadPatch.claimant_name) return NextResponse.json({ error: "Enter the client's name before saving." }, { status: 400 });
+    }
+    let update = sb.from("leads").update(leadPatch).eq("id", lead_id);
+    if (beforeName) for (const key of ["first_name", "last_name"] as const) {
+      update = beforeName[key] == null ? update.is(key, null) : update.eq(key, beforeName[key]);
+    }
+    const { data: savedContact, error: leadErr } = await update.select("id,first_name,last_name,claimant_name").maybeSingle();
     if (leadErr) {
       // Postgres rejects the ENTIRE update when one field names a column that
       // does not exist, so a single typo silently threw away every other change
@@ -141,6 +164,7 @@ export async function POST(req: NextRequest) {
         detail: leadErr.message,
       }, { status: 400 });
     }
+    if (!savedContact) return NextResponse.json({ error: renaming ? "The name changed on another screen. Refresh and review it before saving again." : "The file could not be updated." }, { status: 409 });
 
     // Activity Log: summarize what changed in plain words.
     if (lead && typeof lead === "object") {
@@ -187,7 +211,7 @@ export async function POST(req: NextRequest) {
       const { error: pErr } = await sb.rpc("replace_claim_properties", { p_claim_id: claimRow.id, p_rows: rows });
       if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, contact: savedContact });
   }
 
   if (op === "stage") {

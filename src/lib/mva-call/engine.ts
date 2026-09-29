@@ -15,6 +15,7 @@
 /* eslint-disable */
 import { SOL, stateCodeOf, injuryYears as injuryYearsFor } from './state';
 import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './intake';
+import { QUESTION_ORDER, QUESTION_PATHS, questionPhase } from './question-spine';
 export { SOL };
 export const REBS: any[] = [
   { id: 'report', phase: 'open', group: 'Opening', title: "I was just checking on my police report.", text: "Got it, and that's exactly why we have you. When that report gets requested it comes over to us too. We're the intake center for {FIRM}, and I was reaching out to see what kind of pain you've been dealing with since the accident. Tell me what happened out there." },
@@ -227,6 +228,8 @@ export interface CallProps {
   reasons: { esign: Reason[]; dq: Reason[]; callback: Reason[]; ni: Reason[] };
   notifyDefaults: { who: string; how: string }[];
   esign: { status: string; configured: boolean; pax: Record<string, string> };
+  /** A newer emergency packet requires a new primary before office completion. */
+  agreementSuperseded?: boolean;
   /** What the marketer sent, shown on Story so the agent confirms instead of re-asking. */
   lead?: { from: string; said: string; tags: string[] } | null;
   now?: number;
@@ -279,6 +282,7 @@ export class CallEngine {
       // Where the agent is working, so the same call opened on another device
       // (phone to iPad) lands on the same section. A screen position, not an answer.
       at: s.fi.sec || null,
+      atQuestion: QUESTION_ORDER.includes(s.fi.cq) && sectionOf(s.fi.cq) === s.fi.sec ? s.fi.cq : null,
       // The crash date leaves the building as a DATE. "Today" saved as the
       // word made the incident move a day every day the file was reopened
       // (Astra review, Sep 27). On screen the chip stays Today/Yesterday;
@@ -287,7 +291,7 @@ export class CallEngine {
         ? Object.assign({}, s.story, { when: 'Pick a date', date: crashIsoOf(s.story) })
         : s.story,
       body: s.body, car: s.car,
-      send: { via: s.send.via, client: s.send.client, who: s.send.who, injured: s.send.injured, phone: s.send.phone, email: s.send.email, toOther: s.send.toOther ?? null, nvVariant: s.send.nvVariant, nvReason: s.send.nvReason },
+      send: { via: s.send.via, client: s.send.client, who: s.send.who, injured: s.send.injured, phone: s.send.phone, email: s.send.email, toOther: s.send.toOther ?? null, nvVariant: s.send.nvVariant, nvReason: s.send.nvReason, nameReview: s.send.nameReview || '', recordName: this.props.callerName || '' },
       file: file
     };
   }
@@ -322,6 +326,10 @@ export class CallEngine {
       if (s.body.repUnhappy === 'She said so') s.body.repUnhappy = 'They said so';
       // Back on the section she was in. restoredAt keeps it until Guided moves the call on.
       if (saved.at === 'retainer' || INTAKE_SECTIONS.some((x) => x.id === saved.at)) s.fi = Object.assign({}, s.fi, { sec: saved.at, seen: { [saved.at]: true }, restoredAt: s.phase });
+      if (QUESTION_ORDER.includes(saved.atQuestion) && sectionOf(saved.atQuestion) === s.fi.sec) {
+        if (['open', 'story', 'body', 'car'].includes(s.phase)) s.phase = questionPhase(saved.atQuestion);
+        s.fi = Object.assign({}, s.fi, { cq: saved.atQuestion, target: saved.atQuestion, edit: saved.atQuestion, restoredAt: s.phase });
+      }
       s.send.status = this.props.esign.status || 'ready';
       s.file.pax = Object.assign({}, this.props.esign.pax);
       s.file.ssn = '';
@@ -341,12 +349,20 @@ export class CallEngine {
     if (cell.length === 10 && s.send.toOther !== true) s.send = Object.assign({}, s.send, { phone: cell });
     var addr = String(this.props.homeAddress || '').trim();
     if (addr) s.file = Object.assign({}, s.file, { addr: addr });
+    const canonical = String(this.props.callerName || '').trim();
+    const personField = s.send.who === 'Someone else' ? 'injured' : 'client';
+    const entered = String(s.send[personField] || '').trim();
+    if (canonical && entered && entered.toLowerCase() !== canonical.toLowerCase()) {
+      if (s.send.status === 'ready' && s.send.recordName && entered.toLowerCase() === String(s.send.recordName).trim().toLowerCase()) s.send[personField] = canonical;
+      else s.send.nameReview = `The file says ${canonical}; the agreement says ${entered}. Review the name before sending or completing this agreement.`;
+    }
     return s;
   }
 
   // Another screen (the File tab's contact card) changed the record: the
   // call follows it at once.
-  applyRecord(r: { phone?: string; email?: string; addr?: string }) {
+  applyRecord(r: { phone?: string; email?: string; addr?: string; name?: string; previousName?: string }) {
+    const oldName = String(r.previousName || this.props.callerName || '').trim().replace(/\s+/g, ' ').toLowerCase();
     if (typeof r.phone === 'string') this.props.callerPhone = r.phone;
     if (typeof r.email === 'string') this.props.callerEmail = r.email;
     if (typeof r.addr === 'string') this.props.homeAddress = r.addr;
@@ -354,6 +370,19 @@ export class CallEngine {
     if (typeof r.email === 'string') s.send.email = r.email;
     if (typeof r.phone === 'string' && this.state.send.toOther !== true) s.send.phone = String(r.phone).replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
     if (typeof r.addr === 'string') s.file.addr = r.addr;
+    if (typeof r.name === 'string' && r.name.trim()) {
+      const name = r.name.trim();
+      this.props.callerName = name;
+      const key = s.send.who === 'Someone else' ? 'injured' : 'client';
+      const entered = String(s.send[key] || '').trim().replace(/\s+/g, ' ').toLowerCase();
+      if (s.send.status === 'ready' && (!entered || entered === oldName)) {
+        s.send[key] = name; s.send.nameReview = '';
+      } else if (entered !== name.replace(/\s+/g, ' ').toLowerCase()) {
+        s.send.nameReview = s.send.status === 'ready'
+          ? `The file name is now ${name}. Review the agreement's ${key === 'injured' ? 'injured person' : 'signer'} name before sending.`
+          : `The file name is now ${name}. The agreement already sent keeps its original name. Void it and send a corrected replacement if needed.`;
+      } else s.send.nameReview = '';
+    }
     this.setState(s);
   }
 
@@ -393,6 +422,7 @@ export class CallEngine {
   set(group: any, key: any, val: any) {
     var g = Object.assign({}, this.state[group]);
     g[key] = val;
+    if (group === 'send' && ['client', 'injured', 'who'].includes(key)) g.nameReview = '';
     // Every path that changes WHEN goes through the same date rule.
     if (group === 'story' && key === 'when') g = normalizeWhen(g);
     var patch = {};
@@ -663,7 +693,7 @@ export class CallEngine {
   // injury yet, willing to treat, no 30 day gap, inside the deadline.
   gates() {
     var st = this.state.story, b = this.state.body;
-    var toBody = (key: any) => () => this.setState({ phase: 'body', sheet: false, body: Object.assign({}, this.state.body, { focus: key }) });
+    var toBody = (key: any) => () => { this.setFi({ cq: key, target: key, sec: sectionOf(key), jump: (this.state.fi.jump || 0) + 1 }); this.setState({ phase: 'body', sheet: false, body: Object.assign({}, this.state.body, { focus: key }) }); };
     var gate = (label: any, status: any, go: any, what: any, href: any) => ({ label: label, cls: 'gate' + (status ? ' ' + status : ''), go: go, href: href, aria: what + ': ' + (status === 'ok' ? 'good' : status === 'bad' ? 'problem' : status === 'flag' ? 'check' : 'not yet') });
     var fault = st.fault === 'Other driver' ? 'ok' : st.fault === 'Caller' ? 'bad' : st.fault ? 'flag' : '';
     // Insurance is never a pre-sign gate: red only when every source is a no.
@@ -880,8 +910,8 @@ export class CallEngine {
     rows.push(I('Date of birth', 'file', 'dob', 'MM/DD/YYYY', 'text', 'numeric'));
     rows.push(I('SSN', 'file', 'ssn', 'Last 4 or all 9', 'text', 'numeric'));
     var signed = s.send.status === 'signed';
-    if (s.file.agreement === 'open') rows.push({ isButton: true, label: signed ? 'Complete the agreement' : 'Unlocks after the PNC signs', disabled: !signed, go: () => { if (this.state.send.status === 'signed') this.api.completeAgreement(); } });
-    else rows.push({ isInfo: true, label: 'Agreement', value: s.file.agreement === 'done' ? 'Complete' : 'QA in the morning' });
+    if (s.file.agreement === 'open') rows.push({ isButton: true, label: this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.nameReview ? 'Review the agreement name first' : signed ? 'Complete the agreement' : 'Unlocks after the PNC signs', disabled: !signed || !!s.send.nameReview || !!this.props.agreementSuperseded, go: () => this.completeAgreement() });
+    else rows.push({ isInfo: true, label: 'Agreement', value: s.file.agreement === 'done' ? 'Complete' : 'Finish later' });
     rows.push(I('Home address', 'file', 'addr', ''));
     rows.push(I("Driver's license", 'file', 'dl', ''));
     rows.push(I('Emergency contact', 'file', 'ecName', 'Name'));
@@ -1034,6 +1064,11 @@ export class CallEngine {
   }
 
   sendAgreement() { this.api.sendAgreement(); }
+  completeAgreement() {
+    if (this.props.agreementSuperseded) { this.setState({ file: Object.assign({}, this.state.file, { error: 'A newer emergency packet supersedes this agreement. Prepare the DocuSeal re-sign first; the original stays in history.' }) }); return; }
+    if (this.state.send.nameReview) { this.setState({ file: Object.assign({}, this.state.file, { error: this.state.send.nameReview }) }); return; }
+    if (this.state.send.status === 'signed') this.api.completeAgreement();
+  }
 
   sendPax(i: number) {
     var p = this.state.car.people[i] || {};
@@ -1079,32 +1114,27 @@ export class CallEngine {
   setView(view: any) {
     var s = this.state;
     var patch: any = { view: view, modeMenu: false, free: view === 'qa', bare: view === 'qa' };
-    // Full Intake and Simple Chorelist share one position (fi.sec), so moving
-    // between them, or between phone, iPad and desktop, never loses the spot.
-    var onePage = (x: any) => x === 'full' || x === 'chore' || x === 'form' || x === 'convo' || x === 'quick';
-    if (onePage(view)) {
-      var keep = onePage(s.view) || (!!s.fi.restoredAt && s.fi.restoredAt === s.phase);
-      var sec = keep ? s.fi.sec : this.guidedSection();
-      if ((view === 'chore' || view === 'form') && !onePage(s.view) && ['money', 'send', 'file', 'close'].indexOf(s.phase) >= 0) sec = 'retainer';
-      patch.fi = Object.assign({}, s.fi, { sec: sec, edit: null, flash: null, target: null, jump: (s.fi.jump || 0) + 1, finishAsk: false, restoredAt: null });
-      if (view === 'full' && s.fi.sec === 'retainer' && ['open', 'story', 'body', 'car'].indexOf(s.phase) >= 0) patch.phase = 'send';
-      // Conversation and Quick Capture ask one question at a time: the one the
-      // agent was on, else the next one still open in her section, else the next open one.
-      if (view === 'convo' || view === 'quick') {
-        var keepQ = (s.view === 'convo' || s.view === 'quick') ? s.fi.cq : null;
-        patch.fi.cq = keepQ || s.fi.target || (sec && sec !== 'retainer' ? this.fiNext(sec) : null) || this.fiNext();
-      }
-    } else if (view === 'guided' && onePage(s.view) && s.fi.sec === 'retainer' && ['open', 'story', 'body', 'car'].indexOf(s.phase) >= 0) {
-      patch.phase = 'send';
-    } else if (view === 'guided' && onePage(s.view) && ['open', 'story', 'body', 'car'].indexOf(s.phase) >= 0) {
-      // Land on the part of the intake the agent was working in.
-      var sec2 = s.fi.sec || 'incident';
-      var ph = sec2 === 'vehicle' ? 'car' : (sec2 === 'injury' || sec2 === 'treatment' || sec2 === 'insurance') ? 'body' : 'story';
-      patch.phase = ph;
-      patch.storyOpen = null;
-      if (ph === 'body') {
-        var first = this.fiNext(sec2);
-        patch.body = Object.assign({}, s.body, { focus: first && BODYQ.some((q) => q.key === first) ? first : null });
+    var onePage = (x: any) => ['full', 'chore', 'form', 'convo', 'quick'].includes(x);
+    var fromGuided = s.view === 'guided';
+    var inPhase = QUESTION_ORDER.filter(id => questionPhase(id) === s.phase && this.fiInfo(id).applies);
+    var phaseQuestion = inPhase.find(id => !this.fiInfo(id).answered && !this.fiInfo(id).optional) || inPhase[0];
+    var current = s.fi.cq && this.fiInfo(s.fi.cq).applies ? s.fi.cq : null;
+    var restoring = !!s.fi.restoredAt && s.fi.restoredAt === s.phase;
+    if ((!fromGuided || restoring) && s.fi.sec !== 'retainer' && (!current || sectionOf(current) !== s.fi.sec)) current = this.fiNext(s.fi.sec) || QUESTION_ORDER.find(id => sectionOf(id) === s.fi.sec && this.fiInfo(id).applies);
+    if (fromGuided && !restoring && (!current || questionPhase(current) !== s.phase)) current =
+      (s.phase === 'body' && s.body.focus) || (s.phase === 'story' && s.storyOpen !== 'none' && s.storyOpen) || phaseQuestion;
+    if ((view === 'convo' || view === 'quick') && !s.fi.cq) current = this.fiNext(current ? sectionOf(current) : null) || this.fiNext();
+    var atRetainer = fromGuided ? ['money', 'send', 'file', 'close'].includes(s.phase) : s.fi.sec === 'retainer';
+    if (onePage(view) || (view === 'guided' && onePage(s.view))) {
+      var sec = atRetainer ? 'retainer' : (current ? sectionOf(current) : s.fi.sec || this.guidedSection());
+      patch.fi = Object.assign({}, s.fi, { sec, cq: current, edit: current, flash: current, target: current, jump: (s.fi.jump || 0) + 1, finishAsk: false, restoredAt: null });
+      if (atRetainer) {
+        patch.fi.target = null;
+        if (['open', 'story', 'body', 'car'].includes(s.phase)) patch.phase = s.send.status === 'signed' ? 'file' : 'send';
+      } else if (view === 'guided' && current) {
+        patch.phase = questionPhase(current);
+        patch.storyOpen = current;
+        patch.body = Object.assign({}, s.body, { focus: BODYQ.some(q => q.key === current) ? current : null });
       }
     }
     this.setState(patch);
@@ -1150,7 +1180,7 @@ export class CallEngine {
     if (id === 'carrier') return one("Other driver's insurance", f.carrier && f.carrier !== 'Pick one', f.carrier);
     if (id === 'people') {
       var ok = car.justMe || (car.people.length > 0 && car.people.every((p) => p.age && p.hurt));
-      return one('Passengers', ok, car.justMe ? 'Just them' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers');
+      return { ...one('Passengers', ok, car.justMe ? 'Just them' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers'), ask: 'Who else was in the car with you?' };
     }
     if (id === 'car') { var cv = [f.vYear !== 'Year' ? f.vYear : '', f.vMake, f.vModel].filter(Boolean).join(' '); return one('Their car', cv, cv); }
     if (id === 'notes') { var nt = String(st.text || '').trim(); return one('Notes', nt, nt); }
@@ -1159,8 +1189,8 @@ export class CallEngine {
 
   /** The next unanswered question in call order, optionally only inside one section. */
   fiNext(sec?: any) {
-    for (var i = 0; i < INTAKE_SEQUENCE.length; i++) {
-      var id = INTAKE_SEQUENCE[i];
+    for (var i = 0; i < QUESTION_ORDER.length; i++) {
+      var id = QUESTION_ORDER[i];
       if (sec && sectionOf(id) !== sec) continue;
       var x = this.fiInfo(id);
       if (x.applies && !x.answered && !x.optional) return id;
@@ -1172,7 +1202,7 @@ export class CallEngine {
   // and the "Next" highlight clears once its question is answered.
   fiAfter(id: any, keepOpen?: any) {
     var fi = this.state.fi;
-    var patch: any = { edit: keepOpen ? id : (fi.edit === id ? null : fi.edit) };
+    var patch: any = { cq: id, sec: sectionOf(id), edit: keepOpen ? id : (fi.edit === id ? null : fi.edit) };
     if (fi.flash && this.fiInfo(fi.flash).answered) patch.flash = null;
     this.setFi(patch);
   }
@@ -1243,6 +1273,7 @@ export class CallEngine {
         var q = String(fi.carrierQ || '').trim().toLowerCase();
         var all = pre.carriers.filter((c) => c !== 'Pick one' && c !== 'Other');
         var hits = q ? all.filter((c) => c.toLowerCase().indexOf(q) >= 0) : all.slice(0, 6);
+        if (f.carrier && f.carrier !== 'Pick one' && !hits.includes(f.carrier)) hits = [f.carrier].concat(hits);
         var typed = String(fi.carrierQ || '').trim();
         var exact = all.some((c) => c.toLowerCase() === q);
         var pickC = (c: any) => { this.set('file', 'carrier', this.state.file.carrier === c ? 'Pick one' : c); this.setFi({ carrierQ: '' }); this.fiAfter('carrier'); };
@@ -1297,9 +1328,13 @@ export class CallEngine {
           var editing = allOpen || fi.edit === id || !x.answered;
           return Object.assign({}, x, {
             editing: editing, flash: fi.flash === id,
-            showAsk: !x.answered && !!x.ask,
-            edit: () => this.setFi({ edit: fi.edit === id ? null : id, flash: null }),
-            c: editing ? control(id) : { kind: 'none' },
+            showAsk: !!x.ask,
+            paths: QUESTION_PATHS[id],
+            cue: (BODYQ.find(q => q.key === id) || {}).cue || (id === 'people' ? 'Do not skip this. Ever. Every passenger is their own file and their own agreement.' : ''),
+            soreness: id === 'pain' && b.pain.includes(FINE) ? this.firmText(REBS.find(r => r.id === 'soreness').text) : '',
+            focus: () => { if (this.state.fi.cq !== id) this.setFi({ cq: id, sec: sec.id, target: id }); },
+            edit: () => this.setFi({ cq: id, target: id, sec: sec.id, edit: fi.edit === id ? null : id, flash: null }),
+            c: control(id),
             rep: id === 'rep' && b.rep === 'Yes'
           });
         })
@@ -1311,7 +1346,27 @@ export class CallEngine {
     var doneN = seqLive.filter((id) => this.fiInfo(id).answered).length;
     var nextId = this.fiNext();
     // Open a question's section and point at it (Next, and the missing list).
-    var goTo = (id: any) => this.setFi({ sec: sectionOf(id), flash: id, edit: null, target: id, cq: id, jump: (this.state.fi.jump || 0) + 1 });
+    var goTo = (id: any) => {
+      this.setFi({ sec: sectionOf(id), flash: id, edit: id, target: id, cq: id, jump: (this.state.fi.jump || 0) + 1 });
+      if (this.state.view === 'guided') this.go(questionPhase(id));
+    };
+    // Guided exposes exactly one resolved question, in the same section order as
+    // the other views. Next changes position only, never answers or requirements.
+    var guided: any = null;
+    if (s.view === 'guided' && ['story', 'body', 'car'].includes(s.phase)) {
+      var phaseQuestions = sections.flatMap(sec => sec.questions.map(q => ({ ...q, secLabel: sec.label, gap: sec.gap }))).filter(q => questionPhase(q.id) === s.phase);
+      var wanted = fi.cq || (s.phase === 'body' ? b.focus : s.storyOpen);
+      var current = phaseQuestions.find(q => q.id === wanted) || phaseQuestions.find(q => !q.answered && !q.optional) || phaseQuestions[0];
+      var position = phaseQuestions.findIndex(q => q.id === current?.id);
+      var following = phaseQuestions[position + 1];
+      var nextPhase = s.phase === 'story' ? 'body' : s.phase === 'body' ? 'car' : 'money';
+      guided = {
+        q: current, n: position + 1, total: phaseQuestions.length, sectionLabel: current?.secLabel,
+        questions: phaseQuestions, previous: position > 0 ? () => goTo(phaseQuestions[position - 1].id) : null,
+        next: following ? { label: 'Next: ' + following.label, go: () => goTo(following.id) }
+          : { label: nextPhase === 'money' ? 'Next: How we work' : nextPhase === 'body' ? 'Next: Body' : 'Next: Car', go: () => { var firstNext = QUESTION_ORDER.find(id => questionPhase(id) === nextPhase && this.fiInfo(id).applies); this.setFi({ cq: firstNext || null, target: firstNext || null, sec: firstNext ? sectionOf(firstNext) : 'retainer' }); this.go(nextPhase); } }
+      };
+    }
     // Everything still needed, section by section. The same rule as each
     // section's count: a question that applies, is required, and has no answer.
     var missing: any[] = [];
@@ -1389,7 +1444,7 @@ export class CallEngine {
         var any = x.questions.some((q: any) => q.answered);
         return { id: x.id, label: plainLabel[x.id] || x.label, finished: need.length ? need.every((q: any) => q.answered) : any, loose: need.length === 0 };
       });
-      rows.push({ id: 'retainer', label: 'Retainer', finished: sendSt === 'signed', loose: false });
+      rows.push({ id: 'retainer', label: 'Retainer', finished: sendSt === 'signed' && s.file.agreement === 'done', loose: false });
       // Nothing required in it (Notes): finished once every section above it is.
       rows.forEach((r, i) => { if (r.loose && !r.finished) r.finished = rows.slice(0, i).every((y) => y.finished); });
       var waiting = sendSt === 'sending' || sendSt === 'sent' || sendSt === 'opened';
@@ -1433,6 +1488,7 @@ export class CallEngine {
     var stamp = ((now.getHours() % 12) || 12) + ':' + String(now.getMinutes()).padStart(2, '0') + (now.getHours() < 12 ? ' AM' : ' PM');
     return {
       sections: sections,
+      guided: guided,
       bookmarks: sections.map((x) => ({ id: x.id, label: x.label, status: x.status, on: x.open,
         go: () => this.setFi({ sec: x.id, edit: null, target: null, cq: this.fiNext(x.id) || INTAKE_SEQUENCE.find((id) => sectionOf(id) === x.id && this.fiInfo(id).applies) || this.state.fi.cq, jump: (this.state.fi.jump || 0) + 1 }) })),
       progress: { done: doneN, total: total, pct: total ? Math.round((doneN / total) * 100) : 0, text: doneN + ' of ' + total },
@@ -1617,7 +1673,7 @@ export class CallEngine {
     var noDoi = !crashIsoOf(st);
     var nvFlat = agreement === 'Nevada' && s.send.nvVariant === 'flat';
     var nvNeedReason = nvFlat && !String(s.send.nvReason || '').trim();
-    var sendBlocked = repBlock || !agreement || noDoi || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || nvNeedReason || s.send.status === 'sending';
+    var sendBlocked = repBlock || !agreement || noDoi || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || nvNeedReason || !!s.send.nameReview || s.send.status === 'sending';
     // Everything still missing, said once, so nobody has to guess why Send is grey.
     var needs: string[] = [];
     if (!agreement) needs.push('the state where the wreck happened');
@@ -1625,7 +1681,7 @@ export class CallEngine {
     if (!String(s.send.client || '').trim()) needs.push("the PNC's full name");
     if (contactMissing) needs.push(s.send.via === 'Email' ? "the PNC's email" : "the PNC's 10-digit cell number");
     var needText = needs.length === 1 ? needs[0] : needs.slice(0, -1).join(', ') + ' and ' + needs[needs.length - 1];
-    var sendWarnText = repBlock ? 'The PNC has an attorney. Only a good case they are unhappy about gets sent.'
+    var sendWarnText = s.send.nameReview ? s.send.nameReview : repBlock ? 'The PNC has an attorney. Only a good case they are unhappy about gets sent.'
       : !this.props.esign.configured ? 'E-sign is not set up for this campaign yet. An admin sets it up once.'
       : needs.length ? 'To send it, add ' + needText + '.'
       : nvNeedReason ? 'The non-tiered Nevada agreement needs the approval reason before it can go.'
@@ -1781,6 +1837,7 @@ export class CallEngine {
       justMe: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }),
       addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
       people: s.car.people.map((p, i) => ({
+        id: p.pid,
         title: p.name ? p.name : 'Passenger ' + (i + 1),
         name: p.name,
         first: String(p.name || '').trim().split(/\s+/)[0] || ('Passenger ' + (i + 1)),
@@ -1841,6 +1898,9 @@ export class CallEngine {
       herPhoneOk: herOk,
       viaEmail: s.send.via === 'Email', viaText: s.send.via === 'Text',
       hasSendError: !!s.send.error, sendError: s.send.error || '',
+      nameReview: s.send.nameReview || '',
+      canUseRecordName: s.send.status === 'ready',
+      useRecordName: () => { const next = Object.assign({}, this.state.send); next[next.who === 'Someone else' ? 'injured' : 'client'] = this.props.callerName || ''; next.nameReview = ''; this.setState({ send: next }); },
       hasFileError: !!s.file.error, fileError: s.file.error || '',
       saveBad: !!(s.net && s.net.saveError), saveError: (s.net && s.net.saveError) || '',
       hasTextError: !!(s.text && s.text.error), textError: (s.text && s.text.error) || '',
@@ -1866,10 +1926,10 @@ export class CallEngine {
       // no way back).
       agreementParked: s.file.agreement === 'qa',
       reopenAgreement: () => this.set('file', 'agreement', 'open'),
-      agreementNote: s.file.agreement === 'done' ? 'Agreement complete. Goes to QA, then to the firm.' : 'Parked. QA finishes it in the morning.',
-      completeAgreement: () => { if (this.state.send.status === 'signed') this.api.completeAgreement(); },
-      agreementLocked: s.send.status !== 'signed',
-      completeLabel: s.send.status === 'signed' ? 'Complete the agreement' : 'Unlocks after the PNC signs',
+      agreementNote: s.file.agreement === 'done' ? 'Agreement complete. Review the file, then send it to the firm.' : 'Finish later. You still own this file.',
+      completeAgreement: () => this.completeAgreement(),
+      agreementLocked: s.send.status !== 'signed' || !!s.send.nameReview || !!this.props.agreementSuperseded,
+      completeLabel: this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.nameReview ? 'Review the agreement name first' : s.send.status === 'signed' ? 'Complete the agreement' : 'Unlocks after the PNC signs',
       leaveForQa: () => this.set('file', 'agreement', 'qa'),
       ecRel: this.chips('file', 'ecRel', ['Spouse or partner', 'Parent', 'Child', 'Sibling', 'Friend', 'Other'], null, true),
       carriers: ['Pick one', 'Not sure yet', 'State Farm', 'GEICO', 'Progressive', 'Allstate', 'USAA', 'Farmers', 'Liberty Mutual', 'Nationwide', 'Travelers', 'American Family', 'Other'],
@@ -1910,7 +1970,7 @@ export class CallEngine {
         { k: 'Agreement', v: agreement || 'No state yet' },
         { k: 'Passenger files', v: String(hurtPax.length) },
         { k: 'Attorney', v: this.repGood(b) ? 'Switching, they were unhappy' : (b.rep === 'Yes' ? 'Has one' : 'None') },
-        { k: 'DOB and SSN', v: s.file.agreement === 'done' ? 'Done' : s.file.agreement === 'qa' ? 'QA in the morning' : 'Still open' }
+        { k: 'DOB and SSN', v: s.file.agreement === 'done' ? 'Done' : s.file.agreement === 'qa' ? 'Finish later' : 'Still open' }
       ],
       next: next,
       solHas: sol.daysLeft != null && sol.daysLeft <= 90, solText: sol.text,
@@ -2019,6 +2079,11 @@ export class CallEngine {
       gates: gates, gapCard: gapCard,
       lead: out.hasLead ? { tags: out.leadTags.map((t) => t.label).join(', ') || out.leadFrom, said: out.leadSaid, from: out.leadFrom, open: out.leadOpen, toggle: out.toggleLead } : null
     });
+    out.guidedQuestions = !!out.fi.guided;
+    if (out.guidedQuestions) {
+      out.showStory = false; out.showBodyGuided = false; out.showCar = false;
+      out.next = out.fi.guided.next;
+    }
     return out;
   }
 }

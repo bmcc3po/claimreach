@@ -29,8 +29,8 @@ const PHASES_FOR: Record<string, string[]> = {
 };
 
 /** The view the agent is looking at, in one word. */
-export function viewOf(v: any): "guided" | "full" | "chore" {
-  return v.choreView ? "chore" : v.view === "full" ? "full" : "guided";
+export function viewOf(v: any): "guided" | "full" | "chore" | "form" {
+  return v.formView ? "form" : v.choreView ? "chore" : v.view === "full" ? "full" : "guided";
 }
 
 function ViewIcon({ k }: { k: string }) {
@@ -81,7 +81,7 @@ export function IxHead({ v }: { v: any }) {
 export function IxBar({ v }: { v: any }) {
   const fi = v.fi;
   const wide = !!v.ws;
-  const steps = !v.choreView && !v.fullView;
+  const steps = !v.choreView && !v.fullView && !v.formView;
   const lights = fi.lights;
   return (
     <div className="ix-bar">
@@ -131,7 +131,7 @@ export function IxBar({ v }: { v: any }) {
 /** The one next step, for whichever view is showing. */
 function nextStep(v: any): { label: string; go: () => void; disabled?: boolean; muted?: boolean; finish?: boolean } | null {
   const fi = v.fi;
-  if (v.choreView) {
+  if (v.choreView || v.formView) {
     const ch = fi.chore;
     if (fi.next) return { label: fi.next.label, go: fi.next.go };
     const now = ch?.rows.find((r: any) => r.status === "now" || r.status === "needs" || r.status === "todo");
@@ -217,7 +217,7 @@ export function WsLeft({ v }: { v: any }) {
         <div className="ws-ctl ws-ctl2">
           {desk && <button type="button" className="ws-btn ws-quiet" onClick={v.openRetainer}>Agreement</button>}
           {desk && <button type="button" className="ws-btn ws-quiet" onClick={v.openFile}>File</button>}
-          <a className="ws-btn ws-quiet" href={`/app/${v.leadId}/print`}>Print or email</a>
+          <a className="ws-btn ws-quiet" href={`/app/${v.leadId}/print?claim=${encodeURIComponent(v.claimId || "")}`}>Print or email</a>
         </div>
       </section>
 
@@ -285,8 +285,9 @@ function sayNow(v: any): { k: string; lines: string[]; cue?: string } {
   if (v.isSend && v.notSigned) return { k: STAY.label, lines: [STAY.line] };
   if ((v.isSend || v.isFile) && v.signed) return { k: SIGNED.label, lines: [SIGNED.line], cue: SIGNED.cue };
   if (v.isClose) return { k: "Say, then hang up", lines: closeLines(first, v.firmSpoken).slice(0, 2), cue: CLOSE_CUE };
-  const onePage = v.fullView || v.choreView;
+  const onePage = v.fullView || v.choreView || v.formView;
   if (!onePage && v.isOpen) return open;
+  if (v.guidedQuestions && fi.guided?.q) return { k: "Ask", lines: [fi.guided.q.ask || fi.guided.q.label], cue: fi.guided.q.cue };
   if (!onePage && v.isStory) return v.hasGap
     ? { k: "If the PNC didn't say it, ask", lines: [v.gapNext], cue: OPEN_LINE.cue }
     : { k: OPEN_LINE.label, lines: [OPEN_LINE.line], cue: OPEN_LINE.cue };
@@ -321,7 +322,7 @@ export function WsHelper({ v, inSheet }: { v: any; inSheet?: boolean }) {
   const [openReb, setOpenReb] = useState<string | null>(null);
   const now = sayNow(v);
   const rem = reminders(v);
-  const onePage = v.fullView || v.choreView;
+  const onePage = v.fullView || v.choreView || v.formView;
   const phase = v.isOpen ? "open" : v.isStory ? "story" : v.isBody ? "body" : v.isCar ? "car" : v.isMoney ? "money" : v.isSend ? "send" : "close";
   const phases = onePage ? PHASES_FOR[fi.openSec || "incident"] || ["story"] : [phase];
   const lines = REBS.filter((r: any) => phases.includes(r.phase)).slice(0, 4);
@@ -356,7 +357,7 @@ export function WsHelper({ v, inSheet }: { v: any; inSheet?: boolean }) {
           <div key={g.id} className="ws-miss">
             <div className="ws-miss-h">{g.label}</div>
             <div className="ws-miss-items">
-              {g.items.map((m: any) => onePage
+              {g.items.map((m: any) => (onePage || v.guidedQuestions)
                 ? <button key={m.id} type="button" className="ws-miss-b" onClick={() => jump(m)}>{m.label}</button>
                 : <span key={m.id} className="ws-miss-b ws-miss-t">{m.label}</span>)}
             </div>
@@ -390,7 +391,7 @@ export function WsHelper({ v, inSheet }: { v: any; inSheet?: boolean }) {
           {!!v.askError && <div className="wh-err">{v.askError}</div>}
         </section>
       )}
-      {inSheet && <a className="ws-link wh-print" href={`/app/${v.leadId}/print`}>Print or email the case</a>}
+      {inSheet && <a className="ws-link wh-print" href={`/app/${v.leadId}/print?claim=${encodeURIComponent(v.claimId || "")}`}>Print or email the case</a>}
     </div>
   );
 }

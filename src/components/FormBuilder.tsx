@@ -429,11 +429,13 @@ function ConditionEditor({ field, earlier, onChange }: { field: Field; earlier: 
                 <select className="sm" value={r.op} onChange={(e) => { const n = [...rules]; n[i] = { ...r, op: e.target.value as any }; setRules(n); }}>
                   <option value="is">is</option><option value="is_not">is not</option>
                   <option value="any_of">is any of</option><option value="not_blank">is answered</option><option value="is_blank">is blank</option>
+                  {r.op === "date_bucket" && <option value="date_bucket">is in the intake date window</option>}
                 </select>
                 {(r.op === "is" || r.op === "is_not") && (
                   opts.length ? <select className="sm" value={r.value ?? ""} onChange={(e) => { const n = [...rules]; n[i] = { ...r, value: e.target.value }; setRules(n); }}><option value="">—</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}</select>
                   : <input className="sm" placeholder="value" value={r.value ?? ""} onChange={(e) => { const n = [...rules]; n[i] = { ...r, value: e.target.value }; setRules(n); }} />
                 )}
+                {r.op === "date_bucket" && <select className="sm" value={r.value ?? ""} onChange={(e) => { const n = [...rules]; n[i] = { ...r, value: e.target.value }; setRules(n); }}><option value="">Choose a window</option><option value="le30">30 days or less</option><option value="mid">More than 30, under 274 days</option><option value="old">274 days or more</option></select>}
                 <button className="btn ghost sm" onClick={() => setRules(rules.filter((_, idx) => idx !== i))}>✕</button>
               </div>
             );

@@ -3,6 +3,10 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
 import { can } from "@/lib/permissions";
+import { resolveMatter, matterRowsFilter, rowBelongsToMatter } from "@/lib/matter";
+import { packetShort } from "@/lib/mva-call/esign";
+import { SIGNED_BUCKET } from "@/lib/signed-docs";
+import { agreementName } from "@/lib/mva-call/agreement-names";
 
 export const runtime = "edge";
 
@@ -25,6 +29,10 @@ async function me(sb: any) {
 function isSignedTrack(status?: string): boolean {
   return /^signed_/.test(status || "") || status === "esign_sent";
 }
+
+// Who may attach legacy signing evidence to a matter. The role must also
+// hold the QA capability, so an explicit intake.qa=false still wins.
+const ASSOCIATE_ROLES = ["owner", "admin", "manager", "qa"];
 
 // The campaign's esign_required flag is authoritative for which track a file
 // uses. The caller passes the BOUND claim's campaign when it has one, so the
@@ -100,6 +108,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Attach a signed agreement that has no matter recorded (legacy, from
+  // before signings carried their claim) to ONE matter on the same file, so
+  // QA can count it. Deliberate and recorded: nothing guesses a sibling.
+  // { op: "associate_evidence", lead_id, claim_id, submission_id? | retainer_id? }
+  // submission_id is the esign_submissions row id.
+  if (b.op === "associate_evidence") {
+    if (!ASSOCIATE_ROLES.includes(u.role) || !can(u.role, u.perm_overrides, "intake.qa")) {
+      return NextResponse.json({ error: "Only QA, a manager, an admin or the owner can attach an agreement to a matter." }, { status: 403 });
+    }
+    const leadId = String(b.lead_id || "");
+    const claimId = String(b.claim_id || "");
+    const subId = b.submission_id ? String(b.submission_id) : "";
+    const retId = b.retainer_id ? String(b.retainer_id) : "";
+    if (!leadId || !claimId) return NextResponse.json({ error: "lead_id and claim_id required" }, { status: 400 });
+    if (!!subId === !!retId) return NextResponse.json({ error: "Pick one agreement to attach." }, { status: 400 });
+    const m = await resolveMatter(admin, leadId, { claimId });
+    if (!m.ok) return NextResponse.json({ error: m.error }, { status: m.status });
+
+    const table = subId ? "esign_submissions" : "retainers";
+    const rowId = subId || retId;
+    const { data: row, error: rErr } = await admin.from(table).select("id, lead_id, claim_id").eq("id", rowId).maybeSingle();
+    if (rErr) return NextResponse.json({ error: `Could not read that agreement: ${rErr.message}` }, { status: 500 });
+    if (!row) return NextResponse.json({ error: "That agreement no longer exists. Refresh the file." }, { status: 404 });
+    if (row.lead_id !== leadId) return NextResponse.json({ error: "That agreement is not on this file. Nothing was attached." }, { status: 400 });
+    if (row.claim_id === claimId) return NextResponse.json({ ok: true, already: true });
+    if (row.claim_id) return NextResponse.json({ error: "That agreement already belongs to another matter on this file. Nothing was attached." }, { status: 409 });
+
+    // Only a row that still has no matter changes, so two reviewers cannot
+    // both attach it.
+    const { data: hit, error: uErr } = await admin.from(table).update({ claim_id: claimId })
+      .eq("id", rowId).eq("lead_id", leadId).is("claim_id", null).select("id");
+    if (uErr) return NextResponse.json({ error: `The agreement was not attached: ${uErr.message}` }, { status: 500 });
+    if (!hit?.length) return NextResponse.json({ error: "Someone attached that agreement a moment ago. Refresh the file and check which matter it is on." }, { status: 409 });
+
+    await recordAudit({
+      firm_id: m.claim.firm_id, lead_id: leadId, claim_id: claimId, actor: u.uid, actor_name: u.full_name ?? "QA",
+      category: "retainer",
+      description: `Attached ${subId ? "a signed e-sign agreement" : "a signed retainer"} to this matter for QA. It had no matter recorded.`,
+      meta: { kind: subId ? "esign" : "retainer", row_id: rowId, claim_id: claimId },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
   // Submit a QA review + route the file.
   if (b.op === "submit") {
     // Routing a file takes the QA capability — the role defaults, honoring an
@@ -166,18 +217,17 @@ export async function POST(req: NextRequest) {
 
     // The e-sign gate is verified against the RECORDS, not the reviewer's
     // checkbox (Astra round 4: approval trusted caller-supplied labels). On
-    // the signed track, approving requires a real completed signing that
-    // belongs to THIS matter's campaign — a sibling matter's signature does
-    // not sign this one (Astra round 5). Legacy retainers predate campaigns
-    // and stay lead-level.
+    // the signed track, approving requires THIS matter's own complete,
+    // durable agreement (Astra round 7b, #58): see matterEvidence below. A
+    // sibling's signature never signs this one, and unattached legacy
+    // evidence on a file with several matters is attached on purpose first.
     if (b.decision === "approve" && signed) {
-      const [{ data: ds }, { data: legacy }] = await Promise.all([
-        admin.from("esign_submissions").select("id, campaign_id").eq("lead_id", lead_id).in("status", ["signed", "completed"]),
-        admin.from("retainers").select("id").eq("lead_id", lead_id).eq("status", "signed").limit(1),
-      ]);
-      const hit = (ds ?? []).filter((s: any) => !s.campaign_id || !claim.campaign_id || s.campaign_id === claim.campaign_id);
-      if (!hit.length && !(legacy ?? []).length) {
-        return NextResponse.json({ error: "Cannot approve: no completed signing is on file for this matter. The e-sign gate is checked against the records, not the checkbox." }, { status: 400 });
+      const ev = await matterEvidence(admin, lead_id, claim.id);
+      if (!ev.ok) {
+        return NextResponse.json({
+          error: ev.error,
+          ...(ev.needs_association ? { needs_association: true, candidates: ev.candidates ?? [], claim_id: claim.id } : {}),
+        }, { status: ev.status });
       }
     }
 
@@ -240,4 +290,130 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });
+}
+
+// ---------------------------------------------------------------------------
+// QA evidence for ONE matter (Astra round 7b, #58). Approving a signed-track
+// claim needs, for THAT claim:
+//   * a DocuSeal agreement of this matter (stamped with the claim, or a legacy
+//     unstamped row only when this is the file's one matter on a compatible
+//     campaign, per matterRowsFilter) that is COMPLETED (both signers, not
+//     just the PNC), not voided, and whose stored packet is whole
+//     (packetShort: every PDF and the certificate actually in storage); or
+//   * an in-house or legacy retainer attached to this claim
+//     (retainers.claim_id) that is signed with a signed PDF actually stored.
+// Signed agreements with NO matter recorded that do not count here are
+// offered back as candidates to attach on purpose (needs_association).
+// A read failure is an error, never "no evidence" and never "evidence".
+// ---------------------------------------------------------------------------
+const SUB_COLS = "id, lead_id, claim_id, campaign_id, firm_id, provider, status, pax_index, submission_id, completed_pdf_path, cert_pdf_path, doc_count, voided_at, template_key, signer_name, signed_at, completed_at, created_at";
+const RET_COLS = "id, lead_id, claim_id, status, completed_pdf_url, signer_name, signed_at, created_at";
+
+type EvidenceCandidate = { kind: "esign" | "retainer"; id: string; label: string; signed_at: string | null };
+type Evidence =
+  | { ok: true; kind: "esign" | "retainer"; id: string }
+  | { ok: false; status: number; error: string; needs_association?: boolean; candidates?: EvidenceCandidate[] };
+
+const isVoided = (s: any) => s.status === "voided" || !!s.voided_at;
+const dayOf = (iso: any) => (iso ? String(iso).slice(0, 10) : "");
+
+async function packetWhole(admin: any, row: any): Promise<boolean> {
+  try { return !(await packetShort(admin, row)); } catch { return false; }
+}
+
+/** Is a signed PDF for this retainer really stored? The in-house signer
+ *  keeps it in our bucket (checked as an object, not a pointer); a
+ *  provider-completed retainer (SignWell) keeps it at the provider. */
+async function retainerPdfStored(admin: any, r: any): Promise<{ stored: boolean } | { error: string }> {
+  const { data: sd, error } = await admin.from("signable_documents").select("id, completed_pdf_path")
+    .eq("retainer_id", r.id).eq("status", "signed").not("completed_pdf_path", "is", null);
+  if (error) return { error: `Could not read the retainer's signed copy: ${error.message}` };
+  for (const s of sd ?? []) {
+    const p = String(s.completed_pdf_path);
+    const cut = p.lastIndexOf("/");
+    const folder = cut > 0 ? p.slice(0, cut) : "";
+    const name = p.slice(cut + 1);
+    try {
+      const { data: list, error: lErr } = await admin.storage.from(SIGNED_BUCKET).list(folder, { limit: 100, search: name });
+      if (lErr) return { error: `Could not check the retainer's stored PDF: ${lErr.message}` };
+      if ((list ?? []).some((f: any) => f?.name === name)) return { stored: true };
+    } catch (e: any) {
+      return { error: `Could not check the retainer's stored PDF: ${String(e?.message || e)}` };
+    }
+  }
+  return { stored: /^https?:\/\//i.test(String(r.completed_pdf_url || "")) };
+}
+
+async function matterEvidence(admin: any, leadId: string, claimId: string): Promise<Evidence> {
+  const m = await resolveMatter(admin, leadId, { claimId });
+  if (!m.ok) return { ok: false, status: m.status, error: m.error };
+
+  // 1. This matter's DocuSeal agreements, newest first.
+  const { data: subs, error: sErr } = await admin.from("esign_submissions").select(SUB_COLS)
+    .eq("lead_id", leadId).eq("provider", "docuseal").or(matterRowsFilter(m))
+    .order("created_at", { ascending: false });
+  if (sErr) return { ok: false, status: 500, error: `Could not read this matter's agreements: ${sErr.message}` };
+  let clientOnly = false, short = false, voided = false;
+  for (const s of subs ?? []) {
+    if (isVoided(s)) { voided = true; continue; }
+    if (s.status === "signed") { clientOnly = true; continue; }
+    if (s.status !== "completed") continue;
+    if (!(await packetWhole(admin, s))) { short = true; continue; }
+    return { ok: true, kind: "esign", id: s.id };
+  }
+
+  // 2. A retainer attached to this claim, signed, with its PDF stored.
+  const { data: rets, error: rErr } = await admin.from("retainers").select(RET_COLS)
+    .eq("lead_id", leadId).order("created_at", { ascending: false });
+  if (rErr) return { ok: false, status: 500, error: `Could not read this file's retainers: ${rErr.message}` };
+  let retainerNoPdf = false;
+  for (const r of rets ?? []) {
+    if (r.claim_id !== claimId || r.status !== "signed") continue;
+    const pdf = await retainerPdfStored(admin, r);
+    if ("error" in pdf) return { ok: false, status: 500, error: pdf.error };
+    if (pdf.stored) return { ok: true, kind: "retainer", id: r.id };
+    retainerNoPdf = true;
+  }
+
+  // 3. Complete signed agreements with no matter recorded that do not count
+  // for this one: attach on purpose, never assumed.
+  const candidates: EvidenceCandidate[] = [];
+  const { data: loose, error: lErr } = await admin.from("esign_submissions").select(SUB_COLS)
+    .eq("lead_id", leadId).eq("provider", "docuseal").is("claim_id", null).eq("status", "completed")
+    .order("created_at", { ascending: false });
+  if (lErr) return { ok: false, status: 500, error: `Could not read this file's agreements: ${lErr.message}` };
+  for (const s of loose ?? []) {
+    if (isVoided(s) || rowBelongsToMatter(s, m)) continue;
+    if (!(await packetWhole(admin, s))) continue;
+    const when = dayOf(s.completed_at || s.signed_at);
+    candidates.push({
+      kind: "esign", id: s.id, signed_at: s.completed_at || s.signed_at || null,
+      label: `${agreementName(s.template_key) || "E-sign"} agreement signed by ${s.signer_name || "the PNC"}${when ? ` on ${when}` : ""}`,
+    });
+  }
+  for (const r of rets ?? []) {
+    if (r.claim_id || r.status !== "signed") continue;
+    const pdf = await retainerPdfStored(admin, r);
+    if ("error" in pdf) return { ok: false, status: 500, error: pdf.error };
+    if (!pdf.stored) continue;
+    const when = dayOf(r.signed_at);
+    candidates.push({
+      kind: "retainer", id: r.id, signed_at: r.signed_at || null,
+      label: `Retainer signed by ${r.signer_name || "the PNC"}${when ? ` on ${when}` : ""}`,
+    });
+  }
+  if (candidates.length) {
+    return {
+      ok: false, status: 409, needs_association: true, candidates,
+      error: m.sole
+        ? "Cannot approve yet: the signed agreement on this file is not attached to this matter. Check it is the right one, attach it, then approve again."
+        : "Cannot approve yet: this file has more than one matter and its signed agreement is not attached to any of them. Attach the one that belongs to this matter, then approve again.",
+    };
+  }
+
+  if (short) return { ok: false, status: 400, error: "Cannot approve: this matter's agreement is complete, but its stored copy is not whole (a signed PDF or the certificate is missing). Open the agreement on the file so the missing pieces are recovered, then approve again." };
+  if (clientOnly) return { ok: false, status: 400, error: "Cannot approve: the PNC signed, but the agreement is not complete yet. The intake side (DOB and SSN) still has to be finished." };
+  if (retainerNoPdf) return { ok: false, status: 400, error: "Cannot approve: the retainer for this matter is marked signed, but no signed PDF is stored for it." };
+  if (voided) return { ok: false, status: 400, error: "Cannot approve: this matter's agreement was voided. A new agreement has to be signed first." };
+  return { ok: false, status: 400, error: "Cannot approve: no completed signing is on file for this matter. The e-sign gate is checked against the records, not the checkbox." };
 }
