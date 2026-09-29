@@ -81,7 +81,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const utilityRef = useRef<HTMLDivElement | null>(null);
   // When the last autosave landed, for "Saved at 2:14 PM" (never shown after a failed write).
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [deskTab, setDeskTabState] = useState<DeskTab>(init.openText ? "texts" : "know");
+  const [deskTab, setDeskTabState] = useState<DeskTab>(init.openText ? "texts" : "file");
   const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
   // Only the JustCall dialer on this screen can say a call is live. Nothing else claims it.
   const [dialState, setDialState] = useState<string>("");
@@ -232,6 +232,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const v = engine.renderVals();
   const ws: "desk" | "ipad" | null = isDesk && !touch ? "desk" : wide ? "ipad" : null;
   const deskOn = ws === "desk";
+  const sideOn = !!ws;
 
   async function loadComms() {
     try {
@@ -405,7 +406,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     if (body) body.scrollTop = body.scrollHeight;
   }, [s.text.open, threadLen]);
 
-  // Desktop or phone. The panel only mounts on a wide screen.
+  // Layout changes move the panel visually without replacing its React parent.
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1180px)");
     const mw = window.matchMedia("(min-width: 1000px)");
@@ -416,24 +417,25 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     return () => [mq, mw, mt].forEach((m) => m.removeEventListener("change", on));
   }, []);
   useEffect(() => {
-    deskTextsOpen.current = (deskOn || utilityOpen) && deskTab === "texts";
+    deskTextsOpen.current = (sideOn || utilityOpen) && deskTab === "texts";
     // Arriving from a text on a desktop: the thread opens in the panel, not a sheet.
-    if (deskOn && engine.state.text.open) { engine.setState({ text: { ...engine.state.text, open: false } }); setDeskTab("texts"); }
+    if (sideOn && engine.state.text.open) { engine.setState({ text: { ...engine.state.text, open: false } }); setDeskTab("texts"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deskOn, utilityOpen, deskTab]);
+  }, [sideOn, utilityOpen, deskTab]);
   // Texts tab on screen: check every 5 seconds, same as the open sheet.
   useEffect(() => {
-    if ((!deskOn && !utilityOpen) || deskTab !== "texts") return;
+    if ((!sideOn && !utilityOpen) || deskTab !== "texts") return;
     void loadComms();
     const t = setInterval(() => { void loadComms(); }, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deskOn, utilityOpen, deskTab]);
+  }, [sideOn, utilityOpen, deskTab]);
 
   useEffect(() => {
-    if (deskOn || !utilityOpen) return;
+    if (sideOn || !utilityOpen) return;
     const previous = document.activeElement as HTMLElement | null;
     const dialog = utilityRef.current;
+    dialog?.querySelector<HTMLButtonElement>("button")?.focus();
     const keys = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); setUtilityOpen(false); return; }
       if (event.key !== "Tab" || !dialog) return;
@@ -444,19 +446,17 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     };
     document.addEventListener("keydown", keys);
     return () => { document.removeEventListener("keydown", keys); previous?.focus(); };
-  }, [deskOn, utilityOpen]);
-  // Reaching Send on a desktop brings up the agreement preview.
+  }, [sideOn, utilityOpen]);
+  // Entering Send brings up the agreement preview. Merely reopening the file
+  // or resizing the screen keeps the case file (or the agent's chosen tab).
   const phase = s.phase;
+  const previousPhase = useRef(phase);
   useEffect(() => {
-    if (deskOn && phase === "send" && init.canPreview) setDeskTab("retainer");
+    const enteredSend = previousPhase.current !== phase && phase === "send";
+    previousPhase.current = phase;
+    if (sideOn && enteredSend && init.canPreview) setDeskTab("retainer");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deskOn, phase]);
-  // The desktop workspace opens its right side on the summary; leaving it puts CarCure back.
-  useEffect(() => {
-    if (ws === "desk" && deskTab === "know") setDeskTab("summary");
-    if (ws !== "desk" && deskTab === "summary") setDeskTab("know");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws]);
+  }, [sideOn, phase]);
 
   const preview = previewInfo(engine.state, init);
   const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
@@ -473,7 +473,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     if (snapshot === lastSaved.current && callId.current && !engine.state.net?.saveError) { setSavedAt(Date.now()); return; }
     void flushSave();
   };
-  if (deskOn) {
+  if (sideOn) {
     view.openPhone = () => setDeskTab("phone");
     view.openText = () => setDeskTab("texts");
     view.openSheet = () => setDeskTab("know");
@@ -568,22 +568,25 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
 
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
   const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
+  const casePanel = <DeskPanel key="case-panel" v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
+    summary={<WsHelper v={view} />}
+    preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
+    focusLines={focusLines} phones={phones} leadId={init.leadId} claimId={init.claimId} onDialState={setDialState}
+    story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />;
   return (
-    <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ""}`}>
+    <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ws === "ipad" ? " cc-ipad-on" : ""}`}>
       <CallView v={view} />
       {deskOn && !ws && (
         <div className="cc-split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the call and the panel" tabIndex={0}
           title="Drag to resize. Double-click to reset."
           onPointerDown={startSlide} onKeyDown={nudgeSlide} onDoubleClick={() => setCallW(null, true)} />
       )}
-      {(deskOn || utilityOpen) && <div ref={utilityRef} className={deskOn ? "cc-panel-host" : "cc-utility-dialog"} style={deskOn ? { display: "contents" } : { position: "fixed", inset: 0, zIndex: 90, background: "white", overflow: "auto" }} role={deskOn ? undefined : "dialog"} aria-modal={deskOn ? undefined : true} aria-label="Case tools">
-        {!deskOn && <button autoFocus type="button" className="cc-btn" style={{ margin: 12 }} onClick={() => setUtilityOpen(false)}>Back to intake</button>}
-        <DeskPanel v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
-          summary={<WsHelper v={view} />}
-          preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
-          focusLines={focusLines} phones={phones} leadId={init.leadId} claimId={init.claimId} onDialState={setDialState}
-          story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />
-      </div>}
+      {/* Keep one host and keyed panel through rotation and phone close/reopen.
+          File drafts and the dialer iframe belong to this matter, not its layout. */}
+      <div ref={utilityRef} className={sideOn ? "cc-panel-host" : "cc-utility-dialog"} style={sideOn ? { display: "contents" } : utilityOpen ? { position: "fixed", inset: 0, zIndex: 90, background: "white", overflow: "auto" } : { display: "none" }} role={!sideOn && utilityOpen ? "dialog" : undefined} aria-modal={!sideOn && utilityOpen ? true : undefined} aria-label="Command center">
+        {!sideOn && <button type="button" className="cc-btn" style={{ margin: 12 }} onClick={() => setUtilityOpen(false)}>Back to intake</button>}
+        {casePanel}
+      </div>
     </div>
   );
 }

@@ -54,12 +54,11 @@ export default function CallView({ v }: { v: any }) {
   return (
 <div className={cls}>
 {wide && <WsLeft v={v} />}
-{v.ws === "ipad" && <aside className="ws-right" aria-label="Helper"><WsHelper v={v} /></aside>}
 <div className="cc-top ix-top">
 {!wide && <IxHead v={v} />}
 {!!v.openCaseTools && <div className="ix-case-actions">
   <span>Contact, documents and messages</span>
-  <button type="button" className="ix-case-tools" aria-haspopup="dialog" onClick={v.openCaseTools}>Case tools</button>
+  <button type="button" className="ix-case-tools" aria-haspopup="dialog" onClick={v.openCaseTools}>Command center</button>
 </div>}
 <IxBar v={v} />
 </div>
