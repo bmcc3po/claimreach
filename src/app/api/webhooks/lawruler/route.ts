@@ -7,6 +7,7 @@ import { normalizeLead, loadCampaigns, chooseCampaign, ingestLead, redactForLog 
 import { mapLawRulerStatus, shouldApplyLr } from "@/lib/lawruler-status";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { LR_MAX_BODY_BYTES, recordLawRulerSource, resolveLawRulerMatter, storeLawRulerOriginals, validateLawRulerOriginal } from "@/lib/lawruler-documents";
+import { hasRemoteLawRulerOriginal, syncLawRulerMva } from "@/lib/lawruler-mva-sync";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -86,7 +87,9 @@ async function parseBody(req: NextRequest): Promise<{ fields: Record<string, any
     const fd = await body.formData();
     for (const [k, v] of fd.entries()) {
       if (typeof v === "string") {
-        fields[k] = v;
+        // Preserve a repeated checkbox field rather than silently keeping its
+        // last value. The PRESIGN mapper accepts explicit arrays.
+        fields[k] = Object.prototype.hasOwnProperty.call(fields, k) ? [...(Array.isArray(fields[k]) ? fields[k] : [fields[k]]), v] : v;
       } else {
         const f = v as File;
         files.push({
@@ -166,9 +169,10 @@ export async function POST(req: NextRequest) {
   const recoveryMode = String(fields.recovery_mode ?? "").trim().toLowerCase();
   if (Object.prototype.hasOwnProperty.call(fields, "recovery_mode") && recoveryMode !== "historical") return NextResponse.json({ error: "The supported recovery_mode is historical. Omit it for an ordinary live webhook.", saved: false }, { status: 400 });
   const historical = recoveryMode === "historical";
+  const innoMva = String(normalizeLead(fields).caseType || '').trim().toLowerCase() === 'inno mva';
   // Original URLs need an approved host/transport contract. Never fetch a URL
   // from an incoming payload with service credentials or call it recovered.
-  if (Object.entries(fields).some(([key, value]) => /attachment|document|retainer|intake.*url/i.test(key) && /https?:\/\//i.test(typeof value === "string" ? value : JSON.stringify(value)))) return NextResponse.json({ error: "Remote original URLs are not imported. Supply PDF/CSV multipart originals with matching LawRuler identity; an allowlisted URL transport must be configured separately.", saved: false, attachments_complete: false }, { status: 422 });
+  if (!innoMva && hasRemoteLawRulerOriginal(fields)) return NextResponse.json({ error: "Remote original URLs are not imported. Supply PDF/CSV multipart originals with matching LawRuler identity; an allowlisted URL transport must be configured separately.", saved: false, attachments_complete: false }, { status: 422 });
   const admin = supabaseAdmin();
   const manifest = files.map(f => ({ name: f.name, type: f.contentType, bytes: f.bytes.byteLength }));
   const redact = (value: any, depth = 0): any => {
@@ -178,7 +182,9 @@ export async function POST(req: NextRequest) {
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(redactForLog(value)).map(([k, v]) => [k, redact(v, depth + 1)]));
     return value;
   };
-  const envelope = { content_type: rawNote, field_keys: Object.keys(fields), fields: redact(fields), attachments: manifest };
+  // Medical PRESIGN answers belong on the protected matter, not duplicated in
+  // generic webhook logs. Retain the body keys for operational diagnostics.
+  const envelope = { content_type: rawNote, field_keys: Object.keys(fields), fields: innoMva ? { LeadID: normalizeLead(fields).leadId, CaseType: 'INNO MVA', Status: normalizeLead(fields).status } : redact(fields), attachments: manifest };
   const logId = await log(admin, null, "received", 200, envelope, null);
 
   // LawRuler's Test button sends each mapped field as its own placeholder
@@ -219,13 +225,30 @@ export async function POST(req: NextRequest) {
         const existingMatter = await resolveLawRulerMatter(admin, { firmId: camp.firm_id, leadId: targets.data[0].id, campaignId: camp.id, campaignName: camp.name, caseType: camp.case_type, claimId: clean(fields.claim_id) });
         if (!existingMatter.ok) return NextResponse.json({ error: existingMatter.error, saved: false }, { status: existingMatter.status });
       }
-      const r = await ingestLead(admin, { lead: norm, campaign: camp, via: "lawruler", historical });
+      // An externally worked/signed record is recovery, even on its first
+      // arrival here. It must not publish a new-lead acquisition event.
+      const externalUpdate = innoMva && !/^new lead(?: \(default\))?$/i.test(norm.status || '');
+      const r = await ingestLead(admin, { lead: norm, campaign: camp, via: "lawruler", historical: historical || externalUpdate });
       await log(admin, camp.firm_id, r.ok ? "received" : "failed", r.ok ? 200 : (r.status || 500),
         { vendor_lead_id: norm.leadId, lead_no: r.lead_no ?? null, created: !!r.created, campaign: camp.name }, r.error ?? null);
       if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status || 500 });
       const matter = await resolveLawRulerMatter(admin, { firmId: camp.firm_id, leadId: r.lead_id!, campaignId: camp.id, campaignName: camp.name, caseType: camp.case_type, claimId: clean(fields.claim_id) });
       if (!matter.ok) return NextResponse.json({ error: matter.error, lead_saved: true, lead_id: r.lead_id, attachments_complete: false }, { status: matter.status });
       const scope = { firmId: camp.firm_id, leadId: r.lead_id!, claimId: matter.claim.id, vendorId: norm.leadId!, caseType: camp.case_type };
+      if (innoMva && camp.name.trim().toLowerCase() === 'inno mva' && camp.case_type === 'mva') {
+        try {
+          const sync = await syncLawRulerMva(admin, { ...scope, campaignId: camp.id }, fields, files, historical);
+          const retry = !!r.error || sync.retry_required;
+          return NextResponse.json({ ok: !retry, lead_saved: true, lead_id: r.lead_id, claim_id: matter.claim.id, lead_no: r.lead_no,
+            created: r.created, updated: !r.created, campaign: camp.name, ...sync,
+            status_reconciliation: sync.reconciliation.outcome, ...(historical ? { recovery_mode: 'historical' } : {}),
+            log_id: logId, ...(r.error ? { error: r.error } : {}) }, { status: retry ? 500 : 200 });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'LawRuler sync failed.';
+          await log(admin, camp.firm_id, 'failed', 500, { lead_id: r.lead_id, claim_id: matter.claim.id }, message);
+          return NextResponse.json({ error: message, lead_saved: true, lead_id: r.lead_id, claim_id: matter.claim.id, retry_required: true }, { status: 500 });
+        }
+      }
       try { files.forEach(file => validateLawRulerOriginal(file, scope, fields)); }
       catch (error) { return NextResponse.json({ error: String((error as Error).message), lead_saved: true, attachments_complete: false }, { status: 422 }); }
       try {

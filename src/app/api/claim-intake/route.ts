@@ -27,6 +27,11 @@ export async function POST(req: NextRequest) {
   // Fetch existing claim (lead linkage + prior answers for diffing).
   const { data: claim } = await sb.from("claims").select("lead_id, answers, status, updated_at").eq("id", claim_id).maybeSingle();
   const prior: Record<string, any> = (claim?.answers as any) ?? {};
+  // Imported MVA answers use the call console's leaf-level base/merge protocol.
+  // A classic full-object payload has no baseline and could erase that import.
+  if (prior.lawruler_presign && Object.prototype.hasOwnProperty.call(answers || {}, "mva_call")) {
+    return NextResponse.json({ error: "This MVA intake contains recovered answers. Edit its intake in the call workspace so newer answers and intentional clears are preserved." }, { status: 409 });
+  }
   // MERGE, never replace. Different surfaces (Guided, All sections, the call
   // console) send different subsets of keys; a save that omits a key must not
   // delete an answer another surface already captured (Astra audit, Sep 27:
@@ -61,6 +66,7 @@ export async function POST(req: NextRequest) {
     if (hit) { wrote = true; break; }
     const { data: fresh, error: rErr } = await sb.from("claims").select("answers, status, updated_at").eq("id", claim_id).maybeSingle();
     if (rErr || !fresh) return NextResponse.json({ error: rErr?.message || "claim disappeared mid-save" }, { status: 500 });
+    if ((fresh.answers as any)?.lawruler_presign && Object.prototype.hasOwnProperty.call(sent, "mva_call")) return NextResponse.json({ error: "Recovered MVA answers arrived while this screen was saving. Reopen the call workspace before editing its intake." }, { status: 409 });
     merged = { ...((fresh.answers as any) ?? {}), ...sent };
     curStatus = fresh.status as any;
     seen = fresh.updated_at ?? null;

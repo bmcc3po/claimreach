@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Icon from "@/components/ui/Icon";
 import AgreementChoice from "./AgreementChoice";
+import LawRulerSyncSummary from "@/components/LawRulerSyncSummary";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
@@ -552,6 +553,7 @@ function FileTab({ leadId, claimId, lead }: { leadId: string; claimId: string; l
     <div className="cc-side-b">
       {err && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>{err}</div>}
       <ContactCard leadId={leadId} initial={d.contact || {}} />
+      <LawRulerSyncSummary imported={d.imported} />
       <div className="cc-grp">
         {d.status && <div className="cc-chk"><span className="cc-chk-k">Status</span><span className="cc-chk-v"><span className={`cc-dot cc-${d.status.tone || "info"}`} />{d.status.label}</span></div>}
         {row("Lead number", L.lead_no)}

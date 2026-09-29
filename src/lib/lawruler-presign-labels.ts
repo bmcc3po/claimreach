@@ -1,0 +1,30 @@
+// Source labels observed in INNO MVA / Presign Form (7823), 2026-09-28.
+// Labels only; these do not define or change ClaimReach intake questions.
+export const LAWRULER_PRESIGN_LABELS: Record<string, string> = {
+  "Custom4123": "Summary",
+  "Custom4119": "SAY THE NAME, DO NOT ASK IT!  Hi {NAME}, this is {AGENT} from The Legal Intake Center, calling you back about the accident........ First off, Is everybody ok?   agent: if caller references a catastrophic situation (death, severe injury, etc),mute to inform a supervisor and continue with empathy while awaiting instruction  I'm sorry you're dealing with this. The good news is you called the right place, and I can make this part easy on you.  Quick housekeeping, this call is recorded for quality. I've got a handful of questions so I can get this in front of the right attorney. Few minutes at most.",
+  "Custom4120": "Before we get started, are you currently represented by another attorney for this accident?",
+  "Custom4121": "Were you the driver or a passenger at the time of the incident?",
+  "Custom4122": "If other, please explain",
+  "Custom4124": "Can you confirm the date of the accident? (check SOL by state) .....",
+  "Custom4125": "What city and state did the accident occur in? (type city only here)",
+  "Custom4126": "State",
+  "Custom4127": "Who was at fault for the accident?",
+  "Custom4128": "If Other explain, and type response to why PNC chose who was at fault",
+  "Custom4129": "Were you injured in the accident? (if no, DQ)",
+  "Custom4130": "If yes, briefly explain injuries reported",
+  "Custom4131": "Have you been seen by a doctor yet for the injuries?(check all that apply)",
+  "Custom4132": "If yes, when was the first visit?",
+  "Custom4133": "If yes, when was the most recent visit?",
+  "Custom4134": "Agent: -DOI to first TX (or to today if none) must be under 30 days. -Last TX to today, must be under 30 days. -If first TX to last TX spans is over 30 days, you must ask if they ever stopped for 30 days or more.  If any fail, see supervisor",
+  "Custom4135": "Okay. The most important thing you can do right now is get yourself checked out. We can get you in front of a doctor who will treat you now and get paid out of the settlement, so nothing comes out of your pocket.  Do you have health insurance?",
+  "Custom4136": "Did the other driver have auto insurance?",
+  "Custom4137": "Do you carry uninsured or underinsured motorist coverage on your own auto policy?",
+  "Custom4138": "Agent, if PNC is not sure of UIM, keep going and note below.   IF BOTH AUTO INSURANCE ANSWERS ARE NO=DQ",
+  "Custom4139": "Was the at fault a police vehicle, ambulance, fire truck, city bus, or any other government vehicle? If yes =DQ.",
+  "Custom4140": "Have you accepted any settlement or payment for your injuries? Not for the vehicle, for the injuries",
+  "Custom4141": "Can you briefly describe what happened? Just an overview, we will get the precise details later.",
+  "Custom4142": "Based on what you have told me, this is something we can help you with. Let me get you set up with the firm",
+  "Custom4143": "“I am sending the agreement over to you right now. Stay with me and I will walk you through it.",
+  "Custom4144": "Perfect, you're all set. I'm sending your file over to your team right now so they can get started on it. couple things and I'll let you go. Your going to hear this repeated to you, and its because its important: 1- If the other driver's insurance company calls you, you don't have to talk to them. Give them our number and we'll take it from there. 2- stay off social media about the accident. No posts, no pictures, nothing about how you're feeling. 3-The most important piece of this is getting yourself healthy. You focus on your treatment, the firm will focus on everything else.    Give me one second, let me see if I can catch someone over there to say hello before I let you go.   IF FIRM ANSWERS: I have {CLIENT} on with me. They just signed up on a motor vehicle claim out of {STATE}, wanted to introduce you before I let them go.  IF UNAVAILABLE: Looks like they're all tied up with clients right now, which honestly is a good sign. Your file is going over to the team today and they'll be reaching out to you directly. In the meantime I will text you the number, any questions or concerns, please don't hesitate to call. Wishing you a speedy recovery.  Have a great day."
+};

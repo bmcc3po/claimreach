@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import LawRulerSyncSummary from "./LawRulerSyncSummary";
 
 async function json(url: string, body?: any) {
   const res = await fetch(url, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : undefined);
@@ -54,7 +55,7 @@ export default function CaseSigning({ leadId, claimId, role }: { leadId: string;
     <div className="case-signing-head"><div><h2>Agreement</h2><p className="muted">{data?.lead?.campaign || "This matter"} · DocuSeal</p></div><button className="btn ghost sm" disabled={busy} onClick={() => void load()}>Refresh status</button></div>
     {error && <p role="alert" className="save-msg warn">{error}</p>}
     {message && <p role="status" className="save-msg">{message}</p>}
-    {data?.imported && <div className="case-signing-summary"><strong>Imported from LawRuler</strong><p>Original status: {data.imported.sourceStatus || "Not supplied"}. {data.imported.sourceSignedReported ? "LawRuler reports a signed agreement." : "No signed agreement reported in the source."} {data.imported.sourceSignedAt ? `Source signing date: ${data.imported.sourceSignedAt}.` : ""}</p><p>{data.imported.originalRetainerStored ? "Original retainer stored with this matter." : "Original retainer still needed."} Imported signature evidence has not been independently verified. Review the original before sending a new signing request.</p></div>}
+    <LawRulerSyncSummary imported={data?.imported} />
     {!data && !error && <p>Loading this matter’s agreement…</p>}
     {data && <div className="case-signing-summary">
       <strong>{status?.emergency?.needs_resign ? "Emergency packet · DocuSeal re-sign needed" : status?.complete ? "Signed packet complete" : status?.status === "signed" ? "Client signed · office completion needed" : status?.status === "ready" ? "Ready to prepare" : status?.status || "Agreement status unavailable"}</strong>

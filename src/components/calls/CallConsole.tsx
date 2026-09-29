@@ -13,12 +13,15 @@ import { stateCodeOf } from "@/lib/mva-call/state";
 import { agreementChoice } from "@/lib/mva-call/agreement-choice";
 import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
 import { callbackAt } from "@/lib/mva-call/dispo";
+import { applyAnswerDelta, isAnswerObject } from "@/lib/mva-call/answer-merge";
 
 export interface ConsoleInit {
   leadId: string;
   /** The ONE matter this call works, pinned when the call opened (round 7). */
   claimId: string;
   callId: string | null;
+  /** Raw canonical document, before the engine adds empty display defaults. */
+  baseAnswers?: Record<string, any>;
   agreementId?: string | null;
   emergency?: { needsResign: boolean; status: string } | null;
   startedAt: number;
@@ -42,7 +45,7 @@ async function post(url: string, body: unknown): Promise<any> {
     const err: any = new Error(d?.error || (r.status >= 500
       ? `The server could not confirm the result (${r.status}). Check the file before trying again.`
       : `That did not go through (${r.status}).`));
-    err.status = r.status; err.ended = !!d?.ended;
+    err.status = r.status; err.ended = !!d?.ended; err.conflict = !!d?.conflict; err.callId = d?.call_id;
     throw err;
   }
   return d;
@@ -68,6 +71,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [emergencyStatus, setEmergencyStatus] = useState(init.emergency?.status || "");
   const eng = useRef<CallEngine | null>(null);
   const lastSaved = useRef("");
+  const answerBase = useRef<Record<string, any>>(isAnswerObject(init.baseAnswers) ? init.baseAnswers : isAnswerObject(init.props.saved) ? init.props.saved : {});
+  const saveBlocked = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saving = useRef(false);
   // Inbound texts already seen. Anything newer lights the badge.
@@ -258,12 +263,29 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   }
 
   async function save(snap: string): Promise<boolean> {
-    if (saving.current) return false;
+    if (saving.current || saveBlocked.current) return false;
     saving.current = true;
+    const sentView = JSON.parse(snap);
+    const baseView = JSON.parse(lastSaved.current);
+    const baseAnswers = answerBase.current;
+    const sentAnswers = applyAnswerDelta(baseView, sentView, baseAnswers);
     try {
-      const d = await post("/api/calls/save", { lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, answers: JSON.parse(snap), mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
+      const d = await post("/api/calls/save", { lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, base_answers: baseAnswers, answers: sentAnswers, mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
       callId.current = d.call_id || callId.current;
-      lastSaved.current = snap;
+      const canonical = isAnswerObject(d.answers) ? d.answers : sentAnswers;
+      // The acknowledgement may contain an import or another screen's unrelated
+      // edits. Keep those, then reapply anything typed after this request began.
+      const acknowledgedView = applyAnswerDelta(baseAnswers, canonical, sentView);
+      const withPending = applyAnswerDelta(sentView, engine.persistable(), acknowledgedView);
+      answerBase.current = canonical;
+      lastSaved.current = JSON.stringify(acknowledgedView);
+      const groups: Record<string, any> = {};
+      for (const key of ["story", "body", "car", "send", "file"]) {
+        if (isAnswerObject(withPending[key])) groups[key] = { ...engine.state[key], ...withPending[key] };
+      }
+      // SSN and signing/network state are absent from the persisted document;
+      // overlay answer groups without replacing those runtime-only values.
+      engine.setState(groups);
       // What this save put on the record goes to every open screen.
       const c = d.contact || {};
       if (Object.keys(c).length) {
@@ -275,9 +297,11 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       if (engine.state.net?.saveError) engine.setState({ net: { saveError: "" } });
       return true;
     } catch (err: any) {
+      if (err?.callId) callId.current = err.callId;
       // A call already closed (another screen) or pinned to another matter is
       // not retried forever: say what happened and stop (round 7).
-      if (err?.ended) {
+      if (err?.ended || err?.conflict) {
+        saveBlocked.current = true;
         engine.setState({ net: { saveError: err.message } });
         return false;
       }
@@ -292,6 +316,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   }
 
   async function flushSave(): Promise<boolean> {
+    if (saveBlocked.current) return false;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     // If an autosave is mid-flight, give it a moment instead of reporting a
     // false failure (save() returns false while one is running).
@@ -319,9 +344,10 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   // Leaving the page (or the phone locking) still lands the last answers.
   useEffect(() => {
     const flush = () => {
+      if (saveBlocked.current) return;
       const snap = JSON.stringify(engine.persistable());
       if (snap === lastSaved.current) return;
-      const body = JSON.stringify({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, answers: JSON.parse(snap) });
+      const body = JSON.stringify({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, base_answers: answerBase.current, answers: applyAnswerDelta(JSON.parse(lastSaved.current), JSON.parse(snap), answerBase.current) });
       try { navigator.sendBeacon("/api/calls/save", body); } catch { /* the debounced save already tried */ }
     };
     const onHide = () => { if (document.visibilityState === "hidden") flush(); };

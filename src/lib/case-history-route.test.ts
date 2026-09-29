@@ -7,8 +7,13 @@ import { FakeDb } from "./test-fake-db";
 import * as signing from "./mva-call/signing-matter";
 import * as matter from "./matter";
 import * as notes from "./file-notes";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import * as jsxRuntime from "react/jsx-runtime";
+import LawRulerSyncSummary from "../components/LawRulerSyncSummary";
 
 globalThis.fetch = async () => { throw Error("Network forbidden"); };
+(globalThis as any).React = React;
 const L = "10000000-0000-4000-8000-000000000001", A = "20000000-0000-4000-8000-000000000001", B = "20000000-0000-4000-8000-000000000002";
 function world() {
   const db: any = new FakeDb({
@@ -75,13 +80,12 @@ function renderedFileText(data: any) {
   const code = ts.transpileModule(`${component.getText()}\nexports.render = FileTab;`, { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   let hook = 0;
   const useState = (initial: any) => [hook++ === 0 ? data : initial, () => {}];
-  const jsx = (_type: any, props: any) => props?.children;
   const exp: any = {};
-  new Function("require", "exports", "useState", "useEffect", "fmtWhen", "ContactCard", "LeadCard", code)(
-    (id: string) => { assert.equal(id, "react/jsx-runtime"); return { jsx, jsxs: jsx, Fragment: "fragment" }; },
-    exp, useState, () => {}, () => "", () => null, () => null,
+  new Function("require", "exports", "useState", "useEffect", "fmtWhen", "ContactCard", "LeadCard", "LawRulerSyncSummary", code)(
+    (id: string) => { assert.equal(id, "react/jsx-runtime"); return jsxRuntime; },
+    exp, useState, () => {}, () => "", () => null, () => null, LawRulerSyncSummary,
   );
-  return JSON.stringify(exp.render({ leadId: L, claimId: B, lead: null }));
+  return renderToStaticMarkup(exp.render({ leadId: L, claimId: B, lead: null }));
 }
 let count = 0;
 async function check(name: string, fn: () => Promise<void>) { await fn(); count++; console.log("ok", name); }
@@ -125,6 +129,15 @@ async function main() {
     const r = await route("calls/file", world()).GET(req()); assert.equal(r.status, 200);
     const rendered = renderedFileText(r.body);
     assert.match(rendered, /Shared file document/); assert.match(rendered, /This matter/);
+  });
+  await check("actual File tab mounts the real import summary and exposes failed structured recovery safely", async () => {
+    const r = await route("calls/file", world()).GET(req());
+    const rendered = renderedFileText({ ...r.body, imported: {
+      sourceStatus: "<script>unsafe source</script>",
+      lastSync: { intake_result: { outcome: "failed", error: "Synthetic recovery needs retry" } },
+    } });
+    assert.match(rendered, /aria-label="LawRuler import"/); assert.match(rendered, /Synthetic recovery needs retry/);
+    assert.match(rendered, /&lt;script&gt;/); assert.ok(!rendered.includes("<script>"));
   });
   await check("Retainer API returns only selected matter; null legacy is not assigned to sibling", async () => {
     const r = await route("retainer", world()).GET(req()); assert.equal(r.status, 200); assert.deepEqual(r.body.retainers.map((x: any) => x.id), ["ret-b"]);

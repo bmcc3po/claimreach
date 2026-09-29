@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { dripDispatchEnabled, dripOffResult } from "@/lib/drip-dispatch";
+import { mayDispatchMvaAcquisition } from "@/lib/lawruler-mva-status";
 export const runtime = "edge";
 
 // Scheduled drip processor. Requires CRON_SECRET via x-cron-secret header.
@@ -19,8 +20,11 @@ export async function GET(req: NextRequest) {
   const { data: due } = await admin.from("drips_due").select("*").limit(500);
   const origin = url.origin;
   let fired = 0;
+  const held: { lead_id: string; reason: string }[] = [];
   for (const d of due ?? []) {
     if (d.campaign === "motel6") continue;
+    const eligible = await mayDispatchMvaAcquisition(admin, { firmId: d.firm_id, leadId: d.lead_id, claimId: d.claim_id });
+    if (!eligible.allowed) { held.push({ lead_id: d.lead_id, reason: eligible.reason }); continue; }
     if (d.channel === "sms" && d.phone) {
       await fetch(`${origin}/api/justcall`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -37,5 +41,5 @@ export async function GET(req: NextRequest) {
     }).eq("id", d.enrollment_id);
     fired++;
   }
-  return NextResponse.json({ ok: true, fired, ran_at: new Date().toISOString() });
+  return NextResponse.json({ ok: true, fired, held, ran_at: new Date().toISOString() });
 }
