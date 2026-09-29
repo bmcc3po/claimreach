@@ -24,6 +24,26 @@ export function allowedDocuSealFileUrl(raw: string): boolean {
 type SnapshotRow = { firm_id: string | null; submission_id: string | number; signed_at: string | null; status: string };
 type SnapshotResult = { ok: true; path: string } | { ok: false; error: string };
 
+function unsupportedCacheOption(error: unknown): boolean {
+  return error instanceof TypeError
+    && (/^The ['"]?cache['"]? field on ['"]?RequestInitializerDict['"]? is not implemented(?: in fetch)?\.?$/.test(error.message)
+      || /^Unsupported cache mode: no-store\.?$/.test(error.message));
+}
+
+async function fetchPrivatePdf(url: string, fetchPdf: typeof fetch): Promise<Response> {
+  try {
+    return await fetchPdf(url, { cache: "no-store" });
+  } catch (error) {
+    // Older Workers compatibility dates reject this option before issuing a
+    // request. Retry only that known runtime error, never an HTTP/network error.
+    if (!unsupportedCacheOption(error)) throw error;
+    return fetchPdf(url, {
+      headers: { "Cache-Control": "no-store, no-cache", Pragma: "no-cache" },
+      next: { revalidate: 0 },
+    });
+  }
+}
+
 /** Save a merged, partially signed PDF once. Reopening the file recovers older
  * client signatures that predate this code. The provider URL is used only for
  * this download; the durable copy stays in the private signed-docs bucket. */
@@ -44,14 +64,20 @@ export async function ensureClientSignedSnapshot(admin: any, row: SnapshotRow, d
   if (!result.ok) return { ok: false, error: "DocuSeal could not provide the client-signed preview." };
   const url = result.data.documents?.[0]?.url;
   if (!url || !allowedDocuSealFileUrl(url)) return { ok: false, error: "DocuSeal returned no safe preview document." };
+  let response: Response;
+  try {
+    response = await fetchPrivatePdf(url, deps.fetchPdf ?? fetch);
+  } catch {
+    // Error messages and provider URLs can include private document tokens.
+    return { ok: false, error: "DocuSeal's preview download could not start (connection or runtime failure)." };
+  }
+  if (!response.ok) return { ok: false, error: `DocuSeal's preview download failed (HTTP ${response.status}).` };
+  const length = Number(response.headers.get("content-length") || 0);
+  if (length > MAX_PDF_BYTES) return { ok: false, error: "DocuSeal's preview is too large." };
   let bytes: Uint8Array;
   try {
-    const response = await (deps.fetchPdf ?? fetch)(url, { cache: "no-store" });
-    if (!response.ok) return { ok: false, error: "DocuSeal's preview download failed." };
-    const length = Number(response.headers.get("content-length") || 0);
-    if (length > MAX_PDF_BYTES) return { ok: false, error: "DocuSeal's preview is too large." };
     bytes = new Uint8Array(await response.arrayBuffer());
-  } catch { return { ok: false, error: "DocuSeal's preview download failed." }; }
+  } catch { return { ok: false, error: "DocuSeal's preview download could not be read." }; }
   if (bytes.length < 5 || bytes.length > MAX_PDF_BYTES || String.fromCharCode(...bytes.subarray(0, 5)) !== "%PDF-") {
     return { ok: false, error: "DocuSeal returned an invalid preview PDF." };
   }

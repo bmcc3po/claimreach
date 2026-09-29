@@ -43,6 +43,68 @@ async function main() {
   assert.equal(storage.uploads, 1, "subsequent polls must reuse the preserved preliminary PDF");
   assert.equal(provider.calls, 1);
 
+  // The old Cloudflare compatibility runtime rejects cache before sending any
+  // request. The fallback must omit it but still disable Next/HTTP caching.
+  for (const message of [
+    "The cache field on RequestInitializerDict is not implemented in fetch",
+    "The 'cache' field on 'RequestInitializerDict' is not implemented.",
+    "Unsupported cache mode: no-store",
+    "Unsupported cache mode: no-store.",
+  ]) {
+    const oldRuntime = fakeStorage(); const requests: RequestInit[] = [];
+    const result = await ensureClientSignedSnapshot(oldRuntime.admin, row, {
+      ...deps(),
+      fetchPdf: (async (_url: any, init: any) => {
+        requests.push(init);
+        if (init?.cache) throw new TypeError(message);
+        assert.equal(init.headers["Cache-Control"], "no-store, no-cache");
+        assert.equal(init.headers.Pragma, "no-cache");
+        assert.equal(init.next.revalidate, 0);
+        assert.equal("cache" in init, false);
+        return new Response(PDF);
+      }) as typeof fetch,
+    });
+    assert.deepEqual(result, { ok: true, path });
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].cache, "no-store");
+    assert.equal(oldRuntime.uploads, 1);
+  }
+
+  const privateUrl = "https://docuseal.com/file/private-token.pdf";
+  for (const status of [403, 404, 500]) {
+    const failed = fakeStorage(); let downloads = 0;
+    const result = await ensureClientSignedSnapshot(failed.admin, row, {
+      ...deps(privateUrl),
+      fetchPdf: (async () => { downloads++; return new Response(privateUrl, { status }); }) as typeof fetch,
+    });
+    assert.deepEqual(result, { ok: false, error: `DocuSeal's preview download failed (HTTP ${status}).` });
+    assert.equal(downloads, 1, "HTTP failures must not retry");
+    assert.equal(failed.uploads, 0);
+    assert.equal(JSON.stringify(result).includes(privateUrl), false);
+  }
+  for (const failure of [new TypeError(`Failed to fetch ${privateUrl}`), new Error("The cache field on RequestInitializerDict is not implemented in fetch"), new TypeError("Unsupported cache mode: no-cache")]) {
+    const failed = fakeStorage(); let downloads = 0;
+    const result = await ensureClientSignedSnapshot(failed.admin, row, {
+      ...deps(privateUrl),
+      fetchPdf: (async () => { downloads++; throw failure; }) as typeof fetch,
+    });
+    assert.deepEqual(result, { ok: false, error: "DocuSeal's preview download could not start (connection or runtime failure)." });
+    assert.equal(downloads, 1, "unrecognized runtime/network failures must not retry");
+    assert.equal(failed.uploads, 0);
+    assert.equal(JSON.stringify(result).includes(privateUrl), false);
+  }
+  const unreadable = fakeStorage(); let bodyDownloads = 0;
+  const bodyResult = await ensureClientSignedSnapshot(unreadable.admin, row, {
+    ...deps(),
+    fetchPdf: (async () => {
+      bodyDownloads++;
+      return { ok: true, headers: new Headers(), arrayBuffer: async () => { throw new Error(privateUrl); } };
+    }) as any,
+  });
+  assert.deepEqual(bodyResult, { ok: false, error: "DocuSeal's preview download could not be read." });
+  assert.equal(bodyDownloads, 1);
+  assert.equal(unreadable.uploads, 0);
+
   const unsigned = fakeStorage();
   assert.equal((await ensureClientSignedSnapshot(unsigned.admin, { ...row, status: "opened", signed_at: null }, deps())).ok, false);
   assert.equal(unsigned.objects.size, 0);
