@@ -26,8 +26,8 @@ const STAFF_GROUPS: NavGroup[] = [
     { href: "/queue", icon: "queue", label: "My queue" },
     { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true },
   ]},
-  { id: "calls", label: "Calls", items: [
-    { href: "/app", icon: "mobile", label: "Calls" },
+  { id: "calls", label: "Desk", items: [
+    { href: "/app", icon: "mobile", label: "ClaimReach Desk" },
     { href: "/app?new=1", icon: "headset", label: "Take a call" },
     { href: "/intake", icon: "userplus", label: "Add lead", staffOnly: true },
   ]},
@@ -187,7 +187,7 @@ export default function SideNav({
             <div className="cl-menu" role="menu">
               <a role="menuitem" href={isFirm ? "/portal/profile" : "/profile"}><Icon name="user" size={16} />Profile</a>
               <button role="menuitem" onClick={toggleTheme}><Icon name={theme === "light" ? "moon" : "sun"} size={16} />{theme === "light" ? "Dark mode" : "Light mode"}</button>
-              {!isFirm && <a role="menuitem" href="/app"><Icon name="mobile" size={16} />Calls</a>}
+              {!isFirm && <a role="menuitem" href="/app"><Icon name="mobile" size={16} />ClaimReach Desk</a>}
               <div className="cl-menu-sep" />
               <button role="menuitem" onClick={signOut}><Icon name="logout" size={16} />Sign out</button>
             </div>

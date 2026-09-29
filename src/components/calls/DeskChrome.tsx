@@ -45,7 +45,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
   const agent = role === "agent";
   const links = [
     { href: "/dashboard", icon: "home", label: "Dashboard" },
-    { href: "/app", icon: "mobile", label: "Calls" },
+    { href: "/app", icon: "mobile", label: "Desk" },
     { href: "/leads", icon: "files", label: "Leads" },
     { href: "/signed", icon: "signed", label: "Signed" },
     { href: "/queue", icon: "queue", label: "My queue" },
@@ -67,7 +67,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
         <a className="cd-me" href="/profile" title={`${name || "You"}, profile`} aria-label="Your profile">{initials}</a>
       </nav>
       <header className="cc-chrome">
-        <span className="cd-title">{path.includes("new=1") ? "New call" : "Calls"}</span>
+        <span className="cd-title">{path.includes("new=1") ? "New call" : "ClaimReach Desk"}</span>
         <div className="cc-chrome-search">
           <Icon name="search" size={16} />
           <input ref={box} type="search" placeholder="Search leads by name, phone or lead number" aria-label="Search leads"
