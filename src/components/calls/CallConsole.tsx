@@ -3,7 +3,7 @@
 // canvas); this wrapper owns the network: autosave, e-sign, texting, dispo.
 // Rule from AGENTS.md: never show saved after a failed write. A failed
 // autosave shows "Not saved. Retrying." in the header until it lands.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CallView from "./CallView";
 import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
@@ -78,6 +78,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [wide, setWide] = useState(false);
   const [touch, setTouch] = useState(false);
   const [utilityOpen, setUtilityOpen] = useState(false);
+  const [commandCollapsed, setCommandCollapsed] = useState(false);
+  const commandPanelId = useId();
   const utilityRef = useRef<HTMLDivElement | null>(null);
   // When the last autosave landed, for "Saved at 2:14 PM" (never shown after a failed write).
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -86,7 +88,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   // Only the JustCall dialer on this screen can say a call is live. Nothing else claims it.
   const [dialState, setDialState] = useState<string>("");
   const deskTextsOpen = useRef(false);
-  const setDeskTab = (t: DeskTab) => { deskTextsOpen.current = t === "texts"; setDeskTabState(t); if (t === "texts") eng.current?.setState({ textUnread: 0 }); };
+  const setDeskTab = (t: DeskTab) => { setCommandCollapsed(false); deskTextsOpen.current = t === "texts"; setDeskTabState(t); if (t === "texts") eng.current?.setState({ textUnread: 0 }); };
 
   if (!eng.current) {
     const e = (): CallEngine => eng.current!;
@@ -233,6 +235,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const ws: "desk" | "ipad" | null = isDesk && !touch ? "desk" : wide ? "ipad" : null;
   const deskOn = ws === "desk";
   const sideOn = !!ws;
+  const panelVisible = sideOn ? !commandCollapsed : utilityOpen;
 
   async function loadComms() {
     try {
@@ -417,19 +420,19 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     return () => [mq, mw, mt].forEach((m) => m.removeEventListener("change", on));
   }, []);
   useEffect(() => {
-    deskTextsOpen.current = (sideOn || utilityOpen) && deskTab === "texts";
+    deskTextsOpen.current = panelVisible && deskTab === "texts";
     // Arriving from a text on a desktop: the thread opens in the panel, not a sheet.
     if (sideOn && engine.state.text.open) { engine.setState({ text: { ...engine.state.text, open: false } }); setDeskTab("texts"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideOn, utilityOpen, deskTab]);
+  }, [sideOn, panelVisible, deskTab]);
   // Texts tab on screen: check every 5 seconds, same as the open sheet.
   useEffect(() => {
-    if ((!sideOn && !utilityOpen) || deskTab !== "texts") return;
+    if (!panelVisible || deskTab !== "texts") return;
     void loadComms();
     const t = setInterval(() => { void loadComms(); }, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideOn, utilityOpen, deskTab]);
+  }, [panelVisible, deskTab]);
 
   useEffect(() => {
     if (sideOn || !utilityOpen) return;
@@ -454,9 +457,9 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   useEffect(() => {
     const enteredSend = previousPhase.current !== phase && phase === "send";
     previousPhase.current = phase;
-    if (sideOn && enteredSend && init.canPreview) setDeskTab("retainer");
+    if (sideOn && !commandCollapsed && enteredSend && init.canPreview) setDeskTabState("retainer");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideOn, phase]);
+  }, [sideOn, commandCollapsed, phase]);
 
   const preview = previewInfo(engine.state, init);
   const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
@@ -474,6 +477,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     void flushSave();
   };
   if (sideOn) {
+    view.commandPanelId = commandPanelId;
+    view.openCommandCenter = commandCollapsed ? () => setDeskTab(deskTab) : undefined;
     view.openPhone = () => setDeskTab("phone");
     view.openText = () => setDeskTab("texts");
     view.openSheet = () => setDeskTab("know");
@@ -483,7 +488,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     view.openRetainer = () => setDeskTab("retainer");
     view.openFile = () => setDeskTab("file");
     view.openScripts = () => setDeskTab("know");
-    view.textBadge = false;
+    view.textBadge = commandCollapsed && v.textBadge;
   } else {
     const openUtility = (tab: DeskTab) => { setDeskTab(tab); setUtilityOpen(true); };
     view.openCaseTools = () => openUtility("file");
@@ -494,6 +499,13 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   // Slide the divider to give the call or the panel more room. Remembered per
   // computer; double-click puts it back.
   const deskRef = useRef<HTMLDivElement | null>(null);
+  const wasCommandCollapsed = useRef(commandCollapsed);
+  useEffect(() => {
+    if (sideOn && commandCollapsed) deskRef.current?.querySelector<HTMLButtonElement>(".ix-command-toggle")?.focus();
+    else if (sideOn && wasCommandCollapsed.current) utilityRef.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
+    wasCommandCollapsed.current = commandCollapsed;
+  }, [sideOn, commandCollapsed]);
+  const collapseCommand = () => { deskTextsOpen.current = false; setCommandCollapsed(true); };
   const DEFAULT_W = 900;
   // The width is saved under a new name since the call got its own left rail;
   // old saved widths were sized for the phone layout.
@@ -569,12 +581,13 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
   const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
   const casePanel = <DeskPanel key="case-panel" v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
+    onCollapse={sideOn ? collapseCommand : undefined} panelId={commandPanelId}
     summary={<WsHelper v={view} />}
     preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
     focusLines={focusLines} phones={phones} leadId={init.leadId} claimId={init.claimId} onDialState={setDialState}
     story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />;
   return (
-    <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ws === "ipad" ? " cc-ipad-on" : ""}`}>
+    <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ws === "ipad" ? " cc-ipad-on" : ""}${sideOn && commandCollapsed ? " cc-command-collapsed" : ""}`}>
       <CallView v={view} />
       {deskOn && !ws && (
         <div className="cc-split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the call and the panel" tabIndex={0}
@@ -583,7 +596,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       )}
       {/* Keep one host and keyed panel through rotation and phone close/reopen.
           File drafts and the dialer iframe belong to this matter, not its layout. */}
-      <div ref={utilityRef} className={sideOn ? "cc-panel-host" : "cc-utility-dialog"} style={sideOn ? { display: "contents" } : utilityOpen ? { position: "fixed", inset: 0, zIndex: 90, background: "white", overflow: "auto" } : { display: "none" }} role={!sideOn && utilityOpen ? "dialog" : undefined} aria-modal={!sideOn && utilityOpen ? true : undefined} aria-label="Command center">
+      <div id={commandPanelId} ref={utilityRef} className={sideOn ? "cc-panel-host" : "cc-utility-dialog"} style={!panelVisible ? { display: "none" } : sideOn ? { display: "contents" } : { position: "fixed", inset: 0, zIndex: 90, background: "white", overflow: "auto" }} role={!sideOn && utilityOpen ? "dialog" : undefined} aria-modal={!sideOn && utilityOpen ? true : undefined} aria-label="Command center">
         {!sideOn && <button type="button" className="cc-btn" style={{ margin: 12 }} onClick={() => setUtilityOpen(false)}>Back to intake</button>}
         {casePanel}
       </div>

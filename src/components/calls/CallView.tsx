@@ -56,10 +56,6 @@ export default function CallView({ v }: { v: any }) {
 {wide && <WsLeft v={v} />}
 <div className="cc-top ix-top">
 {!wide && <IxHead v={v} />}
-{!!v.openCaseTools && <div className="ix-case-actions">
-  <span>Contact, documents and messages</span>
-  <button type="button" className="ix-case-tools" aria-haspopup="dialog" onClick={v.openCaseTools}>Command center</button>
-</div>}
 <IxBar v={v} />
 </div>
 <main className={`cc-main ix-main${v.fullView ? " fi-main" : ""}${v.choreView ? " ch-main" : ""}`}>

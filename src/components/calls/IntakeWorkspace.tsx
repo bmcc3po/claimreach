@@ -104,6 +104,7 @@ export function IxBar({ v }: { v: any }) {
           </div>
           <div className="ix-track" aria-hidden="true"><i style={{ width: `${fi.progress.pct}%` }} /></div>
         </div>
+        <div className="ix-bar-actions">
         <div className="ix-view-switch" onKeyDown={(e) => {
           if (e.key === "Escape" && viewsOpen) { setViewsOpen(false); viewToggle.current?.focus(); }
         }}>
@@ -120,6 +121,11 @@ export function IxBar({ v }: { v: any }) {
               </button>
             ))}
           </div>
+        </div>
+        {!wide && !!v.openCaseTools && <button type="button" className="ix-file-toggle" aria-label="Open case file" aria-haspopup="dialog" onClick={v.openCaseTools}>File</button>}
+        {wide && !!v.openCommandCenter && <div className="ix-command-actions">
+          <button type="button" className="ix-command-toggle" aria-expanded={false} aria-controls={v.commandPanelId} onClick={v.openCommandCenter}>Command center</button>
+        </div>}
         </div>
       </div>
       {steps && (
@@ -163,22 +169,43 @@ export function IxFoot({ v }: { v: any }) {
   const wide = !!v.ws;
   const n = nextStep(v);
   const note = useRef<HTMLTextAreaElement | null>(null);
+  const noteDialog = useRef<HTMLDivElement | null>(null);
+  const noteHeadingId = useId();
+  const closeNote = useRef(fi.quick.toggle);
+  closeNote.current = fi.quick.toggle;
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsId = useId();
   const expanded = toolsOpen || !!fi.quick.open;
   useEffect(() => {
-    if (fi.quick.open) { setToolsOpen(true); note.current?.focus(); }
-  }, [fi.quick.open]);
+    if (wide || !fi.quick.open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = noteDialog.current;
+    setToolsOpen(true);
+    note.current?.focus();
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeNote.current(); return; }
+      if (event.key !== "Tab" || !dialog) return;
+      const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), textarea:not([disabled])')).filter((el) => el.getClientRects().length);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", keys);
+    return () => { document.removeEventListener("keydown", keys); previous?.focus(); };
+  }, [wide, fi.quick.open]);
   const alert = v.nudge;
   return (<>
     {!wide && fi.quick.open && (
-      <div className="ix-note" role="dialog" aria-label="Quick note">
-        <textarea ref={note} className="fi-in fi-area" rows={2} placeholder="Jot it down now, sort it out later" value={fi.quick.draft.value} onChange={fi.quick.draft.set}
+      <div className="ix-note-layer">
+      <div ref={noteDialog} className="ix-note" role="dialog" aria-modal="true" aria-labelledby={noteHeadingId}>
+        <h2 id={noteHeadingId} className="ix-note-heading">Quick note</h2>
+        <textarea ref={note} className="fi-in fi-area" rows={6} aria-label="Quick note text" placeholder="Jot it down now, sort it out later" value={fi.quick.draft.value} onChange={fi.quick.draft.set}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fi.quick.save(); } }} />
         <div className="ix-note-b">
           <button type="button" className="ix-tool" onClick={fi.quick.toggle}>Cancel</button>
           <button type="button" className="ix-save-note" onClick={fi.quick.save}>Save note</button>
         </div>
+      </div>
       </div>
     )}
     {!!alert && <div className="ix-alert" role="alert">{alert}</div>}

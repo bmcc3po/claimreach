@@ -18,8 +18,10 @@ export interface PreviewInfo {
 
 const PHASE_LABEL: Record<string, string> = { open: "Open", story: "Story", body: "Injury", car: "Car", money: "Money", send: "Send", file: "File", close: "Close" };
 
-export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, onDialState }: {
+export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, onDialState, onCollapse, panelId }: {
   v: any;
+  onCollapse?: () => void;
+  panelId?: string;
   /** The JustCall dialer in the Phone tab: on a call, ringing, ready. */
   onDialState?: (s: DialerState) => void;
   /** The Full Intake workspace: next best action, what's missing, the live summary. */
@@ -48,6 +50,9 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
         <div className="cc-file-heading">
           <Icon name="files" size={22} />
           <div className="cc-file-heading-copy"><strong>Command center</strong><span>Contact, documents &amp; activity</span></div>
+          {onCollapse && <button type="button" className="cc-command-collapse" aria-label="Collapse command center" title="Give the intake more space" aria-expanded="true" aria-controls={panelId} onClick={onCollapse}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m8 6 6 6-6 6M19 4v16" /></svg>
+          </button>}
         </div>
         <div className="cc-htabs" role="tablist" aria-label="Command center sections">
           {tabs.map(([k, label]) => (

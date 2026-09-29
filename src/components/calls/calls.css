@@ -1431,10 +1431,7 @@ div.ws-row{cursor:default}
 .ix-circ{position:relative;flex-shrink:0;width:38px;height:38px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--x-tint);color:var(--x-navy);padding:0;-webkit-tap-highlight-color:transparent}
 .ix-circ.ix-end{background:#E5484D;color:#FFFFFF;box-shadow:0 2px 8px rgba(229,72,77,0.35)}
 .ix-badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#DC2626;color:#FFFFFF;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;box-sizing:border-box}
-.ix-case-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
-.ix-case-actions>span{min-width:0;color:var(--x-sub);font-size:12px;line-height:1.35}
-.ix-case-tools{flex:0 0 auto;min-height:40px;padding:0 12px;border:1px solid var(--x-line2);border-radius:9px;background:#FFFFFF;color:var(--x-navy);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
-.ix-case-tools:focus-visible,.ix-view:focus-visible{outline:2px solid var(--x-blue);outline-offset:2px}
+.ix-view:focus-visible,.ix-file-toggle:focus-visible{outline:2px solid var(--x-blue);outline-offset:2px}
 
 .ix-bar{position:relative;display:flex;flex-direction:column;gap:10px}
 .ix-bar-row{display:flex;flex-direction:column;gap:10px}
@@ -1520,12 +1517,34 @@ div.ws-row{cursor:default}
 .ws-quiet{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 
 /* Phone controls fold independently; the intake state and primary Next stay put. */
-.ix-view-switch,.ix-foot-tools{display:contents}
+.ix-bar-actions,.ix-view-switch,.ix-foot-tools{display:contents}
 .ix-view-toggle,.ix-foot-toggle{display:none}
+.ix-file-toggle{display:inline-flex;align-items:center;justify-content:center;align-self:flex-end;gap:6px;min-height:44px;min-width:64px;padding:0 14px;border:1px solid var(--x-line2);border-radius:9px;background:#FFFFFF;color:var(--x-navy);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+/* Quick note is modal whenever the narrow layout renders it, including portrait iPad. */
+.ix-note-layer{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-start;justify-content:center;box-sizing:border-box;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));background:#F5F7FB;overflow-y:auto;overscroll-behavior:contain}
+.ix-note-layer .ix-note{position:relative;inset:auto;flex:0 1 480px;width:100%;min-width:0;max-height:calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));box-sizing:border-box;padding:16px;gap:12px;overflow-y:auto;border:1px solid var(--x-line);border-radius:14px;box-shadow:0 18px 60px rgba(15,34,64,0.24)}
+.ix-note-heading{margin:0;font-size:18px;line-height:1.3;font-weight:700;color:var(--x-ink)}
+.ix-note-layer .ix-note .fi-area{min-height:144px;resize:vertical;font-size:16px;line-height:1.5}
+.ix-note-layer .ix-note-b{flex:0 0 auto;gap:8px}
+.ix-note-layer .ix-note-b .ix-tool,.ix-note-layer .ix-note-b .ix-save-note{min-height:44px;height:auto;padding:0 16px;font-size:14px}
+.ix-note-layer .ix-note-b .ix-tool{border:1px solid var(--x-line2);border-radius:10px;background:#FFFFFF}
+.ix-note-layer .ix-note-b button:focus-visible{outline:2px solid var(--x-blue);outline-offset:2px}
 @media (max-width:699px){
-  .ix-view-switch{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .cc-app.ix.ix-narrow>.cc-top.ix-top{gap:6px;padding-bottom:8px}
+  .ix-narrow .ix-bar,.ix-narrow .ix-bar-row{gap:6px}
+  .ix-narrow .ix-prog{gap:2px}
+  .ix-narrow .ix-prog-row{column-gap:6px;row-gap:2px}
+  .ix-narrow .ix-lights{min-height:44px;height:auto;font-size:13px;line-height:1.25;white-space:normal}
+  .ix-narrow .ix-track{height:4px}
+  .ix-narrow .ix-pop{top:48px}
+  .ix-narrow .ix-pop-x{min-height:44px}
+  .ix-bar-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;align-items:start}
+  .ix-view-switch{display:contents}
+  .ix-file-toggle{grid-column:2;grid-row:1;align-self:stretch}
+  .ix-view-switch .ix-views{grid-column:1 / -1;grid-row:2}
+  .cc-app.ix.ix-narrow.fi-mode .fi-marks{display:none}
   .ix-view-toggle,.ix-foot-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border:1px solid var(--x-line2);border-radius:9px;background:#F3F6FA;color:var(--x-navy);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
-  .ix-view-toggle{align-self:flex-start;max-width:100%}
+  .ix-view-toggle{grid-column:1;grid-row:1;align-self:stretch;justify-self:start;max-width:100%}
   .ix-view-toggle span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ix-view-toggle svg,.ix-foot-toggle svg{flex:0 0 auto}
   .ix-view-toggle>svg:last-child{transform:rotate(90deg)}
@@ -1702,6 +1721,12 @@ div.ws-row{cursor:default}
 .cc-file-heading-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
 .cc-file-heading-copy strong{font-size:17px;line-height:1.25;font-weight:700;color:var(--file-ink,#0F2240);letter-spacing:-0.02em}
 .cc-file-heading-copy span{font-size:12.5px;line-height:1.35;color:#5F6F87}
+.cc-file-heading .cc-command-collapse{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;min-width:44px;min-height:44px;margin-left:auto;padding:0;border:1px solid var(--file-line,#D7E0EC);border-radius:9px;background:#F3F6FA;color:var(--file-navy,#14305C);font:inherit;cursor:pointer}
+.cc-command-collapse svg,.ix-command-toggle svg{flex:0 0 auto}
+.cc-file-heading .cc-command-collapse:hover,.ix-command-toggle:hover{background:#E8EEF7}
+.ix-command-actions{display:flex;align-items:center;justify-content:flex-end;min-width:0;gap:8px;padding:0}
+.ix-command-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:0 0 auto;min-height:44px;max-width:100%;padding:0 12px;border:1px solid var(--x-line2,#D8E0EC);border-radius:9px;background:#FFFFFF;color:var(--x-navy,#14305C);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.cc-command-collapse:focus-visible,.ix-command-toggle:focus-visible{outline:2px solid #2563EB;outline-offset:2px}
 .cc-side .cc-side-top .cc-htabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;flex:none;min-width:0;width:100%;padding:0;border-radius:0;background:transparent}
 .cc-side .cc-side-top .cc-htab{display:flex;align-items:center;align-content:center;justify-content:center;flex-wrap:wrap;gap:4px;min-width:0;min-height:44px;padding:7px 4px;border:1px solid #DCE4EF;border-radius:9px;background:#F3F6FA;color:#42526B;font-size:12.5px;font-weight:600;line-height:1.2;white-space:nowrap;overflow-wrap:normal;box-shadow:none}
 .cc-side .cc-side-top .cc-htab:hover{background:#E8EEF7;border-color:#B9CAE0;color:var(--file-navy)}
@@ -1733,6 +1758,18 @@ div.ws-row{cursor:default}
 .cc-ipad-on .cc-side{display:flex;flex-direction:column;box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0}
 .cc-ipad-on .cc-ret-pdf{width:100%;min-height:420px;flex:1;border:1px solid var(--file-line);border-radius:10px;background:#FFFFFF}
 @media (min-width:1180px){.cc-desk.cc-ipad-on{height:calc(100vh - 56px);height:calc(100dvh - 56px)}}
+.cc-desk.cc-desk-on.ws-cockpit.cc-command-collapsed,.cc-desk.cc-ipad-on.cc-command-collapsed{grid-template-columns:minmax(0,1fr)}
+/* On a narrower wide workspace, reopening the panel shares the view row. */
+@container ixtop (max-width:760px){
+  .cc-command-collapsed .cc-app.ix.ws .ix-bar-actions{display:flex;align-items:center;gap:8px;width:100%;min-width:0}
+  .cc-command-collapsed .cc-app.ix.ws .ix-view-switch{display:block;flex:1;min-width:0;container:commandviews / inline-size}
+  .cc-command-collapsed .cc-app.ix.ws .ix-command-actions{flex:0 0 auto}
+  .cc-command-collapsed .cc-app.ix.ws .ix-views{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .cc-command-collapsed .cc-app.ix.ws .ix-view{min-height:44px;height:auto;padding:8px;white-space:normal;line-height:1.25}
+}
+@container commandviews (max-width:460px){
+  .cc-command-collapsed .cc-app.ix.ws .ix-views{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @container side (max-width:359px){.cc-side .cc-side-top .cc-htabs{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @container side (min-width:600px){.cc-side .cc-side-top .cc-htabs{grid-template-columns:repeat(7,minmax(0,1fr))}}
 
