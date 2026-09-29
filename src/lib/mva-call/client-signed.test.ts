@@ -43,33 +43,21 @@ async function main() {
   assert.equal(storage.uploads, 1, "subsequent polls must reuse the preserved preliminary PDF");
   assert.equal(provider.calls, 1);
 
-  // The old Cloudflare compatibility runtime rejects cache before sending any
-  // request. The fallback must omit it but still disable Next/HTTP caching.
-  for (const message of [
-    "The cache field on RequestInitializerDict is not implemented in fetch",
-    "The 'cache' field on 'RequestInitializerDict' is not implemented.",
-    "Unsupported cache mode: no-store",
-    "Unsupported cache mode: no-store.",
-  ]) {
-    const oldRuntime = fakeStorage(); const requests: RequestInit[] = [];
-    const result = await ensureClientSignedSnapshot(oldRuntime.admin, row, {
-      ...deps(),
-      fetchPdf: (async (_url: any, init: any) => {
-        requests.push(init);
-        if (init?.cache) throw new TypeError(message);
-        assert.equal(init.headers["Cache-Control"], "no-store, no-cache");
-        assert.equal(init.headers.Pragma, "no-cache");
-        assert.equal(init.next.revalidate, 0);
-        assert.equal("cache" in init, false);
-        return new Response(PDF);
-      }) as typeof fetch,
-    });
-    assert.deepEqual(result, { ok: true, path });
-    assert.equal(requests.length, 2);
-    assert.equal(requests[0].cache, "no-store");
-    assert.equal(oldRuntime.uploads, 1);
-  }
-
+  // Simulate old Workers rejecting both RequestInit.cache and framework-only
+  // options. The first request must be portable, with private HTTP caching off.
+  const oldRuntime = fakeStorage(); let portableRequests = 0;
+  assert.deepEqual(await ensureClientSignedSnapshot(oldRuntime.admin, row, {
+    ...deps(),
+    fetchPdf: (async (_url: any, init: any) => {
+      portableRequests++;
+      if ('cache' in init || 'next' in init) throw new Error('Unsupported cache mode: no-store');
+      assert.equal(init.headers['Cache-Control'], 'no-store, no-cache');
+      assert.equal(init.headers.Pragma, 'no-cache');
+      return new Response(PDF);
+    }) as typeof fetch,
+  }), { ok: true, path });
+  assert.equal(portableRequests, 1);
+  assert.equal(oldRuntime.uploads, 1);
   const privateUrl = "https://docuseal.com/file/private-token.pdf";
   for (const status of [403, 404, 500]) {
     const failed = fakeStorage(); let downloads = 0;
