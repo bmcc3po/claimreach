@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { ensureAppUser, resolveFirmHome } from "@/lib/firm-home";
+import { isPartnerIdentity } from "@/lib/partner-access";
 
 export const runtime = "edge";
 
@@ -18,6 +19,12 @@ export async function GET(req: NextRequest) {
     await sb.auth.exchangeCodeForSession(code);
   }
   const { data: { user } } = await sb.auth.getUser();
+  if (isPartnerIdentity(user)) {
+    const { data: partner, error } = await sb.from("partner_accounts")
+      .select("auth_user_id").eq("auth_user_id", user!.id).eq("active", true).maybeSingle();
+    if (error || !partner) return NextResponse.redirect(`${origin}/partner-login?error=access`);
+    return NextResponse.redirect(`${origin}/partner`);
+  }
   let me: { role: string } | null = null;
   try {
     me = await ensureAppUser(sb, user);
