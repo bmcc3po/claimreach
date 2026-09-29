@@ -96,6 +96,9 @@ const t = async (name: string, fn: () => unknown | Promise<unknown>) => { await 
   });
   await t('mismatched filename, manifest, CSV embedded lead, broken PDF rejected before storage', () => {
     assert.throws(() => validateLawRulerOriginal({ ...pdf, name: '999-Retainer.pdf' }, scope, fields), /different/);
+    assert.equal(validateLawRulerOriginal({ ...pdf, name: 'Wendy-264972-SignedContract.pdf' }, scope, fields).docType, 'retainer');
+    assert.throws(() => validateLawRulerOriginal({ ...pdf, name: 'Wendy-999999-SignedContract.pdf' }, scope, fields), /different/);
+    assert.throws(() => validateLawRulerOriginal({ ...pdf, name: 'Wendy-264972-20260928-SignedContract.pdf' }, scope, fields), /manifest/);
     assert.throws(() => validateLawRulerOriginal({ ...pdf, name: 'Retainer.pdf' }, scope, fields), /manifest/);
     assert.throws(() => validateLawRulerOriginal(pdf, scope, { attachment_manifest: [{ name: pdf.name, lead_id: scope.vendorId, claim_id: OTHER }] }), /different/);
     assert.throws(() => validateLawRulerOriginal({ ...pdf, bytes: bytes('%PDF-broken') }, scope, fields), /complete/);

@@ -2,6 +2,10 @@ import { setClaimStatusForLeads } from './claim-status';
 import { isSignedKey, type StatusDef } from './statuses';
 
 const EVENT = 'mva_status_reconciliation';
+export const EXTERNAL_SIGNED_REVIEW = 'external_signed_review';
+export const EXTERNAL_DQ_REVIEW = 'external_dq_review';
+const SIGNED_REVIEW_REASON = 'LawRuler reports a signature or delivery. Verify the signed original and certificate before counting or delivering this matter in ClaimReach.';
+const DQ_REVIEW_REASON = 'LawRuler reports a closed/disqualified matter. Review and select its standardized DQ reason before final DQ.';
 const labelKey = (value: unknown) => String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase().replace(/\s*\(default\)$/, '').trim();
 export type MvaStatusOutcome = 'applied' | 'unchanged' | 'review_required' | 'out_of_scope';
 export interface MvaAcquisitionSignal {
@@ -118,27 +122,43 @@ export async function reconcileLawRulerMvaStatus(db: any, opts: {
   const priorSignal = (await loadMvaAcquisitionHolds(db, [opts.leadId], { firmId: opts.firmId })).get(opts.claimId);
   const priorHold = !!priorSignal?.acquisition_hold && priorSignal.campaign_id === opts.campaignId;
   const hold = priorHold || !!mapped && stopsAcquisition(mapped.key, catalog);
+  // A vendor status is a report, not a verified signature, signed packet, or
+  // ClaimReach firm-delivery receipt. Keep it out of the Signed totals and firm
+  // portal until an owner reviews the original and evidence on this matter.
+  const externalSigned = !!mapped && isSignedKey(mapped.key, catalog);
+  const reviewedDq = claim.data.status === EXTERNAL_DQ_REVIEW && !!opts.dqReasonKey && !!mapped && mapped.qualify === 'disqualify';
   let result: MvaStatusResult = { ...base, outcome: 'review_required', acquisition_hold: hold, mapped_status: mapped?.key || null, reason: '' };
   if (!mapped) result.reason = 'The LawRuler label has no unambiguous active MVA-compatible mapping. An owner/admin must review it.';
   else if (claim.data.status === mapped.key) result = { ...result, outcome: 'unchanged', reason: 'The exact matter already has this status.' };
-  else if (stopsAcquisition(claim.data.status, catalog) || (priorHold && mapped.key !== priorSignal?.mapped_status)) result.reason = 'A signed, closed, or externally held matter cannot be changed by an unsequenced external message. Review this transition.';
+  else if (claim.data.status === EXTERNAL_SIGNED_REVIEW && externalSigned) result.reason = SIGNED_REVIEW_REASON;
+  else if (claim.data.status === EXTERNAL_DQ_REVIEW && mapped.qualify === 'disqualify' && !opts.dqReasonKey) result.reason = DQ_REVIEW_REASON;
+  else if ((stopsAcquisition(claim.data.status, catalog) && !reviewedDq) || (priorHold && mapped.key !== priorSignal?.mapped_status)) result.reason = 'A signed, closed, or externally held matter cannot be changed by an unsequenced external message. Review this transition.';
   else if (!catalog.some(s => s.key === claim.data.status)) result.reason = 'The existing status is unknown. Review it before replacing it.';
   else if ((claim.data.status === 'esign_sent' && ['new', 'contacting'].includes(mapped.key)) || (claim.data.status === 'contacting' && mapped.key === 'new')) result.reason = 'An unsequenced external message cannot move this matter backward or reopen it. Review the source order.';
   else {
     let reasonKey: string | null = null;
+    let targetStatus = mapped.key;
+    let pendingReason: string | null = null;
+    if (externalSigned) {
+      targetStatus = EXTERNAL_SIGNED_REVIEW;
+      pendingReason = SIGNED_REVIEW_REASON;
+    }
     if (mapped.qualify === 'disqualify') {
       const reason = opts.dqReasonKey ? await db.from('dq_reasons').select('key, active').eq('key', opts.dqReasonKey).maybeSingle() : null;
       if (reason?.error) throw new Error(`Could not validate the disqualification reason: ${reason.error.message}`);
       if (reason?.data?.active !== false && reason?.data?.key) reasonKey = reason.data.key;
-      else result.reason = 'LawRuler reports a closed/disqualified matter. Chasing is on hold until an active standardized DQ reason is reviewed.';
+      else {
+        targetStatus = EXTERNAL_DQ_REVIEW;
+        pendingReason = DQ_REVIEW_REASON;
+      }
     }
     if (!result.reason) {
       const changed = await setClaimStatusForLeads({
         leadIds: [opts.leadId], claimIds: [opts.claimId], expectedStatus: claim.data.status ?? null,
-        status: mapped.key, dqReasonKey: reasonKey, historical: true, statuses: catalog,
+        status: targetStatus, dqReasonKey: reasonKey, historical: true, statuses: catalog,
         actorName: 'LawRuler status reconciliation',
       }, { db, audit: async () => {}, automation: async () => { throw new Error('External reconciliation must not start automation.'); }, webhook: async () => { throw new Error('External reconciliation must not publish events.'); }, deliver: async () => { throw new Error('External reconciliation must not deliver a file.'); } });
-      result = { ...result, applied: !!changed.claimIds?.length, outcome: changed.ok ? 'applied' : 'review_required', reason: changed.ok ? 'LawRuler status applied to this matter without communications or new signing.' : changed.error || 'This matter changed during reconciliation. Review the current state.' };
+      result = { ...result, applied: !!changed.claimIds?.length, outcome: changed.ok && !pendingReason ? 'applied' : 'review_required', reason: changed.ok ? pendingReason || 'LawRuler status applied to this matter without communications or new signing.' : changed.error || 'This matter changed during reconciliation. Review the current state.' };
     }
   }
   // A repeated message with the same decision does not add duplicate reconciliation history.
@@ -147,7 +167,7 @@ export async function reconcileLawRulerMvaStatus(db: any, opts: {
       firm_id: opts.firmId, lead_id: opts.leadId, kind: 'system',
       body: `LawRuler status: ${sourceStatus || 'not supplied'}. ${result.reason}`,
       meta: { source: 'lawruler', event: EVENT, claim_id: opts.claimId, campaign_id: opts.campaignId, source_status: sourceStatus, status: sourceStatus, previous_status: claim.data.status,
-        source_signed_reported: !!mapped && (mapped.key === 'signed' || mapped.key.startsWith('signed_')), source_signed_at: null, signature_validation: 'not_performed', ...result },
+        source_signed_reported: externalSigned, source_signed_at: null, signature_validation: 'not_performed', ...result },
     });
     if (saved.error) throw new Error(`${result.applied ? 'Status changed, but' : 'No status correction completed:'} LawRuler reconciliation history/hold could not be saved: ${saved.error.message}. Review this matter before retrying.`);
   }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { FakeDb } from './test-fake-db';
-import { DEFAULT_STATUSES } from './statuses';
-import { acquisitionClaimForRow, isAcquisitionEligible, loadMvaAcquisitionHolds, mayDispatchMvaAcquisition, reconcileLawRulerMvaStatus } from './lawruler-mva-status';
+import { DEFAULT_STATUSES, isSignedKey } from './statuses';
+import { acquisitionClaimForRow, EXTERNAL_DQ_REVIEW, EXTERNAL_SIGNED_REVIEW, isAcquisitionEligible, loadMvaAcquisitionHolds, mayDispatchMvaAcquisition, reconcileLawRulerMvaStatus } from './lawruler-mva-status';
 import { loadLawRulerProvenance } from './lawruler-recovery';
 
 const F = 'firm-one', L = 'lead-one', C = 'claim-one', P = 'campaign-one';
@@ -16,6 +16,7 @@ function fixture() {
       { alias: 'Signed e-Sign (Default)', status_key: 'signed_grievous' }, { alias: 'Disqualified (Default)', status_key: 'dq' },
       { alias: 'New Lead (Default)', status_key: 'new' }, { alias: 'Contact Attempted (Default)', status_key: 'contacting' },
       { alias: 'Sent e-Sign (Default)', status_key: 'esign_sent' }, { alias: 'DO NOT CALL REQUEST', status_key: 'dnc' },
+      { alias: 'Signed ESign Sent To Firm', status_key: 'delivered' },
       { alias: 'Secondary Intake OK COMPLETE', status_key: 'approved' },
     ], lead_activity: [], case_documents: [],
   });
@@ -27,16 +28,26 @@ const eligible = async (db: FakeDb, claim = db.tables.claims[0]) => isAcquisitio
 let count = 0;
 const test = async (name: string, fn: () => any) => { await fn(); count++; console.log('ok', name); };
 (async () => {
-  await test('known signed source applies to exact claim without inventing dates or provider evidence', async () => {
+  await test('known signed source enters evidence review without inventing a ClaimReach signature', async () => {
     const db = fixture(); db.tables.claims.push({ ...db.tables.claims[0], id: 'sibling', campaign_id: 'other-campaign' });
     const result = await reconcileLawRulerMvaStatus(db, input);
-    assert.equal(result.outcome, 'applied'); assert.equal(result.communications_triggered, false);
-    assert.equal(db.tables.claims[0].status, 'signed_grievous'); assert.equal(db.tables.claims[1].status, 'new');
+    assert.equal(result.outcome, 'review_required'); assert.equal(result.communications_triggered, false);
+    assert.equal(db.tables.claims[0].status, EXTERNAL_SIGNED_REVIEW); assert.equal(db.tables.claims[1].status, 'new');
+    assert.equal(isSignedKey(db.tables.claims[0].status, DEFAULT_STATUSES), false);
     assert.equal(db.tables.leads[0].signed_at, '2025-01-01T00:00:00Z'); assert.equal(db.tables.leads[0].qa_entered_at, '2025-01-02T00:00:00Z');
     assert.ok(db.ops.every(op => !['esign_submissions', 'retainers', 'communications', 'firm_delivery_dispatches', 'automation_runs'].includes(op.table)));
     assert.equal(await eligible(db), false); assert.equal(await eligible(db, db.tables.claims[1]), true);
     const provenance = await loadLawRulerProvenance(db, L, C);
     assert.equal(provenance?.sourceSignedReported, true); assert.equal(provenance?.sourceSignedAt, null); assert.equal(provenance?.originalRetainerStored, false);
+  });
+  await test('LawRuler delivered report cannot count as signed or deliver to the firm without its packet', async () => {
+    const db = fixture();
+    const result = await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Signed ESign Sent To Firm' });
+    assert.equal(result.outcome, 'review_required'); assert.equal(result.acquisition_hold, true);
+    assert.equal(db.tables.claims[0].status, EXTERNAL_SIGNED_REVIEW);
+    assert.equal(isSignedKey(db.tables.claims[0].status, DEFAULT_STATUSES), false);
+    assert.equal(db.tables.leads[0].qa_pending, true);
+    assert.ok(db.ops.every(op => !['esign_submissions', 'firm_delivery_dispatches'].includes(op.table)));
   });
   await test('Default suffix differences map correctly but conflicting normalized aliases require review', async () => {
     for (const sourceStatus of ['Contact Attempted', ' Contact   Attempted (Default) ']) {
@@ -49,7 +60,7 @@ const test = async (name: string, fn: () => any) => { await fn(); count++; conso
   await test('DQ requires real active configured reason; missing or inactive reason still holds this matter', async () => {
     for (const dqReasonKey of [undefined, 'missing', 'retired']) {
       const db = fixture(); const result = await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified', dqReasonKey });
-      assert.equal(result.outcome, 'review_required'); assert.equal(result.acquisition_hold, true); assert.equal(db.tables.claims[0].status, 'new'); assert.equal(await eligible(db), false);
+      assert.equal(result.outcome, 'review_required'); assert.equal(result.acquisition_hold, true); assert.equal(db.tables.claims[0].status, EXTERNAL_DQ_REVIEW); assert.equal(await eligible(db), false);
       assert.equal(db.tables.claims[0].dq_reason_key, undefined);
     }
     const db = fixture(); const result = await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified', dqReasonKey: 'criteria' });
@@ -98,7 +109,7 @@ const test = async (name: string, fn: () => any) => { await fn(); count++; conso
     for (const sourceStatus of ['New Lead', 'Unknown status']) {
       db.tables.claims[0].updated_at = '2030-01-01T00:00:00Z';
       const result = await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus });
-      assert.equal(result.acquisition_hold, true); assert.equal(await eligible(db), false); assert.equal(db.tables.claims[0].status, 'new');
+      assert.equal(result.acquisition_hold, true); assert.equal(await eligible(db), false); assert.equal(db.tables.claims[0].status, EXTERNAL_DQ_REVIEW);
     }
   });
   await test('repeated source does not repeat canonical status writes or endlessly add reconciliation events', async () => {
@@ -118,7 +129,7 @@ const test = async (name: string, fn: () => any) => { await fn(); count++; conso
       await assert.rejects(reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified' }), /offline/);
     }
     const db = fixture(); db.failOn = op => op.table === 'lead_activity' && op.kind === 'insert' ? 'audit offline' : null;
-    await assert.rejects(reconcileLawRulerMvaStatus(db, input), /Status changed.*audit offline/); assert.equal(db.tables.claims[0].status, 'signed_grievous');
+    await assert.rejects(reconcileLawRulerMvaStatus(db, input), /Status changed.*audit offline/); assert.equal(db.tables.claims[0].status, EXTERNAL_SIGNED_REVIEW);
   });
   await test('callback binding uses exact claim or sole compatible legacy matter, never a sibling guess', () => {
     const db = fixture(), lead = { ...db.tables.leads[0], claims: db.tables.claims };
