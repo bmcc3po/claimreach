@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 // Clean line icons (1.6 stroke), Wave/Arive-style. Keyed by name so the nav
 // reads as a real product rail, not an emoji row. Inherits currentColor.
 const P: Record<string, React.ReactNode> = {

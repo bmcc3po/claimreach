@@ -17,7 +17,8 @@
 // Nothing here holds an answer. Every tap goes to the call engine, so
 // switching views, turning the iPad or resizing lands in the same place.
 // ============================================================================
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import Icon from "@/components/ui/Icon";
 import { REBS } from "@/lib/mva-call/engine";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, OPEN_LINE, MONEY, SEND_LINE, STAY, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
@@ -42,6 +43,58 @@ function ViewIcon({ k }: { k: string }) {
 
 function Chevron() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>;
+}
+
+/** Phone header folds as one unit. Keep its children mounted across every view and size. */
+export function IxTop({ v }: { v: any }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const contentId = useId();
+  const gesture = useRef<{ id: number; x: number; y: number } | null>(null);
+  const dragged = useRef(false);
+  const summary = v.textBadge ? `${v.textUnread} new texts` : v.onCall ? "On a call" : v.ringing ? "Ringing" : `${v.fi.progress.pct}%`;
+  return (
+    <div className={`cc-top ix-top${collapsed ? " ix-phone-top-collapsed" : ""}`}>
+      <div id={contentId} className="ix-top-content">
+        {!v.ws && <IxHead v={v} />}
+        <IxBar v={v} />
+      </div>
+      {!v.ws && <>
+        <button type="button" className="ix-top-handle" aria-expanded={!collapsed} aria-controls={contentId}
+          aria-label={collapsed ? `Show call header for ${v.callerName}` : "Hide call header"}
+          title={collapsed ? "Tap or pull down to show the header" : "Tap or swipe up to hide the header"}
+          onPointerDown={(event) => {
+            if (!event.isPrimary || event.button !== 0) return;
+            dragged.current = false;
+            gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerUp={(event) => {
+            const start = gesture.current;
+            gesture.current = null;
+            if (!start || start.id !== event.pointerId) return;
+            const dy = event.clientY - start.y, dx = event.clientX - start.x;
+            // A drag must not fall through to a tap, including a sideways or short swipe.
+            dragged.current = Math.max(Math.abs(dx), Math.abs(dy)) >= 8;
+            if (Math.abs(dy) >= 32 && Math.abs(dy) > Math.abs(dx) * 1.25) {
+              setCollapsed(dy < 0);
+              event.currentTarget.focus();
+            }
+          }}
+          onPointerCancel={() => { gesture.current = null; dragged.current = false; }}
+          onClick={(event) => {
+            if (dragged.current && event.detail !== 0) { dragged.current = false; return; }
+            dragged.current = false;
+            setCollapsed((value) => !value);
+          }}>
+          <span className="ix-top-grip" aria-hidden="true" />
+          <span className="ix-top-handle-label">{collapsed ? v.callerName : "Hide header"}</span>
+          {collapsed && <span className="ix-top-handle-status">{summary}</span>}
+          <Chevron />
+        </button>
+        {collapsed && v.saveBad && <div className="ix-top-save-alert" role="status">{v.saveError || "Not saved. Retrying."}</div>}
+      </>}
+    </div>
+  );
 }
 
 /** Phone and iPad upright: who, the clock, text and end call. Same in every view. */
@@ -83,6 +136,10 @@ export function IxBar({ v }: { v: any }) {
   const wide = !!v.ws;
   const steps = !v.choreView && !v.fullView && !v.formView;
   const lights = fi.lights;
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const viewsId = useId();
+  const viewToggle = useRef<HTMLButtonElement | null>(null);
+  const currentMode = (v.modes || []).find((m: any) => m.on);
   return (
     <div className="ix-bar">
       <div className="ix-bar-row">
@@ -99,12 +156,28 @@ export function IxBar({ v }: { v: any }) {
           </div>
           <div className="ix-track" aria-hidden="true"><i style={{ width: `${fi.progress.pct}%` }} /></div>
         </div>
-        <div className="ix-views" role="radiogroup" aria-label="View">
-          {(v.modes || []).map((m: any) => (
-            <button key={m.key} type="button" role="radio" aria-checked={!!m.on} className={`ix-view${m.on ? " ix-on" : ""}`} onClick={m.go}>
-              <ViewIcon k={m.key} /><span>{m.label}</span>
-            </button>
-          ))}
+        <div className="ix-bar-actions">
+        <div className="ix-view-switch" onKeyDown={(e) => {
+          if (e.key === "Escape" && viewsOpen) { setViewsOpen(false); viewToggle.current?.focus(); }
+        }}>
+          <button ref={viewToggle} type="button" className="ix-view-toggle" aria-expanded={viewsOpen} aria-controls={viewsId} onClick={() => setViewsOpen((open) => !open)}>
+            <ViewIcon k={currentMode?.key || viewOf(v)} /><span>View: {currentMode?.label || "Guided"}</span><Chevron />
+          </button>
+          <div id={viewsId} className={`ix-views${viewsOpen ? " ix-views-open" : ""}`} role="radiogroup" aria-label="View">
+            {(v.modes || []).map((m: any) => (
+              <button key={m.key} type="button" role="radio" aria-checked={!!m.on} className={`ix-view${m.on ? " ix-on" : ""}`} onClick={() => {
+                m.go(); setViewsOpen(false);
+                if (viewToggle.current?.offsetParent !== null) viewToggle.current?.focus();
+              }}>
+                <ViewIcon k={m.key} /><span>{m.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {!wide && !!v.openCaseTools && <button type="button" className="ix-file-toggle" aria-label="Open case file" aria-haspopup="dialog" onClick={v.openCaseTools}>File</button>}
+        {wide && !!v.openCommandCenter && <div className="ix-command-actions">
+          <button type="button" className="ix-command-toggle" aria-expanded={false} aria-controls={v.commandPanelId} onClick={v.openCommandCenter}>Command center</button>
+        </div>}
         </div>
       </div>
       {steps && (
@@ -148,26 +221,62 @@ export function IxFoot({ v }: { v: any }) {
   const wide = !!v.ws;
   const n = nextStep(v);
   const note = useRef<HTMLTextAreaElement | null>(null);
-  useEffect(() => { if (fi.quick.open) note.current?.focus(); }, [fi.quick.open]);
+  const noteDialog = useRef<HTMLDivElement | null>(null);
+  const noteHeadingId = useId();
+  const closeNote = useRef(fi.quick.toggle);
+  closeNote.current = fi.quick.toggle;
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsId = useId();
+  const expanded = toolsOpen || !!fi.quick.open;
+  useEffect(() => {
+    if (wide || !fi.quick.open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = noteDialog.current;
+    setToolsOpen(true);
+    note.current?.focus();
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeNote.current(); return; }
+      if (event.key !== "Tab" || !dialog) return;
+      const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), textarea:not([disabled])')).filter((el) => el.getClientRects().length);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", keys);
+    return () => { document.removeEventListener("keydown", keys); previous?.focus(); };
+  }, [wide, fi.quick.open]);
   const alert = v.nudge;
   return (<>
     {!wide && fi.quick.open && (
-      <div className="ix-note" role="dialog" aria-label="Quick note">
-        <textarea ref={note} className="fi-in fi-area" rows={2} placeholder="Jot it down now, sort it out later" value={fi.quick.draft.value} onChange={fi.quick.draft.set}
+      <div className="ix-note-layer">
+      <div ref={noteDialog} className="ix-note" role="dialog" aria-modal="true" aria-labelledby={noteHeadingId}>
+        <h2 id={noteHeadingId} className="ix-note-heading">Quick note</h2>
+        <textarea ref={note} className="fi-in fi-area" rows={6} aria-label="Quick note text" placeholder="Jot it down now, sort it out later" value={fi.quick.draft.value} onChange={fi.quick.draft.set}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fi.quick.save(); } }} />
         <div className="ix-note-b">
           <button type="button" className="ix-tool" onClick={fi.quick.toggle}>Cancel</button>
           <button type="button" className="ix-save-note" onClick={fi.quick.save}>Save note</button>
         </div>
       </div>
+      </div>
     )}
     {!!alert && <div className="ix-alert" role="alert">{alert}</div>}
     {!wide && (<>
+      <div id={toolsId} className={`ix-foot-tools${expanded ? " ix-foot-tools-open" : ""}`}>
       <button type="button" className="ix-tool" onClick={v.openSheet}>
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>Help
       </button>
       <button type="button" className="ix-tool" onClick={fi.quick.toggle} aria-expanded={!!fi.quick.open}>
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>Note
+      </button>
+      </div>
+      <button type="button" className="ix-foot-toggle" aria-expanded={expanded} aria-controls={toolsId}
+        aria-disabled={!!fi.quick.open} title={fi.quick.open ? "Save or cancel your note before hiding tools" : undefined}
+        onClick={() => {
+          if (fi.quick.open) { note.current?.focus(); return; }
+          setToolsOpen((open) => !open);
+        }}>
+        <span>{expanded ? "Hide tools" : "Tools"}</span><Chevron />
       </button>
     </>)}
     {!!n && (
@@ -182,9 +291,13 @@ export function WsLeft({ v }: { v: any }) {
   const fi = v.fi;
   const lead = fi.lead;
   const notes = String(v.f?.text?.value || "").split("\n").map((t) => t.trim()).filter(Boolean).reverse().slice(0, 8);
-  const desk = v.ws === "desk";
+  const missing = fi.missing || [];
+  const missingItem = (m: any) => (v.fullView || v.choreView || v.formView || v.guidedQuestions)
+    ? <button key={m.id} type="button" className="ws-miss-b" onClick={m.go}>{m.label}</button>
+    : <span key={m.id} className="ws-miss-b ws-miss-t">{m.label}</span>;
   return (
-    <aside className="ws-left" aria-label="Caller">
+    <aside className="ws-left" aria-label="Intake review">
+      <div className="ws-review-heading"><Icon name="shield" size={22} /><div><strong>Intake review</strong><span>Checks &amp; missing answers</span></div></div>
       <section className="ws-caller">
         <a className="ws-back" href="/app">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>All calls
@@ -208,17 +321,35 @@ export function WsLeft({ v }: { v: any }) {
         )}
         <div className={`ws-save${v.saveBad ? " ws-save-bad" : ""}`} role="status">{v.saveBad ? v.saveError : v.saveText || "Saves as you go"}</div>
         <div className="ws-ctl">
-          <button type="button" className="ws-btn" onClick={desk ? v.openPhone : v.openText}>Call</button>
+          <button type="button" className="ws-btn" onClick={v.openPhone || v.openText}>Call</button>
           <button type="button" className="ws-btn" onClick={v.openText}>
             Text{!!v.textBadge && <span className="ws-badge">{v.textUnread}</span>}
           </button>
           <button type="button" className="ws-btn ws-end" onClick={v.openDispo}>End call</button>
         </div>
         <div className="ws-ctl ws-ctl2">
-          {desk && <button type="button" className="ws-btn ws-quiet" onClick={v.openRetainer}>Agreement</button>}
-          {desk && <button type="button" className="ws-btn ws-quiet" onClick={v.openFile}>File</button>}
+          <button type="button" className="ws-btn ws-quiet" onClick={v.openRetainer}>Agreement</button>
+          <button type="button" className="ws-btn ws-quiet" onClick={v.openFile}>File</button>
           <a className="ws-btn ws-quiet" href={`/app/${v.leadId}/print?claim=${encodeURIComponent(v.claimId || "")}`}>Print or email</a>
         </div>
+      </section>
+
+      <section className="ws-block ws-review-checks">
+        <div className="ws-h">Qualification checks <span className={`ws-count${fi.lights.bad ? " ws-count-bad" : ""}`}>{fi.lights.bad ? "Problem" : fi.lights.text}</span></div>
+        <div className="ws-lights">
+          {fi.lights.rows.map((r: any, i: number) => (
+            <div key={i} className={`ws-light ws-l-${r.state || "none"}`}>
+              <i aria-hidden="true" /><span>{r.label}</span><b>{LIGHT_WORD[r.state || "none"]}</b>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="ws-block ws-review-missing">
+        <div className="ws-h">Unanswered <span className="ws-count">{missing.length}</span></div>
+        <div className="ws-review-meter"><strong>{fi.progress.text}</strong><span>questions captured</span></div>
+        {missing.length === 0 ? <div className="ws-tags">Required intake answers captured.</div> : <div className="ws-miss-items">{missing.slice(0, 3).map(missingItem)}</div>}
+        {missing.length > 3 && <details className="ws-review-more"><summary>{missing.length - 3} more unanswered</summary><div className="ws-miss-items">{missing.slice(3).map(missingItem)}</div></details>}
       </section>
 
       {!!lead && (
@@ -247,17 +378,6 @@ export function WsLeft({ v }: { v: any }) {
           <div className="ws-tags">Linked files. Ask how they&apos;re doing.</div>
         </section>
       )}
-
-      <section className="ws-block">
-        <div className="ws-h">Qualifiers <span className={`ws-count${fi.lights.bad ? " ws-count-bad" : ""}`}>{fi.lights.bad ? "Problem" : fi.lights.text}</span></div>
-        <div className="ws-lights">
-          {fi.lights.rows.map((r: any, i: number) => (
-            <div key={i} className={`ws-light ws-l-${r.state || "none"}`}>
-              <i aria-hidden="true" /><span>{r.label}</span><b>{LIGHT_WORD[r.state || "none"]}</b>
-            </div>
-          ))}
-        </div>
-      </section>
 
       <section className="ws-block ws-notes">
         <div className="ws-h">Quick notes</div>

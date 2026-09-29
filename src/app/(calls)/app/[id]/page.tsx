@@ -110,7 +110,8 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   // The last saved answers for THIS matter, when this is a fresh call on an
   // old file: the answers autosave filed on the pinned claim; a single-matter
   // legacy file falls back to its latest call.
-  let saved: any = liveRes.data?.answers ?? null;
+  const canonical = (claim.answers as any)?.mva_call;
+  let saved: any = canonical && typeof canonical === "object" && !Array.isArray(canonical) ? canonical : (liveRes.data?.answers ?? null);
   if (!saved) {
     const own = (claim.answers as any)?.mva_call;
     const last = own && typeof own === "object" && Object.keys(own).length ? own : (singleMatter ? lastRes.data?.answers : null);
@@ -171,6 +172,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
       leadId: lead.id,
       claimId: claim.id,
       callId: liveRes.data?.id ?? null,
+      baseAnswers: saved || {},
       agreementId: mainRes.row?.id ?? null,
       emergency: emergency.row ? { needsResign: emergencySupersedes(mainRes.row, emergency.row), status: emergency.row.status } : null,
       openText: text === "1",
@@ -198,6 +200,8 @@ export default async function CallPage({ params, searchParams }: { params: Promi
         esign: {
           status: !mainStatus ? "ready" : mainStatus === "completed" ? "signed" : ["failed", "declined", "expired", "voided"].includes(mainStatus) ? "ready" : mainStatus,
           configured: docusealConfigured() && (tplRes.data ?? []).length > 0,
+          templateKeys: (tplRes.data ?? []).map((t: any) => String(t.key)),
+          templateKey: mainRes.row?.template_key ?? null,
           pax,
         },
       },

@@ -4,9 +4,10 @@ import { resolveFirmHome } from "@/lib/firm-home";
 import { bouncePath, isSafeFirmNext } from "@/lib/m6";
 import { safeAppNext } from "@/lib/mva-call/links";
 import { isInternalRole } from "@/lib/permissions";
+import { isPartnerIdentity, partnerMayUsePath } from "@/lib/partner-access";
 
 function isAuthPage(path: string) {
-  return path === "/login" || path === "/firm-login" || path.startsWith("/auth");
+  return path === "/login" || path === "/firm-login" || path === "/partner-login" || path.startsWith("/auth");
 }
 
 function isPublicAsset(path: string) {
@@ -28,13 +29,17 @@ function isPublicPath(path: string) {
 // Refresh the Supabase session on every gated request and guard route groups.
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
+  const api = path.startsWith("/api/");
   const authPage = isAuthPage(path);
   const isProtected = !isPublicPath(path);
   // Skip the Supabase round-trip on public assets, /sign, and /tools so a cold edge
   // instance isn't paying for wasted work.
-  if (!isProtected && !authPage) return NextResponse.next({ request: req });
+  if (!isProtected && !authPage && !api) return NextResponse.next({ request: req });
 
   let res = NextResponse.next({ request: req });
+  if (path === "/partner" || path.startsWith("/partner/")) {
+    res.headers.set("Cache-Control", "private, no-store");
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,13 +58,35 @@ export async function middleware(req: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
+  // API routes have their own permission checks. This outer fence keeps an
+  // external partner (or any authenticated user without an app_users profile)
+  // from reaching a legacy handler that only excludes the "firm" role.
+  // Unauthenticated webhooks and public signing endpoints continue to their
+  // own route-level authentication unchanged.
+  if (api) {
+    if (!user) return res;
+    if (isPartnerIdentity(user)) return new NextResponse("forbidden", { status: 403 });
+    const { data: me, error } = await supabase.from("app_users")
+      .select("id, active").eq("id", user.id).maybeSingle();
+    if (error || !me || me.active === false) return new NextResponse("forbidden", { status: 403 });
+    return res;
+  }
+
+  if (user && isPartnerIdentity(user) && !partnerMayUsePath(path)) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/partner";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   if (!user && isProtected) {
     const url = req.nextUrl.clone();
     // /m6 is worked by BOTH sides, so it cannot assume a staff login. Send
     // people to the firm login, which the Turnbull team already uses; staff
     // accounts sign in there too.
+    const partnerApp = path === "/partner" || path.startsWith("/partner/");
     const firmApp = path.startsWith("/portal") || path.startsWith("/m6");
-    url.pathname = firmApp ? "/firm-login" : "/login";
+    url.pathname = partnerApp ? "/partner-login" : firmApp ? "/firm-login" : "/login";
     url.search = "";
     if (firmApp) {
       const keep = isSafeFirmNext(path);
@@ -98,9 +125,12 @@ export async function middleware(req: NextRequest) {
       }
     }
   }
+  if (path === "/partner" || path.startsWith("/partner/")) {
+    res.headers.set("Cache-Control", "private, no-store");
+  }
   return res;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

@@ -6,6 +6,9 @@ import { packetsFor } from "@/lib/mva-call/esign";
 import { docusealConfigured } from "@/lib/docuseal";
 import { DISPO_LABEL, type DispoCode } from "@/lib/mva-call/dispo";
 import { APP_CASE_TYPES } from "@/lib/mva-call/links";
+import { acquisitionClaimForRow, isAcquisitionEligible, loadMvaAcquisitionHolds, type MvaAcquisitionSignal } from "@/lib/lawruler-mva-status";
+import type { StatusDef } from "@/lib/statuses";
+import Link from "next/link";
 import CallsHome, { type HomeData, type HomeRow } from "@/components/calls/CallsHome";
 
 // App home: what to work right now. Open files, call backs that are due,
@@ -22,7 +25,7 @@ export default async function AppHomePage() {
     sb.from("campaigns").select("id, name, firm_id, case_type").in("case_type", APP_CASE_TYPES).eq("active", true).order("name"),
     sb.from("firms").select("id, slug, name"),
     // Call backs, soonest first.
-    sb.from("intake_calls").select("lead_id, callback_at, agent_name, reason, created_at, leads(claimant_name, phone)")
+    sb.from("intake_calls").select("lead_id, claim_id, campaign_id, callback_at, agent_name, reason, created_at, leads(id, firm_id, archived_at, claimant_name, phone, claims(id, lead_id, firm_id, campaign_id, claim_type, status))")
       .eq("disposition", "callback").not("callback_at", "is", null).gte("callback_at", days(3))
       .order("callback_at", { ascending: true }).limit(100),
     // Out for signature in the last three days.
@@ -47,43 +50,55 @@ export default async function AppHomePage() {
   // Second wave: open files, the latest call on each call back, e-sign setup.
   const setupCamps = ["owner", "admin"].includes(me.role)
     ? campaigns.filter((c: any) => packetsFor((firmById.get(c.firm_id) as any)?.slug, c.case_type)) : [];
-  const [leadRes, latestRes, tplRes] = await Promise.all([
+  const [leadRes, latestRes, tplRes, statusRes] = await Promise.all([
     campIds.length
-      ? sb.from("leads").select("id, lead_no, claimant_name, phone, campaign, created_at, last_called_at, marketing_source, claims(status, created_at)")
+      ? sb.from("leads").select("id, firm_id, archived_at, lead_no, claimant_name, phone, campaign, created_at, last_called_at, marketing_source, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, created_at)")
           .in("campaign_id", campIds).is("archived_at", null).order("created_at", { ascending: false }).limit(200)
       : Promise.resolve({ data: [], error: null } as any),
     cbLeadIds.length
-      ? sb.from("intake_calls").select("lead_id, created_at").in("lead_id", cbLeadIds).order("created_at", { ascending: false })
+      ? sb.from("intake_calls").select("lead_id, claim_id, campaign_id, created_at").in("lead_id", cbLeadIds).order("created_at", { ascending: false })
       : Promise.resolve({ data: [], error: null } as any),
     setupCamps.length
       ? sb.from("esign_templates").select("campaign_id, key").in("campaign_id", setupCamps.map((c: any) => c.id)).eq("provider", "docuseal")
       : Promise.resolve({ data: [], error: null } as any),
+    sb.from("statuses").select("*"),
   ]);
+
+  const allLeads = new Map<string, any>();
+  for (const row of cbRes.data || []) if ((row as any).leads?.id) allLeads.set(row.lead_id, (row as any).leads);
+  for (const lead of leadRes.data || []) allLeads.set(lead.id, lead);
+  const statuses = (statusRes.data || []) as StatusDef[];
+  let holds = new Map<string, MvaAcquisitionSignal>(), eligibilityReady = !statusRes.error;
+  try { holds = await loadMvaAcquisitionHolds(sb, [...allLeads.keys()]); }
+  catch (error) { eligibilityReady = false; notes.push(error instanceof Error ? error.message : "Could not check external contact holds."); }
+  if (statusRes.error) notes.push("Case statuses did not load. Contact queues are paused until they can be checked.");
+  const eligible = (lead: any, claim: any) => eligibilityReady && isAcquisitionEligible(lead, claim, { statuses, holds });
+  const reviews = [...holds.values()].filter(signal => signal.outcome === 'review_required' && allLeads.get(signal.lead_id)?.claims?.some((c: any) => c.id === signal.claim_id && c.firm_id === signal.firm_id));
 
   // Open files: new or still being worked, newest first.
   if (leadRes.error) notes.push(`Open files did not load: ${leadRes.error.message}`);
-  const firstStatus = (l: any) => {
-    const cs = [...(l.claims ?? [])].sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)));
-    return cs[0]?.status as string | undefined;
-  };
   const open: HomeRow[] = (leadRes.data ?? [])
-    .filter((l: any) => ["new", "contacting", undefined].includes(firstStatus(l)))
-    .map((l: any) => ({
+    .flatMap((l: any) => (l.claims || []).filter((c: any) => campIds.includes(c.campaign_id) && ["new", "contacting"].includes(c.status) && eligible(l, c)).map((c: any) => ({
       id: l.id, name: l.claimant_name, phone: l.phone,
-      sub: [l.marketing_source, l.campaign].filter(Boolean).join(", "),
-      at: l.last_called_at || l.created_at, tag: firstStatus(l) === "contacting" ? "Worked" : "New",
-    }));
+      sub: [l.marketing_source, c.campaign || l.campaign].filter(Boolean).join(", "),
+      at: l.last_called_at || l.created_at, tag: c.status === "contacting" ? "Worked" : "New", href: `/app/${l.id}?claim=${c.id}`,
+    })));
 
-  // Call backs. Only the latest call on a file counts.
+  // Call backs. Only the latest call on the exact matter counts.
   if (cbRes.error) notes.push(`Call backs did not load: ${cbRes.error.message}`);
   const latestBy: Record<string, string> = {};
-  for (const r of latestRes.data ?? []) if (!latestBy[r.lead_id]) latestBy[r.lead_id] = r.created_at;
+  if (latestRes.error) notes.push("Latest call state did not load. Callbacks are paused until it can be checked.");
+  for (const r of latestRes.data ?? []) {
+    const claim = acquisitionClaimForRow(allLeads.get(r.lead_id), r);
+    if (claim && !latestBy[claim.id]) latestBy[claim.id] = r.created_at;
+  }
   const callbacks: HomeRow[] = [];
   const seenCb = new Set<string>();
   for (const r of cbRes.data ?? []) {
-    if (seenCb.has(r.lead_id) || latestBy[r.lead_id] !== r.created_at) continue;
-    seenCb.add(r.lead_id);
-    callbacks.push({ id: r.lead_id, name: (r as any).leads?.claimant_name, phone: (r as any).leads?.phone, sub: [r.reason, r.agent_name].filter(Boolean).join(", "), at: r.callback_at, due: r.callback_at, tag: "Call back" });
+    const lead = allLeads.get(r.lead_id), claim = acquisitionClaimForRow(lead, r);
+    if (latestRes.error || !claim || !eligible(lead, claim) || seenCb.has(claim.id) || latestBy[claim.id] !== r.created_at) continue;
+    seenCb.add(claim.id);
+    callbacks.push({ id: r.lead_id, name: lead.claimant_name, phone: lead.phone, sub: [r.reason, r.agent_name].filter(Boolean).join(", "), at: r.callback_at, due: r.callback_at, tag: "Call back", href: `/app/${r.lead_id}?claim=${claim.id}` });
   }
 
   if (waitRes.error) notes.push(`Agreements did not load: ${waitRes.error.message}`);
@@ -127,5 +142,5 @@ export default async function AppHomePage() {
     campaigns: campaigns.map((c: any) => ({ id: c.id, name: c.name, firm: (firmById.get(c.firm_id) as any)?.name || "", kind: c.case_type })),
     open, callbacks, waiting, done, texts, setup, notes,
   };
-  return <CallsHome data={data} />;
+  return <>{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner/admin review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`/leads/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || 'Open matter'}</Link>: {r.source_status || 'Status missing'} — {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
 }

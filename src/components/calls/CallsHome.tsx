@@ -182,7 +182,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
             {rows.map((r, i) => {
               const late = tab === "callbacks" && r.due && Date.parse(r.due) <= now;
               return (
-                <a key={r.id + i} className="cc-lrow" href={r.href || (r.id ? `/app/${r.id}` : "#")}
+                <a key={r.href || r.id + i} className="cc-lrow" href={r.href || (r.id ? `/app/${r.id}` : "#")}
                   onClick={(ev) => { if (r.newPhone) { ev.preventDefault(); setPhone(r.newPhone); setName(""); setErr(""); setSheet(true); } }}>
                   <span className="cc-lrow-main">
                     <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}</span>

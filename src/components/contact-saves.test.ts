@@ -297,7 +297,7 @@ function contactCard(initial: Record<string, string> = CARD_INITIAL) {
   const C = rt.load("src/components/calls/DeskPanel.tsx", ["ContactCard"]).__ContactCard;
   const view = rt.mount(C, { leadId: "lead-1", initial });
   const box = (label: string) => one(view.tree, (n) => n.type === "input" && n.props["aria-label"] === label, label);
-  const openEdit = () => view.act(() => one(view.tree, (n) => n.type === "button" && n.props.children === "Edit", "Edit button").props.onClick());
+  const openEdit = () => view.act(() => one(view.tree, (n) => n.type === "button" && n.props.children === "Edit contact", "Edit contact button").props.onClick());
   return { rt, view, box, openEdit };
 }
 
@@ -404,14 +404,54 @@ t("ContactCard: pasting an address with a ZIP fills it", async () => {
   assert.deepEqual(rt.posts()[0].body.lead, { mail_addr1: "18475 Zurich Ln", mail_city: "Tinley Park", mail_state: "IL", mail_zip: "60477" });
 });
 
-t("ContactCard: a one-line address on the record is saved split once, on open", async () => {
-  const { rt, view } = contactCard({ phone: "2025550101", mail_addr1: "18475 Zurich Ln, Tinley Park, IL 60477" });
-  await rt.settle();
-  assert.equal(rt.posts().length, 1);
-  assert.deepEqual(rt.posts()[0].body.lead, { mail_addr1: "18475 Zurich Ln", mail_city: "Tinley Park", mail_state: "IL", mail_zip: "60477" });
+t("ContactCard: a one-line address stays read-only on mount and edit-open, then normalizes with an address edit", async () => {
+  const { rt, view, box, openEdit } = contactCard({ phone: "2025550101", mail_addr1: "18475 Zurich Ln, Tinley Park, IL 60477" });
+  await rt.advance(5000);
+  assert.equal(rt.posts().length, 0, "opening the File tab never writes contact data");
   assert.match(text(view.tree), /18475 Zurich Ln, Tinley Park, IL 60477/);
+  assert.doesNotMatch(text(view.tree), /Saved to the file/);
+  openEdit();
+  await rt.advance(5000);
+  assert.equal(rt.posts().length, 0, "opening the editor is still read-only");
+  assert.equal(box("Street address").props.value, "18475 Zurich Ln");
+  assert.equal(box("City").props.value, "Tinley Park");
+  view.act(type(box("ZIP"), "60478"));
+  await rt.advance(900);
+  assert.deepEqual(rt.posts()[0].body.lead, { mail_addr1: "18475 Zurich Ln", mail_city: "Tinley Park", mail_state: "IL", mail_zip: "60478" }, "normalization uses the displayed address and keeps the typed ZIP");
+  assert.match(text(view.tree), /Saved to the file\./);
   await rt.advance(5000);
   assert.equal(rt.posts().length, 1);
+});
+
+t("ContactCard: a newer record address is never overwritten by initial normalization on later email or address edits", async () => {
+  const { rt, view, box, openEdit } = contactCard({ phone: "2025550101", email: "old@example.invalid", mail_addr1: "18475 Zurich Ln, Tinley Park, IL 60477" });
+  rt.dispatch("cr:record", { leadId: "lead-1", mail_addr1: "9 Elm Rd", mail_city: "Houston", mail_state: "TX", mail_zip: "77001" });
+  openEdit();
+  await rt.advance(5000);
+  assert.equal(rt.posts().length, 0);
+  view.act(type(box("Email"), "new@example.invalid"));
+  await rt.advance(900);
+  assert.deepEqual(rt.posts()[0].body.lead, { email: "new@example.invalid" }, "an email edit never carries normalization from the initial address");
+  assert.equal(box("Street address").props.value, "9 Elm Rd");
+  assert.equal(box("City").props.value, "Houston");
+  assert.equal(box("State").props.value, "TX");
+  assert.equal(box("ZIP").props.value, "77001");
+  view.act(type(box("ZIP"), "77002"));
+  await rt.advance(900);
+  assert.deepEqual(rt.posts()[1].body.lead, { mail_zip: "77002" }, "editing the refreshed address cannot restore any initial Illinois columns");
+  const sent = rt.dispatched.filter((e) => e.type === "cr:contact");
+  assert.equal(sent[sent.length - 1].detail.addr, "9 Elm Rd, Houston, TX 77002");
+});
+
+t("ContactCard: deferred normalization preserves earlier unsaved address typing when another address field changes", async () => {
+  const { rt, view, box, openEdit } = contactCard({ phone: "2025550101", mail_addr1: "18475 Zurich Ln, Tinley Park, IL 60477" });
+  openEdit();
+  view.act(type(box("City"), "Orland Park"));
+  await rt.advance(400);
+  view.act(type(box("ZIP"), "60462"));
+  await rt.advance(900);
+  assert.equal(rt.posts().length, 1);
+  assert.deepEqual(rt.posts()[0].body.lead, { mail_addr1: "18475 Zurich Ln", mail_city: "Orland Park", mail_state: "IL", mail_zip: "60462" });
 });
 
 t("ContactCard: leaving the call sends the pending edit at once", async () => {

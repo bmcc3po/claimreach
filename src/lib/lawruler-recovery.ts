@@ -95,7 +95,7 @@ export async function previewLawRulerRecovery(db: any, opts: { firmId: string; l
 
 /** Read-only signing provenance for the exact matter. No generated signing or URLs. */
 export async function loadLawRulerProvenance(db: any, leadId: string, claimId: string) {
-  const c = await db.from('claims').select('id, lead_id, firm_id, status, campaign').eq('id', claimId).eq('lead_id', leadId).maybeSingle();
+  const c = await db.from('claims').select('id, lead_id, firm_id, status, campaign, answers').eq('id', claimId).eq('lead_id', leadId).maybeSingle();
   if (c.error) throw new Error(`Could not read imported signing scope: ${c.error.message}`);
   if (!c.data?.firm_id) return null;
   const firmId = c.data.firm_id;
@@ -112,7 +112,10 @@ export async function loadLawRulerProvenance(db: any, leadId: string, claimId: s
   const scopedLead = sole ? l.data : { ...l.data, vendor_fields: {} };
   const source = latestLawRulerSource(scopedLead, activities);
   const imported = activities.filter((x: any) => x.meta?.event === 'original_document');
-  if (!source && !imported.length) return null;
+  const presign = c.data.answers?.lawruler_presign || null;
+  const lastSync = activities.find((x: any) => x.meta?.event === 'mva_sync_result')?.meta || null;
+  const reconciliation = activities.find((x: any) => x.meta?.event === 'mva_status_reconciliation')?.meta || null;
+  if (!source && !imported.length && !presign && !lastSync) return null;
   const signing = signingHistory(scopedLead, activities, claimId, sole);
   const originals = (d.data || []).flatMap((doc: any) => {
     const record = imported.find((x: any) => x.meta?.document_id === doc.id);
@@ -121,6 +124,7 @@ export async function loadLawRulerProvenance(db: any, leadId: string, claimId: s
   const originalRetainerStored = originals.some((doc: any) => doc.docType === 'retainer');
   return {
     source: 'lawruler' as const, sourceStatus: source?.label || null,
+    presign, lastSync, reconciliation,
     sourceSignedReported: signing.source_signed_reported, sourceSignedAt: signing.source_signed_at,
     originals, originalRetainerStored, signatureValidation: 'not_performed' as const,
     pendingMissing: [

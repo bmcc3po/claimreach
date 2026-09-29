@@ -5,6 +5,7 @@ import {
 } from "@/lib/drip-rules";
 import { gateUser } from "@/lib/gate";
 import { dripDispatchEnabled, dripOffResult, enrollLeadInDrips, mayManageDrips } from "@/lib/drip-dispatch";
+import { mayDispatchMvaAcquisition } from "@/lib/lawruler-mva-status";
 export const runtime = "edge";
 
 const RULE_COLS = "id, name, channel, every_days, template, assign_to, active, campaign, stage, step_key, delay_days, subject, kind, method_note, fire_once";
@@ -15,7 +16,15 @@ export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { data } = await sb.from("drips_due").select("*").limit(200);
+  const { data, error: dueError } = await sb.from("drips_due").select("*").limit(200);
+  if (dueError) return NextResponse.json({ error: dueError.message }, { status: 500 });
+  const due: any[] = [];
+  const held: { lead_id: string; reason: string }[] = [];
+  for (const row of data ?? []) {
+    const eligible = await mayDispatchMvaAcquisition(sb, { firmId: row.firm_id, leadId: row.lead_id, claimId: row.claim_id });
+    if (eligible.allowed) due.push(row);
+    else held.push({ lead_id: row.lead_id, reason: eligible.reason });
+  }
 
   const allQ = await sb.from("drip_rules").select("campaign");
   const campaignKeys = collectDripCampaignKeys(allQ.data ?? []);
@@ -26,7 +35,7 @@ export async function GET(req: NextRequest) {
   if (clause.kind === "eq") q = q.eq("campaign", clause.value);
   const { data: rules, error } = await q.order("every_days");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ due: data ?? [], rules: sortDripRules(rules ?? []), campaign_keys: campaignKeys });
+  return NextResponse.json({ due, held, rules: sortDripRules(rules ?? []), campaign_keys: campaignKeys });
 }
 
 // POST { op:'enroll', lead_id } — enroll a lead in active drip rules.
@@ -102,7 +111,10 @@ export async function POST(req: NextRequest) {
     const admin = supabaseAdmin();
     const { data: due } = await sb.from("drips_due").select("*").limit(100);
     let fired = 0;
+    const held: { lead_id: string; reason: string }[] = [];
     for (const d of due ?? []) {
+      const eligible = await mayDispatchMvaAcquisition(admin, { firmId: d.firm_id, leadId: d.lead_id, claimId: d.claim_id });
+      if (!eligible.allowed) { held.push({ lead_id: d.lead_id, reason: eligible.reason }); continue; }
       // Fire the touch. Call reminders just log; text/email attempt JustCall.
       if (d.channel === "sms" && d.phone) {
         await fetch(`${new URL(req.url).origin}/api/justcall`, {
@@ -121,7 +133,7 @@ export async function POST(req: NextRequest) {
       }).eq("id", d.enrollment_id);
       fired++;
     }
-    return NextResponse.json({ ok: true, fired });
+    return NextResponse.json({ ok: true, fired, held });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });

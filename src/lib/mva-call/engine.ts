@@ -14,6 +14,8 @@
 // @ts-nocheck
 /* eslint-disable */
 import { SOL, stateCodeOf, injuryYears as injuryYearsFor } from './state';
+import { agreementChoice, agreementKey } from './agreement-choice';
+import { agreementName } from './agreement-names';
 import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './intake';
 import { QUESTION_ORDER, QUESTION_PATHS, questionPhase } from './question-spine';
 export { SOL };
@@ -227,7 +229,7 @@ export interface CallProps {
   saved?: any;
   reasons: { esign: Reason[]; dq: Reason[]; callback: Reason[]; ni: Reason[] };
   notifyDefaults: { who: string; how: string }[];
-  esign: { status: string; configured: boolean; pax: Record<string, string> };
+  esign: { status: string; configured: boolean; pax: Record<string, string>; templateKeys?: string[]; templateKey?: string | null };
   /** A newer emergency packet requires a new primary before office completion. */
   agreementSuperseded?: boolean;
   /** What the marketer sent, shown on Story so the agent confirms instead of re-asking. */
@@ -512,7 +514,7 @@ export class CallEngine {
   stateCode(city: any) { return stateCodeOf(city); }
 
   agreementFor(city: any) {
-    var code = this.stateCode(city);
+    var code = agreementKey(this.stateCode(city));
     if (!code) return null;
     if (code === 'TX') return 'Texas';
     if (code === 'FL') return 'Florida';
@@ -1539,6 +1541,16 @@ export class CallEngine {
 
     var hurtPax = s.car.people.map((p, i) => ({ p: p, i: i })).filter((x) => x.p.hurt === 'Yes');
     var agreement = this.agreementFor(st.city);
+    // Production supplies the exact campaign keys. The fallback keeps older
+    // embedded callers compatible; send still validates the campaign server-side.
+    var contract = agreementChoice(st.city, this.stateCode(st.city) === 'NV' ? s.send.nvVariant : undefined,
+      this.props.esign.templateKeys ?? (this.props.esign.configured ? ['TX', 'FL', 'NV', 'NV_FLAT', 'OTHER'] : []));
+    var currentContract = ['sent', 'opened', 'signed'].includes(s.send.status)
+      ? { label: agreementName(this.props.esign.templateKey) || 'Contract type unavailable — check the file history', status: s.send.status } : null;
+    var selectContract = (key: string) => {
+      if (this.state.send.status !== 'ready' || !contract.options.some(o => o.key === key && o.available)) return;
+      this.setState({ send: Object.assign({}, this.state.send, { nvVariant: key === 'NV_FLAT' ? 'flat' : 'tiered' }) });
+    };
     var gates = this.gates();
     var anyBad = gates.some((g) => g.cls.indexOf('bad') >= 0);
 
@@ -1671,9 +1683,9 @@ export class CallEngine {
     var toOther = !herOk || (s.send.toOther != null ? !!s.send.toOther : sendDigits !== herDigits);
     var contactMissing = s.send.via === 'Email' ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s.send.email || '').trim()) : String(s.send.phone || '').replace(/\D/g, '').length < 10;
     var noDoi = !crashIsoOf(st);
-    var nvFlat = agreement === 'Nevada' && s.send.nvVariant === 'flat';
+    var nvFlat = contract.requiresReason;
     var nvNeedReason = nvFlat && !String(s.send.nvReason || '').trim();
-    var sendBlocked = repBlock || !agreement || noDoi || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || nvNeedReason || !!s.send.nameReview || s.send.status === 'sending';
+    var sendBlocked = repBlock || !agreement || !contract.available || noDoi || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || nvNeedReason || !!s.send.nameReview || s.send.status === 'sending';
     // Everything still missing, said once, so nobody has to guess why Send is grey.
     var needs: string[] = [];
     if (!agreement) needs.push('the state where the wreck happened');
@@ -1683,6 +1695,7 @@ export class CallEngine {
     var needText = needs.length === 1 ? needs[0] : needs.slice(0, -1).join(', ') + ' and ' + needs[needs.length - 1];
     var sendWarnText = s.send.nameReview ? s.send.nameReview : repBlock ? 'The PNC has an attorney. Only a good case they are unhappy about gets sent.'
       : !this.props.esign.configured ? 'E-sign is not set up for this campaign yet. An admin sets it up once.'
+      : contract.key && contract.error ? contract.error
       : needs.length ? 'To send it, add ' + needText + '.'
       : nvNeedReason ? 'The non-tiered Nevada agreement needs the approval reason before it can go.'
       : anyBad ? 'A gate is red. Send only if you are sure, it gets flagged for review.' : '';
@@ -1867,7 +1880,10 @@ export class CallEngine {
       notSigned: s.send.status !== 'signed',
       signed: s.send.status === 'signed',
       sendSteps: this.stepsFor(s.send.status),
-      agreement: agreement ? agreement : 'Needs where the wreck happened',
+      agreement: currentContract?.label || contract.label || 'Needs where the wreck happened',
+      currentAgreement: currentContract,
+      contractChoice: { ...contract, locked: s.send.status !== 'ready', select: selectContract,
+        reason: { value: s.send.nvReason || '', set: (e: any) => { if (this.state.send.status === 'ready') this.set('send', 'nvReason', e.target.value); } }, needReason: nvNeedReason },
       // The retainer follows the state where the WRECK happened, not the
       // PNC's home address (Brett, Sep 25). The form shows the crash-place
       // box right here when it is missing (Brett, Sep 28).
@@ -1883,8 +1899,8 @@ export class CallEngine {
       nv: {
         show: agreement === 'Nevada',
         tiered: s.send.nvVariant !== 'flat',
-        pickTiered: () => this.setState({ send: Object.assign({}, this.state.send, { nvVariant: 'tiered' }) }),
-        pickFlat: () => this.setState({ send: Object.assign({}, this.state.send, { nvVariant: 'flat' }) }),
+        pickTiered: () => selectContract('NV'),
+        pickFlat: () => selectContract('NV_FLAT'),
         reason: { value: s.send.nvReason || '', set: (e: any) => this.setState({ send: Object.assign({}, this.state.send, { nvReason: e.target.value }) }) },
         needReason: nvNeedReason,
       },

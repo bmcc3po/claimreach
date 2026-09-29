@@ -25,6 +25,7 @@ end $$;
 
 commit;
 
+
 -- ============================================================================
 -- 0030 STATUS MODEL
 -- Statuses become editable records (not a hardcoded enum) so the owner can add
@@ -3329,4 +3330,118 @@ grant execute on function public.guard_emergency_evidence() to service_role;
 grant execute on function public.begin_emergency_signing(uuid[], text, jsonb) to service_role;
 grant execute on function public.finish_emergency_signing(uuid[], text, jsonb) to service_role;
 
+commit;
+
+-- 0112_partner_readonly_access (v9 local; not applied live)
+-- Partner identities deliberately have no app_users row. Existing staff/firm
+-- RLS therefore grants them no direct access to case or document tables.
+-- The server reads only exact, owner-approved source IDs from this allowlist.
+begin;
+create table if not exists public.partner_accounts (
+  auth_user_id uuid primary key references auth.users(id) on delete cascade,
+  email text not null unique,
+  partner_key text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  constraint partner_accounts_email_lower check (email = lower(email)),
+  constraint partner_accounts_key_format check (partner_key ~ '^[a-z0-9][a-z0-9-]{1,62}$')
+);
+create index if not exists partner_accounts_key_idx on public.partner_accounts(partner_key) where active;
+alter table public.partner_accounts enable row level security;
+drop policy if exists partner_accounts_self_read on public.partner_accounts;
+create policy partner_accounts_self_read on public.partner_accounts
+  for select to authenticated using (auth_user_id = auth.uid() and active);
+revoke all on public.partner_accounts from anon, authenticated;
+grant select on public.partner_accounts to authenticated;
+
+create table if not exists public.partner_source_leads (
+  partner_key text not null,
+  source_system text not null,
+  source_lead_id text not null,
+  firm_id uuid not null references public.firms(id),
+  approved_at timestamptz not null default now(),
+  approved_by uuid references public.app_users(id),
+  primary key (partner_key, source_system, source_lead_id),
+  constraint partner_source_leads_lawruler_id check
+    (source_system <> 'lawruler' or source_lead_id ~ '^[0-9]{1,30}$')
+);
+create index if not exists partner_source_leads_lookup_idx
+  on public.partner_source_leads(source_system, source_lead_id, firm_id);
+alter table public.partner_source_leads enable row level security;
+revoke all on public.partner_source_leads from anon, authenticated;
+-- No authenticated policy: only the service-role server path can read or write
+-- this table. A partner cannot enumerate another partner's approved IDs.
+commit;
+
+-- 0113_auth_read_boundary (v9 local; not applied live)
+-- The old authenticated-wide SELECT policies survived in production even
+-- though 0085 intended to replace several of them. Permissive RLS policies
+-- combine with OR, so a scoped policy does not cancel an older broad one.
+-- An external partner has an auth account but no app_users profile. The
+-- partner page uses the service role to emit an explicitly limited report;
+-- their own JWT must not read application tables directly.
+begin;
+drop policy if exists campaigns_read on public.campaigns;
+drop policy if exists firm_deliveries_read on public.firm_deliveries;
+drop policy if exists automations_read on public.automations;
+drop policy if exists sla_read on public.sla_settings;
+
+drop policy if exists boards_read on public.boards;
+create policy boards_read on public.boards for select to authenticated
+  using (public.is_internal() or public.role_is_firm());
+drop policy if exists bull_read on public.bulletins;
+create policy bull_read on public.bulletins for select to authenticated
+  using (public.is_internal() or
+    (public.role_is_firm() and firm_id = public.my_firm_id()));
+
+-- Shared vocabularies remain available to staff and firm users, but a
+-- partner's direct JWT cannot enumerate internal workflows or rules.
+drop policy if exists ctr_read on public.case_type_registry;
+create policy ctr_read on public.case_type_registry for select to authenticated
+  using (public.is_internal() or public.role_is_firm());
+drop policy if exists ladder_read on public.escalation_ladder;
+create policy ladder_read on public.escalation_ladder for select to authenticated
+  using (public.is_internal() or public.role_is_firm());
+drop policy if exists statuses_read on public.statuses;
+create policy statuses_read on public.statuses for select to authenticated
+  using (public.is_internal() or public.role_is_firm());
+drop policy if exists dq_reasons_read on public.dq_reasons;
+create policy dq_reasons_read on public.dq_reasons for select to authenticated
+  using (public.is_internal() or public.role_is_firm());
+drop policy if exists aliases_read on public.lawruler_aliases;
+create policy aliases_read on public.lawruler_aliases for select to authenticated
+  using (public.is_internal() or public.role_is_firm());
+drop policy if exists option_lists_firm_read on public.option_lists;
+create policy option_lists_firm_read on public.option_lists for select to authenticated
+  using (public.is_internal() or
+    (public.role_is_firm() and (firm_id is null or firm_id = public.my_firm_id())));
+
+-- mint_lead_no is a SECURITY DEFINER RPC callable by authenticated users.
+-- An account without an internal profile must not advance the global counter
+-- for an arbitrary firm. Staff create routes and service-role ingest still work.
+create or replace function public.mint_lead_no(p_firm uuid)
+returns text language plpgsql security definer set search_path = public as $$
+declare nxt bigint; pfx text;
+begin
+  if auth.role() <> 'service_role' and not public.is_internal() then
+    raise exception 'Only internal staff may mint a lead number';
+  end if;
+  select coalesce(lead_prefix, 'CR') into pfx from public.firms where id = p_firm;
+  if pfx is null then pfx := 'CR'; end if;
+  nxt := nextval('public.global_lead_seq');
+  return pfx || '-' || nxt::text;
+end $$;
+
+-- The existing authenticated self-provisioning RPC must not turn a partner
+-- identity into a firm account if its email is later added to firm_access.
+create or replace function public.provision_self_from_firm_access()
+returns boolean language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); em text; account_type text;
+begin
+  if uid is null then return false; end if;
+  select email, raw_app_meta_data->>'account_type' into em, account_type
+    from auth.users where id = uid;
+  if account_type = 'partner' then return false; end if;
+  return public.provision_firm_user_for(uid, em);
+end $$;
 commit;

@@ -1,10 +1,10 @@
 "use client";
-// The right half of the call screen on a desktop (1180px and wider). The call
-// itself stays on the left, same screen as the phone. This side holds what an
-// agent wants open while the PNC talks: the CarCure playbook with Ask CaseCure,
-// the JustCall thread with texting, the agreement preview, and the lead.
-// On a phone this panel is not rendered at all; those live in sheets.
+// The case file stays beside the desktop intake and opens through Case tools
+// on smaller screens. Every layout uses the same contact and document controls.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Icon from "@/components/ui/Icon";
+import AgreementChoice from "./AgreementChoice";
+import LawRulerSyncSummary from "@/components/LawRulerSyncSummary";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
@@ -20,8 +20,10 @@ export interface PreviewInfo {
 
 const PHASE_LABEL: Record<string, string> = { open: "Open", story: "Story", body: "Injury", car: "Car", money: "Money", send: "Send", file: "File", close: "Close" };
 
-export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, onDialState }: {
+export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, onDialState, onCollapse, panelId }: {
   v: any;
+  onCollapse?: () => void;
+  panelId?: string;
   /** The JustCall dialer in the Phone tab: on a call, ringing, ready. */
   onDialState?: (s: DialerState) => void;
   /** The Full Intake workspace: next best action, what's missing, the live summary. */
@@ -43,13 +45,20 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   const [dialState, setDialState] = useState<DialerState>("loading");
   const dialer = useRef<JustCallDialerHandle | null>(null);
   useEffect(() => { if (tab === "phone") setPhoneOn(true); }, [tab]);
-  const tabs: [DeskTab, string][] = [...(summary ? [["summary", "Helper"] as [DeskTab, string]] : []), ["know", "Scripts"], ["texts", "Texts"], ["phone", "Phone"], ["retainer", "Agreement"], ["file", "File"], ["tools", "Tools"]];
+  const tabs: [DeskTab, string][] = [["file", "File"], ...(summary ? [["summary", "Helper"] as [DeskTab, string]] : []), ["know", "Scripts"], ["texts", "Texts"], ["phone", "Phone"], ["retainer", "Agreement"], ["tools", "Tools"]];
   return (
-    <aside className={`cc-side${summary ? " ws-side" : ""}`} aria-label="Summary, CarCure, texts, agreement and lead">
+    <aside className={`cc-side${summary ? " ws-side" : ""}`} aria-label="Command center">
       <div className="cc-side-top">
-        <div className="cc-htabs" role="tablist">
+        <div className="cc-file-heading">
+          <Icon name="files" size={22} />
+          <div className="cc-file-heading-copy"><strong>Command center</strong><span>Contact, documents &amp; activity</span></div>
+          {onCollapse && <button type="button" className="cc-command-collapse" aria-label="Collapse command center" title="Give the intake more space" aria-expanded="true" aria-controls={panelId} onClick={onCollapse}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m8 6 6 6-6 6M19 4v16" /></svg>
+          </button>}
+        </div>
+        <div className="cc-htabs" role="tablist" aria-label="Command center sections">
           {tabs.map(([k, label]) => (
-            <button key={k} role="tab" aria-selected={tab === k} className={`cc-htab${tab === k ? " cc-on" : ""}`} onClick={() => setTab(k)}>
+            <button type="button" key={k} role="tab" aria-selected={tab === k} className={`cc-htab${tab === k ? " cc-on" : ""}`} onClick={() => setTab(k)}>
               {label}{k === "texts" && v.textUnread > 0 && tab !== "texts" ? <span className="cc-side-dot">{v.textUnread}</span> : null}
               {k === "phone" && (dialState === "on-call" || dialState === "ringing") && tab !== "phone" ? <span className="cc-side-live" aria-label="On a call" /> : null}
             </button>
@@ -283,12 +292,19 @@ function Texts({ v }: { v: any }) {
 }
 
 function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
-  const [src, setSrc] = useState<string | null>(preview.href);
-  const stale = !!preview.href && src !== preview.href;
-  useEffect(() => { if (!src && preview.href) setSrc(preview.href); }, [preview.href, src]);
+  const [reload, setReload] = useState(0);
   const missing = preview.checks.filter((c) => !c.ok && !c.later).length;
+  if (!v.sendReady) return <div className="cc-side-b cc-side-ret">
+    <div className="cc-agreement-current"><span>{v.currentAgreement ? "Contract already sent" : "Sending agreement"}</span><strong>{v.currentAgreement?.label || "Preparing the selected contract…"}</strong></div>
+    <p className="cc-cue">The sent agreement keeps its original contract and names. To use a different contract, void it first, then review and send a replacement. Signed agreements require an owner or admin; originals stay in File history.</p>
+    {v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>{v.voidLabel}</button>}
+    {v.hasSendError && <div className="cc-cue cc-red" role="status">{v.sendError}</div>}
+    {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review agreement actions</button>}
+  </div>;
   return (
     <div className="cc-side-b cc-side-ret">
+      <AgreementChoice v={v} />
+      {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review and send</button>}
       <div className="cc-grp">
         {preview.checks.map((c) => (
           <div key={c.label} className="cc-chk">
@@ -309,16 +325,14 @@ function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
       {preview.href ? (
         <>
           <div className="cc-ret-bar">
-            <button className="cc-chip cc-sm" onClick={() => setSrc(preview.href)}>{stale ? "Update the preview" : "Reload"}</button>
-            <a className="cc-chip cc-sm cc-ret-open" href={src || preview.href} target="_blank" rel="noopener">Open full size</a>
-            {stale && <span className="cc-cue cc-red" style={{ marginTop: 0 }}>Changed since this preview</span>}
+            <button className="cc-chip cc-sm" onClick={() => setReload((n) => n + 1)}>Reload preview</button>
+            <a className="cc-chip cc-sm cc-ret-open" href={preview.href} target="_blank" rel="noopener">Open full size</a>
           </div>
-          {src && <iframe className="cc-ret-pdf" title="Agreement preview" src={src} />}
+          <iframe key={`${preview.href}:${reload}`} className="cc-ret-pdf" title="Draft agreement preview" src={preview.href} />
         </>
       ) : (
-        <div className="cc-cue" style={{ textAlign: "center", marginTop: 20 }}>Add the city and state on Story and the signer's name on Send, and the agreement shows up here.</div>
+        <div className="cc-cue" style={{ textAlign: "center", marginTop: 20 }}>Choose a configured contract and add the signer's name to preview the draft.</div>
       )}
-      {v.sendLive && <div className="cc-cue" style={{ margin: "0 4px" }}>This agreement is already out. The preview shows what was filled in.</div>}
     </div>
   );
 }
@@ -353,8 +367,8 @@ import { useFieldAutosave } from "../useFieldAutosave";
 // callback, a report or a prefill reads exactly what the agent typed here.
 function ContactCard({ leadId, initial }: { leadId: string; initial: Record<string, string> }) {
   // A record that came in with the whole address on the street line
-  // ("18475 Zurich Ln, Tinley Park, IL 60477") shows split, and is saved
-  // split the first time the card sees it (Brett, Sep 28).
+  // ("18475 Zurich Ln, Tinley Park, IL 60477") shows split. Merely opening
+  // the file never writes contact data; normalization accompanies an address edit.
   const first = (() => {
     const f = {
       first_name: initial.first_name || "", last_name: initial.last_name || "", claimant_name: initial.claimant_name || "",
@@ -414,11 +428,6 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
       } catch { /* the console is not on this page */ }
     },
   });
-  const tidied = useRef(false);
-  useEffect(() => {
-    if (first.tidy && !tidied.current) { tidied.current = true; edit(first.tidy, true); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   // The call saved a contact field onto the record (the PNC's email typed on
   // the send step, the home address on the File step): show it here too. A
   // box with unsaved typing keeps it, and that typing still saves.
@@ -441,17 +450,20 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
     // A pasted address with no ZIP clears the old ZIP instead of keeping one
     // that belonged to the previous address.
     const split = k === "mail_addr1" ? splitUsAddress(v) : null;
-    edit(split
+    const tidy = k.startsWith("mail_") ? mailColumnsFrom(saved.current, saved.current.mail_addr1) : null;
+    const patch = split
       ? { mail_addr1: split.street, mail_city: split.city, mail_state: split.state, mail_zip: split.zip }
-      : { [k]: k === "mail_state" ? v.toUpperCase() : v });
+      : { [k]: k === "mail_state" ? v.toUpperCase() : v };
+    // Current displayed address values preserve earlier unsaved typing too.
+    edit({ ...(tidy ? { ...tidy, mail_addr1: f.mail_addr1, mail_city: f.mail_city, mail_state: f.mail_state, mail_zip: f.mail_zip } : {}), ...patch });
   };
   const addr = joinUsAddress({ street: f.mail_addr1, city: f.mail_city, state: f.mail_state, zip: f.mail_zip });
   const gaps = [!f.phone && "cell", !f.mail_addr1 && "street", !f.mail_city && "city", !f.mail_state && "state", !f.mail_zip && "ZIP"].filter(Boolean) as string[];
   return (
-    <div className="cc-card" style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="cc-card cc-contact-card">
+      <div className="cc-contact-heading">
         <span className="cc-card-h">Contact</span>
-        <button type="button" className="cc-chip cc-sm" onClick={() => setOpen((v) => !v)}>{open ? "Done" : "Edit"}</button>
+        <button type="button" className="cc-chip cc-sm cc-contact-edit" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? "Done" : "Edit contact"}</button>
       </div>
       {!open && (<>
         <div className="cc-chk"><span className="cc-chk-k">PNC name</span><span className="cc-chk-v">{[f.first_name, f.last_name].filter(Boolean).join(" ") || f.claimant_name || "Not on file"}</span></div>
@@ -541,6 +553,7 @@ function FileTab({ leadId, claimId, lead }: { leadId: string; claimId: string; l
     <div className="cc-side-b">
       {err && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>{err}</div>}
       <ContactCard leadId={leadId} initial={d.contact || {}} />
+      <LawRulerSyncSummary imported={d.imported} />
       <div className="cc-grp">
         {d.status && <div className="cc-chk"><span className="cc-chk-k">Status</span><span className="cc-chk-v"><span className={`cc-dot cc-${d.status.tone || "info"}`} />{d.status.label}</span></div>}
         {row("Lead number", L.lead_no)}

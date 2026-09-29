@@ -13,6 +13,8 @@ import * as address from './us-address';
 import * as m6 from './m6';
 import * as webhooks from './webhooks';
 import * as standard from './standard-fields';
+import * as mvaSync from './lawruler-mva-sync';
+import { DEFAULT_STATUSES } from './statuses';
 const F = '11111111-1111-4111-8111-111111111111', L = '22222222-2222-4222-8222-222222222222', C = '33333333-3333-4333-8333-333333333333';
 function harness(route: string, role = 'owner') {
   const database = new FakeDb({ leads: [{ id: L, firm_id: F, external_id: '264972', source_system: 'lawruler', archived_at: null, vendor_fields: { lawruler_status: 'Needs review' } }],
@@ -31,7 +33,7 @@ function harness(route: string, role = 'owner') {
     'next/server': { NextResponse: { json: (body: any, opts: any = {}) => ({ body, status: opts.status || 200 }) } },
     '@/lib/supabase-server': { supabaseServer: async () => ({}), supabaseAdmin: () => { adminCalls++; return database; } },
     '@/lib/mva-call/server': { requireStaff: async () => role === 'none' ? null : { id: 'synthetic-owner', role: role === 'owner-denied' ? 'owner' : role, can: (key: string) => !(role === 'owner-denied' && key === 'claims.status') } },
-    '@/lib/lawruler-recovery': recovery, '@/lib/lawruler-recovery-apply': apply, '@/lib/lawruler-documents': originals,
+    '@/lib/lawruler-recovery': recovery, '@/lib/lawruler-recovery-apply': apply, '@/lib/lawruler-documents': originals, '@/lib/lawruler-mva-sync': mvaSync,
     '@/lib/lead-ingest': { ...ingest, ingestLead: async (_db: any, options: any) => { ingests++; ingestOptions.push(options); return { ok: true, lead_id: L, lead_no: 'TEST-1' }; } },
     '@/lib/lawruler-status': lrStatus, '@/lib/claim-status': { ...status, setClaimStatusForLeads: async (options: any) => { statusWrites.push(options); return { ok: true }; } }, '@/lib/us-address': address, '@/lib/m6': m6, '@/lib/webhooks': webhooks,
   };
@@ -41,6 +43,14 @@ function harness(route: string, role = 'owner') {
   return { ...exp, database, contactUpserts, statusWrites, ingestOptions, adminCalls: () => adminCalls, ingests: () => ingests };
 }
 const req = (payload: any, headers: Record<string, string> = {}) => new Request('https://synthetic.invalid/api/webhooks/lawruler', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lr-secret': 'offline-secret', ...headers }, body: JSON.stringify(payload) });
+function innoHarness() {
+  const h = harness(''); h.database.tables.campaigns[0].name = 'INNO MVA';
+  h.database.tables.leads[0].case_type = 'mva'; h.database.tables.claims[0].answers = {};
+  h.database.tables.statuses = DEFAULT_STATUSES.map(s => ({ ...s }));
+  h.database.tables.lawruler_aliases = [{ alias: 'Signed e-Sign (Default)', status_key: 'signed_grievous' }, { alias: 'Disqualified (Default)', status_key: 'dq' }, { alias: 'New Lead (Default)', status_key: 'new' }];
+  h.database.tables.dq_reasons = [{ key: 'criteria', active: true }];
+  return h;
+}
 let count = 0; const t = async (name: string, fn: () => Promise<void>) => { await fn(); count++; console.log('ok', name); };
 (async () => {
   await t('unauthorized request never reads body or creates privileged logger/client', async () => {
@@ -72,6 +82,93 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     const h = harness(''); const r = await h.POST(req({ LeadID: '264972', CaseType: 'TMP MVA', Status: 'Legacy signed', 'Signed Contracts Received': 'Yes' }));
     assert.equal(r.status, 200); assert.equal(h.ingests(), 1); assert.equal(r.body.claim_id, C); assert.equal(r.body.status_reconciliation, 'review_required');
     assert.equal(h.database.tables.lead_activity[0].meta.claim_id, C); assert.equal(h.database.tables.claims[0].status, 'new'); assert.equal(h.database.tables.esign_agreements, undefined);
+  });
+  await t('actual INNO orchestrator applies status-only signing while suppressing initial acquisition fanout', async () => {
+    const h = innoHarness(); const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign' }));
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'applied');
+    assert.equal(h.database.tables.claims[0].status, 'signed_grievous'); assert.equal(h.ingestOptions[0].historical, true);
+    assert.equal(r.body.intake.outcome, 'not_supplied'); assert.equal(r.body.documents.outcome, 'not_supplied');
+    assert.equal(r.body.communications_triggered, false); assert.equal(h.database.tables.esign_submissions, undefined);
+    assert.equal(h.database.tables.leads[0].signed_at, undefined);
+    assert.ok(h.database.tables.lead_activity.some((a: any) => a.meta?.event === 'mva_sync_result' && a.meta.claim_id === C));
+  });
+  await t('INNO DQ without configured reason stays visibly held; explicit active reason applies exact DQ', async () => {
+    for (const reason of [undefined, 'criteria']) {
+      const h = innoHarness(); const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Disqualified', ...(reason ? { dq_reason_key: reason } : {}) }));
+      assert.equal(r.status, 200); assert.equal(r.body.reconciliation.acquisition_hold, true);
+      assert.equal(r.body.status_reconciliation, reason ? 'applied' : 'review_required'); assert.equal(h.database.tables.claims[0].status, reason ? 'dq' : 'new');
+    }
+  });
+  await t('INNO historical source stages answers and originals but never applies live status or acquisition fanout', async () => {
+    const h = innoHarness(); const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign', Custom4121: 'Driver', recovery_mode: 'historical' }));
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(h.ingestOptions[0].historical, true); assert.equal(r.body.communications_triggered, false);
+    assert.equal(h.database.tables.claims[0].status, 'new'); assert.equal(r.body.status_reconciliation, 'review_required');
+    assert.equal(r.body.intake.outcome, 'review_required'); assert.equal(h.database.tables.claims[0].answers.mva_call?.story?.seat, undefined);
+    assert.equal(h.database.tables.claims[0].answers.lawruler_presign.evidence.Custom4121.raw, 'Driver');
+  });
+  await t('INNO remote original URL is never fetched and cannot block signed status', async () => {
+    const h = innoHarness(); const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign', retainer_url: 'https://private.invalid/retainer.pdf' }));
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'applied'); assert.equal(r.body.documents.outcome, 'pending');
+    assert.equal(r.body.attachments_complete, false); assert.equal(h.database.tables.claims[0].status, 'signed_grievous'); assert.equal(h.database.tables.case_documents.length, 0);
+  });
+  await t('invalid or unbound binary original is reviewable without undoing INNO terminal status', async () => {
+    for (const [name, bytes] of [['Retainer.pdf', '%PDF-1.4\nsynthetic\n%%EOF'], ['264972-Retainer.pdf', 'not a complete PDF']]) {
+      const h = innoHarness(); const form = new FormData(); form.set('LeadID', '264972'); form.set('CaseType', 'INNO MVA'); form.set('Status', 'Signed e-Sign');
+      form.set('file', new Blob([bytes], { type: 'application/pdf' }), name);
+      const r = await h.POST(new Request('https://synthetic.invalid', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form }));
+      assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'applied'); assert.equal(r.body.documents.outcome, 'pending'); assert.equal(r.body.attachments_complete, false);
+      assert.equal(h.database.tables.claims[0].status, 'signed_grievous'); assert.equal(h.database.tables.case_documents.length, 0);
+    }
+  });
+  await t('INNO intake write failure returns retryable response after status succeeds, and same source retry repairs intake', async () => {
+    const h = innoHarness(); let fail = true;
+    h.database.failOn = (op: any) => fail && op.table === 'claims' && op.kind === 'update' && op.patch?.answers ? 'intake storage offline' : null;
+    const payload = { LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign', Custom4121: 'Driver' };
+    const first = await h.POST(req(payload)); assert.equal(first.status, 500, JSON.stringify(first.body)); assert.equal(first.body.ok, false);
+    assert.equal(first.body.status_reconciliation, 'applied'); assert.equal(first.body.intake.outcome, 'failed'); assert.equal(first.body.intake.retry_required, true); assert.equal(h.database.tables.claims[0].status, 'signed_grievous');
+    fail = false; const retry = await h.POST(req(payload)); assert.equal(retry.status, 200, JSON.stringify(retry.body)); assert.equal(retry.body.status_reconciliation, 'unchanged');
+    assert.equal(h.database.tables.claims[0].answers.mva_call.story.seat, 'Driver'); assert.equal(h.database.tables.claims.length, 1);
+  });
+  await t('INNO partial original storage failure preserves first artifact, returns retry, and same source repairs remaining file', async () => {
+    const h = innoHarness(), objects = new Map<string, ArrayBuffer>(); let failSecond = true;
+    (h.database as any).storage = { from: () => ({
+      upload: async (key: string, bytes: ArrayBuffer) => {
+        if (failSecond && new TextDecoder().decode(bytes).includes('second original')) return { error: { message: 'synthetic storage unavailable', statusCode: '503' } };
+        if (objects.has(key)) return { error: { message: 'already exists', statusCode: '409' } };
+        objects.set(key, bytes.slice(0)); return { error: null };
+      }, download: async (key: string) => ({ data: objects.has(key) ? new Blob([objects.get(key)!]) : null, error: null }),
+    }) };
+    const request = () => {
+      const form = new FormData(); form.set('LeadID', '264972'); form.set('CaseType', 'INNO MVA'); form.set('Status', 'Signed e-Sign');
+      form.set('retainer', new Blob(['%PDF-1.4\nfirst original\n%%EOF']), '264972-Retainer.pdf');
+      form.set('intake', new Blob(['%PDF-1.4\nsecond original\n%%EOF']), '264972-IntakeForm.pdf');
+      return new Request('https://synthetic.invalid', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form });
+    };
+    const first = await h.POST(request()); assert.equal(first.status, 500, JSON.stringify(first.body)); assert.equal(first.body.retry_required, true); assert.equal(first.body.documents.retry_required, true);
+    assert.equal(first.body.documents.stored, 1); assert.equal(first.body.originals.length, 1); assert.equal(h.database.tables.case_documents.length, 1); assert.equal(h.database.tables.claims[0].status, 'signed_grievous');
+    failSecond = false; const retry = await h.POST(request());
+    assert.equal(retry.status, 200, JSON.stringify(retry.body)); assert.equal(retry.body.documents.outcome, 'stored'); assert.equal(retry.body.originals.length, 2); assert.equal(retry.body.originals[0].duplicate, true);
+    assert.equal(objects.size, 2); assert.equal(h.database.tables.case_documents.length, 2); assert.equal(h.database.tables.lead_activity.filter((a: any) => a.meta?.event === 'original_document').length, 2);
+  });
+  await t('INNO invalid original does not prevent a separate valid original from being preserved', async () => {
+    const h = innoHarness(), objects = new Map<string, ArrayBuffer>();
+    (h.database as any).storage = { from: () => ({ upload: async (key: string, bytes: ArrayBuffer) => { objects.set(key, bytes); return { error: null }; } }) };
+    const form = new FormData(); form.set('LeadID', '264972'); form.set('CaseType', 'INNO MVA'); form.set('Status', 'Signed e-Sign');
+    form.set('bad', new Blob(['not PDF']), '264972-Bad.pdf'); form.set('good', new Blob(['%PDF-1.4\nvalid original\n%%EOF']), '264972-Retainer.pdf');
+    const r = await h.POST(new Request('https://synthetic.invalid', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form }));
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.documents.outcome, 'pending'); assert.equal(r.body.documents.retry_required, false); assert.equal(r.body.documents.stored, 1);
+    assert.equal(r.body.attachments_complete, false); assert.equal(objects.size, 1); assert.equal(h.database.tables.case_documents[0].doc_type, 'retainer'); assert.equal(h.database.tables.claims[0].status, 'signed_grievous');
+  });
+  await t('INNO status reconciliation evidence failure never reports full success', async () => {
+    const h = innoHarness(); h.database.failOn = (op: any) => op.table === 'lead_activity' && op.kind === 'insert' && op.patch?.meta?.event === 'mva_sync_result' ? 'result log offline' : null;
+    const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign' }));
+    assert.equal(r.status, 500); assert.equal(r.body.retry_required, true); assert.match(r.body.error, /result log offline/); assert.equal(h.database.tables.claims[0].status, 'signed_grievous');
+  });
+  await t('ordinary INNO New Lead retains existing new-lead ingest behavior; other MVA campaign remains review-only', async () => {
+    const fresh = innoHarness(); const r = await fresh.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'New Lead' }));
+    assert.equal(r.status, 200); assert.equal(fresh.ingestOptions[0].historical, false); assert.equal(r.body.status_reconciliation, 'unchanged');
+    const other = harness(''); const old = await other.POST(req({ LeadID: '264972', CaseType: 'TMP MVA', Status: 'Signed e-Sign' }));
+    assert.equal(old.status, 200); assert.equal(old.body.status_reconciliation, 'review_required'); assert.equal(other.database.tables.claims[0].status, 'new'); assert.equal(old.body.intake, undefined);
   });
   await t('multipart originals reach exact-matter storage for both MVA and legacy Motel', async () => {
     for (const motel of [false, true]) {

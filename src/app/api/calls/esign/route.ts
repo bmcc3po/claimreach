@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, firmSpoken } from "@/lib/mva-call/server";
-import { stateCodeOf } from "@/lib/mva-call/state";
-import { createSubmission, agreementKey, docusealConfigured, MISSING_DOCUSEAL, plainDocuSeal, templateProblem } from "@/lib/docuseal";
+import { agreementChoice } from "@/lib/mva-call/agreement-choice";
+import { createSubmission, docusealConfigured, MISSING_DOCUSEAL, plainDocuSeal, templateProblem } from "@/lib/docuseal";
 import { syncSubmission, packetsFor, templateFor } from "@/lib/mva-call/esign";
 import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
@@ -88,12 +88,14 @@ async function send(req: NextRequest) {
   if (via === "Text" && !phone) return NextResponse.json({ error: adultPax ? "Add the passenger's own cell number to text it." : "Add the PNC's cell number to text it." }, { status: 400 });
   if (via === "Text" && lead.perm_text === false && !adultPax) return NextResponse.json({ error: "The PNC asked not to be texted. Send it by email." }, { status: 409 });
 
-  let key: string | null = isMva ? agreementKey(stateCodeOf(b?.city)) : String(b?.template_key || "").trim();
-  if (isMva && !key) return NextResponse.json({ error: "Add the city and state on Story so we know which agreement to send." }, { status: 400 });
+  const configured = await sb.from("esign_templates").select("key").eq("campaign_id", context.campaignId).eq("provider", "docuseal");
+  if (configured.error) return NextResponse.json({ error: "Could not read this campaign's DocuSeal templates." }, { status: 503 });
+  const keys = (configured.data ?? []).map((t: any) => String(t.key));
+  const choice = isMva ? agreementChoice(b?.city, b?.nv_variant, keys) : null;
+  if (choice && !choice.available) return NextResponse.json({ error: choice.error }, { status: !choice.key || choice.variantError ? 400 : 409 });
+  let key: string | null = choice?.key ?? String(b?.template_key || "").trim();
+  if (isMva && b?.template_key && b.template_key !== key) return NextResponse.json({ error: "Choose a contract permitted for the state where the wreck happened." }, { status: 400 });
   if (!isMva) {
-    const configured = await sb.from("esign_templates").select("key").eq("campaign_id", context.campaignId).eq("provider", "docuseal");
-    if (configured.error) return NextResponse.json({ error: "Could not read this campaign's DocuSeal templates." }, { status: 503 });
-    const keys = (configured.data ?? []).map((t: any) => String(t.key));
     if (!key) key = keys.includes("DEFAULT") ? "DEFAULT" : keys.length === 1 ? keys[0] : null;
     if (!key || !keys.includes(key)) return NextResponse.json({ error: keys.length ? "Choose a DocuSeal agreement configured for this campaign." : "No DocuSeal agreement is configured for this campaign. Add its Client and Intake template in campaign setup." }, { status: 409 });
   }
@@ -102,12 +104,11 @@ async function send(req: NextRequest) {
   // only with a typed reason saying who approved it (Brett, Sep 28: "brett
   // approved friend/fam") — recorded on the file, refused without it.
   let nvReason = "";
-  if (key === "NV" && b?.nv_variant === "flat") {
+  if (choice?.requiresReason) {
     nvReason = String(b?.nv_reason || "").trim().slice(0, 300);
     if (!nvReason) {
       return NextResponse.json({ error: "The non-tiered Nevada agreement only sends with a reason saying who approved it. Add the reason, or send the standard tiered agreement." }, { status: 400 });
     }
-    key = "NV_FLAT";
   }
   const admin = supabaseAdmin();
   const { data: campaign, error: campaignError } = await sb.from("campaigns").select("id, firm_id").eq("id", context.campaignId).maybeSingle();
@@ -260,7 +261,7 @@ async function send(req: NextRequest) {
     meta: { esign_id: row.id, submission_id: client.submission_id, via, ...(emergencyResign ? { emergency_resign_group: emergency.row.packet_group } : {}), ...(nvReason ? { nv_variant: "flat", nv_reason: nvReason } : {}) },
   });
 
-  const identity = { claim_id: signClaimId, agreement_id: row.id, lead_id: fileLeadId };
+  const identity = { claim_id: signClaimId, agreement_id: row.id, lead_id: fileLeadId, template_key: key };
   if (textError) return NextResponse.json({ ok: true, status: "sent", ...identity, warning: `The agreement is ready, but the text did not go out: ${textError}. Use Resend in the text sheet.` });
   return NextResponse.json({ ok: true, status: "sent", ...identity });
 }

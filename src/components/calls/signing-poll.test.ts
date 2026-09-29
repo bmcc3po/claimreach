@@ -15,7 +15,7 @@ visit(source); assert.ok(callback, "The signing poll exists");
 const code = ts.transpileModule(`exports.make = (fetch, engine, agreementId, emergencyResign, init, callId, setNeedsResign, setEmergencyStatus) => (${callback.getText()});`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exp: any = {}; new Function("exports", code)(exp);
 function harness() {
-  const engine = { state: { send: { status: "sent" }, file: { agreement: "open", pax: { "0": "sent" } } } as any,
+  const engine = { props: { esign: { templateKey: "NV", templateKeys: ["NV", "NV_FLAT"] } }, state: { send: { status: "sent" }, file: { agreement: "open", pax: { "0": "sent" } } } as any,
     setState(patch: any) { this.state = { ...this.state, ...patch }; } };
   const agreementId = { current: "original" }, emergencyResign = { current: false };
   const responses: ((value: any) => void)[] = [];
@@ -31,6 +31,20 @@ const check = async (name: string, fn: () => Promise<void>) => { await fn(); cou
   await check("ordinary current primary and passenger completion still update", async () => {
     const h = harness(), pending = h.poll(); h.reply({ agreement_id: "original", status: "signed", complete: true, pax: { "0": "signed" } }); await pending;
     assert.equal(h.engine.state.send.status, "signed"); assert.equal(h.engine.state.file.agreement, "done"); assert.equal(h.engine.state.file.pax["0"], "signed");
+  });
+  await check("current poll uses recorded contract identity and exact configured keys", async () => {
+    const h = harness(), pending = h.poll();
+    h.reply({ agreement_id: "original", status: "sent", agreement: { template_key: "NV_FLAT" }, templates: [{ key: "NV_FLAT" }] }); await pending;
+    assert.equal(h.engine.props.esign.templateKey, "NV_FLAT"); assert.deepEqual(h.engine.props.esign.templateKeys, ["NV_FLAT"]);
+  });
+  await check("a legacy envelope without a stored key clears the current label instead of guessing", async () => {
+    const h = harness(), pending = h.poll(); h.reply({ agreement_id: "original", status: "sent", agreement: { template_key: null } }); await pending;
+    assert.equal(h.engine.props.esign.templateKey, null);
+  });
+  await check("old poll metadata cannot replace a new agreement's recorded contract", async () => {
+    const h = harness(), pending = h.poll(); h.agreementId.current = "replacement"; h.engine.props.esign.templateKey = "TX";
+    h.reply({ agreement_id: "original", status: "signed", agreement: { template_key: "NV_FLAT" } }); await pending;
+    assert.equal(h.engine.props.esign.templateKey, "TX");
   });
   await check("passenger poll cannot relock a prepared emergency re-sign draft", async () => {
     const h = harness(); h.emergencyResign.current = true; h.engine.state.send.status = "ready";
