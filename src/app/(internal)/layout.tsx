@@ -23,7 +23,7 @@ export default async function InternalLayout({ children }: { children: React.Rea
     <SideNav
       userName={me.full_name ?? "Staff"}
       role={me.role}
-      topRight={<NotifyBell />}
+      topRight={me.role === "owner" ? <NotifyBell /> : null}
     >
       {children}
     </SideNav>

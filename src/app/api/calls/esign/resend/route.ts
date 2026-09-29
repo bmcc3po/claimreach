@@ -4,6 +4,7 @@ import { requireStaff, firmSpoken } from "@/lib/mva-call/server";
 import { sendJustCallSms } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided } from "@/lib/mva-call/signing-matter";
+import { recordAudit } from "@/lib/audit";
 
 export const runtime = "edge";
 
@@ -37,6 +38,12 @@ export async function POST(req: NextRequest) {
   await admin.from("communications").insert({
     lead_id: leadId, firm_id: row.firm_id, channel: "sms", direction: "outbound", phone_raw: row.phone, phone_norm: normPhone(row.phone),
     agent_name: me.name, body, provider: "justcall", send_status: "sent", occurred_at: new Date().toISOString(), purpose: "esign",
+  });
+  await recordAudit({
+    firm_id: row.firm_id, lead_id: leadId, claim_id: context.matter.claim.id,
+    actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
+    description: `Resent the ${row.template_key || "current"} agreement link by text to the signer.`,
+    meta: { agreement_id: row.id, provider: "justcall", event: "agreement_link_resent" },
   });
   return NextResponse.json({ ok: true, claim_id: context.matter.claim.id, agreement_id: row.id });
 }

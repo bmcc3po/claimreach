@@ -117,17 +117,36 @@ export async function createSubmission(opts: SubmissionOpts, fetchImpl?: typeof 
 
 export async function getSubmission(id: string | number, fetchImpl?: typeof fetch) {
   return ds<{
-    id: number; status: string; completed_at?: string | null;
+    id: number; status: string; completed_at?: string | null; expire_at?: string | null;
     submitters: DsSubmitter[];
     documents?: { name: string; url: string }[];
     audit_log_url?: string | null;
   }>(`/submissions/${encodeURIComponent(String(id))}`, {}, fetchImpl);
 }
 
+/** DocuSeal returns partially signed PDFs before the office signer finishes.
+ * The URLs are short-lived: callers must store or stream bytes immediately,
+ * never persist the provider URL itself. `merge` keeps the whole packet in one
+ * review PDF even when a template contains several documents. */
+export async function getSubmissionDocuments(id: string | number, fetchImpl?: typeof fetch) {
+  return ds<{ id: number; documents: { name: string; url: string }[] }>(
+    `/submissions/${encodeURIComponent(String(id))}/documents?merge=true`, {}, fetchImpl,
+  );
+}
+
 /** Archive a submission: its signing link stops working. A signed packet
  *  stays in DocuSeal's archive; ClaimReach keeps its own copy either way. */
 export async function archiveSubmission(id: string | number, fetchImpl?: typeof fetch) {
   return ds<any>(`/submissions/${encodeURIComponent(String(id))}`, { method: "DELETE" }, fetchImpl);
+}
+
+/** Expire an unsigned agreement so its signer link is no longer available.
+ * Archiving alone only hides the submission in DocuSeal's UI. */
+export async function expireSubmission(id: string | number, at: string, fetchImpl?: typeof fetch) {
+  return ds<{ id: number; expire_at?: string | null }>(`/submissions/${encodeURIComponent(String(id))}`, {
+    method: "PUT",
+    body: JSON.stringify({ expire_at: at }),
+  }, fetchImpl);
 }
 
 /** Second signer: fill DOB and SSN, then mark Intake complete. */

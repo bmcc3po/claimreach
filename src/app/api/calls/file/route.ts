@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
   const [esignRes, notesRaw, auditRes, docsRes, staffRes, statuses] = await Promise.all([
-    sb.from("esign_submissions").select("id, template_key, signer_name, injured_name, via, status, pax_index, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error, voided_at, void_reason")
+    sb.from("esign_submissions").select("id, template_key, signer_name, injured_name, via, status, pax_index, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error, voided_at, void_reason, replacement_requested_at, replacement_requested_by, replacement_reason, replacement_of, agent_reviewed_at, agent_reviewed_by")
       .eq("lead_id", leadId).or(matterRowsFilter(matter)).order("created_at", { ascending: false }).limit(20),
     loadFileNotes(sb, leadId, lead.firm_id, matter.claim.id),
     sb.from("audit_log").select("id, claim_id, created_at, actor_name, category, description, meta").eq("lead_id", leadId)
@@ -76,10 +76,15 @@ export async function GET(req: NextRequest) {
     agreements: (esignRes.data ?? []).map((a: any) => ({
       id: a.id, name: agreementName(a.template_key), signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status, pax: a.pax_index,
       voided: a.voided_at, void_reason: a.void_reason,
-      // Void: anyone for an unsigned one; owner/admin for a signed one.
-      can_void: a.status !== "voided" && (["signed", "completed"].includes(a.status) ? ["owner", "admin"].includes(me.role) : ["sent", "opened", "failed", "declined", "expired"].includes(a.status)),
+      replacement_requested_at: a.replacement_requested_at, replacement_reason: a.replacement_reason,
+      replacement_requested_by: a.replacement_requested_by ? nameOf.get(a.replacement_requested_by) || "Staff" : null,
+      replacement_of: a.replacement_of,
+      agent_reviewed_at: a.agent_reviewed_at,
+      agent_reviewed_by: a.agent_reviewed_by ? nameOf.get(a.agent_reviewed_by) || "Staff" : null,
+      can_void: ["owner", "admin"].includes(me.role) && a.status !== "voided" && ["sent", "opened", "failed", "declined", "expired", "signed", "completed"].includes(a.status),
       sent: a.sent_at, opened: a.opened_at, signed: a.signed_at || a.completed_at, error: a.error,
       signed_url: a.completed_pdf_path ? `/api/calls/esign/doc/${a.id}/signed` : null,
+      client_signed_url: ["signed", "voided"].includes(a.status) && a.signed_at ? `/api/calls/esign/doc/${a.id}/client` : null,
       cert_url: a.cert_pdf_path ? `/api/calls/esign/doc/${a.id}/cert` : null,
     })),
     notes: mergeFileNotes(notesRaw.notes, notesRaw.deskNotes, nameOf).slice(0, 60),

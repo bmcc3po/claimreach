@@ -52,6 +52,17 @@ const STAFF_GROUPS: NavGroup[] = [
   ]},
 ];
 
+const PILOT_GROUPS: NavGroup[] = [
+  { id: "main", label: null, items: [
+    { href: "/dashboard", icon: "home", label: "Dashboard" },
+    { href: "/queue", icon: "queue", label: "My queue" },
+  ]},
+  { id: "calls", label: "Desk", items: [
+    { href: "/app", icon: "mobile", label: "ClaimReach Desk" },
+    { href: "/app?new=1", icon: "headset", label: "Take a call" },
+  ]},
+];
+
 const FIRM_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
     { href: "/portal", icon: "home", label: "Home" },
@@ -99,7 +110,8 @@ export default function SideNav({
   const pathname = usePathname() || "";
   const router = useRouter();
   const isFirm = variant === "firm";
-  const GROUPS = isFirm ? FIRM_GROUPS : STAFF_GROUPS;
+  const pilot = !isFirm && role !== "owner";
+  const GROUPS = isFirm ? FIRM_GROUPS : pilot ? PILOT_GROUPS : STAFF_GROUPS;
   const homeHref = isFirm ? "/portal" : "/dashboard";
   const allItems = GROUPS.flatMap((g) => g.items);
   const current = bestHref(pathname, allItems.map((n) => n.href));
@@ -206,7 +218,7 @@ export default function SideNav({
           <button className="cl-iconbtn cl-burger" onClick={() => setOpen((o) => !o)} aria-label="Open the menu"><Icon name="menu" size={20} /></button>
           <button className="cl-iconbtn cl-collapse" onClick={toggleMin} aria-label={min ? "Show the full menu" : "Shrink the menu"} title={min ? "Show the full menu" : "Shrink the menu"}><Icon name="sidebar" size={18} /></button>
           <span className="cl-crumb">{currentLabel}</span>
-          {!isFirm ? <LeadSearch /> : <span style={{ flex: 1 }} />}
+          {!isFirm ? <LeadSearch basePath={pilot ? "/app" : "/leads"} /> : <span style={{ flex: 1 }} />}
           <div className="cl-top-r">
             {!isFirm && role !== "firm" && (
               <a className="cl-btn cl-gold" href="/app?new=1"><Icon name="headset" size={16} /><span className="cl-hide-sm">New call</span></a>
@@ -220,7 +232,7 @@ export default function SideNav({
   );
 }
 
-function LeadSearch() {
+function LeadSearch({ basePath }: { basePath: "/app" | "/leads" }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<any[] | null>(null);
   const [open, setOpen] = useState(false);
@@ -249,7 +261,7 @@ function LeadSearch() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const go = (r: any) => { window.location.href = `/leads/${encodeURIComponent(r.lead_no || r.id)}`; };
+  const go = (r: any) => { window.location.href = `${basePath}/${encodeURIComponent(r.lead_no || r.id)}`; };
   return (
     <div className="cl-search">
       <Icon name="search" size={16} />

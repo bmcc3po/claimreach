@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, firmSpoken } from "@/lib/mva-call/server";
 import { agreementChoice } from "@/lib/mva-call/agreement-choice";
-import { createSubmission, docusealConfigured, MISSING_DOCUSEAL, plainDocuSeal, templateProblem } from "@/lib/docuseal";
+import { createSubmission, docusealConfigured, expireSubmission, getSubmission, MISSING_DOCUSEAL, plainDocuSeal, templateProblem } from "@/lib/docuseal";
 import { syncSubmission, packetsFor, templateFor } from "@/lib/mva-call/esign";
 import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
@@ -10,6 +10,7 @@ import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { sameName, paxParentId } from "@/lib/linked-files";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { recordAudit } from "@/lib/audit";
+import { ensureClientSignedSnapshot } from "@/lib/mva-call/client-signed";
 
 export const runtime = "edge";
 
@@ -175,8 +176,20 @@ async function send(req: NextRequest) {
   const emergency = await getMatterEmergency(sb, target.lead, target.matter);
   if (!emergency.ok) return NextResponse.json({ error: emergency.error }, { status: emergency.status });
   const emergencyResign = b?.emergency_resign === true && emergency.row?.status === "signed" && emergencySupersedes(current.row, emergency.row);
-  if (!emergencyResign && current.row && !agreementIsVoided(current.row) && ["sending", "sent", "opened", "signed", "completed"].includes(current.row.status)) {
-    return NextResponse.json({ error: "This matter already has a live agreement. Resend its link or void it before sending a replacement.", agreement_id: current.row.id }, { status: 409 });
+  const replacementReason = String(b?.replacement_reason || "").trim().slice(0, 300);
+  const replacementId = String(b?.replacement_agreement_id || "");
+  const live = !emergencyResign && current.row && !agreementIsVoided(current.row) && ["sending", "sent", "opened", "signed", "completed"].includes(current.row.status);
+  if (live && (!replacementId || replacementReason.length < 10)) {
+    return NextResponse.json({ error: "This matter already has a live agreement. To send a corrected one, review the new contract and enter a correction reason of at least 10 characters. The original stays in history.", agreement_id: current.row.id }, { status: 409 });
+  }
+  if (live && replacementId !== current.row.id) {
+    return NextResponse.json({ error: "The current agreement changed. Refresh before replacing it; nothing was sent.", agreement_id: current.row.id }, { status: 409 });
+  }
+  if (!live && replacementId) {
+    return NextResponse.json({ error: "There is no live agreement to replace. Refresh and send normally." }, { status: 409 });
+  }
+  if (live && (current.row.status === "completed" || ["delivered", "retained"].includes(String(target.matter.claim.status)))) {
+    return NextResponse.json({ error: "This file already has a completed or delivered agreement. An owner or admin must review it before another agreement goes out." }, { status: 409 });
   }
 
   // Resolve the template only after the parent/child matter is validated.
@@ -194,6 +207,65 @@ async function send(req: NextRequest) {
     tpl = data;
   }
   if (!tpl) return NextResponse.json({ error: "E-sign is not set up for this campaign yet. An admin sets it up once from Calls." }, { status: 409 });
+
+  // Replacement is one deliberate send, never an agent-operated void. Verify
+  // the latest provider state before changing anything: a signature can land
+  // while an agent is selecting the correction. The old signed evidence stays
+  // signed and receives an owner-review hold. An unsigned link must be expired
+  // at DocuSeal and verified there before it is retired locally.
+  let replaced: any = null;
+  let signedReplacement = false;
+  if (live) {
+    const syncStatus = await syncSubmission(admin, current.row, { origin: new URL(req.url).origin });
+    const refreshed = await getMatterAgreement(sb, target.lead, target.matter);
+    if (!refreshed.ok) return NextResponse.json({ error: refreshed.error }, { status: refreshed.status });
+    const old = refreshed.row;
+    if (!old || old.id !== replacementId || agreementIsVoided(old)) return NextResponse.json({ error: "The current agreement changed while you were preparing the correction. Refresh; nothing new was sent." }, { status: 409 });
+    if (old.status === "completed" || syncStatus === "completed") return NextResponse.json({ error: "The office has completed this packet. An owner or admin must review it before another agreement goes out." }, { status: 409 });
+    if (!["sent", "opened", "signed"].includes(old.status)) return NextResponse.json({ error: `The current agreement is ${old.status}. Refresh before sending another one.` }, { status: 409 });
+    replaced = old;
+    const now = new Date().toISOString();
+    if (old.status === "signed" || syncStatus === "signed") {
+      signedReplacement = true;
+      if (!old.agent_reviewed_at) return NextResponse.json({ error: "Open the client-signed preview in File, mark it reviewed, then report the error and send its correction." }, { status: 409 });
+      const snapshot = await ensureClientSignedSnapshot(admin, old);
+      if (!snapshot.ok) return NextResponse.json({ error: `Could not preserve the client-signed original (${snapshot.error}). No correction was sent.` }, { status: 503 });
+      if (old.replacement_requested_at) return NextResponse.json({ error: "A correction is already in progress for this signed agreement. Refresh the file; no second agreement was sent." }, { status: 409 });
+      const { data: held, error: holdError } = await admin.from("esign_submissions").update({
+        replacement_requested_at: now, replacement_requested_by: me.id, replacement_reason: replacementReason, updated_at: now,
+      }).eq("id", old.id).eq("status", "signed").is("replacement_requested_at", null).select("id").maybeSingle();
+      if (holdError || !held) return NextResponse.json({ error: "Could not flag the signed original for supervisor review. No replacement was sent." }, { status: 409 });
+      await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
+        description: `Requested supervisor review of the client-signed ${old.template_key || "agreement"} before sending a correction: ${replacementReason}`.slice(0, 600),
+        meta: { claim_id: signClaimId, original_agreement_id: old.id, replacement_reason: replacementReason, supervisor_review_required: true } });
+    } else {
+      if (!old.submission_id) return NextResponse.json({ error: "The current DocuSeal submission ID is missing. An owner must reconcile it before another agreement can be sent." }, { status: 409 });
+      // Expiration, unlike archiving, explicitly disables the signing link.
+      const expiredAt = new Date(Date.now() - 60_000).toISOString();
+      const expired = await expireSubmission(old.submission_id, expiredAt);
+      if (!expired.ok) return NextResponse.json({ error: `DocuSeal did not expire the old link (${expired.error}). No replacement was sent.` }, { status: 502 });
+      const checked = await getSubmission(old.submission_id);
+      const providerExpiry = checked.ok ? Date.parse(String((checked.data as any)?.expire_at || "")) : NaN;
+      if (!checked.ok || !Number.isFinite(providerExpiry) || providerExpiry > Date.now()) {
+        return NextResponse.json({ error: "DocuSeal did not confirm that the old link expired. No replacement was sent; ask an owner to reconcile the old link." }, { status: 502 });
+      }
+      const clientSigned = Array.isArray((checked.data as any)?.submitters) && (checked.data as any).submitters.some((s: any) =>
+        s.role === "Client" && (s.completed_at || s.status === "completed"));
+      if (clientSigned) return NextResponse.json({ error: "The client signed the old agreement while it was being replaced. It is preserved; refresh and use the signed-correction flow." }, { status: 409 });
+      const { data: retired, error: retireError } = await admin.from("esign_submissions").update({
+        status: "voided", voided_at: now, voided_by: me.id, void_reason: `Replaced with corrected agreement: ${replacementReason}`, updated_at: now,
+      }).eq("id", old.id).eq("status", old.status).is("voided_at", null).select("id").maybeSingle();
+      if (retireError || !retired) {
+        await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
+          description: "DocuSeal confirmed the old link expired, but the local record did not retire. Replacement blocked for owner reconciliation.",
+          meta: { claim_id: signClaimId, original_agreement_id: old.id, replacement_reason: replacementReason, needs_reconciliation: true } });
+        return NextResponse.json({ error: "The old DocuSeal link expired, but ClaimReach could not update the original. No replacement was sent; an owner must reconcile the file." }, { status: 409 });
+      }
+      await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
+        description: `Expired the prior unsigned ${old.template_key || "agreement"} link and prepared a corrected agreement: ${replacementReason}`.slice(0, 600),
+        meta: { claim_id: signClaimId, original_agreement_id: old.id, replacement_reason: replacementReason, provider_expired_at: expiredAt } });
+    }
+  }
 
   const { data: auth } = await sb.auth.getUser();
   const submit = (templateId: string) => createSubmission({
@@ -228,9 +300,24 @@ async function send(req: NextRequest) {
     provider: "docuseal", template_key: key, template_id: String(tpl.template_id), claim_id: signClaimId,
     submission_id: String(client.submission_id ?? ""), client_submitter_id: String(client.id), intake_submitter_id: intake ? String(intake.id) : null,
     signer_name: signer, injured_name: injured, phone, email: email || null, via, pax_index: paxIndex,
-    status: "sent", sign_url: client.embed_src || null, sent_by: me.id,
+    status: "sent", sign_url: client.embed_src || null, sent_by: me.id, replacement_of: replaced?.id || null,
   }).select("id").single();
-  if (rowErr) return failed(lead, me, `The agreement went to DocuSeal but did not save here: ${rowErr.message}.`, { stage: "save", submission_id: client.submission_id }, 500);
+  if (rowErr) {
+    // The provider can create (and email) a signing link before our local
+    // insert fails. Revoke that untracked link as far as DocuSeal will confirm;
+    // never report success or let a second live link be sent blindly.
+    let orphanExpired = false;
+    if (client.submission_id) {
+      const orphanExpiry = await expireSubmission(client.submission_id, new Date(Date.now() - 60_000).toISOString());
+      if (orphanExpiry.ok) {
+        const checked = await getSubmission(client.submission_id);
+        const expiry = checked.ok ? Date.parse(String((checked.data as any)?.expire_at || "")) : NaN;
+        orphanExpired = checked.ok && Number.isFinite(expiry) && expiry <= Date.now();
+      }
+    }
+    return failed(lead, me, `DocuSeal created the agreement, but ClaimReach could not save it (${rowErr.message}). ${orphanExpired ? "The untracked DocuSeal link was expired." : "The untracked DocuSeal link could not be confirmed expired."} The prior ${signedReplacement ? "signed copy remains preserved and held for supervisor review" : "link remains expired"}; an owner must reconcile this file before another send.`,
+      { stage: "save", submission_id: client.submission_id, replacement_of: replaced?.id || null, orphan_expired: orphanExpired, needs_reconciliation: true }, 500);
+  }
 
   // Text the link ourselves so it comes from the firm's line and lands on the file.
   let textError: string | null = null;
@@ -257,11 +344,11 @@ async function send(req: NextRequest) {
   if (!st.ok) console.error("esign_sent status failed", st.error);
   await recordAudit({
     firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
-    description: `Sent the ${key === "OTHER" ? "AL/GA" : key === "NV" ? "Nevada tiered" : key === "NV_FLAT" ? "Nevada NON-TIERED" : key} agreement by ${via.toLowerCase()} to ${signer}.${nvReason ? ` Non-tiered approved: ${nvReason}.` : ""}`,
-    meta: { esign_id: row.id, submission_id: client.submission_id, via, ...(emergencyResign ? { emergency_resign_group: emergency.row.packet_group } : {}), ...(nvReason ? { nv_variant: "flat", nv_reason: nvReason } : {}) },
+    description: `Sent the ${key === "OTHER" ? "AL/GA" : key === "NV" ? "Nevada tiered" : key === "NV_FLAT" ? "Nevada NON-TIERED" : key} agreement by ${via.toLowerCase()} to ${signer}.${replaced ? ` Replaces ${replaced.template_key || "prior agreement"}; correction: ${replacementReason}.` : ""}${nvReason ? ` Non-tiered approved: ${nvReason}.` : ""}`,
+    meta: { esign_id: row.id, submission_id: client.submission_id, via, ...(replaced ? { replacement_of: replaced.id, replacement_reason: replacementReason, supervisor_review_required: signedReplacement } : {}), ...(emergencyResign ? { emergency_resign_group: emergency.row.packet_group } : {}), ...(nvReason ? { nv_variant: "flat", nv_reason: nvReason } : {}) },
   });
 
-  const identity = { claim_id: signClaimId, agreement_id: row.id, lead_id: fileLeadId, template_key: key };
+  const identity = { claim_id: signClaimId, agreement_id: row.id, lead_id: fileLeadId, template_key: key, replacement_of: replaced?.id || null, owner_review_required: signedReplacement };
   if (textError) return NextResponse.json({ ok: true, status: "sent", ...identity, warning: `The agreement is ready, but the text did not go out: ${textError}. Use Resend in the text sheet.` });
   return NextResponse.json({ ok: true, status: "sent", ...identity });
 }

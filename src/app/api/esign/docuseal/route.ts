@@ -28,8 +28,14 @@ export async function POST(req: NextRequest) {
   try { await admin.from("webhook_events").insert({ direction: "inbound", event_type: "docuseal." + type, status: "received", payload: { event_type: type, submission_id: submissionId } }); } catch {}
   if (!submissionId) return NextResponse.json({ ok: true, ignored: "no submission id" });
 
-  const { data: row } = await admin.from("esign_submissions").select("*").eq("provider", "docuseal").eq("submission_id", submissionId).maybeSingle();
+  const { data: row, error: lookupError } = await admin.from("esign_submissions").select("*").eq("provider", "docuseal").eq("submission_id", submissionId).maybeSingle();
+  if (lookupError) return NextResponse.json({ error: "Agreement lookup is temporarily unavailable. Retry this event." }, { status: 503 });
   if (!row) return NextResponse.json({ ok: true, ignored: "not ours" });
-  const status = await syncSubmission(admin, row, { origin: new URL(req.url).origin });
-  return NextResponse.json({ ok: true, status });
+  try {
+    const status = await syncSubmission(admin, row, { origin: new URL(req.url).origin, strict: true });
+    return NextResponse.json({ ok: true, status });
+  } catch (error) {
+    console.error("DocuSeal webhook synchronization deferred for retry", error instanceof Error ? error.message : "unknown error");
+    return NextResponse.json({ error: "Agreement synchronization is temporarily unavailable. Retry this event." }, { status: 503 });
+  }
 }

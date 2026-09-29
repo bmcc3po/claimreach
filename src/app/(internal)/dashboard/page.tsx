@@ -22,7 +22,14 @@ export default async function Dashboard() {
   const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user!.id).maybeSingle();
   const role = me?.role ?? "agent";
-  // Every staff role starts on the same dashboard; queries retain caller RLS.
+  const pilot = role !== "owner";
+  const { data: pilotCampaigns } = pilot
+    ? await sb.from("campaigns").select("id, firms(slug)").eq("name", "INNO MVA").eq("case_type", "mva").eq("active", true).limit(2)
+    : { data: null };
+  const matches = (pilotCampaigns ?? []).filter((c: any) => c.firms?.slug === "tmp");
+  const pilotCampaignId = matches.length === 1 ? matches[0].id : "00000000-0000-0000-0000-000000000000";
+  const scopeLead = (q: any) => pilot ? q.eq("campaign_id", pilotCampaignId) : q;
+  const scopeClaim = (q: any) => pilot ? q.eq("campaign_id", pilotCampaignId) : q;
 
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 86400000).toISOString();
@@ -46,22 +53,29 @@ export default async function Dashboard() {
     { data: awaitingFirm },
   ] = await Promise.all([
     computeAlerts(sb).catch(() => [] as Alert[]),
-    sb.from("claims").select("id", { count: "exact", head: true }).in("status", ["new", "contacting"]),
-    sb.from("leads").select("id", { count: "exact", head: true }).gte("signed_at", weekAgo).is("archived_at", null),
-    sb.from("leads").select("created_at").gte("created_at", since).is("archived_at", null).limit(5000),
-    sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, claims(status, campaign)")
-      .is("archived_at", null).order("updated_at", { ascending: false }).limit(8),
+    scopeClaim(sb.from("claims").select("id, leads!inner(archived_at)", { count: "exact", head: true }).is("leads.archived_at", null).in("status", ["new", "contacting"])),
+    scopeLead(sb.from("leads").select("id", { count: "exact", head: true }).gte("signed_at", weekAgo).is("archived_at", null)),
+    scopeLead(sb.from("leads").select("id, created_at").gte("created_at", since).is("archived_at", null).limit(5000)),
+    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, claims(status, campaign, campaign_id)")
+      .is("archived_at", null).order("updated_at", { ascending: false }).limit(8)),
     sb.from("statuses").select("*").eq("active", true),
-    sb.from("boards").select("*").order("sort_order"),
-    sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60),
-    sb.from("claims").select("lead_id, campaign, leads(claimant_name, lead_no)").eq("supervisor_flag", true).limit(10),
-    sb.from("claims").select("lead_id, updated_at, leads(claimant_name, lead_no)")
-      .in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).order("updated_at", { ascending: true }).limit(12),
-    sb.from("claims").select("lead_id, tier, tier_letter, tier_number, leads(claimant_name, lead_no)")
-      .in("tier_letter", ["A", "B"]).in("status", ["new", "contacting", "qa", "signed_qa", "approved"]).limit(12),
-    sb.from("claims").select("lead_id, updated_at, leads(claimant_name, lead_no)")
-      .in("status", ["approved", "signed_approved"]).lt("updated_at", dayAgo).order("updated_at", { ascending: true }).limit(12),
+    pilot ? Promise.resolve({ data: [] }) : sb.from("boards").select("*").order("sort_order"),
+    pilot ? Promise.resolve({ data: [] }) : sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60),
+    scopeClaim(sb.from("claims").select("lead_id, campaign, leads!inner(claimant_name, lead_no, archived_at)").is("leads.archived_at", null).eq("supervisor_flag", true).limit(10)),
+    scopeClaim(sb.from("claims").select("lead_id, updated_at, leads!inner(claimant_name, lead_no, archived_at)")
+      .is("leads.archived_at", null).in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).order("updated_at", { ascending: true }).limit(12)),
+    scopeClaim(sb.from("claims").select("lead_id, tier, tier_letter, tier_number, leads!inner(claimant_name, lead_no, archived_at)")
+      .is("leads.archived_at", null).in("tier_letter", ["A", "B"]).in("status", ["new", "contacting", "qa", "signed_qa", "approved"]).limit(12)),
+    scopeClaim(sb.from("claims").select("lead_id, updated_at, leads!inner(claimant_name, lead_no, archived_at)")
+      .is("leads.archived_at", null).in("status", ["approved", "signed_approved"]).lt("updated_at", dayAgo).order("updated_at", { ascending: true }).limit(12)),
   ]);
+
+  const allowedAlertIds = new Set<string>();
+  if (pilot) {
+    const { data: allowed } = await sb.from("leads").select("id").eq("campaign_id", pilotCampaignId).is("archived_at", null).limit(1000);
+    for (const row of allowed ?? []) allowedAlertIds.add(row.id);
+  }
+  const visibleAlerts = pilot ? alerts.filter(a => allowedAlertIds.has(a.lead_id)) : alerts;
 
   // New leads per day for the last 14 office days.
   const perDay: Record<string, number> = {};
@@ -85,7 +99,7 @@ export default async function Dashboard() {
 
   const needs: HomeData["needs"] = [
     ...(flagged ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), why: "Flagged for a supervisor", tone: "bad" as const })),
-    ...alerts.map((a) => {
+    ...visibleAlerts.map((a) => {
       const name = String(a.title || "").split(/\s+[—-]\s+/).slice(1).join(" ") || a.lead_no || "File";
       return { key: a.lead_no || a.lead_id, name, why: `${WHY[a.kind] ?? "Needs a look"}, ${a.hours >= 48 ? `${Math.round(a.hours / 24)} days` : `${a.hours}h`}`, tone: a.severity === "bad" ? "bad" as const : "warn" as const };
     }),
@@ -101,7 +115,7 @@ export default async function Dashboard() {
   ];
 
   const recentRows: HomeData["recent"] = (recent ?? []).map((l: any) => {
-    const c = (l.claims ?? [])[0] ?? {};
+    const c = (l.claims ?? []).find((row: any) => !pilot || row.campaign_id === pilotCampaignId) ?? {};
     const def = resolveStatus(c.status || "new", (statuses ?? []) as any);
     return {
       key: l.lead_no || l.id,

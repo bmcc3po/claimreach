@@ -15,9 +15,9 @@ import { resolveMatter, matterRowsFilter } from "@/lib/matter";
 import { getMatterAgreement, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { joinUsAddress } from "@/lib/us-address";
 
-export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ text?: string; claim?: string }> }) {
+export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ text?: string; claim?: string; review?: string }> }) {
   const { id: key } = await params;
-  const { text, claim: claimParam } = await searchParams;
+  const { text, claim: claimParam, review } = await searchParams;
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   if (!user) redirect("/login");
@@ -29,6 +29,17 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   if (!id) notFound();
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", id).maybeSingle();
   if (!lead) notFound();
+  // The pilot staff console is exclusively the TMP INNO MVA campaign. Check
+  // before resolving or creating a matter, and before the admin open stamp.
+  if (me.role !== "owner") {
+    const { data: pilotCampaign } = await sb.from("campaigns")
+      .select("id, firm_id").eq("name", "INNO MVA").eq("case_type", "mva")
+      .eq("active", true).eq("firm_id", lead.firm_id).limit(2);
+    const { data: pilotFirm } = await sb.from("firms")
+      .select("slug").eq("id", lead.firm_id).maybeSingle();
+    if (pilotFirm?.slug !== "tmp" || pilotCampaign?.length !== 1
+      || lead.campaign_id !== pilotCampaign[0].id || lead.archived_at) notFound();
+  }
   // This console runs the MVA car-wreck script. A Motel or any other case type
   // opened here got read the wrong script (Astra audit, Sep 27): those files
   // belong on their own case page.
@@ -62,6 +73,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
     notFound();
   }
   const claim = matter.claim;
+  if (me.role !== "owner" && (claim.campaign_id !== lead.campaign_id || claim.firm_id !== lead.firm_id)) notFound();
   if (claim.claim_type !== "mva") redirect(`/leads/${leadKeyOf(lead)}?claim=${claim.id}`);
   if (lead.archived_at) redirect(`/leads/${leadKeyOf(lead)}?claim=${claim.id}`);
   const singleMatter = matter.sole;
@@ -176,6 +188,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
       agreementId: mainRes.row?.id ?? null,
       emergency: emergency.row ? { needsResign: emergencySupersedes(mainRes.row, emergency.row), status: emergency.row.status } : null,
       openText: text === "1",
+      openReview: !!review,
       canPreview: !!packetsFor(firm?.slug, claim.claim_type),
       ssnRequireFull: campRes?.data?.ssn_require_full === true,
       threeWay,
@@ -189,6 +202,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
         campaign: claim.campaign || (singleMatter ? lead.campaign : "") || "",
         leadNo: lead.lead_no || "",
         agentName: me.full_name || "",
+        agentRole: me.role,
         firmSpoken: firmSpoken(firm?.name),
         textFrom: from ? fmtPhone(from) : "",
         saved,

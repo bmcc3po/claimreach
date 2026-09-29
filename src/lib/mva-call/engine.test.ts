@@ -768,8 +768,8 @@ t("agreement row names the crash place, not the home address", () => {
   assert.match(v.agreement, /where the wreck happened/);
 });
 
-t("void: offered once an agreement is out or signed, never before", () => {
-  const e = mk({ esign: { status: "ready", configured: true, pax: {} } });
+t("void: offered only to an owner once an agreement is out or signed", () => {
+  const e = mk({ agentRole: "owner", esign: { status: "ready", configured: true, pax: {} } });
   (e.api as any).voidAgreement = () => calls.push("void");
   assert.equal(e.renderVals().canVoid, false);
   e.setState({ send: { ...e.state.send, status: "opened" } });
@@ -780,6 +780,9 @@ t("void: offered once an agreement is out or signed, never before", () => {
   assert.equal(calls[calls.length - 1], "void");
   e.setState({ send: { ...e.state.send, status: "signed" } });
   assert.equal(e.renderVals().voidLabel, "Void the signed agreement");
+  const agent = mk({ agentRole: "agent", esign: { status: "opened", configured: true, pax: {} } });
+  assert.equal(agent.renderVals().canVoid, false);
+  assert.equal(agent.renderVals().canReplace, true);
 });
 
 t("name correction updates only matching unsent signer draft", () => {
@@ -803,13 +806,42 @@ t("different draft signer needs explicit review rather than being overwritten", 
   assert.match(e.renderVals().nameReview, /Review/);
   e.renderVals().useRecordName(); assert.equal(e.state.send.client, "Maria Garcia"); assert.equal(e.state.send.nameReview, "");
 });
-t("record correction never rewrites sent or signed agreement names", () => {
+t("record correction keeps sent evidence but prepares a corrected replacement draft", () => {
   for (const status of ["sent", "opened", "signed"]) {
     const e = mk({ esign: { status, configured: true, pax: {} } });
     e.applyRecord({ name: "Maria Garcia", previousName: "Maria Lopez" });
-    assert.equal(e.state.send.client, "Maria Lopez"); assert.equal(e.state.send.status, status);
-    assert.match(e.renderVals().nameReview, /Void it/); assert.equal(e.renderVals().canUseRecordName, false);
+    assert.equal(e.state.send.client, "Maria Garcia"); assert.equal(e.state.send.status, status);
+    assert.equal(e.state.send.nameReview, ""); assert.match(e.state.send.sentNameReview, /original agreement keeps Maria Lopez/);
+    assert.equal(e.renderVals().canUseRecordName, false);
+    assert.equal(e.renderVals().canReplace, true);
+    assert.equal(e.renderVals().agreementLocked, true);
   }
+});
+t("an unchanged contact name never creates a false signed-agreement mismatch", () => {
+  const e = mk({ esign: { status: "signed", configured: true, pax: {} } });
+  e.applyRecord({ name: "Maria Lopez", previousName: "Maria Lopez", phone: "2025550100" });
+  assert.equal(e.state.send.sentNameReview, undefined);
+  assert.equal(e.renderVals().agreementLocked, false);
+});
+t("a signed typo can send a corrected replacement without completing the old packet", () => {
+  const e = mk({ callerPhone: "2025550199", agentRole: "agent", esign: { status: "signed", configured: true, pax: {}, templateKeys: ["NV", "NV_FLAT"], templateKey: "NV" } });
+  e.setState({ story: { ...e.state.story, city: "Las Vegas, NV", when: "Pick a date", date: "2026-09-24" } });
+  e.applyRecord({ name: "Maria Garcia", previousName: "Maria Lopez" });
+  let sent: { reason?: string; signer?: string } | null = null;
+  (e.api as any).sendAgreement = (reason?: string) => { sent = { reason, signer: e.state.send.client }; };
+  const before = calls.length;
+  e.renderVals().completeAgreement();
+  assert.equal(calls.length, before); assert.match(e.state.file.error, /do not complete the original/);
+  assert.equal(sent, null);
+  const originalWindow = (globalThis as any).window;
+  (globalThis as any).window = { prompt: () => "Correcting claimant's legal name" };
+  try { e.renderVals().replaceAgreement(); }
+  finally { (globalThis as any).window = originalWindow; }
+  assert.deepEqual(sent, { reason: "Correcting claimant's legal name", signer: "Maria Garcia" });
+  assert.match(e.state.send.sentNameReview, /original agreement keeps Maria Lopez/);
+  const reopened = mk({ callerName: "Maria Garcia", callerPhone: "2025550199", esign: { status: "signed", configured: true, pax: {}, templateKeys: ["NV", "NV_FLAT"], templateKey: "NV" }, saved: e.persistable() });
+  assert.equal(reopened.state.send.client, "Maria Garcia");
+  assert.equal(reopened.renderVals().agreementLocked, true);
 });
 t("reopening saved known draft follows canonical corrected record", () => {
   const e = mk({ callerName: "Maria Garcia", saved: { send: { client: "Maria Lopez", recordName: "Maria Lopez" } } });

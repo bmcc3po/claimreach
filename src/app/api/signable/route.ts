@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
   if (b?.op === "create") return NextResponse.json({ error: "Issue DocuSeal or an explicit emergency packet from this matter's Agreement tab." }, { status: 409 });
   if (b?.op === "delete") return NextResponse.json({ error: "Signing history is preserved. Cancel a pending agreement or void its primary DocuSeal agreement." }, { status: 409 });
   if (b?.op !== "cancel") return NextResponse.json({ error: "unknown op" }, { status: 400 });
+  if (!["owner", "admin"].includes(me.role)) return NextResponse.json({ error: "Only an owner or admin can cancel a pending agreement." }, { status: 403 });
   const named = await sb.from("signable_documents").select("*").eq("id", b.id).maybeSingle();
   if (named.error || !named.data) return NextResponse.json({ error: "Agreement not found." }, { status: 404 });
   const doc = named.data;

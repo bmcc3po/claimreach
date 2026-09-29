@@ -69,7 +69,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
       {tab === "know" && <Knowledge v={v} phase={phase} fill={fill} focusLines={focusLines} />}
       {tab === "texts" && <Texts v={v} />}
       {tab === "retainer" && <Retainer v={v} preview={preview} />}
-      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} />}
+      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} onCorrect={() => setTab("retainer")} />}
       {tab === "tools" && <Tools v={v} story={story} />}
       {phoneOn && (
         <div className="cc-side-b cc-side-phone" hidden={tab !== "phone"}>
@@ -273,10 +273,11 @@ function Texts({ v }: { v: any }) {
         {!!v.textEmpty && <div className="cc-cue" style={{ textAlign: "center", margin: "28px 0" }}>No texts with {v.callerFirst} yet.</div>}
         {(v.texts || []).map((m: any, i: number) => (
           <div key={i} className={m.cls.split(" ").map((c: string) => "cc-" + c).join(" ")}>
-            <div>{m.body}</div>{!!m.hasStatus && <div className="cc-bub-s">{m.status}</div>}
+            <div>{m.body}</div>{(m.when || m.hasStatus) && <div className="cc-bub-s">{[m.when, m.status].filter(Boolean).join(" · ")}</div>}
           </div>
         ))}
         {!!v.canResend && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div>}
+        {!!v.canReplace && <div className="cc-cue">To correct this agreement, open Agreement, preview the new contract, and report the error.</div>}
         {!!v.canVoid && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button className="cc-chip" onClick={v.voidAgreement}>{v.voidLabel}</button></div>}
         {!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{ marginTop: 0 }}>{v.textError}</div></div>}
         <div ref={end} />
@@ -296,7 +297,8 @@ function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
   const missing = preview.checks.filter((c) => !c.ok && !c.later).length;
   if (!v.sendReady) return <div className="cc-side-b cc-side-ret">
     <div className="cc-agreement-current"><span>{v.currentAgreement ? "Contract already sent" : "Sending agreement"}</span><strong>{v.currentAgreement?.label || "Preparing the selected contract…"}</strong></div>
-    <p className="cc-cue">The sent agreement keeps its original contract and names. To use a different contract, void it first, then review and send a replacement. Signed agreements require an owner or admin; originals stay in File history.</p>
+    <p className="cc-cue">The original stays in File history. Select and preview the corrected agreement, then report the error and send the replacement. A client-signed original is held for supervisor review before firm delivery.</p>
+    {v.canReplace && <><AgreementChoice v={v} />{preview.href && <a className="cc-btn" href={preview.href} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn" disabled={!preview.href || missing > 0 || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></>}
     {v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>{v.voidLabel}</button>}
     {v.hasSendError && <div className="cc-cue cc-red" role="status">{v.sendError}</div>}
     {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review agreement actions</button>}
@@ -479,7 +481,7 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
           <label style={{ flex: 1, minWidth: 0 }}><span className="cc-lab">FIRST NAME</span><input className="cc-field" type="text" autoComplete="given-name" aria-label="PNC first name" value={f.first_name} onChange={set("first_name")} /></label>
           <label style={{ flex: 1, minWidth: 0 }}><span className="cc-lab">LAST NAME</span><input className="cc-field" type="text" autoComplete="family-name" aria-label="PNC last name" value={f.last_name} onChange={set("last_name")} /></label>
         </div>
-        <div className="cc-cue" style={{ marginBottom: 8 }}>Correct the PNC's legal name here. An agreement already sent keeps its original name until it is voided and replaced.</div>
+        <div className="cc-cue" style={{ marginBottom: 8 }}>Correct the PNC's legal name here. An agreement already sent keeps its original name; send a corrected agreement and the original stays in history.</div>
         <div className="cc-lab">CELL</div>
         <input className="cc-field" type="tel" inputMode="tel" aria-label="Cell" value={f.phone} onChange={set("phone")} />
         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
@@ -503,12 +505,13 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
   );
 }
 
-function FileTab({ leadId, claimId, lead }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null }) {
+function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null; onCorrect: () => void }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [scope, setScope] = useState("call");
   const [saving, setSaving] = useState(false);
+  const [openedSignedPreview, setOpenedSignedPreview] = useState<string | null>(null);
   const load = async () => {
     try {
       const r = await fetch(`/api/calls/file?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`);
@@ -543,6 +546,15 @@ function FileTab({ leadId, claimId, lead }: { leadId: string; claimId: string; l
       if (!r.ok || j.error) throw new Error(j.error || "The agreement did not void.");
       await load();
       try { window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, claimId, pax: a.pax } })); } catch { /* no console on this page */ }
+    } catch (e: any) { setErr(e.message); }
+  };
+  const reviewOne = async (a: any) => {
+    if (openedSignedPreview !== a.id) return;
+    try {
+      const r = await fetch("/api/calls/esign/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, agreement_id: a.id }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error || "Review was not saved.");
+      await load();
     } catch (e: any) { setErr(e.message); }
   };
   if (!d) return <div className="cc-side-b">{err ? <div className="cc-cue cc-red">{err}</div> : <div className="cc-cue" style={{ textAlign: "center", marginTop: 24 }}>Loading the file</div>}</div>;
@@ -581,16 +593,17 @@ function FileTab({ leadId, claimId, lead }: { leadId: string; claimId: string; l
                 {a.cert_url && <a className="cc-chip cc-sm" href={a.cert_url} target="_blank" rel="noopener">Audit trail</a>}
               </div>}
               {a.error && a.status !== "voided" && <div className="cc-cue cc-red">{a.error}</div>}
-              {a.can_void && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button type="button" className="cc-chip cc-sm" onClick={() => voidOne(a)}>{a.status === "completed" || a.status === "signed" ? "Void the signed agreement" : "Void"}</button></div>}
+              {a.replacement_requested_at && !a.voided && <div className="cc-cue cc-red" role="status">Supervisor review required since {fmtWhen(a.replacement_requested_at)}. {a.replacement_requested_by || "An agent"} reported: {a.replacement_reason}. The original signed evidence stays on file; firm delivery is held.</div>}
+              {a.client_signed_url && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><a className="cc-chip cc-sm" href={a.client_signed_url} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedSignedPreview(a.id)}>{a.status === "voided" ? "Original client-signed preview (voided)" : "View client-signed preview"}</a><span className="cc-cue">{a.status === "voided" ? "Historical signed evidence is preserved." : "Client signed; office signer and final certificate are pending. Inspect this preview before finishing or correcting."}</span>{a.status === "signed" && !a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" disabled={openedSignedPreview !== a.id} onClick={() => reviewOne(a)}>I reviewed this signed copy</button>}{a.agent_reviewed_at && <span className="cc-cue">Reviewed {fmtWhen(a.agent_reviewed_at)} by {a.agent_reviewed_by || "staff"}</span>}{a.status === "signed" && a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" onClick={onCorrect}>Report error / send corrected agreement</button>}</div>}
+              {a.can_void && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button type="button" className="cc-chip cc-sm" onClick={() => voidOne(a)}>{a.replacement_requested_at && !a.voided ? "Owner/admin: resolve review by voiding original" : a.status === "completed" || a.status === "signed" ? "Void the signed agreement" : "Void"}</button></div>}
             </div>
           ))}
         </div>
       )}
 
       {/\bMVA\b/i.test(String(L.campaign || "")) && <FirmHandoff leadId={leadId} claimId={claimId}
-        awaitingOfficeSigner={d.agreements.some((a: any) => a.pax == null && a.status === "signed" && !a.voided)}
-        hasSignedPacket={d.agreements.some((a: any) =>
-          a.pax == null && a.status === "completed" && !a.voided && !!a.signed_url && !!a.cert_url)} />}
+        awaitingOfficeSigner={(() => { const active = d.agreements.find((a: any) => a.pax == null && !a.voided); return !!active && active.status === "signed" && !!active.agent_reviewed_at && !d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided); })()}
+        hasSignedPacket={(() => { const active = d.agreements.find((a: any) => a.pax == null && !a.voided); return !!active && active.status === "completed" && !!active.agent_reviewed_at && !!active.signed_url && !!active.cert_url && !d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided); })()} />}
 
       <div className="cc-rb-h">Notes</div>
       <div className="cc-card">

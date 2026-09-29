@@ -91,7 +91,7 @@ async function computeAlertsFresh(db?: any): Promise<Alert[]> {
   const qaCut = new Date(Date.now() - sla.qa_stuck_hours * 3600000).toISOString();
   const { data: qaStuck } = await admin.from("leads")
     .select("id, lead_no, claimant_name, qa_entered_at")
-    .eq("qa_pending", true).lt("qa_entered_at", qaCut).limit(200);
+    .is("archived_at", null).eq("qa_pending", true).lt("qa_entered_at", qaCut).limit(200);
   for (const l of qaStuck ?? []) {
     const h = hoursSince(l.qa_entered_at);
     alerts.push({ kind: "qa_stuck", severity: "bad", title: `Stuck in QA — ${l.claimant_name || l.lead_no}`,
@@ -102,7 +102,7 @@ async function computeAlertsFresh(db?: any): Promise<Alert[]> {
   const signedCut = new Date(Date.now() - sla.signed_unreviewed_hours * 3600000).toISOString();
   const { data: signedUnrev } = await admin.from("leads")
     .select("id, lead_no, claimant_name, signed_at, claims(status)")
-    .lt("signed_at", signedCut).not("signed_at", "is", null).limit(200);
+    .is("archived_at", null).lt("signed_at", signedCut).not("signed_at", "is", null).limit(200);
   for (const l of signedUnrev ?? []) {
     const status = (l as any).claims?.[0]?.status ?? "";
     // still in a signed in-QA state means it hasn't cleared review

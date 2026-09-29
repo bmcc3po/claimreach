@@ -27,6 +27,8 @@ export interface ConsoleInit {
   startedAt: number;
   /** Open the text sheet on arrival (from a text on the home screen). */
   openText?: boolean;
+  /** Open File on arrival from the client-signed review queue. */
+  openReview?: boolean;
   /** This campaign has an agreement packet the preview can draw. */
   canPreview?: boolean;
   /** This campaign's firm requires the full 9-digit SSN (no last-4). */
@@ -83,13 +85,13 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   // A touch screen gets the iPad layout even when it is as wide as a computer.
   const [wide, setWide] = useState(false);
   const [touch, setTouch] = useState(false);
-  const [utilityOpen, setUtilityOpen] = useState(false);
+  const [utilityOpen, setUtilityOpen] = useState(!!init.openReview);
   const [commandCollapsed, setCommandCollapsed] = useState(false);
   const commandPanelId = useId();
   const utilityRef = useRef<HTMLDivElement | null>(null);
   // When the last autosave landed, for "Saved at 2:14 PM" (never shown after a failed write).
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [deskTab, setDeskTabState] = useState<DeskTab>(init.openText ? "texts" : "file");
+  const [deskTab, setDeskTabState] = useState<DeskTab>(init.openReview ? "file" : init.openText ? "texts" : "file");
   const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
   // Only the JustCall dialer on this screen can say a call is live. Nothing else claims it.
   const [dialState, setDialState] = useState<string>("");
@@ -100,23 +102,31 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     const e = (): CallEngine => eng.current!;
     const leadId = init.leadId;
     const api: CallApi = {
-      sendAgreement() {
+      sendAgreement(replacementReason?: string) {
         const s = e().state;
         const choice = e().renderVals().contractChoice;
+        if (replacementReason && !agreementId.current) {
+          e().setState({ send: { ...s.send, error: "The current agreement ID is missing. Refresh the file before sending a correction." } });
+          return;
+        }
         e().setState({ send: { ...s.send, status: "sending", error: "" } });
         post("/api/calls/esign", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current,
+          ...(replacementReason ? { replacement_agreement_id: agreementId.current, replacement_reason: replacementReason } : {}),
           emergency_resign: emergencyResign.current,
           signer_name: s.send.client, injured_name: s.send.who === "Someone else" ? s.send.injured : s.send.client,
           via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
           nv_variant: choice.key === "NV_FLAT" ? "flat" : "tiered", nv_reason: choice.requiresReason ? s.send.nvReason : undefined,
         }).then((d) => {
-          agreementId.current = d.agreement_id || d.id || agreementId.current;
+          const priorAgreementId = agreementId.current;
+          const newAgreementId = d.agreement_id || d.id || null;
+          if (replacementReason && (!newAgreementId || newAgreementId === priorAgreementId)) throw new Error("The corrected agreement was not confirmed. Refresh the file before another send.");
+          agreementId.current = newAgreementId || priorAgreementId;
           e().props.esign.templateKey = d.template_key || choice.key || null;
           emergencyResign.current = false; setNeedsResign(false);
-          e().setState({ send: { ...e().state.send, status: d.status || "sent", error: d.warning || "" } });
+          e().setState({ send: { ...e().state.send, status: d.status || "sent", sentNameReview: newAgreementId && newAgreementId !== priorAgreementId ? "" : e().state.send.sentNameReview, error: d.warning || (d.owner_review_required ? "Correction sent. The original signed agreement is held for supervisor review before firm delivery." : "") } });
         }).catch((err) => {
-          e().setState({ send: { ...e().state.send, status: "ready", error: err.message } });
+          e().setState({ send: { ...e().state.send, status: replacementReason ? s.send.status : "ready", error: err.message } });
         });
       },
       sendPax(i: number) {

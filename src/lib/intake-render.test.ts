@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { PDFDocument, PDFRawStream, PDFArray, decodePDFRawStream } from "pdf-lib";
-import { intakeSections, buildIntakeCsvSingle, buildIntakePdf, loadIntakeBundle, type IntakeBundle } from "./intake-render";
+import { intakeSections, buildIntakeCsvSingle, buildIntakePdf, buildIntakeEmailHtml, loadIntakeBundle, type IntakeBundle } from "./intake-render";
 import { caseReport } from "./mva-call/report";
 import fs from "node:fs";
 import path from "node:path";
@@ -69,6 +69,12 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>)
     assert.match(text, /Houston, TX/); assert.match(text, /Neck, Back/); assert.match(text, /MVA_ONLY_SENTINEL/);
     for (const value of ["State Farm", "TEST-REPORT", "2022", "Toyota", "Camry"]) assert.ok(text.includes(value), value);
     assert.ok(!text.includes("000001234"));
+  });
+  await t("email body uses the same MVA answers and escapes claimant text", () => {
+    const html = buildIntakeEmailHtml({ ...bundle, answers: { mva_call: { ...call, story: { ...call.story, text: "Crash <script>alert(1)</script>" } } } });
+    assert.match(html, /Crash &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.match(html, /Houston, TX/);
+    assert.ok(!html.includes("000001234"));
   });
   await t("generic form choice labels and lead fallback remain intact", () => {
     const csv = buildIntakeCsvSingle({ ...bundle, caseType: "other", answers: { answer: "yes_code" }, fields: [{ id: "answer", kind: "select", label: "Question", choices: [{ value: "yes_code", label: "Spoken yes" }] }, { id: "phone", kind: "phone", label: "Phone" }] });

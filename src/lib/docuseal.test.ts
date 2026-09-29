@@ -2,7 +2,7 @@
 // The DocuSeal requests, checked against what DocuSeal actually answered in a
 // test-mode run (templates 6079413/6079423/6079424, submission 11623733).
 import assert from "node:assert/strict";
-import { templateBody, submissionBody, createSubmission, createTemplate, plainDocuSeal, templateProblem, statusFrom } from "./docuseal";
+import { templateBody, submissionBody, createSubmission, createTemplate, getSubmissionDocuments, expireSubmission, plainDocuSeal, templateProblem, statusFrom } from "./docuseal";
 import { TMP_MVA_PACKETS } from "./esign-packets/tmp-mva";
 import { templateFor } from "./mva-call/esign";
 
@@ -102,6 +102,22 @@ function fakeFetch(answer: { status: number; body: any }, seen: any[]) {
     await createTemplate(p, "https://x/y.pdf", fakeFetch({ status: 200, body: { id: 1, fields: p.fields } }, seen));
     assert.equal(seen[0].url, "https://api.docuseal.com/templates/pdf");
     assert.deepEqual(seen[0].body, templateBody(p, "https://x/y.pdf"));
+  });
+
+  await t("client-signed preview asks DocuSeal for a fresh merged partial PDF", async () => {
+    const seen: any[] = [];
+    const r = await getSubmissionDocuments(117, fakeFetch({ status: 200, body: { id: 117, documents: [{ name: "packet", url: "https://docuseal.com/file/synthetic.pdf" }] } }, seen));
+    assert.equal(seen[0].url, "https://api.docuseal.com/submissions/117/documents?merge=true");
+    assert.equal(seen[0].method, "GET");
+    assert.ok(r.ok);
+  });
+
+  await t("unsigned replacement expires the old DocuSeal signer link", async () => {
+    const seen: any[] = []; const at = "2026-09-29T17:00:00.000Z";
+    await expireSubmission(117, at, fakeFetch({ status: 200, body: { id: 117, expire_at: at } }, seen));
+    assert.equal(seen[0].url, "https://api.docuseal.com/submissions/117");
+    assert.equal(seen[0].method, "PUT");
+    assert.deepEqual(seen[0].body, { expire_at: at });
   });
 
   await t("DocuSeal's real refusals become plain words and the right fix", () => {

@@ -16,6 +16,7 @@
 import { SOL, stateCodeOf, injuryYears as injuryYearsFor } from './state';
 import { agreementChoice, agreementKey } from './agreement-choice';
 import { agreementName } from './agreement-names';
+import { canDirectVoid } from './replacement';
 import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './intake';
 import { QUESTION_ORDER, QUESTION_PATHS, questionPhase } from './question-spine';
 export { SOL };
@@ -223,6 +224,7 @@ export interface CallProps {
   /** TMP's split is only shown on TMP campaigns. */
   showFees?: boolean;
   agentName: string;
+  agentRole?: string;
   firmSpoken: string;
   textFrom: string;
   startedAt: number;
@@ -238,7 +240,7 @@ export interface CallProps {
 }
 export interface Reason { key: string; label: string }
 export interface CallApi {
-  sendAgreement(): void;
+  sendAgreement(replacementReason?: string): void;
   sendPax(i: number): void;
   completeAgreement(): void;
   resendLink(): void;
@@ -293,7 +295,7 @@ export class CallEngine {
         ? Object.assign({}, s.story, { when: 'Pick a date', date: crashIsoOf(s.story) })
         : s.story,
       body: s.body, car: s.car,
-      send: { via: s.send.via, client: s.send.client, who: s.send.who, injured: s.send.injured, phone: s.send.phone, email: s.send.email, toOther: s.send.toOther ?? null, nvVariant: s.send.nvVariant, nvReason: s.send.nvReason, nameReview: s.send.nameReview || '', recordName: this.props.callerName || '' },
+      send: { via: s.send.via, client: s.send.client, who: s.send.who, injured: s.send.injured, phone: s.send.phone, email: s.send.email, toOther: s.send.toOther ?? null, nvVariant: s.send.nvVariant, nvReason: s.send.nvReason, nameReview: s.send.nameReview || '', sentNameReview: s.send.sentNameReview || '', recordName: this.props.callerName || '' },
       file: file
     };
   }
@@ -355,8 +357,11 @@ export class CallEngine {
     const personField = s.send.who === 'Someone else' ? 'injured' : 'client';
     const entered = String(s.send[personField] || '').trim();
     if (canonical && entered && entered.toLowerCase() !== canonical.toLowerCase()) {
-      if (s.send.status === 'ready' && s.send.recordName && entered.toLowerCase() === String(s.send.recordName).trim().toLowerCase()) s.send[personField] = canonical;
-      else s.send.nameReview = `The file says ${canonical}; the agreement says ${entered}. Review the name before sending or completing this agreement.`;
+      if (s.send.recordName && entered.toLowerCase() === String(s.send.recordName).trim().toLowerCase()) {
+        s.send[personField] = canonical;
+        s.send.nameReview = '';
+        if (s.send.status !== 'ready') s.send.sentNameReview = `The original agreement keeps ${entered}. Review and send a corrected replacement for ${canonical}; do not complete the original.`;
+      } else s.send.nameReview = `The file says ${canonical}; the draft says ${entered}. Review the name before sending.`;
     }
     return s;
   }
@@ -374,15 +379,15 @@ export class CallEngine {
     if (typeof r.addr === 'string') s.file.addr = r.addr;
     if (typeof r.name === 'string' && r.name.trim()) {
       const name = r.name.trim();
+      const canonicalChanged = name.replace(/\s+/g, ' ').toLowerCase() !== oldName;
       this.props.callerName = name;
       const key = s.send.who === 'Someone else' ? 'injured' : 'client';
       const entered = String(s.send[key] || '').trim().replace(/\s+/g, ' ').toLowerCase();
-      if (s.send.status === 'ready' && (!entered || entered === oldName)) {
+      if (!entered || entered === oldName) {
         s.send[key] = name; s.send.nameReview = '';
+        if (s.send.status !== 'ready' && canonicalChanged) s.send.sentNameReview = `The original agreement keeps ${String(this.state.send[key] || '').trim() || 'its original name'}. Review and send a corrected replacement for ${name}; do not complete the original.`;
       } else if (entered !== name.replace(/\s+/g, ' ').toLowerCase()) {
-        s.send.nameReview = s.send.status === 'ready'
-          ? `The file name is now ${name}. Review the agreement's ${key === 'injured' ? 'injured person' : 'signer'} name before sending.`
-          : `The file name is now ${name}. The agreement already sent keeps its original name. Void it and send a corrected replacement if needed.`;
+        s.send.nameReview = `The file name is now ${name}. Review the replacement draft's ${key === 'injured' ? 'injured person' : 'signer'} name before sending.`;
       } else s.send.nameReview = '';
     }
     this.setState(s);
@@ -912,7 +917,7 @@ export class CallEngine {
     rows.push(I('Date of birth', 'file', 'dob', 'MM/DD/YYYY', 'text', 'numeric'));
     rows.push(I('SSN', 'file', 'ssn', 'Last 4 or all 9', 'text', 'numeric'));
     var signed = s.send.status === 'signed';
-    if (s.file.agreement === 'open') rows.push({ isButton: true, label: this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.nameReview ? 'Review the agreement name first' : signed ? 'Complete the agreement' : 'Unlocks after the PNC signs', disabled: !signed || !!s.send.nameReview || !!this.props.agreementSuperseded, go: () => this.completeAgreement() });
+    if (s.file.agreement === 'open') rows.push({ isButton: true, label: this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.sentNameReview ? 'Send the corrected agreement first' : s.send.nameReview ? 'Review the agreement name first' : signed ? 'Complete the agreement' : 'Unlocks after the PNC signs', disabled: !signed || !!s.send.nameReview || !!s.send.sentNameReview || !!this.props.agreementSuperseded, go: () => this.completeAgreement() });
     else rows.push({ isInfo: true, label: 'Agreement', value: s.file.agreement === 'done' ? 'Complete' : 'Finish later' });
     rows.push(I('Home address', 'file', 'addr', ''));
     rows.push(I("Driver's license", 'file', 'dl', ''));
@@ -1068,6 +1073,7 @@ export class CallEngine {
   sendAgreement() { this.api.sendAgreement(); }
   completeAgreement() {
     if (this.props.agreementSuperseded) { this.setState({ file: Object.assign({}, this.state.file, { error: 'A newer emergency packet supersedes this agreement. Prepare the DocuSeal re-sign first; the original stays in history.' }) }); return; }
+    if (this.state.send.sentNameReview) { this.setState({ file: Object.assign({}, this.state.file, { error: this.state.send.sentNameReview }) }); return; }
     if (this.state.send.nameReview) { this.setState({ file: Object.assign({}, this.state.file, { error: this.state.send.nameReview }) }); return; }
     if (this.state.send.status === 'signed') this.api.completeAgreement();
   }
@@ -1546,9 +1552,10 @@ export class CallEngine {
     var contract = agreementChoice(st.city, this.stateCode(st.city) === 'NV' ? s.send.nvVariant : undefined,
       this.props.esign.templateKeys ?? (this.props.esign.configured ? ['TX', 'FL', 'NV', 'NV_FLAT', 'OTHER'] : []));
     var currentContract = ['sent', 'opened', 'signed'].includes(s.send.status)
-      ? { label: agreementName(this.props.esign.templateKey) || 'Contract type unavailable — check the file history', status: s.send.status } : null;
+      ? { key: this.props.esign.templateKey, label: agreementName(this.props.esign.templateKey) || 'Contract type unavailable — check the file history', status: s.send.status } : null;
+    var canReplaceDraft = ['sent', 'opened', 'signed'].includes(s.send.status);
     var selectContract = (key: string) => {
-      if (this.state.send.status !== 'ready' || !contract.options.some(o => o.key === key && o.available)) return;
+      if (!(this.state.send.status === 'ready' || canReplaceDraft) || !contract.options.some(o => o.key === key && o.available)) return;
       this.setState({ send: Object.assign({}, this.state.send, { nvVariant: key === 'NV_FLAT' ? 'flat' : 'tiered' }) });
     };
     var gates = this.gates();
@@ -1882,8 +1889,8 @@ export class CallEngine {
       sendSteps: this.stepsFor(s.send.status),
       agreement: currentContract?.label || contract.label || 'Needs where the wreck happened',
       currentAgreement: currentContract,
-      contractChoice: { ...contract, locked: s.send.status !== 'ready', select: selectContract,
-        reason: { value: s.send.nvReason || '', set: (e: any) => { if (this.state.send.status === 'ready') this.set('send', 'nvReason', e.target.value); } }, needReason: nvNeedReason },
+      contractChoice: { ...contract, locked: !(s.send.status === 'ready' || canReplaceDraft), select: selectContract,
+        reason: { value: s.send.nvReason || '', set: (e: any) => { if (this.state.send.status === 'ready' || canReplaceDraft) this.set('send', 'nvReason', e.target.value); } }, needReason: nvNeedReason },
       // The retainer follows the state where the WRECK happened, not the
       // PNC's home address (Brett, Sep 25). The form shows the crash-place
       // box right here when it is missing (Brett, Sep 28).
@@ -1914,9 +1921,9 @@ export class CallEngine {
       herPhoneOk: herOk,
       viaEmail: s.send.via === 'Email', viaText: s.send.via === 'Text',
       hasSendError: !!s.send.error, sendError: s.send.error || '',
-      nameReview: s.send.nameReview || '',
-      canUseRecordName: s.send.status === 'ready',
-      useRecordName: () => { const next = Object.assign({}, this.state.send); next[next.who === 'Someone else' ? 'injured' : 'client'] = this.props.callerName || ''; next.nameReview = ''; this.setState({ send: next }); },
+      nameReview: s.send.nameReview || s.send.sentNameReview || '',
+      canUseRecordName: !!s.send.nameReview && (s.send.status === 'ready' || canReplaceDraft),
+      useRecordName: () => { const next = Object.assign({}, this.state.send); const key = next.who === 'Someone else' ? 'injured' : 'client'; const prior = String(next[key] || '').trim(); next[key] = this.props.callerName || ''; next.nameReview = ''; if (next.status !== 'ready') next.sentNameReview = `The original agreement keeps ${prior || 'its original name'}. Review and send a corrected replacement for ${next[key]}; do not complete the original.`; this.setState({ send: next }); },
       hasFileError: !!s.file.error, fileError: s.file.error || '',
       saveBad: !!(s.net && s.net.saveError), saveError: (s.net && s.net.saveError) || '',
       hasTextError: !!(s.text && s.text.error), textError: (s.text && s.text.error) || '',
@@ -1944,8 +1951,8 @@ export class CallEngine {
       reopenAgreement: () => this.set('file', 'agreement', 'open'),
       agreementNote: s.file.agreement === 'done' ? 'Agreement complete. Review the file, then send it to the firm.' : 'Finish later. You still own this file.',
       completeAgreement: () => this.completeAgreement(),
-      agreementLocked: s.send.status !== 'signed' || !!s.send.nameReview || !!this.props.agreementSuperseded,
-      completeLabel: this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.nameReview ? 'Review the agreement name first' : s.send.status === 'signed' ? 'Complete the agreement' : 'Unlocks after the PNC signs',
+      agreementLocked: s.send.status !== 'signed' || !!s.send.nameReview || !!s.send.sentNameReview || !!this.props.agreementSuperseded,
+      completeLabel: this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.sentNameReview ? 'Send the corrected agreement first' : s.send.nameReview ? 'Review the agreement name first' : s.send.status === 'signed' ? 'Complete the agreement' : 'Unlocks after the PNC signs',
       leaveForQa: () => this.set('file', 'agreement', 'qa'),
       ecRel: this.chips('file', 'ecRel', ['Spouse or partner', 'Parent', 'Child', 'Sibling', 'Friend', 'Other'], null, true),
       carriers: ['Pick one', 'Not sure yet', 'State Farm', 'GEICO', 'Progressive', 'Allstate', 'USAA', 'Farmers', 'Liberty Mutual', 'Nationwide', 'Travelers', 'American Family', 'Other'],
@@ -2005,16 +2012,23 @@ export class CallEngine {
       closeText: () => this.set('text', 'open', false),
       textOpen: !!s.text.open,
       textEmpty: s.text.thread.length === 0,
-      texts: s.text.thread.map((m) => ({ body: m.body, status: m.status || '', hasStatus: !!m.status, cls: 'bub ' + m.from })),
+      texts: s.text.thread.map((m) => ({ body: m.body, status: m.status || '', hasStatus: !!m.status, when: m.at ? fmtWhen(m.at) : '', cls: 'bub ' + m.from })),
       textDraft: this.field('text', 'draft'),
       textCantSend: !String(s.text.draft || '').trim(),
       sendText: () => this.sendText(String(this.state.text.draft || '').trim()),
       canResend: s.send.status === 'sent' || s.send.status === 'opened',
       resendLink: () => this.api.resendLink(),
-      // Wrong agreement, wrong number, or the PNC signed it wrong: void it and
-      // the send opens again (Brett, Sep 28). A signed one is owner/admin only
-      // (the server says so if an agent tries).
-      canVoid: ['sent', 'opened', 'signed'].indexOf(s.send.status) >= 0 && !!this.api.voidAgreement,
+      // A staff correction is a single replacement send with a reason. It
+      // never grants an agent the ability to void an envelope in isolation.
+      canReplace: canReplaceDraft,
+      replaceAgreement: () => {
+        if (!canReplaceDraft || typeof window === 'undefined') return;
+        if (sendBlocked) { this.setState({ sendNudge: Date.now() }); return; }
+        const why = window.prompt('What is wrong with this agreement? The original stays in history. A client-signed original also goes to supervisor review.');
+        if (why?.trim() && why.trim().length >= 10) this.api.sendAgreement(why.trim());
+        else if (why != null) this.setState({ send: { ...this.state.send, error: 'Explain the correction in at least 10 characters.' } });
+      },
+      canVoid: canDirectVoid(this.props.agentRole) && ['sent', 'opened', 'signed'].indexOf(s.send.status) >= 0 && !!this.api.voidAgreement,
       voidLabel: s.send.status === 'signed' ? 'Void the signed agreement' : 'Void this agreement',
       voidAgreement: () => { if (this.api.voidAgreement) this.api.voidAgreement(); },
       dispoOpen: !!d.open,

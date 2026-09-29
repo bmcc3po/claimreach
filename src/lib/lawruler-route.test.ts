@@ -83,10 +83,10 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     assert.equal(r.status, 200); assert.equal(h.ingests(), 1); assert.equal(r.body.claim_id, C); assert.equal(r.body.status_reconciliation, 'review_required');
     assert.equal(h.database.tables.lead_activity[0].meta.claim_id, C); assert.equal(h.database.tables.claims[0].status, 'new'); assert.equal(h.database.tables.esign_agreements, undefined);
   });
-  await t('actual INNO orchestrator applies status-only signing while suppressing initial acquisition fanout', async () => {
+  await t('actual INNO orchestrator holds vendor-reported signing for evidence review without acquisition fanout', async () => {
     const h = innoHarness(); const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign' }));
-    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'applied');
-    assert.equal(h.database.tables.claims[0].status, 'signed_grievous'); assert.equal(h.ingestOptions[0].historical, true);
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'review_required');
+    assert.equal(h.database.tables.claims[0].status, 'external_signed_review'); assert.equal(h.ingestOptions[0].historical, true);
     assert.equal(r.body.intake.outcome, 'not_supplied'); assert.equal(r.body.documents.outcome, 'not_supplied');
     assert.equal(r.body.communications_triggered, false); assert.equal(h.database.tables.esign_submissions, undefined);
     assert.equal(h.database.tables.leads[0].signed_at, undefined);
@@ -96,7 +96,7 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     for (const reason of [undefined, 'criteria']) {
       const h = innoHarness(); const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Disqualified', ...(reason ? { dq_reason_key: reason } : {}) }));
       assert.equal(r.status, 200); assert.equal(r.body.reconciliation.acquisition_hold, true);
-      assert.equal(r.body.status_reconciliation, reason ? 'applied' : 'review_required'); assert.equal(h.database.tables.claims[0].status, reason ? 'dq' : 'new');
+      assert.equal(r.body.status_reconciliation, reason ? 'applied' : 'review_required'); assert.equal(h.database.tables.claims[0].status, reason ? 'dq' : 'external_dq_review');
     }
   });
   await t('INNO historical source stages answers and originals but never applies live status or acquisition fanout', async () => {
@@ -106,27 +106,27 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     assert.equal(r.body.intake.outcome, 'review_required'); assert.equal(h.database.tables.claims[0].answers.mva_call?.story?.seat, undefined);
     assert.equal(h.database.tables.claims[0].answers.lawruler_presign.evidence.Custom4121.raw, 'Driver');
   });
-  await t('INNO remote original URL is never fetched and cannot block signed status', async () => {
+  await t('INNO remote original URL is never fetched and leaves source signing in evidence review', async () => {
     const h = innoHarness(); const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign', retainer_url: 'https://private.invalid/retainer.pdf' }));
-    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'applied'); assert.equal(r.body.documents.outcome, 'pending');
-    assert.equal(r.body.attachments_complete, false); assert.equal(h.database.tables.claims[0].status, 'signed_grievous'); assert.equal(h.database.tables.case_documents.length, 0);
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'review_required'); assert.equal(r.body.documents.outcome, 'pending');
+    assert.equal(r.body.attachments_complete, false); assert.equal(h.database.tables.claims[0].status, 'external_signed_review'); assert.equal(h.database.tables.case_documents.length, 0);
   });
-  await t('invalid or unbound binary original is reviewable without undoing INNO terminal status', async () => {
+  await t('invalid or unbound binary original is reviewable without undoing the INNO evidence hold', async () => {
     for (const [name, bytes] of [['Retainer.pdf', '%PDF-1.4\nsynthetic\n%%EOF'], ['264972-Retainer.pdf', 'not a complete PDF']]) {
       const h = innoHarness(); const form = new FormData(); form.set('LeadID', '264972'); form.set('CaseType', 'INNO MVA'); form.set('Status', 'Signed e-Sign');
       form.set('file', new Blob([bytes], { type: 'application/pdf' }), name);
       const r = await h.POST(new Request('https://synthetic.invalid', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form }));
-      assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'applied'); assert.equal(r.body.documents.outcome, 'pending'); assert.equal(r.body.attachments_complete, false);
-      assert.equal(h.database.tables.claims[0].status, 'signed_grievous'); assert.equal(h.database.tables.case_documents.length, 0);
+      assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.status_reconciliation, 'review_required'); assert.equal(r.body.documents.outcome, 'pending'); assert.equal(r.body.attachments_complete, false);
+      assert.equal(h.database.tables.claims[0].status, 'external_signed_review'); assert.equal(h.database.tables.case_documents.length, 0);
     }
   });
-  await t('INNO intake write failure returns retryable response after status succeeds, and same source retry repairs intake', async () => {
+  await t('INNO intake write failure returns retryable response after evidence hold, and same source retry repairs intake', async () => {
     const h = innoHarness(); let fail = true;
     h.database.failOn = (op: any) => fail && op.table === 'claims' && op.kind === 'update' && op.patch?.answers ? 'intake storage offline' : null;
     const payload = { LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign', Custom4121: 'Driver' };
     const first = await h.POST(req(payload)); assert.equal(first.status, 500, JSON.stringify(first.body)); assert.equal(first.body.ok, false);
-    assert.equal(first.body.status_reconciliation, 'applied'); assert.equal(first.body.intake.outcome, 'failed'); assert.equal(first.body.intake.retry_required, true); assert.equal(h.database.tables.claims[0].status, 'signed_grievous');
-    fail = false; const retry = await h.POST(req(payload)); assert.equal(retry.status, 200, JSON.stringify(retry.body)); assert.equal(retry.body.status_reconciliation, 'unchanged');
+    assert.equal(first.body.status_reconciliation, 'review_required'); assert.equal(first.body.intake.outcome, 'failed'); assert.equal(first.body.intake.retry_required, true); assert.equal(h.database.tables.claims[0].status, 'external_signed_review');
+    fail = false; const retry = await h.POST(req(payload)); assert.equal(retry.status, 200, JSON.stringify(retry.body)); assert.equal(retry.body.status_reconciliation, 'review_required');
     assert.equal(h.database.tables.claims[0].answers.mva_call.story.seat, 'Driver'); assert.equal(h.database.tables.claims.length, 1);
   });
   await t('INNO partial original storage failure preserves first artifact, returns retry, and same source repairs remaining file', async () => {
@@ -145,7 +145,7 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
       return new Request('https://synthetic.invalid', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form });
     };
     const first = await h.POST(request()); assert.equal(first.status, 500, JSON.stringify(first.body)); assert.equal(first.body.retry_required, true); assert.equal(first.body.documents.retry_required, true);
-    assert.equal(first.body.documents.stored, 1); assert.equal(first.body.originals.length, 1); assert.equal(h.database.tables.case_documents.length, 1); assert.equal(h.database.tables.claims[0].status, 'signed_grievous');
+    assert.equal(first.body.documents.stored, 1); assert.equal(first.body.originals.length, 1); assert.equal(h.database.tables.case_documents.length, 1); assert.equal(h.database.tables.claims[0].status, 'external_signed_review');
     failSecond = false; const retry = await h.POST(request());
     assert.equal(retry.status, 200, JSON.stringify(retry.body)); assert.equal(retry.body.documents.outcome, 'stored'); assert.equal(retry.body.originals.length, 2); assert.equal(retry.body.originals[0].duplicate, true);
     assert.equal(objects.size, 2); assert.equal(h.database.tables.case_documents.length, 2); assert.equal(h.database.tables.lead_activity.filter((a: any) => a.meta?.event === 'original_document').length, 2);
@@ -157,12 +157,12 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     form.set('bad', new Blob(['not PDF']), '264972-Bad.pdf'); form.set('good', new Blob(['%PDF-1.4\nvalid original\n%%EOF']), '264972-Retainer.pdf');
     const r = await h.POST(new Request('https://synthetic.invalid', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form }));
     assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.documents.outcome, 'pending'); assert.equal(r.body.documents.retry_required, false); assert.equal(r.body.documents.stored, 1);
-    assert.equal(r.body.attachments_complete, false); assert.equal(objects.size, 1); assert.equal(h.database.tables.case_documents[0].doc_type, 'retainer'); assert.equal(h.database.tables.claims[0].status, 'signed_grievous');
+    assert.equal(r.body.attachments_complete, false); assert.equal(objects.size, 1); assert.equal(h.database.tables.case_documents[0].doc_type, 'retainer'); assert.equal(h.database.tables.claims[0].status, 'external_signed_review');
   });
   await t('INNO status reconciliation evidence failure never reports full success', async () => {
     const h = innoHarness(); h.database.failOn = (op: any) => op.table === 'lead_activity' && op.kind === 'insert' && op.patch?.meta?.event === 'mva_sync_result' ? 'result log offline' : null;
     const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign' }));
-    assert.equal(r.status, 500); assert.equal(r.body.retry_required, true); assert.match(r.body.error, /result log offline/); assert.equal(h.database.tables.claims[0].status, 'signed_grievous');
+    assert.equal(r.status, 500); assert.equal(r.body.retry_required, true); assert.match(r.body.error, /result log offline/); assert.equal(h.database.tables.claims[0].status, 'external_signed_review');
   });
   await t('ordinary INNO New Lead retains existing new-lead ingest behavior; other MVA campaign remains review-only', async () => {
     const fresh = innoHarness(); const r = await fresh.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'New Lead' }));

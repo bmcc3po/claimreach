@@ -213,6 +213,9 @@ a.cc-menu-b{text-decoration:none;color:#16324F;font-weight:500}
 .cc-lrow-t b{font-weight:600;color:#16324F}
 .cc-lrow-t.cc-late{color:#C0392F;font-weight:600}
 .cc-tabs .cc-tab{white-space:nowrap}
+.cc-homeapp>.cc-tabs{overflow-x:auto;scrollbar-width:none}
+.cc-homeapp>.cc-tabs::-webkit-scrollbar{display:none}
+.cc-homeapp>.cc-tabs .cc-tab{flex:0 0 auto;padding:0 12px}
 
 /* Print */
 .cc-print{max-width:760px;margin:0 auto;padding:24px 20px 60px;background:#FFFFFF;min-height:100vh;color:#0D1420;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter',system-ui,sans-serif}
