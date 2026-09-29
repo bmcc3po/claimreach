@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 export const runtime = "edge";
 
-async function requireManager(sb: any) {
+async function requireOwner(sb: any) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return { error: "unauthorized", status: 401 };
-  const { data: me } = await sb.from("app_users").select("role, perm_overrides, firm_id, active").eq("id", auth.user.id).maybeSingle();
-  // A deactivated account manages nobody, even with a still-valid session
-  // (Astra round 3: this route had its own gate that ignored active).
-  const canManage = me && me.active !== false && (["owner", "admin"].includes(me.role) || me.perm_overrides?.["users.manage"]);
+  const { data: me } = await sb.from("app_users").select("role, firm_id, active").eq("id", auth.user.id).maybeSingle();
+  // The INNO MVA pilot reserves user management for the active owner. This
+  // route writes through the service role, so it must enforce that boundary
+  // itself even when a non-owner has a legacy users.manage override.
+  const canManage = me?.active === true && me.role === "owner";
   if (!canManage) return { error: "forbidden", status: 403 };
   return { me, uid: auth.user.id };
 }
@@ -16,7 +17,7 @@ async function requireManager(sb: any) {
 export async function GET(req: NextRequest) {
   try {
     const sb = await supabaseServer();
-    const gate = await requireManager(sb);
+    const gate = await requireOwner(sb);
     if ("error" in gate) return NextResponse.json({ error: gate.error }, { status: gate.status });
     const { data, error } = await sb.from("app_users")
       .select("id, full_name, email, role, title, phone, active, perm_overrides, firm_id, created_at")
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
-  const gate = await requireManager(sb);
+  const gate = await requireOwner(sb);
   if ("error" in gate) return NextResponse.json({ error: gate.error }, { status: gate.status });
   const me = (gate as any).me;
   const b = await req.json();

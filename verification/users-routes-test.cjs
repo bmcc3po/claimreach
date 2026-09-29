@@ -13,8 +13,9 @@ function load(file, modules) {
 }
 function fixture(options = {}) {
   const steps = [];
+  const access = {admin: 0};
   const row = { id: 'synthetic-user', email: 'test@example.invalid' };
-  const query = { select() { return this; }, eq() { return this; }, maybeSingle: async () => ({data: {role: options.role || 'owner', active: true}}), order: async () => {
+  const query = { select() { return this; }, eq() { return this; }, maybeSingle: async () => ({data: {role: options.role || 'owner', active: 'active' in options ? options.active : true, perm_overrides: options.overrides || {}}}), order: async () => {
     if (options.listThrow) throw new Error('synthetic network error');
     return options.list || {data: [], error: null};
   }};
@@ -23,7 +24,7 @@ function fixture(options = {}) {
     insert: async () => {steps.push('insert'); return {error: null};},
     select: () => ({eq: () => ({maybeSingle: async () => {steps.push('verify'); if(options.verifyThrow) throw new Error('synthetic network error'); return options.verify || {data: row, error: null};}})})
   })};
-  return { steps, route: load('src/app/api/users/route.ts', {'next/server': {NextResponse: {json: (body, options = {}) => ({body, status: options.status || 200, headers: options.headers})}}, '@/lib/supabase-server': {supabaseServer: async () => sb, supabaseAdmin: () => admin}}) };
+  return { steps, access, route: load('src/app/api/users/route.ts', {'next/server': {NextResponse: {json: (body, options = {}) => ({body, status: options.status || 200, headers: options.headers})}}, '@/lib/supabase-server': {supabaseServer: async () => sb, supabaseAdmin: () => {access.admin++; return admin;}}}) };
 }
 let passed = 0;
 async function test(name, fn) {await fn(); passed++; console.log('PASS', name);}
@@ -33,6 +34,20 @@ const request = {json: async () => ({op: 'create', email: 'test@example.invalid'
   await test('network list failure is 500', async () => {assert.equal((await fixture({listThrow:true}).route.GET({})).status,500);});
   await test('verified empty roster remains legitimate empty success', async () => {const r=await fixture().route.GET({});assert.equal(r.status,200);assert.deepEqual(r.body.users,[]);assert.equal(r.headers['Cache-Control'],'no-store');});
   await test('existing agent permission denial remains unchanged', async () => {assert.equal((await fixture({role:'agent'}).route.GET({})).status,403);});
+  await test('pilot denies admin and all non-owner roles even with user-management overrides', async () => {
+    for (const role of ['admin','manager','agent','qa','firm']) {
+      const f=fixture({role,overrides:{'users.manage':true}});
+      assert.equal((await f.route.GET({})).status,403,role);
+      assert.equal((await f.route.POST({json:async()=>{throw new Error('Denied request body must not be parsed');}})).status,403,role);
+      assert.equal(f.access.admin,0);assert.deepEqual(f.steps,[]);
+    }
+  });
+  await test('inactive or unknown-active owner cannot manage accounts through a stale session', async () => {
+    for (const active of [false,null]) {
+      const f=fixture({active});assert.equal((await f.route.GET({})).status,403);
+      assert.equal((await f.route.POST(request)).status,403);assert.equal(f.access.admin,0);
+    }
+  });
   await test('create confirms persisted profile before success', async () => {const f=fixture();const r=await f.route.POST(request);assert.equal(r.status,200);assert.equal(r.body.ok,true);assert.deepEqual(f.steps,['auth','insert','verify']);});
   for (const [name, options] of [['missing',{verify:{data:null,error:null}}],['database failure',{verify:{data:null,error:{message:'offline failure'}}}],['wrong identity',{verify:{data:{id:'different',email:'test@example.invalid'},error:null}}],['network failure',{verifyThrow:true}]]) {
     await test('create readback '+name+' preserves data but does not claim success', async () => {const f=fixture(options);const r=await f.route.POST(request);assert.equal(r.status,502);assert.match(r.body.error,/Refresh Users/);assert.equal(r.body.ok,undefined);assert.deepEqual(f.steps,['auth','insert','verify']);});
