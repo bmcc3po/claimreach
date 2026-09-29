@@ -11,12 +11,13 @@ function fixture() {
     leads: [{ id: L, firm_id: F, case_type: 'mva', archived_at: null, signed_at: '2025-01-01T00:00:00Z', qa_entered_at: '2025-01-02T00:00:00Z' }],
     claims: [{ id: C, lead_id: L, firm_id: F, campaign_id: P, claim_type: 'mva', status: 'new' }],
     campaigns: [{ id: P, firm_id: F, active: true, name: 'INNO MVA', case_type: 'mva' }],
-    statuses: DEFAULT_STATUSES.map(s => ({ ...s })), dq_reasons: [{ key: 'criteria', active: true }, { key: 'retired', active: false }],
+    statuses: DEFAULT_STATUSES.map(s => ({ ...s })), dq_reasons: [{ key: 'criteria', active: true }, { key: 'already_rep', active: true }, { key: 'wrong_number', active: true }, { key: 'retired', active: false }],
     lawruler_aliases: [
       { alias: 'Signed e-Sign (Default)', status_key: 'signed_grievous' }, { alias: 'Disqualified (Default)', status_key: 'dq' },
       { alias: 'New Lead (Default)', status_key: 'new' }, { alias: 'Contact Attempted (Default)', status_key: 'contacting' },
       { alias: 'Sent e-Sign (Default)', status_key: 'esign_sent' }, { alias: 'DO NOT CALL REQUEST', status_key: 'dnc' },
       { alias: 'Signed ESign Sent To Firm', status_key: 'delivered' },
+      { alias: 'Already Represented', status_key: 'dq' }, { alias: 'Wrong Number', status_key: 'dq' },
       { alias: 'Secondary Intake OK COMPLETE', status_key: 'approved' },
     ], lead_activity: [], case_documents: [],
   });
@@ -70,6 +71,27 @@ const test = async (name: string, fn: () => any) => { await fn(); count++; conso
     const db = fixture(); await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified' });
     const result = await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified', dqReasonKey: 'criteria' });
     assert.equal(result.outcome, 'applied'); assert.equal(db.tables.claims[0].status, 'dq'); assert.equal(await eligible(db), false);
+  });
+  await test('unambiguous source DQ labels use active standard reasons, including held imports', async () => {
+    for (const [sourceStatus, key] of [['Already Represented', 'already_rep'], ['Wrong Number', 'wrong_number']]) {
+      const db = fixture();
+      const first = await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus });
+      assert.equal(first.outcome, 'applied');
+      assert.equal(db.tables.claims[0].status, 'dq');
+      assert.equal(db.tables.claims[0].dq_reason_key, key);
+      assert.equal(await eligible(db), false);
+      const held = fixture(); held.tables.claims[0].status = EXTERNAL_DQ_REVIEW;
+      const recovered = await reconcileLawRulerMvaStatus(held, { ...input, sourceStatus });
+      assert.equal(recovered.outcome, 'applied');
+      assert.equal(held.tables.claims[0].status, 'dq');
+      assert.equal(held.tables.claims[0].dq_reason_key, key);
+    }
+    const fromGeneric = fixture();
+    await reconcileLawRulerMvaStatus(fromGeneric, { ...input, sourceStatus: 'Disqualified' });
+    assert.equal(fromGeneric.tables.claims[0].status, EXTERNAL_DQ_REVIEW);
+    const clarified = await reconcileLawRulerMvaStatus(fromGeneric, { ...input, sourceStatus: 'Already Represented' });
+    assert.equal(clarified.outcome, 'applied');
+    assert.equal(fromGeneric.tables.claims[0].dq_reason_key, 'already_rep');
   });
   await test('unknown terminal-sounding text and inactive/non-MVA aliases never invent a status or hold', async () => {
     for (const sourceStatus of ['Totally DQ signed', 'Secondary Intake OK COMPLETE', 'Signed e-Sign']) {
