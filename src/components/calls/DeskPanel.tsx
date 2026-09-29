@@ -587,6 +587,9 @@ function FileTab({ leadId, claimId, lead }: { leadId: string; claimId: string; l
         </div>
       )}
 
+      {/\bMVA\b/i.test(String(L.campaign || "")) && <FirmHandoff leadId={leadId} claimId={claimId} hasSignedPacket={d.agreements.some((a: any) =>
+        a.pax == null && a.status === "completed" && !a.voided && !!a.signed_url && !!a.cert_url)} />}
+
       <div className="cc-rb-h">Notes</div>
       <div className="cc-card">
         <div className="cc-chips cc-seg">{SCOPES.map(([k, label]) => <button key={k} className={`cc-chip${scope === k ? " cc-on" : ""}`} onClick={() => setScope(k)}>{label}</button>)}</div>
@@ -629,9 +632,61 @@ function FileTab({ leadId, claimId, lead }: { leadId: string; claimId: string; l
           ))}
         </div>
       )}
-      {d.classic && <a className="cc-cue" style={{ margin: "4px", textAlign: "center" }} href={`/leads/${encodeURIComponent(L.lead_no || leadId)}?claim=${encodeURIComponent(claimId)}`}>Review case & send to firm</a>}
+      {d.classic && <a className="cc-cue" style={{ margin: "4px", textAlign: "center" }} href={`/leads/${encodeURIComponent(L.lead_no || leadId)}?claim=${encodeURIComponent(claimId)}`}>Open full case record</a>}
     </div>
   );
+}
+
+function FirmHandoff({ leadId, claimId, hasSignedPacket }: { leadId: string; claimId: string; hasSignedPacket: boolean }) {
+  const [state, setState] = useState<any>(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    try {
+      const q = new URLSearchParams({ lead_id: leadId, claim_id: claimId });
+      const response = await fetch(`/api/firm-delivery?${q}`);
+      const next = await response.json();
+      if (!response.ok || next.error) throw new Error(next.error || "Could not check firm delivery.");
+      if (next.claim_id !== claimId) throw new Error("Delivery state belongs to another matter. Refresh the file.");
+      setState(next); setError("");
+    } catch (e: any) { setState(null); setError(e?.message || "Could not check firm delivery."); }
+  };
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leadId, claimId]);
+  const dispatchPending = ["sending", "uncertain"].includes(state?.dispatch?.state);
+  const sent = !!state?.firm_sent_at;
+  const send = async () => {
+    const delivery = state?.delivery;
+    if (!hasSignedPacket || sent || dispatchPending || !delivery?.to || !delivery?.firm || busy) return;
+    const cc = Array.isArray(delivery.cc) && delivery.cc.length ? `\nCC: ${delivery.cc.join(", ")}` : "";
+    if (!window.confirm(`Send this matter's signed packet to ${delivery.firm}?\nTo: ${delivery.to}${cc}\n\nReview the signed agreement and audit trail above before sending.`)) return;
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch("/api/firm-delivery", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ lead_id: leadId, claim_id: claimId }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok || result.skipped) throw new Error(result.error || result.skipped || "Firm delivery failed.");
+      setMessage(`Sent to ${result.to || delivery.firm}. ${result.warning || ""}`.trim());
+      await load();
+    } catch (e: any) { setMessage(e?.message || "Firm delivery failed. Check its status before trying again."); await load(); }
+    finally { setBusy(false); }
+  };
+  return <div className="cc-card">
+    <div className="cc-card-h">Firm handoff</div>
+    {error ? <div className="cc-cue cc-red">{error} Sending is unavailable until the state loads.</div>
+      : !state ? <div className="cc-cue">Checking this matter's delivery state…</div>
+      : <>
+        <div className="cc-cue">{state.delivery?.firm || "Firm not configured"}{state.delivery?.to ? ` · ${state.delivery.to}` : " · recipient missing"}</div>
+        {sent ? <div className="cc-cue">Sent {fmtWhen(state.firm_sent_at)}. The App will not resend this matter.</div>
+          : dispatchPending ? <div className="cc-cue cc-red">The last delivery outcome needs owner review. Do not resend.</div>
+          : !hasSignedPacket ? <div className="cc-cue">A completed signed agreement and audit trail are required before handoff.</div>
+          : <><div className="cc-cue">Review the signed agreement and audit trail above, then send this matter once.</div>
+            <button type="button" className="cc-btn cc-full" disabled={busy || !state.delivery?.to || !state.delivery?.firm} onClick={() => void send()}>{busy ? "Sending…" : "Send signed packet to firm"}</button></>}
+      </>}
+    {message && <div role="status" className="cc-cue">{message}</div>}
+  </div>;
 }
 
 // Quick helpers for mid-call questions: the deadline for any state and date,
