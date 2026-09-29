@@ -17,6 +17,7 @@ import IntakeQuestion, { AgreementRecipient } from "./IntakeQuestion";
 import PlaceField from "./PlaceField";
 import { OPEN_LINE, OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 import { DobField, SsnField } from "./SsnDob";
+import AgreementChoice from "./AgreementChoice";
 
 const isOn = (cls: string) => / on(\s|$)/.test(" " + String(cls || "") + " ");
 
@@ -72,19 +73,7 @@ function Retainer({ v }: { v: any }) {
         <Opts opts={fromCls(v.injuredWho)} />
         {v.injuredOther && <Field label="Injured person's full name"><input className="ch-in" value={v.f.injured.value ?? ""} onChange={v.f.injured.set} /></Field>}
       </div>
-      {!!(v.nv && v.nv.show) && (
-        <div className="ch-q">
-          <div className="ch-q-h"><span className="ch-q-l">Nevada agreement</span></div>
-          <Opts opts={[
-            { label: "Tiered (standard)", on: v.nv.tiered, pick: v.nv.pickTiered },
-            { label: "Non-tiered (needs approval)", on: !v.nv.tiered, pick: v.nv.pickFlat },
-          ]} />
-          {!v.nv.tiered && (<>
-            <Field label="Who approved it"><input className="ch-in" maxLength={300} placeholder='e.g. "Brett approved, friend and family"' value={v.nv.reason.value ?? ""} onChange={v.nv.reason.set} /></Field>
-            <div className={v.nv.needReason ? "ch-note ch-note-bad" : "ch-note"}>{v.nv.needReason ? "The non-tiered agreement only sends with the approval reason. It is recorded on the file." : "Recorded on the file with the send."}</div>
-          </>)}
-        </div>
-      )}
+      <div className="ch-q"><AgreementChoice v={v} /></div>
       <div className="ch-q">
         <div className="ch-q-h"><span className="ch-q-l">Send it by</span></div>
         <Opts opts={fromCls(v.via)} />
@@ -101,6 +90,7 @@ function Retainer({ v }: { v: any }) {
   }
   const stepWord = (cls: string) => (/done/.test(cls) ? "Done" : "Not yet");
   return (<>
+    {!!v.currentAgreement && <div className="cc-agreement-current ch-wide"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
     <div className="ch-q ch-wide">
       <div className="ch-q-h"><span className="ch-q-l">The agreement</span></div>
       <ul className="ch-steps">

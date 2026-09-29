@@ -3,6 +3,7 @@
 // on smaller screens. Every layout uses the same contact and document controls.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Icon from "@/components/ui/Icon";
+import AgreementChoice from "./AgreementChoice";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
@@ -290,12 +291,19 @@ function Texts({ v }: { v: any }) {
 }
 
 function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
-  const [src, setSrc] = useState<string | null>(preview.href);
-  const stale = !!preview.href && src !== preview.href;
-  useEffect(() => { if (!src && preview.href) setSrc(preview.href); }, [preview.href, src]);
+  const [reload, setReload] = useState(0);
   const missing = preview.checks.filter((c) => !c.ok && !c.later).length;
+  if (!v.sendReady) return <div className="cc-side-b cc-side-ret">
+    <div className="cc-agreement-current"><span>{v.currentAgreement ? "Contract already sent" : "Sending agreement"}</span><strong>{v.currentAgreement?.label || "Preparing the selected contract…"}</strong></div>
+    <p className="cc-cue">The sent agreement keeps its original contract and names. To use a different contract, void it first, then review and send a replacement. Signed agreements require an owner or admin; originals stay in File history.</p>
+    {v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>{v.voidLabel}</button>}
+    {v.hasSendError && <div className="cc-cue cc-red" role="status">{v.sendError}</div>}
+    {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review agreement actions</button>}
+  </div>;
   return (
     <div className="cc-side-b cc-side-ret">
+      <AgreementChoice v={v} />
+      {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review and send</button>}
       <div className="cc-grp">
         {preview.checks.map((c) => (
           <div key={c.label} className="cc-chk">
@@ -316,16 +324,14 @@ function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
       {preview.href ? (
         <>
           <div className="cc-ret-bar">
-            <button className="cc-chip cc-sm" onClick={() => setSrc(preview.href)}>{stale ? "Update the preview" : "Reload"}</button>
-            <a className="cc-chip cc-sm cc-ret-open" href={src || preview.href} target="_blank" rel="noopener">Open full size</a>
-            {stale && <span className="cc-cue cc-red" style={{ marginTop: 0 }}>Changed since this preview</span>}
+            <button className="cc-chip cc-sm" onClick={() => setReload((n) => n + 1)}>Reload preview</button>
+            <a className="cc-chip cc-sm cc-ret-open" href={preview.href} target="_blank" rel="noopener">Open full size</a>
           </div>
-          {src && <iframe className="cc-ret-pdf" title="Agreement preview" src={src} />}
+          <iframe key={`${preview.href}:${reload}`} className="cc-ret-pdf" title="Draft agreement preview" src={preview.href} />
         </>
       ) : (
-        <div className="cc-cue" style={{ textAlign: "center", marginTop: 20 }}>Add the city and state on Story and the signer's name on Send, and the agreement shows up here.</div>
+        <div className="cc-cue" style={{ textAlign: "center", marginTop: 20 }}>Choose a configured contract and add the signer's name to preview the draft.</div>
       )}
-      {v.sendLive && <div className="cc-cue" style={{ margin: "0 4px" }}>This agreement is already out. The preview shows what was filled in.</div>}
     </div>
   );
 }

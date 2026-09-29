@@ -45,6 +45,58 @@ function Chevron() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>;
 }
 
+/** Phone header folds as one unit. Keep its children mounted across every view and size. */
+export function IxTop({ v }: { v: any }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const contentId = useId();
+  const gesture = useRef<{ id: number; x: number; y: number } | null>(null);
+  const dragged = useRef(false);
+  const summary = v.textBadge ? `${v.textUnread} new texts` : v.onCall ? "On a call" : v.ringing ? "Ringing" : `${v.fi.progress.pct}%`;
+  return (
+    <div className={`cc-top ix-top${collapsed ? " ix-phone-top-collapsed" : ""}`}>
+      <div id={contentId} className="ix-top-content">
+        {!v.ws && <IxHead v={v} />}
+        <IxBar v={v} />
+      </div>
+      {!v.ws && <>
+        <button type="button" className="ix-top-handle" aria-expanded={!collapsed} aria-controls={contentId}
+          aria-label={collapsed ? `Show call header for ${v.callerName}` : "Hide call header"}
+          title={collapsed ? "Tap or pull down to show the header" : "Tap or swipe up to hide the header"}
+          onPointerDown={(event) => {
+            if (!event.isPrimary || event.button !== 0) return;
+            dragged.current = false;
+            gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerUp={(event) => {
+            const start = gesture.current;
+            gesture.current = null;
+            if (!start || start.id !== event.pointerId) return;
+            const dy = event.clientY - start.y, dx = event.clientX - start.x;
+            // A drag must not fall through to a tap, including a sideways or short swipe.
+            dragged.current = Math.max(Math.abs(dx), Math.abs(dy)) >= 8;
+            if (Math.abs(dy) >= 32 && Math.abs(dy) > Math.abs(dx) * 1.25) {
+              setCollapsed(dy < 0);
+              event.currentTarget.focus();
+            }
+          }}
+          onPointerCancel={() => { gesture.current = null; dragged.current = false; }}
+          onClick={(event) => {
+            if (dragged.current && event.detail !== 0) { dragged.current = false; return; }
+            dragged.current = false;
+            setCollapsed((value) => !value);
+          }}>
+          <span className="ix-top-grip" aria-hidden="true" />
+          <span className="ix-top-handle-label">{collapsed ? v.callerName : "Hide header"}</span>
+          {collapsed && <span className="ix-top-handle-status">{summary}</span>}
+          <Chevron />
+        </button>
+        {collapsed && v.saveBad && <div className="ix-top-save-alert" role="status">{v.saveError || "Not saved. Retrying."}</div>}
+      </>}
+    </div>
+  );
+}
+
 /** Phone and iPad upright: who, the clock, text and end call. Same in every view. */
 export function IxHead({ v }: { v: any }) {
   return (

@@ -6,12 +6,13 @@ import { Fragment } from "react";
 import PlaceField from "./PlaceField";
 import WhereField from "./WhereField";
 import { FiBody } from "./FullIntake";
-import { WsLeft, WsHelper, IxHead, IxBar, IxFoot } from "./IntakeWorkspace";
+import { WsLeft, WsHelper, IxTop, IxFoot } from "./IntakeWorkspace";
 import ChoreList from "./ChoreList";
 import FormView from "./FormView";
 import { GuidedIntake } from "./OneQuestion";
 import IntakeQuestion, { AgreementRecipient, QuestionControl } from "./IntakeQuestion";
 import { DobField, SsnField } from "./SsnDob";
+import AgreementChoice from "./AgreementChoice";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
@@ -54,10 +55,7 @@ export default function CallView({ v }: { v: any }) {
   return (
 <div className={cls}>
 {wide && <WsLeft v={v} />}
-<div className="cc-top ix-top">
-{!wide && <IxHead v={v} />}
-<IxBar v={v} />
-</div>
+<IxTop v={v} />
 <main className={`cc-main ix-main${v.fullView ? " fi-main" : ""}${v.choreView ? " ch-main" : ""}`}>
 {!!v.nameReview && <div className="cc-stop" role="status"><p>{v.nameReview}</p>{v.canUseRecordName && <button type="button" className="cc-btn" onClick={v.useRecordName}>Use corrected PNC name</button>}{v.sendLive && v.voidAgreement && <button type="button" className="cc-btn" onClick={v.voidAgreement}>Void incorrect agreement</button>}</div>}
 {!!v.emergencyNotice && <div className="cc-stop" role="status"><p>{v.emergencyNotice}</p>{v.prepareResign && <button type="button" className="cc-btn" onClick={v.prepareResign}>Prepare DocuSeal re-sign</button>}</div>}
@@ -337,17 +335,7 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-chips cc-seg">{(v.injuredWho || []).map((c: any, i30: number) => (<Fragment key={i30}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
 {!!(v.injuredOther) && (<><input className="cc-field" style={{marginTop: "8px"}} type="text" placeholder="Injured person's full name" aria-label="Injured person's full name" value={v.f.injured.value ?? ""} onChange={v.f.injured.set} /></>)}
 </div>
-{!!(v.nv && v.nv.show) && (<div>
-<div className="cc-lab">NEVADA AGREEMENT</div>
-<div className="cc-chips cc-seg" role="radiogroup" aria-label="Which Nevada agreement">
-<button type="button" role="radio" aria-checked={v.nv.tiered} className={cx(`chip${v.nv.tiered ? " on" : ""}`)} onClick={v.nv.pickTiered}>Tiered (standard)</button>
-<button type="button" role="radio" aria-checked={!v.nv.tiered} className={cx(`chip${!v.nv.tiered ? " on" : ""}`)} onClick={v.nv.pickFlat}>Non-tiered (needs approval)</button>
-</div>
-{!v.nv.tiered && (<>
-<input className="cc-field" style={{marginTop: "8px"}} type="text" maxLength={300} placeholder='Who approved it, e.g. "Brett approved, friend and family"' aria-label="Non-tiered approval reason" value={v.nv.reason.value ?? ""} onChange={v.nv.reason.set} />
-<div className={cx(v.nv.needReason ? "cc-cue cc-red" : "cc-cue")}>{v.nv.needReason ? "The non-tiered agreement only sends with the approval reason. It is recorded on the file." : "Recorded on the file with the send."}</div>
-</>)}
-</div>)}
+<AgreementChoice v={v} />
 <div>
 <div className="cc-lab">SEND BY</div>
 <div className="cc-chips cc-seg">{(v.via || []).map((c: any, i31: number) => (<Fragment key={i31}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
@@ -359,6 +347,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.sendWarn) && (<><div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.sendWarnText}</div></div></>)}
 </>)}
 {!!(v.sendLive) && (<>
+{!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
 <div className="cc-steps">{(v.sendSteps || []).map((st: any, i32: number) => (<Fragment key={i32}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div>
 {!!(v.notSigned) && (<>
 <div className="cc-say">

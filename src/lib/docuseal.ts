@@ -191,13 +191,4 @@ export function webhookAuthorized(headerValue: string | null, secret: string | n
   return diff === 0;
 }
 
-/** Which agreement a crash state gets. TX and FL have their own; every other state uses AL/GA. */
-export function agreementKey(stateCode: string | null | undefined): "TX" | "FL" | "NV" | "OTHER" | null {
-  const c = String(stateCode || "").toUpperCase();
-  if (!c) return null;
-  if (c === "TX") return "TX";
-  if (c === "FL") return "FL";
-  // Nevada has its own contracts (tiered default; non-tiered by approval).
-  if (c === "NV") return "NV";
-  return "OTHER";
-}
+export { agreementKey } from "./mva-call/agreement-choice";

@@ -10,6 +10,7 @@ import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./Desk
 import { WsHelper } from "./IntakeWorkspace";
 import { popOutDialer } from "./JustCallDialer";
 import { stateCodeOf } from "@/lib/mva-call/state";
+import { agreementChoice } from "@/lib/mva-call/agreement-choice";
 import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
 import { callbackAt } from "@/lib/mva-call/dispo";
 
@@ -96,15 +97,17 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     const api: CallApi = {
       sendAgreement() {
         const s = e().state;
+        const choice = e().renderVals().contractChoice;
         e().setState({ send: { ...s.send, status: "sending", error: "" } });
         post("/api/calls/esign", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current,
           emergency_resign: emergencyResign.current,
           signer_name: s.send.client, injured_name: s.send.who === "Someone else" ? s.send.injured : s.send.client,
           via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
-          nv_variant: s.send.nvVariant, nv_reason: s.send.nvReason,
+          nv_variant: choice.key === "NV_FLAT" ? "flat" : "tiered", nv_reason: choice.requiresReason ? s.send.nvReason : undefined,
         }).then((d) => {
           agreementId.current = d.agreement_id || d.id || agreementId.current;
+          e().props.esign.templateKey = d.template_key || choice.key || null;
           emergencyResign.current = false; setNeedsResign(false);
           e().setState({ send: { ...e().state.send, status: d.status || "sent", error: d.warning || "" } });
         }).catch((err) => {
@@ -113,6 +116,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       },
       sendPax(i: number) {
         const s = e().state;
+        const choice = e().renderVals().contractChoice;
         const p = s.car.people[i] || {};
         const minor = p.age === "Under 18";
         const name = String(p.name || "").trim();
@@ -130,7 +134,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
           pax_key: p.pid || String(i), pax_minor: minor, pax_recipient_confirmed: !!p.shareOk,
           pax_same_addr: p.sameAddr === "Same address",
-          nv_variant: s.send.nvVariant, nv_reason: s.send.nvReason,
+          nv_variant: choice.key === "NV_FLAT" ? "flat" : "tiered", nv_reason: choice.requiresReason ? s.send.nvReason : undefined,
         }).then(() => mark("sent")).catch((err) => {
           const pax = { ...e().state.file.pax }; delete pax[i];
           e().setState({ file: { ...e().state.file, pax, error: err.message } });
@@ -204,7 +208,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           .catch((err) => e().setState({ askOut: { error: err.message } }));
       },
     };
-    eng.current = new CallEngine({ ...init.props, startedAt: init.startedAt }, api);
+    eng.current = new CallEngine({ ...init.props, esign: { ...init.props.esign }, startedAt: init.startedAt }, api);
     lastSaved.current = JSON.stringify(eng.current.persistable());
   }
   const engine = eng.current;
@@ -370,6 +374,9 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           setNeedsResign(!!d.emergency?.needs_resign);
           setEmergencyStatus(d.emergency?.status || "");
           agreementId.current = d.agreement_id || d.id || agreementId.current;
+          if (d.agreement) engine.props.esign.templateKey = d.agreement.template_key || null;
+          if (Array.isArray(d.templates)) engine.props.esign.templateKeys = d.templates.map((t: any) => String(t.key));
+          if (d.agreement || Array.isArray(d.templates)) engine.setState({});
           if (d.status && d.status !== "ready" && d.status !== cur.send.status) engine.setState({ send: { ...cur.send, status: d.status } });
           // Voided or expired somewhere else: the send opens again here.
           if (d.status === "ready" && (cur.send.status === "sent" || cur.send.status === "opened")) {
@@ -461,9 +468,10 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sideOn, commandCollapsed, phase]);
 
-  const preview = previewInfo(engine.state, init);
+  const preview = previewInfo(engine.state, init, engine.props.esign.templateKeys ?? []);
   const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
   view.emergencyNotice = needsResign ? "An emergency packet is on this matter. A DocuSeal re-sign is still required; the original remains in history." : "";
+  view.reviewAgreement = () => { setUtilityOpen(false); engine.jumpTo("signer"); };
   view.prepareResign = needsResign && emergencyStatus === "signed" ? () => {
     emergencyResign.current = true;
     engine.setState({ phase: "send", send: { ...engine.state.send, status: "ready", error: "" }, file: { ...engine.state.file, agreement: "open" } });
@@ -580,7 +588,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
 
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
   const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
-  const casePanel = <DeskPanel key="case-panel" v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
+  const casePanel = <DeskPanel key="case-panel" v={{ ...v, reviewAgreement: view.reviewAgreement }} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
     onCollapse={sideOn ? collapseCommand : undefined} panelId={commandPanelId}
     summary={<WsHelper v={view} />}
     preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
@@ -604,24 +612,22 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   );
 }
 
-const AGREEMENT_LABEL: Record<string, string> = { TX: "Texas", FL: "Florida", NV: "Nevada" };
 const prettyPhone = (raw: string) => { const d = raw.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, ""); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : raw; };
 
 // What the agreement will say, from the call so far. The same values the Send
 // button hands DocuSeal, so the preview cannot disagree with what goes out.
-function previewInfo(s: any, init: ConsoleInit): PreviewInfo {
+function previewInfo(s: any, init: ConsoleInit, templateKeys: string[]): PreviewInfo {
   const signer = String(s.send.client || "").trim();
   const injured = s.send.who === "Someone else" ? String(s.send.injured || "").trim() : signer;
   const city = String(s.story.city || "").trim();
   const code = stateCodeOf(city);
   const today = todayMDY();
   const doi = doiOf(s.story);
-  const nvFlat = code === "NV" && s.send.nvVariant === "flat";
-  const agreement = code ? ((AGREEMENT_LABEL[code] || "All other states (AL/GA)") + (code === "NV" ? (nvFlat ? " NON-TIERED" : " tiered") : "")) : "";
+  const choice = agreementChoice(city, code === "NV" ? s.send.nvVariant : undefined, templateKeys);
   const viaText = s.send.via !== "Email";
   const to = viaText ? String(s.send.phone || "").trim() : String(s.send.email || "").trim();
   const checks: PreviewInfo["checks"] = [
-    { label: "Agreement", value: agreement ? `${agreement}${code && !AGREEMENT_LABEL[code] ? `, wreck in ${code}` : ""}` : "Add the city and state on Story", ok: !!agreement, spot: "city" },
+    { label: "Agreement", value: choice.error || choice.label, ok: choice.available, ...(!code ? { spot: "city" } : {}) },
     { label: "Signer", value: signer || "Add the PNC's full name on Send", ok: signer.split(/\s+/).filter(Boolean).length >= 2, spot: "signer" },
     { label: "Injured person", value: injured || "Add the injured person's full name", ok: injured.split(/\s+/).filter(Boolean).length >= 2, spot: "signer" },
     { label: "Date of the wreck", value: doi || "Add it on Story", ok: !!doi, spot: "when" },
@@ -629,8 +635,8 @@ function previewInfo(s: any, init: ConsoleInit): PreviewInfo {
     { label: viaText ? "Text to" : "Email to", value: to ? (viaText ? prettyPhone(to) : to) : (viaText ? "Add the PNC's cell" : "Add the PNC's email"), ok: viaText ? to.replace(/\D/g, "").length >= 10 : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to), spot: "contact" },
     { label: "DOB and SSN", value: "Intake adds these after the PNC signs", ok: false, later: true, spot: "file" },
   ];
-  if (!code || !signer) return { href: null, checks };
+  if (!choice.available || !signer) return { href: null, checks };
   const q = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId, signer, injured: injured || signer, city, today, doi });
-  if (nvFlat) q.set("nv_variant", "flat");
+  if (choice.key === "NV_FLAT") q.set("nv_variant", "flat");
   return { href: `/api/calls/esign/preview?${q}`, checks };
 }

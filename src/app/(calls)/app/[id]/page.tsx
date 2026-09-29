@@ -198,6 +198,8 @@ export default async function CallPage({ params, searchParams }: { params: Promi
         esign: {
           status: !mainStatus ? "ready" : mainStatus === "completed" ? "signed" : ["failed", "declined", "expired", "voided"].includes(mainStatus) ? "ready" : mainStatus,
           configured: docusealConfigured() && (tplRes.data ?? []).length > 0,
+          templateKeys: (tplRes.data ?? []).map((t: any) => String(t.key)),
+          templateKey: mainRes.row?.template_key ?? null,
           pax,
         },
       },

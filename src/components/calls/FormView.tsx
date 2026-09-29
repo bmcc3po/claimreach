@@ -11,6 +11,7 @@ import IntakeQuestion, { QuestionControl, AgreementRecipient } from "./IntakeQue
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, OPEN_LINE, MONEY, SEND_LINE, STAY, SIGNED, walkThrough, NO_DEAD_AIR, closeLines, CLOSE_CUE } from "./scripts";
 import PlaceField from "./PlaceField";
 import { DobField, SsnField } from "./SsnDob";
+import AgreementChoice from "./AgreementChoice";
 
 // Plain radio buttons (checkboxes for a pick-several question), like the
 // firm report: no pills (Brett, Sep 28).
@@ -43,15 +44,7 @@ function SendBlock({ v, where }: { v: any; where: any }) {
         <Chips opts={(v.injuredWho || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />
         {v.injuredOther && <input className="sf-in" aria-label="Injured person's full name" placeholder="Injured person's full name" value={v.f.injured.value ?? ""} onChange={v.f.injured.set} />}
       </div></div>
-      {!!(v.nv && v.nv.show) && (
-        <div className="sf-row"><label className="sf-l">Nevada agreement</label><div className="sf-c">
-          <Chips opts={[{ label: "Tiered (standard)", on: v.nv.tiered, pick: v.nv.pickTiered }, { label: "Non-tiered (needs approval)", on: !v.nv.tiered, pick: v.nv.pickFlat }]} />
-          {!v.nv.tiered && (<>
-            <input className="sf-in" maxLength={300} placeholder='Who approved it, e.g. "Brett approved, friend and family"' aria-label="Non-tiered approval reason" value={v.nv.reason.value ?? ""} onChange={v.nv.reason.set} />
-            {v.nv.needReason && <div className="sf-bad">The non-tiered agreement only sends with the approval reason.</div>}
-          </>)}
-        </div></div>
-      )}
+      <div className="sf-row"><div className="sf-l" aria-hidden="true"></div><div className="sf-c"><AgreementChoice v={v} /></div></div>
       <div className="sf-row"><label className="sf-l">Send it by</label><div className="sf-c">
         <Chips opts={(v.via || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />
         <AgreementRecipient v={v} presentation="form" />
@@ -168,6 +161,7 @@ export default function FormView({ v }: { v: any }) {
           {r.id === "retainer" ? (<>
             {v.sendReady ? <div className="iq-script"><div className="iq-field-label">{MONEY.label}</div><p>{MONEY.line}</p><div className="iq-cue">{MONEY.cue}</div><p>{SEND_LINE}</p></div> : v.notSigned ? <div className="iq-script"><div className="iq-field-label">{STAY.label}</div><p>{STAY.line}</p>{walkThrough(v.firmSpoken).map((line: string, i: number) => <p key={i}>{line}</p>)}<div className="iq-cue">{NO_DEAD_AIR.map((line: string, i: number) => <p key={i}>{line}</p>)}</div></div> : <div className="iq-script"><div className="iq-field-label">{SIGNED.label}</div><p>{SIGNED.line}</p><div className="iq-cue">{SIGNED.cue}</div></div>}
             {v.sendReady && <SendBlock v={v} where={where} />}
+            {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
             <FileBlock v={v} finish={r.next ? null : fi.chore?.finish} />
             {v.signed && <div className="iq-script">{closeLines(v.callerFirst, v.firmSpoken).map((line: string, i: number) => <p key={i}>{line}</p>)}<div className="iq-cue">{CLOSE_CUE}</div></div>}
           </>) : (

@@ -1517,7 +1517,8 @@ div.ws-row{cursor:default}
 .ws-quiet{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 
 /* Phone controls fold independently; the intake state and primary Next stay put. */
-.ix-bar-actions,.ix-view-switch,.ix-foot-tools{display:contents}
+.ix-top-content,.ix-bar-actions,.ix-view-switch,.ix-foot-tools{display:contents}
+.ix-top-handle,.ix-top-save-alert{display:none}
 .ix-view-toggle,.ix-foot-toggle{display:none}
 .ix-file-toggle{display:inline-flex;align-items:center;justify-content:center;align-self:flex-end;gap:6px;min-height:44px;min-width:64px;padding:0 14px;border:1px solid var(--x-line2);border-radius:9px;background:#FFFFFF;color:var(--x-navy);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 /* Quick note is modal whenever the narrow layout renders it, including portrait iPad. */
@@ -1530,7 +1531,19 @@ div.ws-row{cursor:default}
 .ix-note-layer .ix-note-b .ix-tool{border:1px solid var(--x-line2);border-radius:10px;background:#FFFFFF}
 .ix-note-layer .ix-note-b button:focus-visible{outline:2px solid var(--x-blue);outline-offset:2px}
 @media (max-width:699px){
-  .cc-app.ix.ix-narrow>.cc-top.ix-top{gap:6px;padding-bottom:8px}
+  .cc-app.ix.ix-narrow>.cc-top.ix-top{gap:4px;padding-bottom:0}
+  .ix-top-content{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .cc-app.ix.ix-narrow>.cc-top.ix-top.ix-phone-top-collapsed{gap:0;padding:env(safe-area-inset-top) 10px 0}
+  .ix-phone-top-collapsed .ix-top-content{display:none}
+  .ix-top-handle{position:relative;display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:44px;box-sizing:border-box;padding:7px 4px 0;border:0;border-top:1px solid var(--x-line);background:transparent;color:var(--x-navy);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;touch-action:none}
+  .ix-phone-top-collapsed .ix-top-handle{border-top:0}
+  .ix-top-grip{position:absolute;top:4px;left:50%;width:24px;height:3px;margin-left:-12px;border-radius:3px;background:#CBD5E1;pointer-events:none}
+  .ix-top-handle-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+  .ix-top-handle-status{flex:0 1 auto;max-width:45%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--x-sub);font-size:13px;font-weight:600}
+  .ix-top-handle>svg{flex:0 0 auto;transform:rotate(90deg)}
+  .ix-top-handle[aria-expanded="true"]>svg{transform:rotate(-90deg)}
+  .ix-top-handle:focus-visible{outline:2px solid var(--x-blue);outline-offset:-2px;border-radius:8px}
+  .ix-top-save-alert{display:block;padding:6px 4px 8px;color:var(--x-red);font-size:13px;font-weight:600;line-height:1.35;overflow-wrap:anywhere}
   .ix-narrow .ix-bar,.ix-narrow .ix-bar-row{gap:6px}
   .ix-narrow .ix-prog{gap:2px}
   .ix-narrow .ix-prog-row{column-gap:6px;row-gap:2px}
@@ -1751,6 +1764,20 @@ div.ws-row{cursor:default}
 .cc-side .cc-chk-v{min-width:0;font-weight:600;overflow-wrap:anywhere}
 .cc-side .cc-side-compose{display:flex;align-items:flex-end;gap:8px;padding:12px;background:#FFFFFF;border-top:1px solid var(--file-line)}
 .cc-side .cc-side-compose .cc-area{min-height:48px}
+/* One contract picker across all intake presentations and the command panel. */
+.cc-agreement-choice{display:grid;gap:10px;min-width:0;width:100%;margin-bottom:4px}
+.cc-agreement-choice>label{display:flex;flex-direction:column;gap:6px;min-width:0}
+.cc-agreement-choice .cc-lab{display:block;margin:0;line-height:1.35}
+.cc-agreement-choice .cc-field{min-width:0;min-height:44px}
+.cc-agreement-choice select.cc-field{-webkit-appearance:auto;appearance:auto;padding-right:10px;text-overflow:ellipsis}
+.cc-agreement-choice .cc-cue{display:block;margin:0;line-height:1.4;overflow-wrap:anywhere}
+.cc-agreement-choice .cc-field:disabled{opacity:0.7;cursor:not-allowed}
+.cc-agreement-current{display:flex;flex-direction:column;gap:5px;min-width:0;padding:12px;border:1px solid #D7E0EC;border-radius:10px;background:#FFFFFF;line-height:1.4;overflow-wrap:anywhere}
+.cc-agreement-current>span{font-size:12.5px;font-weight:600;color:#5F6F87}
+.cc-agreement-current>strong{font-size:15px;color:#14305C}
+.cc-side .cc-btn.cc-agreement-review{width:100%;min-height:44px;padding:10px 14px;background:#14305C;color:#FFFFFF;font-size:15px;line-height:1.3}
+.cc-side .cc-btn.cc-agreement-review:hover{background:#1D4174}
+.cc-side .cc-btn.cc-agreement-review:focus-visible{outline:2px solid #2563EB;outline-offset:2px}
 /* The iPad command panel stays beside CallView, so rotation cannot remount it. */
 .cc-desk.cc-ipad-on{display:grid;grid-template-columns:minmax(0,1fr) 336px;grid-template-rows:minmax(0,1fr);width:100%;height:100vh;height:100dvh;min-width:0;overflow:hidden}
 .cc-desk.cc-ipad-on>.cc-app{width:100%;height:100%;min-width:0;min-height:0;margin:0;box-shadow:none}
