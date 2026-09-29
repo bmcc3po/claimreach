@@ -98,6 +98,15 @@ test("sent and signed views preserve the stored contract while offering a separa
   assert.match(make(keys, "sent").renderVals().currentAgreement.label, /type unavailable/);
   assert.match(make(keys, "sent").renderVals().agreement, /type unavailable/);
 });
+test("every signed intake view offers a direct path to the File review before office completion", () => {
+  const e = make(keys, "signed", "NV_FLAT");
+  e.setState({ phase: "file", file: { ...e.state.file, step: "agreement", agreement: "open" } });
+  for (const mode of ["guided", "full", "chore", "form"]) {
+    e.setView(mode);
+    const html = renderToStaticMarkup(<CallView v={{ ...e.renderVals(), openFile: noop }} />);
+    assert.match(html, /Review client-signed PDF in File/, `${mode} should open File review`);
+  }
+});
 
 const filename = path.resolve(__dirname, "CallConsole.tsx");
 const source = ts.createSourceFile(filename, fs.readFileSync(filename, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
