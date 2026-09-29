@@ -11,6 +11,7 @@
 .stats div:last-child { border-right: 0; }
 .stats span { color: #66758a; font-size: 12px; display: block; margin-bottom: 7px; }
 .stats strong { display: block; font-size: 28px; line-height: 1; letter-spacing: -.04em; }
+.stats small { display: block; color: #718097; font-size: 11px; margin-top: 8px; }
 .notice, .caption { max-width: 1560px; margin: 0 auto 16px; font-size: 13px; line-height: 1.5; }
 .notice { padding: 13px 16px; background: #fff7e7; border: 1px solid #f3d99b; border-radius: 9px; color: #694b16; }
 .caption { color: #67768a; }

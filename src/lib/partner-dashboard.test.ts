@@ -32,6 +32,16 @@ assert.equal(build([lead], [completed])[0].signed, true);
 assert.equal(build([lead], [{ ...completed, cert_pdf_path: null }])[0].signed, false);
 assert.equal(build([lead], [{ ...completed, voided_at: '2026-09-28T11:00:00Z' }])[0].signed, false);
 assert.equal(build([lead], [{ ...completed, claim_id: 'other-matter' }])[0].signed, false);
+const lawRulerSigned = build([{ ...lead, vendor_fields: { lawruler_status: 'Signed ESign Sent To Firm' } }])[0];
+assert.equal(lawRulerSigned.sourceSignedReported, true);
+assert.equal(lawRulerSigned.signed, false);
+const lawRulerDq = build([{ ...lead, vendor_fields: { lawruler_status: 'Already Represented' } }])[0];
+assert.equal(lawRulerDq.sourceDqReported, true);
+assert.equal(lawRulerDq.sourceDqReason, 'Already Represented');
+assert.equal(lawRulerDq.disqualified, false);
+const genericDq = build([{ ...lead, vendor_fields: { lawruler_status: 'Disqualified' } }])[0];
+assert.equal(genericDq.sourceDqReported, true);
+assert.equal(genericDq.sourceDqReason, null);
 
 const wrongFirm = build([{ ...lead, firm_id: 'other' }]);
 assert.equal(wrongFirm[0].name, null);
