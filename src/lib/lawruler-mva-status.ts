@@ -7,6 +7,12 @@ export const EXTERNAL_DQ_REVIEW = 'external_dq_review';
 const SIGNED_REVIEW_REASON = 'LawRuler reports a signature or delivery. Verify the signed original and certificate before counting or delivering this matter in ClaimReach.';
 const DQ_REVIEW_REASON = 'LawRuler reports a closed/disqualified matter. Review and select its standardized DQ reason before final DQ.';
 const labelKey = (value: unknown) => String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase().replace(/\s*\(default\)$/, '').trim();
+// These source statuses state an unambiguous reason; generic "Disqualified"
+// does not. The target still has to exist and be active in the DQ catalog.
+const EXACT_SOURCE_DQ_REASONS: Record<string, string> = {
+  'already represented': 'already_rep',
+  'wrong number': 'wrong_number',
+};
 export type MvaStatusOutcome = 'applied' | 'unchanged' | 'review_required' | 'out_of_scope';
 export interface MvaAcquisitionSignal {
   firm_id: string; lead_id: string; claim_id: string; campaign_id: string;
@@ -126,12 +132,13 @@ export async function reconcileLawRulerMvaStatus(db: any, opts: {
   // ClaimReach firm-delivery receipt. Keep it out of the Signed totals and firm
   // portal until an owner reviews the original and evidence on this matter.
   const externalSigned = !!mapped && isSignedKey(mapped.key, catalog);
-  const reviewedDq = claim.data.status === EXTERNAL_DQ_REVIEW && !!opts.dqReasonKey && !!mapped && mapped.qualify === 'disqualify';
+  const dqReasonCandidate = opts.dqReasonKey || EXACT_SOURCE_DQ_REASONS[labelKey(sourceStatus)] || null;
+  const reviewedDq = claim.data.status === EXTERNAL_DQ_REVIEW && !!dqReasonCandidate && !!mapped && mapped.qualify === 'disqualify';
   let result: MvaStatusResult = { ...base, outcome: 'review_required', acquisition_hold: hold, mapped_status: mapped?.key || null, reason: '' };
   if (!mapped) result.reason = 'The LawRuler label has no unambiguous active MVA-compatible mapping. An owner/admin must review it.';
   else if (claim.data.status === mapped.key) result = { ...result, outcome: 'unchanged', reason: 'The exact matter already has this status.' };
   else if (claim.data.status === EXTERNAL_SIGNED_REVIEW && externalSigned) result.reason = SIGNED_REVIEW_REASON;
-  else if (claim.data.status === EXTERNAL_DQ_REVIEW && mapped.qualify === 'disqualify' && !opts.dqReasonKey) result.reason = DQ_REVIEW_REASON;
+  else if (claim.data.status === EXTERNAL_DQ_REVIEW && mapped.qualify === 'disqualify' && !dqReasonCandidate) result.reason = DQ_REVIEW_REASON;
   else if ((stopsAcquisition(claim.data.status, catalog) && !reviewedDq) || (priorHold && mapped.key !== priorSignal?.mapped_status)) result.reason = 'A signed, closed, or externally held matter cannot be changed by an unsequenced external message. Review this transition.';
   else if (!catalog.some(s => s.key === claim.data.status)) result.reason = 'The existing status is unknown. Review it before replacing it.';
   else if ((claim.data.status === 'esign_sent' && ['new', 'contacting'].includes(mapped.key)) || (claim.data.status === 'contacting' && mapped.key === 'new')) result.reason = 'An unsequenced external message cannot move this matter backward or reopen it. Review the source order.';
@@ -144,7 +151,7 @@ export async function reconcileLawRulerMvaStatus(db: any, opts: {
       pendingReason = SIGNED_REVIEW_REASON;
     }
     if (mapped.qualify === 'disqualify') {
-      const reason = opts.dqReasonKey ? await db.from('dq_reasons').select('key, active').eq('key', opts.dqReasonKey).maybeSingle() : null;
+      const reason = dqReasonCandidate ? await db.from('dq_reasons').select('key, active').eq('key', dqReasonCandidate).maybeSingle() : null;
       if (reason?.error) throw new Error(`Could not validate the disqualification reason: ${reason.error.message}`);
       if (reason?.data?.active !== false && reason?.data?.key) reasonKey = reason.data.key;
       else {
