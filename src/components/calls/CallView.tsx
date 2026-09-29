@@ -391,6 +391,7 @@ export default function CallView({ v }: { v: any }) {
 <div><div className="cc-lab">DATE OF BIRTH</div><DobField value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} /></div>
 <div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} /></div>
 {!!(v.agreementOpen) && (<>
+{v.signed && v.openFile && <button type="button" className="cc-btn cc-soft" onClick={v.openFile}>Review client-signed PDF in File</button>}
 <button className="cc-btn cc-full" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
 <button className="cc-btn cc-soft" onClick={v.leaveForQa}>Finish later</button>
 </>)}

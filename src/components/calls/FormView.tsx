@@ -92,6 +92,7 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
       {row("Finish the agreement", (<>
         {v.agreementOpen && (
           <div className="sf-addrow">
+            {v.signed && v.openFile && <button type="button" className="sf-btn sf-line" onClick={v.openFile}>Review client-signed PDF in File</button>}
             <button type="button" className="sf-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
             <button type="button" className="sf-btn sf-line" onClick={v.leaveForQa}>Finish later</button>
           </div>

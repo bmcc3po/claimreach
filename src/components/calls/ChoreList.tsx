@@ -128,6 +128,7 @@ function Retainer({ v }: { v: any }) {
       <div className="ch-q ch-wide">
         {v.agreementOpen && (
           <div className="ch-row">
+            {v.signed && v.openFile && <button type="button" className="ch-btn ch-line" onClick={v.openFile}>Review client-signed PDF in File</button>}
             <button type="button" className="ch-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel || "Complete the agreement"}</button>
             <button type="button" className="ch-btn ch-line" onClick={v.leaveForQa}>Finish later</button>
           </div>

@@ -22,6 +22,7 @@ export default function CaseSigning({ leadId, claimId, role }: { leadId: string;
   const [signer, setSigner] = useState({ name: "", phone: "", email: "", via: "Text", template: "" });
   const [reason, setReason] = useState("");
   const [link, setLink] = useState("");
+  const [openedSignedPreview, setOpenedSignedPreview] = useState<string | null>(null);
   const q = new URLSearchParams({ lead_id: leadId, ...(claimId ? { claim_id: claimId } : {}) }).toString();
   async function load() {
     try {
@@ -36,11 +37,11 @@ export default function CaseSigning({ leadId, claimId, role }: { leadId: string;
     } catch (e: any) { setError(e.message); }
   }
   useEffect(() => { void load(); }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
-  async function action(url: string, body: any) {
+  async function action(url: string, body: any, successMessage?: string) {
     setBusy(true); setError(""); setMessage("");
     try {
       const result = await json(url, { lead_id: leadId, claim_id: claimId, ...body });
-      setMessage(result.warning || result.note || result.delivered || "Saved.");
+      setMessage(successMessage || result.warning || result.note || result.delivered || "Saved.");
       if (result.link) setLink(result.link);
       await load();
     } catch (e: any) { setError(e.message); }
@@ -48,6 +49,9 @@ export default function CaseSigning({ leadId, claimId, role }: { leadId: string;
   }
   const mva = status?.case_type === "mva";
   const resume = `/app/${encodeURIComponent(data?.lead?.lead_no || leadId)}?claim=${encodeURIComponent(claimId || data?.claim_id || "")}`;
+  const currentAgreement = (data?.agreements || []).find((a: any) => a.id === status?.agreement_id);
+  const clientSigned = status?.status === "signed" && !status?.complete && currentAgreement?.status === "signed";
+  const reviewInDesk = `${resume}&review=${encodeURIComponent(status?.agreement_id || "")}`;
   const resign = status?.emergency?.needs_resign === true && status?.emergency?.status === "signed";
   const live = ["sent", "opened", "signed"].includes(status?.status) && !resign;
   const unavailable = busy || !status || !!data?.lead?.archived;
@@ -60,7 +64,15 @@ export default function CaseSigning({ leadId, claimId, role }: { leadId: string;
     {data && <div className="case-signing-summary">
       <strong>{status?.emergency?.needs_resign ? "Emergency packet · DocuSeal re-sign needed" : status?.complete ? "Signed packet complete" : status?.status === "signed" ? "Client signed · office completion needed" : status?.status === "ready" ? "Ready to prepare" : status?.status || "Agreement status unavailable"}</strong>
       <p>The agreement and its history stay with this matter. Review the recipient and campaign before sending.</p>
-      {mva ? <a className="btn" href={resume}>Open agreement in intake</a> : <>
+      {clientSigned && <div className="case-signing-review" role="group" aria-label="Review client-signed agreement">
+        <p>The client signed. Open their signed copy, check the name and contract, then record your review before the office signature. This is the client-signed copy; the final certificate comes after the office step.</p>
+        {currentAgreement.client_signed_url ? <div className="row">
+          <a className="btn ghost sm" href={currentAgreement.client_signed_url} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedSignedPreview(currentAgreement.id)}>View client-signed PDF</a>
+          {!currentAgreement.agent_reviewed_at && <button type="button" className="btn sm" disabled={unavailable || openedSignedPreview !== currentAgreement.id} onClick={() => void action("/api/calls/esign/review", { agreement_id: currentAgreement.id }, "Review recorded. Return to ClaimReach Desk to finish the office signature or send a correction.")}>I reviewed this signed copy</button>}
+          {currentAgreement.agent_reviewed_at && <span className="muted">Reviewed by {currentAgreement.agent_reviewed_by || "staff"} on {new Date(currentAgreement.agent_reviewed_at).toLocaleString()}</span>}
+        </div> : <p role="status" className="save-msg warn">The client-signed PDF is not available here yet. Refresh status; do not complete the office signature until you can inspect it.</p>}
+      </div>}
+      {mva ? <a className="btn" href={clientSigned ? reviewInDesk : resume}>{clientSigned ? "Open File in ClaimReach Desk" : "Open agreement in intake"}</a> : <>
         {!live && <div className="case-signing-fields">
           <label>Signer name<input value={signer.name} onChange={(e) => setSigner({ ...signer, name: e.target.value })} /></label>
           <label>Send by<select value={signer.via} onChange={(e) => setSigner({ ...signer, via: e.target.value })}><option>Text</option><option>Email</option></select></label>
@@ -76,7 +88,7 @@ export default function CaseSigning({ leadId, claimId, role }: { leadId: string;
     <h3>Agreement history</h3>
     {(data?.agreements || []).map((a: any) => <article className="case-document-row" key={a.id}>
       <div><strong>{a.name || "Agreement"}</strong><div className="muted">{a.signer} · {a.status}{a.signed ? ` · ${new Date(a.signed).toLocaleString()}` : ""}</div>{a.void_reason && <div>Void reason: {a.void_reason}</div>}{a.error && <p role="status">{a.error}</p>}</div>
-      <div className="row">{a.signed_url && <a className="btn ghost sm" href={a.signed_url} target="_blank" rel="noreferrer">{a.status === "voided" ? "Voided copy" : "Signed PDF"}</a>}{a.cert_url && <a className="btn ghost sm" href={a.cert_url} target="_blank" rel="noreferrer">Audit trail</a>}{a.can_void && <button className="btn ghost sm" disabled={busy} onClick={() => { const why = window.prompt("Why is this agreement being voided? The original stays in history."); if (why?.trim()) void action("/api/calls/esign/void", { id: a.id, reason: why.trim() }); }}>Void</button>}</div>
+      <div className="row">{a.client_signed_url && <a className="btn ghost sm" href={a.client_signed_url} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedSignedPreview(a.id)}>{a.status === "voided" ? "Original client-signed PDF" : "View client-signed PDF"}</a>}{a.signed_url && <a className="btn ghost sm" href={a.signed_url} target="_blank" rel="noreferrer">{a.status === "voided" ? "Voided copy" : "Signed PDF"}</a>}{a.cert_url && <a className="btn ghost sm" href={a.cert_url} target="_blank" rel="noreferrer">Audit trail</a>}{a.can_void && <button className="btn ghost sm" disabled={busy} onClick={() => { const why = window.prompt("Why is this agreement being voided? The original stays in history."); if (why?.trim()) void action("/api/calls/esign/void", { id: a.id, reason: why.trim() }); }}>Void</button>}</div>
     </article>)}
     {data && !data.agreements?.length && <p className="muted">No DocuSeal agreement on this matter yet.</p>}
     <details className="case-emergency"><summary>Emergency signing · DocuSeal unavailable</summary>
