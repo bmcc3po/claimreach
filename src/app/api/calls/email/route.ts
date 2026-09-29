@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leadKeyOf } from "@/lib/lead-key";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
-import { requireStaff, LEAD_CALL_COLS } from "@/lib/mva-call/server";
+import { requireStaff } from "@/lib/mva-call/server";
 import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/report";
 import { signedPdfAttachment } from "@/lib/signed-docs";
 import { sendEmail } from "@/lib/email";
 import { recordAudit } from "@/lib/audit";
+import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
+import { matterRowsFilter } from "@/lib/matter";
 
 export const runtime = "edge";
 
@@ -32,19 +34,24 @@ export async function POST(req: NextRequest) {
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return NextResponse.json({ error: "That email is not valid." }, { status: 400 });
 
-  const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
-  if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  const [{ data: call }, { data: sub }] = await Promise.all([
-    sb.from("intake_calls").select("answers").eq("lead_id", leadId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
-    sb.from("esign_submissions").select("id, status, template_key, signer_name, injured_name, sent_at, signed_at, completed_at, completed_pdf_path")
-      .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-  ]);
+  const context = await resolveSigningMatter(sb, leadId, { claimId: b?.claim_id });
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  const lead = { ...context.lead, campaign_id: context.campaignId, campaign: context.matter.claim.campaign ?? context.lead.campaign,
+    case_type: context.matter.claim.claim_type ?? context.lead.case_type };
+  const selected = await getMatterAgreement(sb, context.lead, context.matter, b?.agreement_id);
+  if (!selected.ok) return NextResponse.json({ error: selected.error }, { status: selected.status });
+  const emergency = await getMatterEmergency(sb, context.lead, context.matter);
+  if (!emergency.ok) return NextResponse.json({ error: emergency.error }, { status: emergency.status });
+  const sub = agreementIsVoided(selected.row) || emergencySupersedes(selected.row, emergency.row) ? null : selected.row;
+  const { data: call, error: callError } = await sb.from("intake_calls").select("answers").eq("lead_id", leadId)
+    .or(matterRowsFilter(context.matter)).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  if (callError) return NextResponse.json({ error: `Could not read this matter's intake: ${callError.message}. Nothing was emailed.` }, { status: 500 });
 
-  const report = caseReport(lead, call?.answers || {}, sub);
-  const link = `${new URL(req.url).origin}/app/${leadKeyOf(lead)}`;
+  const report = caseReport(lead, call?.answers || context.matter.claim.answers?.mva_call || {}, sub);
+  const link = `${new URL(req.url).origin}/app/${leadKeyOf(lead)}?claim=${encodeURIComponent(context.matter.claim.id)}`;
   const attachments: { filename: string; content: string }[] = [];
   let attachError = "";
-  if (attach && sub?.completed_pdf_path) {
+  if (attach && sub?.status === "completed" && sub?.completed_pdf_path) {
     const a = await signedPdfAttachment(supabaseAdmin(), sub.completed_pdf_path, `${report.name} agreement`);
     if (a.file) attachments.push(a.file); else attachError = a.error || "";
   }

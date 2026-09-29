@@ -13,7 +13,7 @@
 // Phone: one long form. iPad: two fields across. Computer: three.
 // ============================================================================
 import { useEffect, useRef } from "react";
-import WhereField from "./WhereField";
+import IntakeQuestion, { AgreementRecipient } from "./IntakeQuestion";
 import PlaceField from "./PlaceField";
 import { OPEN_LINE, OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 import { DobField, SsnField } from "./SsnDob";
@@ -41,120 +41,6 @@ const fromCls = (list: any[]) => (list || []).map((c: any) => ({ label: c.label,
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="ch-field"><span className="ch-field-l">{label}</span>{children}</label>;
-}
-
-function Control({ c, v }: { c: any; v: any }) {
-  switch (c.kind) {
-    case "chips":
-    case "multi":
-      return (<>
-        <Opts opts={c.opts} />
-        {!!c.note && <Field label={c.note.label}><textarea className="ch-in ch-area" rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} /></Field>}
-        {!!c.other && <Field label="Explain"><input className="ch-in" value={c.other.value} onChange={c.other.set} /></Field>}
-        {!!c.cue && <div className="ch-note">{c.cue}</div>}
-      </>);
-    case "visit":
-      return (<>
-        <Opts opts={c.opts} />
-        <Field label="Or write the date">
-          <input className="ch-in ch-date" type="date" min={c.date.min || undefined} max={c.date.max || undefined} value={c.date.value ?? ""} onChange={c.date.set} />
-        </Field>
-        {!!c.date.why && <div className="ch-note ch-note-bad">{c.date.why}</div>}
-      </>);
-    case "crashdate": {
-      // Every choice shows. Writing a date is the same as picking Earlier and the date.
-      const earlier = c.opts.find((o: any) => o.label === "Earlier");
-      const days = c.opts.filter((o: any) => o.label !== "Earlier");
-      return (<>
-        <Opts opts={days} />
-        <Field label="Or write the date">
-          <input className="ch-in ch-date" type="date" max={c.date.max} value={c.date.value ?? ""}
-            onChange={(e) => { if (earlier) earlier.pick(); c.date.set(e); }} />
-        </Field>
-      </>);
-    }
-    case "where":
-      return <WhereField value={c.where.value} agreement={v.agreement} onChange={c.where.set} onDone={c.where.done} />;
-    case "text":
-      return <input className="ch-in" aria-label={c.field.ph} placeholder={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />;
-    case "notes":
-      return <textarea className="ch-in ch-area" rows={5} aria-label="Notes" placeholder={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />;
-    case "providers":
-      return (<>
-        {c.items.length > 0 && (
-          <ul className="ch-list">
-            {c.items.map((it: any, i: number) => (
-              <li key={i}><span>{it.label}</span><button type="button" className="ch-btn ch-line ch-sm" onClick={it.remove}>Remove</button></li>
-            ))}
-          </ul>
-        )}
-        <div className="ch-addrow">
-          <input className="ch-in" aria-label={c.draft.ph} placeholder={c.draft.ph} value={c.draft.value} onChange={c.draft.set}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); c.add(); } }} />
-          <button type="button" className="ch-btn ch-line" onClick={c.add}>Add</button>
-        </div>
-      </>);
-    case "carrier":
-      return (<>
-        <Field label="Type the company name">
-          <input className="ch-in" value={c.query.value} onChange={c.query.set} />
-        </Field>
-        <Opts opts={c.opts} />
-      </>);
-    case "people":
-      return (<>
-        <div className="ch-opts">
-          <Opt label={c.justMe.label} on={c.justMe.on} pick={c.justMe.pick} />
-          <button type="button" className="ch-btn ch-line" onClick={c.add}>Add a passenger</button>
-        </div>
-        {c.people.map((p: any, i: number) => (
-          <div key={i} className="ch-person">
-            <div className="ch-person-h">Passenger {i + 1}</div>
-            <div className="ch-addrow">
-              <input className="ch-in" aria-label="Passenger's name" placeholder="Passenger's name" value={p.name ?? ""} onChange={p.setName} />
-              <button type="button" className="ch-btn ch-line" onClick={p.remove}>Remove</button>
-            </div>
-            <Opts opts={fromCls(p.ages)} />
-            <Opts opts={p.hurts.map((a: any) => ({ label: a.label === "Yes" ? "Hurt" : "Not hurt", on: isOn(a.cls), pick: a.pick }))} />
-          </div>
-        ))}
-      </>);
-    case "car":
-      return (
-        <div className="ch-car">
-          <Field label="Year">
-            <select className="ch-in" value={c.year.value} onChange={c.year.set}>{c.year.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
-          </Field>
-          <Field label="Make"><input className="ch-in" value={c.make.value} onChange={c.make.set} /></Field>
-          <Field label="Model"><input className="ch-in" value={c.model.value} onChange={c.model.set} /></Field>
-        </div>
-      );
-    default:
-      return null;
-  }
-}
-
-const WIDE = new Set(["people", "notes"]);
-
-function Question({ q, v }: { q: any; v: any }) {
-  return (
-    <div id={`ch-q-${q.id}`} className={`ch-q${WIDE.has(q.c.kind) || q.rep ? " ch-wide" : ""}`}>
-      <div className="ch-q-h">
-        <span className="ch-q-l">{q.label}{q.optional && <span className="ch-q-opt"> (optional)</span>}</span>
-        {q.tone === "bad" && <span className="ch-flag">PROBLEM</span>}
-      </div>
-      {!!q.ask && <div className="ch-ask">If the PNC didn&apos;t say it, ask: <b>{q.ask}</b></div>}
-      <Control c={q.c} v={v} />
-      {q.rep && (
-        <div className="ch-rep">
-          <div className="ch-note">{v.rep.head}. Do not go looking for it. The PNC has to be the one who says they&apos;re unhappy.</div>
-          <Opts opts={fromCls(v.rep.unhappy)} />
-          {v.rep.isUnhappy && <Opts opts={fromCls(v.rep.kind)} />}
-          {v.rep.fender && <div className="ch-note">The firm charges these back. Close it warm and let it go.</div>}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function Say({ label, line, cue, small }: { label: string; line: string; cue?: string; small?: boolean }) {
@@ -204,19 +90,7 @@ function Retainer({ v }: { v: any }) {
         <Opts opts={fromCls(v.via)} />
         <div className="ch-note">{v.viaNote}</div>
       </div>
-      {v.viaText && (
-        <div className="ch-q">
-          <div className="ch-q-h"><span className="ch-q-l">Text it to</span></div>
-          {(v.textTo || []).length > 0 && <Opts opts={fromCls(v.textTo)} />}
-          {v.textToOther && <Field label={v.herPhoneOk ? "Number to text it to" : "PNC's cell"}><input className="ch-in" type="tel" inputMode="tel" value={v.f.phone.value ?? ""} onChange={v.f.phone.set} /></Field>}
-        </div>
-      )}
-      {v.viaEmail && (
-        <div className="ch-q">
-          <div className="ch-q-h"><span className="ch-q-l">PNC's email</span></div>
-          <input className="ch-in" type="email" inputMode="email" autoComplete="off" aria-label="PNC's email" value={v.f.email.value ?? ""} onChange={v.f.email.set} />
-        </div>
-      )}
+      <div className="ch-q"><AgreementRecipient v={v} presentation="chore" /></div>
       <div className="ch-wide ch-sendbox">
         {!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener">Preview the agreement before you send it</a>}
         {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
@@ -264,7 +138,7 @@ function Retainer({ v }: { v: any }) {
         {v.agreementOpen && (
           <div className="ch-row">
             <button type="button" className="ch-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel || "Complete the agreement"}</button>
-            <button type="button" className="ch-btn ch-line" onClick={v.leaveForQa}>Leave it for QA in the morning</button>
+            <button type="button" className="ch-btn ch-line" onClick={v.leaveForQa}>Finish later</button>
           </div>
         )}
         {v.agreementClosed && <div className="ch-note">{v.agreementNote}</div>}
@@ -363,7 +237,7 @@ export default function ChoreList({ v }: { v: any }) {
                 {!!gap.sub && <div className="ch-note">{gap.sub}</div>}
               </div>
             )}
-            {r.id === "retainer" ? <Retainer v={v} /> : secQs(r.id).map((q: any) => <Question key={q.id} q={q} v={v} />)}
+            {r.id === "retainer" ? <Retainer v={v} /> : secQs(r.id).map((q: any) => <IntakeQuestion key={q.id} q={q} v={v} presentation="chore" />)}
           </div>
 
           <div className="ch-actions">

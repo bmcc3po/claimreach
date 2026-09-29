@@ -44,7 +44,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
   useEffect(() => { setPath(window.location.pathname + window.location.search); }, []);
   const agent = role === "agent";
   const links = [
-    ...(!agent ? [{ href: "/dashboard", icon: "home", label: "Home" }] : []),
+    { href: "/dashboard", icon: "home", label: "Dashboard" },
     { href: "/app", icon: "mobile", label: "Calls" },
     { href: "/leads", icon: "files", label: "Leads" },
     { href: "/signed", icon: "signed", label: "Signed" },
@@ -55,7 +55,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
   return (
     <>
       <nav className="cd-rail" aria-label="Main menu">
-        <a className="cd-mark" href={agent ? "/app" : "/dashboard"} aria-label="ClaimReach home">
+        <a className="cd-mark" href="/dashboard" aria-label="ClaimReach dashboard">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/cr-mark.png" alt="" />
         </a>
@@ -98,7 +98,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
           )}
         </div>
         <a className="cc-chrome-new" href="/app?new=1"><Icon name="headset" size={16} />New call</a>
-        {!agent && <FullSiteLink />}
+        <FullSiteLink />
       </header>
     </>
   );
@@ -111,8 +111,12 @@ function FullSiteLink() {
   useEffect(() => {
     try {
       const m = window.location.pathname.match(/^\/app\/([^\/]+)$/);
-      if (m && m[1] && !["new", "search"].includes(m[1])) setHref(`/leads/${decodeURIComponent(m[1])}?classic=1`);
+      if (m && m[1] && !["new", "search"].includes(m[1])) {
+        const q = new URLSearchParams(window.location.search);
+        q.delete("text"); q.delete("classic");
+        setHref(`/leads/${encodeURIComponent(decodeURIComponent(m[1]))}${q.size ? `?${q}` : ""}`);
+      }
     } catch { /* keep the dashboard */ }
   }, []);
-  return <a className="cc-chrome-link" href={href}>Full site</a>;
+  return <a className="cc-chrome-link" href={href}>{href === "/dashboard" ? "Dashboard" : "Review case"}</a>;
 }

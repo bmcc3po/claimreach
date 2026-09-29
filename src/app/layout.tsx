@@ -1,6 +1,7 @@
 import "./globals.css";
 import "./ios.css";
 import "./clean.css";
+import "./workspace.css";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {

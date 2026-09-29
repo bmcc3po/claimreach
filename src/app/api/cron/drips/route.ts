@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { dripDispatchEnabled, dripOffResult } from "@/lib/drip-dispatch";
 export const runtime = "edge";
 
 // Scheduled drip processor. Requires CRON_SECRET via x-cron-secret header.
@@ -9,6 +10,10 @@ export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const provided = req.headers.get("x-cron-secret");
   if (!secret || provided !== secret) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  // Kill switch (src/lib/drip-dispatch.ts): off unless DRIP_DISPATCH_ENABLED
+  // is exactly "on". A deliberate hold, so the scheduler gets a 200 that
+  // says sending is off and nothing moved.
+  if (!dripDispatchEnabled()) return NextResponse.json({ ...dripOffResult(), ran_at: new Date().toISOString() });
 
   const admin = supabaseAdmin();
   const { data: due } = await admin.from("drips_due").select("*").limit(500);

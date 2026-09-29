@@ -13,6 +13,7 @@
 // ============================================================================
 import { normPhone } from "@/lib/comms";
 import { mailColumnsFrom } from "./us-address";
+import { incidentColumns } from "./standard-fields";
 
 export type Fields = Record<string, unknown>;
 
@@ -37,7 +38,11 @@ export const ALIASES: Record<string, string[]> = {
   first: ["firstname", "first", "fname", "givenname"],
   last: ["lastname", "last", "lname", "surname", "familyname"],
   name: ["name", "fullname", "claimantname", "clientname", "contactname"],
+  // A home number still stands in as THE phone when it is the only one sent.
   phone: ["phone", "cellphone", "cell", "mobile", "mobilephone", "phonenumber", "primaryphone", "homephone", "phone1"],
+  homePhone: ["homephone", "phonehome", "homenumber", "landline"],
+  workPhone: ["workphone", "phonework", "worknumber", "officephone", "businessphone"],
+  altPhone: ["altphone", "phonealt", "alternatephone", "alternativephone", "alternatenumber", "secondaryphone", "otherphone", "phone2"],
   email: ["email", "emailaddress", "mail"],
   dob: ["dob", "dateofbirth", "birthdate", "birthday"],
   addr1: ["address", "address1", "street", "streetaddress", "mailingaddress", "homeaddress"],
@@ -72,6 +77,7 @@ export interface NormalizedLead {
   leadId: string | null; vendorLeadId: string | null;
   first: string | null; last: string | null; name: string | null;
   phone: string | null; email: string | null; dob: string | null;
+  homePhone: string | null; workPhone: string | null; altPhone: string | null;
   addr1: string | null; city: string | null; state: string | null; zip: string | null;
   caseType: string | null; channel: string | null; marketer: string | null; adCampaign: string | null;
   description: string | null; doi: string | null; accidentState: string | null; accidentCity: string | null;
@@ -165,6 +171,8 @@ export async function ingestLead(admin: any, opts: {
   via: "lawruler" | "marketer";
   /** Marketer name from the door they used, when the payload does not say. */
   marketerName?: string | null;
+  /** Explicit historical recovery must not publish a new-live-lead event. */
+  historical?: boolean;
 }): Promise<IngestResult> {
   const { lead: n, campaign: camp, via } = opts;
   const firmId = camp.firm_id;
@@ -174,18 +182,22 @@ export async function ingestLead(admin: any, opts: {
   if (via === "lawruler" && !lrId) return { ok: false, status: 400, error: "missing LeadID" };
   if (!lrId && phoneNorm.length !== 10 && !n.email) return { ok: false, status: 400, error: "a lead needs a phone number or email" };
 
-  const COLS = "id, lead_no, first_name, last_name, claimant_name, phone, email, dob, mail_addr1, mail_city, mail_state, mail_zip, marketing_source, case_description, lawruler_url, lawruler_ref_no, external_id, campaign_id";
+  // Every column `want` can fill is read here, so "fill blanks only" sees what the file already has.
+  const COLS = "id, lead_no, first_name, last_name, claimant_name, phone, email, dob, mail_addr1, mail_city, mail_state, mail_zip, marketing_source, case_description, lawruler_url, lawruler_ref_no, external_id, campaign_id, home_phone, work_phone, phone_alt, incident_start, incident_city, incident_state";
+  // A failed lookup stops here: guessing "no match" would make a second file.
   let existing: any = null;
   if (lrId) {
-    const { data } = await admin.from("leads").select(COLS).eq("firm_id", firmId)
+    const { data, error } = await admin.from("leads").select(COLS).eq("firm_id", firmId)
       .or(`lawruler_ref_no.eq.${lrId},external_id.eq.${lrId}`)
       .order("created_at", { ascending: false }).limit(1);
+    if (error) return { ok: false, status: 500, error: `lookup: ${error.message}` };
     existing = data?.[0] ?? null;
   }
   if (!existing && phoneNorm.length === 10) {
     const since = new Date(Date.now() - 30 * 86400000).toISOString();
-    const { data } = await admin.from("leads").select(COLS).eq("campaign_id", camp.id).eq("phone_norm", phoneNorm)
+    const { data, error } = await admin.from("leads").select(COLS).eq("campaign_id", camp.id).eq("phone_norm", phoneNorm)
       .is("archived_at", null).gte("created_at", since).order("created_at", { ascending: false }).limit(1);
+    if (error) return { ok: false, status: 500, error: `lookup: ${error.message}` };
     existing = data?.[0] ?? null;
   }
 
@@ -204,12 +216,22 @@ export async function ingestLead(admin: any, opts: {
     case_description: n.description,
     lawruler_url: n.leadLink && /^https?:\/\//i.test(n.leadLink) ? n.leadLink : null,
     lawruler_ref_no: lrId,
+    // Standard fields (Astra round 7b): the other numbers and where and when
+    // the incident happened land in their own columns, not only in
+    // vendor_fields, so the file, the export and webhooks show them.
+    home_phone: n.homePhone,
+    work_phone: n.workPhone,
+    phone_alt: n.altPhone,
+    ...incidentColumns({ date: n.doi, city: n.accidentCity, state: n.accidentState }),
   };
 
   let leadId: string, leadNo: string | null, created = false;
   if (existing) {
     const patch: Record<string, any> = {};
     for (const [k, v] of Object.entries(want)) if (v != null && v !== "" && (existing[k] == null || existing[k] === "")) patch[k] = v;
+    // Where it happened is one answer: a file that already has a city or a
+    // state keeps both, so a resend never pairs its city with another state.
+    if (String(existing.incident_city ?? "").trim() || String(existing.incident_state ?? "").trim()) { delete patch.incident_city; delete patch.incident_state; }
     if (lrId && !existing.external_id) patch.external_id = lrId;
     if (!existing.campaign_id) { patch.campaign_id = camp.id; patch.campaign = camp.name; patch.case_type = camp.case_type; }
     if (Object.keys(patch).length) {
@@ -246,10 +268,10 @@ export async function ingestLead(admin: any, opts: {
     meta: { source: via, lawruler_lead_id: lrId, marketer: n.marketer || opts.marketerName || null, channel: n.channel, status: n.status },
   }).then(() => null, () => null);
 
-  if (created && n.phone) {
+  if (created && n.phone && !opts.historical) {
     try { const { reconcileUnmatched } = await import("@/lib/comms"); await reconcileUnmatched(leadId, n.phone, firmId); } catch (e) { console.error("reconcile failed", e); }
   }
-  if (created) {
+  if (created && !opts.historical) {
     try {
       const { fireEvent } = await import("@/lib/webhook-deliver");
       await fireEvent(firmId, "lead.created", { lead_id: leadId, lead_no: leadNo, ...want, source: via }, { campaignId: camp.id });

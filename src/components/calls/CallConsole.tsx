@@ -18,6 +18,8 @@ export interface ConsoleInit {
   /** The ONE matter this call works, pinned when the call opened (round 7). */
   claimId: string;
   callId: string | null;
+  agreementId?: string | null;
+  emergency?: { needsResign: boolean; status: string } | null;
   startedAt: number;
   /** Open the text sheet on arrival (from a text on the home screen). */
   openText?: boolean;
@@ -37,7 +39,7 @@ async function post(url: string, body: unknown): Promise<any> {
   const d = await r.json().catch(() => ({}));
   if (!r.ok || d?.error) {
     const err: any = new Error(d?.error || (r.status >= 500
-      ? `The server did not answer (${r.status}). Nothing went out. Try again in a moment.`
+      ? `The server could not confirm the result (${r.status}). Check the file before trying again.`
       : `That did not go through (${r.status}).`));
     err.status = r.status; err.ended = !!d?.ended;
     throw err;
@@ -51,10 +53,18 @@ function todayMDY(): string {
 }
 
 export default function CallConsole({ init }: { init: ConsoleInit }) {
+  return <MatterCallConsole key={`${init.leadId}:${init.claimId}`} init={init} />;
+}
+
+function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const router = useRouter();
   const [, bump] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const callId = useRef<string | null>(init.callId);
+  const agreementId = useRef<string | null>(init.agreementId ?? null);
+  const emergencyResign = useRef(false);
+  const [needsResign, setNeedsResign] = useState(!!init.emergency?.needsResign);
+  const [emergencyStatus, setEmergencyStatus] = useState(init.emergency?.status || "");
   const eng = useRef<CallEngine | null>(null);
   const lastSaved = useRef("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -67,6 +77,8 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   // A touch screen gets the iPad layout even when it is as wide as a computer.
   const [wide, setWide] = useState(false);
   const [touch, setTouch] = useState(false);
+  const [utilityOpen, setUtilityOpen] = useState(false);
+  const utilityRef = useRef<HTMLDivElement | null>(null);
   // When the last autosave landed, for "Saved at 2:14 PM" (never shown after a failed write).
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [deskTab, setDeskTabState] = useState<DeskTab>(init.openText ? "texts" : "know");
@@ -85,10 +97,13 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         e().setState({ send: { ...s.send, status: "sending", error: "" } });
         post("/api/calls/esign", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current,
+          emergency_resign: emergencyResign.current,
           signer_name: s.send.client, injured_name: s.send.who === "Someone else" ? s.send.injured : s.send.client,
           via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
           nv_variant: s.send.nvVariant, nv_reason: s.send.nvReason,
         }).then((d) => {
+          agreementId.current = d.agreement_id || d.id || agreementId.current;
+          emergencyResign.current = false; setNeedsResign(false);
           e().setState({ send: { ...e().state.send, status: d.status || "sent", error: d.warning || "" } });
         }).catch((err) => {
           e().setState({ send: { ...e().state.send, status: "ready", error: err.message } });
@@ -103,7 +118,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
         const mark = (v: string) => e().setState({ file: { ...e().state.file, pax: { ...e().state.file.pax, [i]: v } } });
         mark("sending");
         post("/api/calls/esign", {
-          lead_id: leadId, call_id: callId.current, pax_index: i,
+          lead_id: leadId, claim_id: init.claimId, call_id: callId.current, pax_index: i,
           signer_name: minor ? s.send.client : name, injured_name: name,
           // An adult passenger's agreement goes to THEIR cell or email; only a
           // minor's goes to the caller, who signs as parent or guardian. The
@@ -122,7 +137,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
       completeAgreement() {
         const f = e().state.file;
         e().setState({ file: { ...f, error: "" } });
-        post("/api/calls/esign/complete", { lead_id: leadId, claim_id: init.claimId, dob: f.dob, ssn: f.ssn })
+        post("/api/calls/esign/complete", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current, dob: f.dob, ssn: f.ssn })
           .then(() => e().setState({ file: { ...e().state.file, agreement: "done", ssn: "", error: "" } }))
           .catch((err) => e().setState({ file: { ...e().state.file, error: err.message } }));
       },
@@ -132,7 +147,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
           ? "The PNC already signed this one. Why are you voiding it? (Owner or admin only. The signed copy stays in the file history.)"
           : "Why are you voiding this agreement? (For example: wrong agreement, wrong number.)") : null;
         if (!why || !why.trim()) return;
-        post("/api/calls/esign/void", { lead_id: leadId, claim_id: init.claimId, reason: why.trim() })
+        post("/api/calls/esign/void", { lead_id: leadId, claim_id: init.claimId, id: agreementId.current, reason: why.trim() })
           .then((d) => e().setState({
             send: { ...e().state.send, status: "ready", error: d?.note ? `Voided. ${d.note}` : "Voided. Pick the right agreement and send it." },
             file: { ...e().state.file, agreement: "open" },
@@ -141,7 +156,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
       },
       resendLink() {
         const t = e().state.text;
-        post("/api/calls/esign/resend", { lead_id: leadId })
+        post("/api/calls/esign/resend", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current })
           .then(() => { e().setState({ text: { ...e().state.text, error: "" } }); loadComms(); })
           .catch((err) => e().setState({ text: { ...t, error: err.message } }));
       },
@@ -177,7 +192,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
           e().setState({ saved: true, dispo: { ...e().state.dispo, saving: false, saved: true, error: "", serverNote: note } });
         }).catch((err) => e().setState({ dispo: { ...e().state.dispo, saving: false, error: err.message } }));
       },
-      home() { router.push("/app"); },
+      home() { void flushSave().then((ok) => { if (ok) router.push("/dashboard"); }); },
       ask(text: string) {
         const q = String(text || "").trim();
         if (!q) return;
@@ -193,6 +208,7 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   const engine = eng.current;
   engine.onChange = () => bump((x) => x + 1);
   engine.props.now = now;
+  engine.props.agreementSuperseded = needsResign;
 
   // Each agent's view (Guided, Full Intake, Q&A) is remembered on their device
   // and used on the next call. Applied after the first paint so the server
@@ -314,12 +330,12 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     const on = (e: any) => {
       const d = e?.detail || {};
       if (d.leadId !== init.leadId) return;
-      engine.applyRecord({ phone: d.phone, email: d.email, addr: d.addr });
+      engine.applyRecord({ phone: d.phone, email: d.email, addr: d.addr, name: d.name, previousName: d.previousName });
     };
     // An agreement voided from the File tab opens the send again here.
     const onVoid = (e: any) => {
       const d = e?.detail || {};
-      if (d.leadId !== init.leadId) return;
+      if (d.leadId !== init.leadId || (d.claimId && d.claimId !== init.claimId)) return;
       if (d.pax == null) engine.setState({ send: { ...engine.state.send, status: "ready", error: "Voided. Pick the right agreement and send it." }, file: { ...engine.state.file, agreement: "open" } });
       else { const pax = { ...(engine.state.file.pax || {}) }; delete pax[String(d.pax)]; engine.setState({ file: { ...engine.state.file, pax } }); }
     };
@@ -337,17 +353,26 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     if (!waiting) return;
     const t = setInterval(async () => {
       try {
+        const requestedAgreement = agreementId.current;
         const q = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current || "" });
         const r = await fetch(`/api/calls/esign?${q}`);
         const d = await r.json();
         if (!r.ok || d.error) return;
         const cur = engine.state;
-        if (d.status && d.status !== "ready" && d.status !== cur.send.status) engine.setState({ send: { ...cur.send, status: d.status } });
-        // Voided or expired somewhere else: the send opens again here.
-        if (d.status === "ready" && (cur.send.status === "sent" || cur.send.status === "opened")) {
-          engine.setState({ send: { ...cur.send, status: "ready", error: "That agreement is no longer live (voided or expired). Pick the right one and send it." } });
+        // Passenger polling can continue while an emergency re-sign is being
+        // prepared. Its old primary must not lock the draft again. A response
+        // started before a successful replacement send must not replace its ID.
+        if (!emergencyResign.current && agreementId.current === requestedAgreement) {
+          setNeedsResign(!!d.emergency?.needs_resign);
+          setEmergencyStatus(d.emergency?.status || "");
+          agreementId.current = d.agreement_id || d.id || agreementId.current;
+          if (d.status && d.status !== "ready" && d.status !== cur.send.status) engine.setState({ send: { ...cur.send, status: d.status } });
+          // Voided or expired somewhere else: the send opens again here.
+          if (d.status === "ready" && (cur.send.status === "sent" || cur.send.status === "opened")) {
+            engine.setState({ send: { ...cur.send, status: "ready", error: "That agreement is no longer live (voided or expired). Pick the right one and send it." } });
+          }
+          if (d.complete && cur.file.agreement !== "done") engine.setState({ file: { ...engine.state.file, agreement: "done" } });
         }
-        if (d.complete && cur.file.agreement === "open") engine.setState({ file: { ...engine.state.file, agreement: "done" } });
         if (d.pax && Object.keys(d.pax).length) engine.setState({ file: { ...engine.state.file, pax: { ...engine.state.file.pax, ...d.pax } } });
       } catch { /* next tick */ }
     }, 3000);
@@ -391,19 +416,35 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     return () => [mq, mw, mt].forEach((m) => m.removeEventListener("change", on));
   }, []);
   useEffect(() => {
-    deskTextsOpen.current = deskOn && deskTab === "texts";
+    deskTextsOpen.current = (deskOn || utilityOpen) && deskTab === "texts";
     // Arriving from a text on a desktop: the thread opens in the panel, not a sheet.
     if (deskOn && engine.state.text.open) { engine.setState({ text: { ...engine.state.text, open: false } }); setDeskTab("texts"); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deskOn, deskTab]);
+  }, [deskOn, utilityOpen, deskTab]);
   // Texts tab on screen: check every 5 seconds, same as the open sheet.
   useEffect(() => {
-    if (!deskOn || deskTab !== "texts") return;
+    if ((!deskOn && !utilityOpen) || deskTab !== "texts") return;
     void loadComms();
     const t = setInterval(() => { void loadComms(); }, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deskOn, deskTab]);
+  }, [deskOn, utilityOpen, deskTab]);
+
+  useEffect(() => {
+    if (deskOn || !utilityOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = utilityRef.current;
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setUtilityOpen(false); return; }
+      if (event.key !== "Tab" || !dialog) return;
+      const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]')).filter((el) => el.getClientRects().length);
+      const first = controls[0]; const last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", keys);
+    return () => { document.removeEventListener("keydown", keys); previous?.focus(); };
+  }, [deskOn, utilityOpen]);
   // Reaching Send on a desktop brings up the agreement preview.
   const phase = s.phase;
   useEffect(() => {
@@ -418,7 +459,12 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
   }, [ws]);
 
   const preview = previewInfo(engine.state, init);
-  const view: any = { ...v, leadId: init.leadId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
+  const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
+  view.emergencyNotice = needsResign ? "An emergency packet is on this matter. A DocuSeal re-sign is still required; the original remains in history." : "";
+  view.prepareResign = needsResign && emergencyStatus === "signed" ? () => {
+    emergencyResign.current = true;
+    engine.setState({ phase: "send", send: { ...engine.state.send, status: "ready", error: "" }, file: { ...engine.state.file, agreement: "open" } });
+  } : undefined;
   // Autosave, said plainly. "Saving" while a change is on its way; a failed
   // write shows the engine's "Not saved. Retrying." instead, never "Saved".
   const pending = snapshot !== lastSaved.current;
@@ -438,6 +484,12 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
     view.openFile = () => setDeskTab("file");
     view.openScripts = () => setDeskTab("know");
     view.textBadge = false;
+  } else {
+    const openUtility = (tab: DeskTab) => { setDeskTab(tab); setUtilityOpen(true); };
+    view.openCaseTools = () => openUtility("file");
+    view.openFile = () => openUtility("file");
+    view.openRetainer = () => openUtility("retainer");
+    view.onPreview = (ev: any) => { ev.preventDefault(); openUtility("retainer"); };
   }
   // Slide the divider to give the call or the panel more room. Remembered per
   // computer; double-click puts it back.
@@ -524,13 +576,14 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
           title="Drag to resize. Double-click to reset."
           onPointerDown={startSlide} onKeyDown={nudgeSlide} onDoubleClick={() => setCallW(null, true)} />
       )}
-      {deskOn && (
+      {(deskOn || utilityOpen) && <div ref={utilityRef} className={deskOn ? "cc-panel-host" : "cc-utility-dialog"} style={deskOn ? { display: "contents" } : { position: "fixed", inset: 0, zIndex: 90, background: "white", overflow: "auto" }} role={deskOn ? undefined : "dialog"} aria-modal={deskOn ? undefined : true} aria-label="Case tools">
+        {!deskOn && <button autoFocus type="button" className="cc-btn" style={{ margin: 12 }} onClick={() => setUtilityOpen(false)}>Back to intake</button>}
         <DeskPanel v={v} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
           summary={<WsHelper v={view} />}
           preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
-          focusLines={focusLines} phones={phones} leadId={init.leadId} onDialState={setDialState}
+          focusLines={focusLines} phones={phones} leadId={init.leadId} claimId={init.claimId} onDialState={setDialState}
           story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />
-      )}
+      </div>}
     </div>
   );
 }
@@ -561,7 +614,7 @@ function previewInfo(s: any, init: ConsoleInit): PreviewInfo {
     { label: "DOB and SSN", value: "Intake adds these after the PNC signs", ok: false, later: true, spot: "file" },
   ];
   if (!code || !signer) return { href: null, checks };
-  const q = new URLSearchParams({ lead_id: init.leadId, signer, injured: injured || signer, city, today, doi });
+  const q = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId, signer, injured: injured || signer, city, today, doi });
   if (nvFlat) q.set("nv_variant", "flat");
   return { href: `/api/calls/esign/preview?${q}`, checks };
 }

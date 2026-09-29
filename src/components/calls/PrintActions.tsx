@@ -3,7 +3,7 @@ import { useState } from "react";
 
 // Print, or email the whole case. When the agreement is complete, the signed
 // PDF goes along unless the sender turns it off (it has her DOB and SSN).
-export default function PrintActions({ leadId, hasPdf = false }: { leadId: string; hasPdf?: boolean }) {
+export default function PrintActions({ leadId, claimId, agreementId, hasPdf = false }: { leadId: string; claimId: string; agreementId?: string; hasPdf?: boolean }) {
   const [to, setTo] = useState("");
   const [attach, setAttach] = useState(true);
   const [msg, setMsg] = useState("");
@@ -13,7 +13,7 @@ export default function PrintActions({ leadId, hasPdf = false }: { leadId: strin
   async function send() {
     setBusy(true); setMsg(""); setBad(false);
     try {
-      const r = await fetch("/api/calls/email", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, to, attach: hasPdf && attach }) });
+      const r = await fetch("/api/calls/email", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, agreement_id: agreementId, to, attach: hasPdf && attach }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) throw new Error(d.error || `The email did not send (${r.status}).`);
       const sent = to;

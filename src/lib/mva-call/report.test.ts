@@ -1,6 +1,8 @@
 // Run: npx tsx src/lib/mva-call/report.test.ts
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { caseReport, caseReportHtml, caseReportText } from "./report";
 
 let passed = 0;
@@ -48,7 +50,8 @@ t("never the SSN, anywhere", () => {
   const html = caseReportHtml(r, { link: "https://claimreach.com/app/TMP-1181", attached: true });
   const text = caseReportText(r, "https://claimreach.com/app/TMP-1181");
   for (const out of [JSON.stringify(r), html, text]) { assert.ok(!out.includes("123456789")); assert.ok(!/\bSSN:/.test(out)); }
-  writeFileSync(process.env.REPORT_OUT || "/tmp/claude-0/report.html", html);
+  const reportPath = process.env.REPORT_OUT || join(mkdtempSync(join(tmpdir(), "claimreach-report-")), "report.html");
+  writeFileSync(reportPath, html);
 });
 
 t("an empty file still reads cleanly", () => {

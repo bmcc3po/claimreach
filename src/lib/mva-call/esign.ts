@@ -4,16 +4,69 @@
 // call it, so the two can never disagree about what happened.
 // ============================================================================
 import { getSubmission, statusFrom, STATUS_RANK, createTemplate, plainDocuSeal } from "@/lib/docuseal";
-import { setClaimStatusForLeads, claimScopeFor } from "@/lib/claim-status";
+import { setClaimStatusForLeads, queueFlagsFor } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
 import { listSubmissionDocs, uploadSignedDoc, SIGNED_BUCKET } from "@/lib/signed-docs";
 import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
-import { notifySigned } from "@/lib/notify-signed";
+import { notifySigned, signedNoticeDue } from "@/lib/notify-signed";
+import { resolveSigningMatter, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "./signing-matter";
+
+// Persisted with the signature transition so a crash or failed claim write
+// cannot leave a signed agreement permanently disconnected from its matter.
+const TRANSITION_PENDING = "[claim-transition-pending]";
+function pendingError(error: unknown): string {
+  const value = String(error || "").replaceAll(TRANSITION_PENDING, "").trim();
+  return [TRANSITION_PENDING, value].filter(Boolean).join(" ");
+}
+
+/** Repair the claim side of a recorded signature. Re-reading the current
+ * agreement prevents an old callback from resurrecting a voided/replaced
+ * agreement. Advanced/disqualified claims never move backwards on retry. */
+export async function recoverSignedTransition(admin: any, row: any, deps: {
+  setStatus?: typeof setClaimStatusForLeads;
+} = {}): Promise<boolean> {
+  const pending = String(row.error || "").includes(TRANSITION_PENDING);
+  if (!pending || !["signed", "completed"].includes(row.status) || row.voided_at) return true;
+  const context = await resolveSigningMatter(admin, row.lead_id, { claimId: row.claim_id });
+  if (!context.ok) return false;
+  const current = await getMatterAgreement(admin, context.lead, context.matter, row.id);
+  if (!current.ok || !current.row || current.row.voided_at || current.row.status === "voided") return false;
+  const emergency = await getMatterEmergency(admin, context.lead, context.matter);
+  if (!emergency.ok || emergencySupersedes(current.row, emergency.row)) return false;
+  const status = context.matter.claim.status || "new";
+  const alreadySigned = status === "signed" || status.startsWith("signed_") || ["delivered", "retained"].includes(status);
+  if (!alreadySigned && ["new", "contacting", "qualified", "esign_sent", "wip"].includes(status)) {
+    const result = await (deps.setStatus ?? setClaimStatusForLeads)({ leadIds: [row.lead_id], claimIds: [context.matter.claim.id],
+      status: "signed_grievous", expectedStatus: context.matter.claim.status, actorName: row.signer_name || "Client" }, { db: admin });
+    if (!result.ok) return false;
+  } else if (alreadySigned) {
+    // The setter may have saved the claim but failed its lead-flag write.
+    // Repair projections without replaying the status event/automations.
+    const [claims, statuses] = await Promise.all([
+      admin.from("claims").select("status").eq("lead_id", row.lead_id),
+      admin.from("statuses").select("*").order("sort"),
+    ]);
+    if (claims.error || statuses.error) return false;
+    const flags = queueFlagsFor((claims.data ?? []).map((c: any) => c.status), statuses.data ?? []);
+    const { error } = await admin.from("leads").update({ ...flags, ...(status.startsWith("signed") ? { stage: "intake_complete" } : {}) }).eq("id", row.lead_id);
+    if (error) return false;
+  }
+  if ((alreadySigned || ["new", "contacting", "qualified", "esign_sent", "wip"].includes(status)) && row.signed_at) {
+    const { error } = await admin.from("leads").update({ esign_date: officeDateISO(row.signed_at) }).eq("id", row.lead_id);
+    if (error) return false;
+  }
+  // Remove only our marker and only the exact error value we read; packet
+  // recovery or another writer's diagnostic must survive this cleanup.
+  const remaining = String(row.error || "").replaceAll(TRANSITION_PENDING, "").trim() || null;
+  const { error } = await admin.from("esign_submissions").update({ error: remaining })
+    .eq("id", row.id).eq("error", row.error).is("voided_at", null);
+  return !error;
+}
 
 // The office's calendar date (America/Chicago), never the UTC date: a signature
 // at 6 PM in Vegas belongs to "today", not tomorrow (Astra audit, Sep 27).
-export function officeDateISO(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+export function officeDateISO(at?: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(at ? new Date(at) : new Date());
 }
 
 /** Which packet set a campaign signs with. Only TMP MVA has one today. */
@@ -78,14 +131,18 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
  */
 export async function syncSubmission(admin: any, row: any, opts: { actorName?: string; origin?: string } = {}): Promise<string> {
   if (!row?.submission_id) return row?.status || "sent";
+  const fresh = await admin.from("esign_submissions").select("*").eq("id", row.id).maybeSingle();
+  if (fresh.error || !fresh.data) return row.status;
+  row = fresh.data;
   // A voided agreement stays voided: a late DocuSeal event never brings it
   // back or signs the matter with it (Brett, Sep 28).
   if (row.status === "voided" || row.voided_at) return "voided";
   // Durable notify retry: a signed agreement whose team email never went out
   // (failed send, crash after claiming) retries on ANY later sync, not only
   // the first signed transition (Astra round 5). notifySigned claims the
-  // marker atomically, so racing pollers still send exactly once.
-  if ((STATUS_RANK[row.status] ?? 0) >= STATUS_RANK.signed && !row.signed_notified_at) {
+  // marker atomically; the provider's bounded idempotency window protects retries.
+  await recoverSignedTransition(admin, row);
+  if (["signed", "completed"].includes(row.status) && signedNoticeDue(row)) {
     await notifySigned(admin, row, opts.origin);
   }
   if (row.status === "completed") {
@@ -104,6 +161,7 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
   const client = (sub.submitters || []).find((s) => s.role === "Client");
   const now = new Date().toISOString();
   const patch: Record<string, any> = { status: next, updated_at: now };
+  const firstSigned = !["signed", "completed"].includes(row.status) && ["signed", "completed"].includes(next);
   if (!row.opened_at && (STATUS_RANK[next] >= STATUS_RANK.opened)) patch.opened_at = client?.opened_at || now;
   if (!row.signed_at && (STATUS_RANK[next] >= STATUS_RANK.signed)) patch.signed_at = client?.completed_at || now;
 
@@ -138,29 +196,20 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
     }
   }
 
+  if (firstSigned || String(row.error || "").includes(TRANSITION_PENDING)) patch.error = pendingError(patch.error ?? row.error);
+
   // Only the request that actually moves the row does the side effects.
   const { data: moved, error } = await admin.from("esign_submissions").update(patch)
-    .eq("id", row.id).eq("status", row.status).select("id").maybeSingle();
+    .eq("id", row.id).eq("status", row.status).is("voided_at", null).select("id").maybeSingle();
   if (error) { console.error("esign sync update failed", error.message); return row.status; }
   if (!moved) return next;
 
-  const wasSigned = (STATUS_RANK[row.status] ?? 0) >= STATUS_RANK.signed;
-  if (!wasSigned && STATUS_RANK[next] >= STATUS_RANK.signed) {
-    // The signature belongs to THIS submission's matter: the lead's claim on
-    // the submission's campaign, never a sibling claim (Astra round 5).
-    // The signing's own matter: the claim stamped on the submission at send
-    // (round 7), else the lead's one matter on the submission's campaign.
-    // Ambiguity stops here rather than signing a sibling (Astra round 6).
-    const scope = await claimScopeFor(row.lead_id, row.campaign_id ?? null, { claimId: row.claim_id ?? null, db: admin });
-    const res = scope.ok
-      ? await setClaimStatusForLeads({ leadIds: [row.lead_id], claimIds: scope.claimIds, status: "signed_grievous", actorName: row.signer_name || "Client" })
-      : { ok: false, error: scope.error };
-    if (!res.ok) {
-      console.error("signed status failed", res.error);
+  if (firstSigned) {
+    const recovered = await recoverSignedTransition(admin, { ...row, ...patch });
+    if (!recovered) {
       await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: "ClaimReach", category: "retainer",
-        description: `The agreement is signed, but the file's status did not move: ${res.error}`, meta: { submission_id: row.submission_id } });
+        description: "The agreement is signed, but its case status still needs recovery. The next agreement check will retry.", meta: { submission_id: row.submission_id } });
     }
-    await admin.from("leads").update({ esign_date: officeDateISO() }).eq("id", row.lead_id);
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: row.signer_name || "Client", category: "retainer",
       description: `${row.signer_name || "The client"} signed the agreement (DocuSeal).`, meta: { submission_id: row.submission_id } });
     // Tell the team. Once per agreement, never blocks the signing.
@@ -269,7 +318,7 @@ async function retryCompletedFiles(admin: any, row: any): Promise<void> {
     }
     if (primary) {
       const { data: hit } = await admin.from("esign_submissions")
-        .update({ completed_pdf_path: primary, error: null })
+        .update({ completed_pdf_path: primary })
         .eq("id", row.id).is("completed_pdf_path", null).select("id");
       if (hit?.length) recovered.push("the signed PDF");
       else if (!have.includes(primary)) recovered.push("the signed PDF's stored bytes");

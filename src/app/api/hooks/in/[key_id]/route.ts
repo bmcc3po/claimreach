@@ -27,37 +27,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ key
   const cols = canonicalToLeadColumns(mapped);
 
   const firmId = key.firm_id;
-  const insert: any = {
-    firm_id: firmId,
-    first_name: cols.first_name,
-    last_name: cols.last_name,
-    claimant_name: cols.claimant_name,
-    phone: cols.phone,
-    email: cols.email,
-    dob: cols.dob,
-    mail_addr1: cols.mail_addr1,
-    mail_addr2: cols.mail_addr2,
-    mail_city: cols.mail_city,
-    mail_state: cols.mail_state,
-    mail_zip: cols.mail_zip,
-    handling_attorney: cols.handling_attorney,
-    marketing_source: cols.marketing_source,
-    // Standard fields (0109): home/work/alt phone, license, where and when.
-    home_phone: cols.home_phone,
-    work_phone: cols.work_phone,
-    phone_alt: cols.phone_alt,
-    dl_number: cols.dl_number,
-    incident_start: cols.incident_start,
-    incident_city: cols.incident_city,
-    incident_state: cols.incident_state,
-    case_type: cols.case_type ?? "motel_trafficking",
-    campaign: cols.campaign,
-    source_key: key_id,
-    external_id: cols.external_id,
-    // leads has no `status` column. The pipeline lives in `stage`
-    // (pipeline_stage enum), which already defaults to 'referral_received'.
-    // Naming a phantom column made Postgres reject the whole insert.
-  };
+  // Every column canonicalToLeadColumns fills is a real leads column, and it
+  // fills one for every writable standard field (contact, person, emergency
+  // contact, incident, case summary), so whatever a sender may set is stored.
+  // Blank values are left out so a column's default stands. Ids, status,
+  // ownership and SSN never come from the sender.
+  // leads has no `status` column. The pipeline lives in `stage`
+  // (pipeline_stage enum), which already defaults to 'referral_received'.
+  // Naming a phantom column made Postgres reject the whole insert.
+  const insert: any = { firm_id: firmId, source_key: key_id };
+  for (const [k, val] of Object.entries(cols)) if (val !== null && val !== undefined && val !== "") insert[k] = val;
+  insert.case_type = cols.case_type ?? "motel_trafficking";
   // never write the generated full_name column
   delete (insert as any).full_name;
 
@@ -71,7 +51,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ key
   if (error) { await log(admin, firmId, "inbound", "lead.in", "failed", 500, raw, error.message); return NextResponse.json({ error: error.message }, { status: 500 }); }
 
   // create a default claim for the case type
-  await admin.from("claims").insert({ firm_id: firmId, lead_id: lead.id, claim_type: insert.case_type, campaign: insert.campaign, status: "new" });
+  const { error: cErr } = await admin.from("claims").insert({ firm_id: firmId, lead_id: lead.id, claim_type: insert.case_type, campaign: insert.campaign ?? null, status: "new" });
+  if (cErr) {
+    await log(admin, firmId, "inbound", "lead.in", "failed", 500, raw, `claim: ${cErr.message}`);
+    return NextResponse.json({ error: `The file was made but its claim was not: ${cErr.message}`, lead_id: lead.id, lead_no: lead.lead_no }, { status: 500 });
+  }
 
   await admin.from("api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", key.id);
   await log(admin, firmId, "inbound", "lead.in", "received", 200, raw, null);

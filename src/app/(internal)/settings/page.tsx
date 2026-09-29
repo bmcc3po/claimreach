@@ -3,12 +3,21 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import DripManager from "@/components/DripManager";
 import DripRulesManager from "@/components/DripRulesManager";
+import InboundMediaReview from "@/components/InboundMediaReview";
+import LawRulerRecovery from "@/components/LawRulerRecovery";
+import { can } from "@/lib/permissions";
 
 export default async function SettingsPage() {
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
-  const { data: me } = await sb.from("app_users").select("full_name, role").eq("id", user!.id).maybeSingle();
+  const { data: me } = await sb.from("app_users").select("full_name, role, perm_overrides, active").eq("id", user!.id).maybeSingle();
   const isAdmin = me && ["owner", "admin"].includes(me.role);
+  const canRecover = isAdmin && me.active !== false && can(me.role, me.perm_overrides, "settings.manage") && can(me.role, me.perm_overrides, "leads.view");
+  const recoveryOptions = canRecover ? await Promise.all([
+    sb.from("firms").select("id, name").order("name"),
+    sb.from("statuses").select("key, label, qualify, active").order("sort"),
+    sb.from("dq_reasons").select("key, label, active").order("sort"),
+  ]) : null;
 
   return (
     <div>
@@ -19,6 +28,8 @@ export default async function SettingsPage() {
         <div className="vrow"><span className="vk">Role</span><span className="vv">{me?.role ?? "—"}</span></div>
         <div className="vrow"><span className="vk">Email</span><span className="vv">{user?.email}</span></div>
       </div>
+      <InboundMediaReview />
+      {canRecover && recoveryOptions && <LawRulerRecovery canApply={can(me.role, me.perm_overrides, "claims.status")} firms={recoveryOptions[0].data || []} statuses={recoveryOptions[1].data || []} reasons={recoveryOptions[2].data || []} loadError={recoveryOptions.some(r => r.error) ? "Could not load firms, statuses or disqualification reasons. Recovery is disabled until these options load." : null} />}
       <div style={{ maxWidth: 880, marginBottom: 16 }}>
         <DripRulesManager canEdit={!!isAdmin} />
       </div>

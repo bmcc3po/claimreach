@@ -54,7 +54,7 @@ t("caller, agent and firm fill the script", () => {
   assert.ok(legit.text.includes("{FIRM}"));
 });
 
-t("every top-level hole in CallView resolves", () => {
+t("every engine-owned top-level property in CallView resolves", () => {
   const src = readFileSync(new URL("../../components/calls/CallView.tsx", import.meta.url), "utf8");
   const roots = new Set(Array.from(src.matchAll(/\bv\.([A-Za-z_]\w*)/g)).map((m) => m[1]));
   roots.delete("leadId"); // added by CallConsole, not the engine
@@ -64,6 +64,11 @@ t("every top-level hole in CallView resolves", () => {
   roots.delete("ws"); // the layout, picked by CallConsole
   roots.delete("ssnRequireFull"); // campaign rule, added by CallConsole
   roots.delete("saveText"); roots.delete("saveNow"); // autosave line, added by CallConsole
+  // These depend on current provider evidence and responsive panel state.
+  // CallConsole supplies them; optional callbacks are intentionally absent
+  // when re-sign is unavailable or the case-tools panel is already inline.
+  roots.delete("emergencyNotice"); roots.delete("prepareResign");
+  roots.delete("openCaseTools");
   const states: Array<(e: CallEngine) => void> = [
     () => {},
     (e) => e.setState({ phase: "story" }),
@@ -437,7 +442,7 @@ t("full intake: switching views keeps every answer and lands in the same place",
   e.setState({ body: { ...e.state.body, pain: ["Neck"], done: { pain: true }, focus: "seen" } });
   // Answers only; "at" is where the agent is (the screen position), saved so
   // another device lands on the same section.
-  const answers = (x: any) => { const { at, ...rest } = x; return JSON.stringify(rest); };
+  const answers = (x: any) => { const { at, atQuestion, ...rest } = x; return JSON.stringify(rest); };
   const before = answers(e.persistable());
   e.setView("full");
   assert.equal(fiOf(e).openSec, "treatment");
@@ -534,6 +539,8 @@ t("chorelist: moving on with blanks says NEEDS AN ANSWER; the agreement out is D
   e.setState({ send: { ...e.state.send, status: "sent" } });
   assert.equal(chRow(e, "retainer").statusText, "DO THIS NOW");
   e.setState({ send: { ...e.state.send, status: "signed" } });
+  assert.notEqual(chRow(e, "retainer").statusText, "DONE"); // Signing does not complete office fields.
+  e.set("file", "agreement", "done");
   assert.equal(chRow(e, "retainer").statusText, "DONE");
 });
 
@@ -553,7 +560,7 @@ t("chorelist: FINISH INTAKE says what is not finished, then ends the call", () =
 t("chorelist: switching views keeps every answer and the spot", () => {
   const e = mk();
   e.setState({ phase: "body", story: { ...e.state.story, city: "Houston, TX", when: "Yesterday" }, body: { ...e.state.body, pain: ["Neck"], done: { pain: true }, focus: "seen" } });
-  const answers = (x: any) => { const { at, ...rest } = x; return JSON.stringify(rest); };
+  const answers = (x: any) => { const { at, atQuestion, ...rest } = x; return JSON.stringify(rest); };
   const before = answers(e.persistable());
   e.setView("chore");
   assert.equal(fiOf(e).openSec, "treatment");
@@ -773,6 +780,60 @@ t("void: offered once an agreement is out or signed, never before", () => {
   assert.equal(calls[calls.length - 1], "void");
   e.setState({ send: { ...e.state.send, status: "signed" } });
   assert.equal(e.renderVals().voidLabel, "Void the signed agreement");
+});
+
+t("name correction updates only matching unsent signer draft", () => {
+  const e = mk();
+  e.applyRecord({ name: "Maria Garcia", previousName: "Maria Lopez" });
+  assert.equal(e.props.callerName, "Maria Garcia");
+  assert.equal(e.state.send.client, "Maria Garcia");
+  assert.equal(e.state.send.nameReview, "");
+  assert.equal((e.persistable() as any).send.recordName, "Maria Garcia");
+});
+t("name correction preserves OBO signer and corrects injured person", () => {
+  const e = mk({ saved: { send: { who: "Someone else", client: "Guardian Lopez", injured: "Maria Lopez" } } });
+  e.applyRecord({ name: "Maria Garcia", previousName: "Maria Lopez" });
+  assert.equal(e.state.send.client, "Guardian Lopez");
+  assert.equal(e.state.send.injured, "Maria Garcia");
+});
+t("different draft signer needs explicit review rather than being overwritten", () => {
+  const e = mk(); e.set("send", "client", "Separate Signer");
+  e.applyRecord({ name: "Maria Garcia", previousName: "Maria Lopez" });
+  assert.equal(e.state.send.client, "Separate Signer");
+  assert.match(e.renderVals().nameReview, /Review/);
+  e.renderVals().useRecordName(); assert.equal(e.state.send.client, "Maria Garcia"); assert.equal(e.state.send.nameReview, "");
+});
+t("record correction never rewrites sent or signed agreement names", () => {
+  for (const status of ["sent", "opened", "signed"]) {
+    const e = mk({ esign: { status, configured: true, pax: {} } });
+    e.applyRecord({ name: "Maria Garcia", previousName: "Maria Lopez" });
+    assert.equal(e.state.send.client, "Maria Lopez"); assert.equal(e.state.send.status, status);
+    assert.match(e.renderVals().nameReview, /Void it/); assert.equal(e.renderVals().canUseRecordName, false);
+  }
+});
+t("reopening saved known draft follows canonical corrected record", () => {
+  const e = mk({ callerName: "Maria Garcia", saved: { send: { client: "Maria Lopez", recordName: "Maria Lopez" } } });
+  assert.equal(e.state.send.client, "Maria Garcia");
+});
+t("reopening ambiguous draft flags mismatch and preserves deliberate name", () => {
+  const e = mk({ callerName: "Maria Garcia", saved: { send: { client: "Separate Signer" } } });
+  assert.equal(e.state.send.client, "Separate Signer"); assert.match(e.renderVals().nameReview, /Review/);
+});
+
+t("superseded primary completion is disabled across engine views and cannot invoke provider API", () => {
+  const e = mk({ agreementSuperseded: true, esign: { status: "signed", configured: true, pax: {} } });
+  for (const view of ["guided", "full", "chore", "form"]) {
+    e.setView(view); const v = e.renderVals();
+    assert.equal(v.agreementLocked, true); assert.match(v.completeLabel, /re-sign first/);
+    const before = calls.length; v.completeAgreement(); assert.equal(calls.length, before);
+    assert.match(e.state.file.error, /original stays in history/);
+  }
+});
+t("a completed primary re-sign can resume ordinary office completion", () => {
+  const e = mk({ agreementSuperseded: true, esign: { status: "signed", configured: true, pax: {} } });
+  e.props.agreementSuperseded = false;
+  const before = calls.length; e.renderVals().completeAgreement();
+  assert.equal(calls.length, before + 1); assert.equal(calls[calls.length - 1], "completeAgreement");
 });
 
 console.log(passed, "passed");

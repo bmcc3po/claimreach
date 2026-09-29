@@ -1,10 +1,14 @@
 "use client";
 import { useMemo, useState } from "react";
-import { signedStatusKeys } from "@/lib/statuses";
+import { isSignedKey, type SignedCatalogRow } from "@/lib/statuses";
 
 // Reporting surface — breakdowns by status, type, stage, campaign, tier, plus
 // a time series. Exportable to CSV. scope distinguishes firm vs staff copy.
-export default function ReportsView({ leads, claims, scope = "staff", statuses = [] }: { leads: any[]; claims: any[]; scope?: "firm" | "staff"; statuses?: any[] }) {
+// catalog: the status table's key/phase/requires_esign rows, retired ones
+// too, for the signed count only (defaults to statuses). statuses stays the
+// live set for labels and the picker. Both report pages pass the full
+// catalog so their signed count matches the staff Leads and Signed pages.
+export default function ReportsView({ leads, claims, scope = "staff", statuses = [], catalog }: { leads: any[]; claims: any[]; scope?: "firm" | "staff"; statuses?: any[]; catalog?: SignedCatalogRow[] }) {
   const [range, setRange] = useState(30);
   const [pStatus, setPStatus] = useState("all");
   const [pType, setPType] = useState("all");
@@ -39,16 +43,15 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
     }
     const total = cl.length;
     const qualified = byStatus["qualified"] ?? 0;
-    // The ONE signed-status definition lives in statuses.ts
-    // (signedStatusKeys): table flags plus Delivered/Retained plus the
-    // signed_* family. Never a local rule here.
-    const signedKeys = signedStatusKeys(statuses as any);
-    Object.keys(byStatus).forEach((k) => { if (k === "signed" || k.startsWith("signed_")) signedKeys.add(k); });
-    const signed = Object.entries(byStatus).reduce((n, [k, v]) => (signedKeys.has(k) ? n + (v as number) : n), 0);
+    // The ONE signed-status definition lives in statuses.ts (isSignedKey),
+    // the same call the Leads and Signed pages make. No report-only fallback:
+    // retired and unlisted signed_* keys already count there (Astra 7b).
+    const signedCatalog = catalog ?? statuses;
+    const signed = Object.entries(byStatus).reduce((n, [k, v]) => (isSignedKey(k, signedCatalog) ? n + (v as number) : n), 0);
     const convRate = total ? Math.round(((qualified + signed) / total) * 100) : 0;
     return { total, qualified, signed, convRate, byStatus, byType, byCampaign, byTier };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claims, range, statuses]);
+  }, [claims, range, statuses, catalog]);
 
   // Speed to lead, per campaign: from the lead dropping in to the first
   // outbound dial (JustCall webhook) and to the first file open in ClaimReach.

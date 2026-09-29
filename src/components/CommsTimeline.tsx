@@ -1,24 +1,32 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { fileMaySendComms, fileMayUseStaffTools, type FileFence } from "@/lib/file-fence";
 
-const ICON: Record<string, string> = { call: "📞", sms: "💬", voicemail: "📩" };
+const ICON: Record<string, string> = { call: "📞", sms: "💬", mms: "💬", email: "✉", voicemail: "📩" };
 
-export default function CommsTimeline({ leadId, phone, channel, fence }: { leadId: string; phone?: string; channel?: "call" | "sms" | "all"; fence?: FileFence }) {
+export default function CommsTimeline({ leadId, phone, channel, fence }: { leadId: string; phone?: string; channel?: "call" | "sms" | "messages" | "all"; fence?: FileFence }) {
   const [comms, setComms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [smsBody, setSmsBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [loadError, setLoadError] = useState(false);
+  const sending = useRef(false);
 
   async function load() {
     setLoading(true);
-    const r = await fetch(`/api/communications?lead_id=${leadId}`); const d = await r.json();
-    setComms(d.comms ?? []); setLoading(false);
+    setLoadError(false);
+    try {
+      const r = await fetch(`/api/communications?lead_id=${encodeURIComponent(leadId)}`); const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || "Could not load communications.");
+      setComms(d.comms ?? []);
+    } catch (e: any) { setLoadError(true); setMsg(e.message || "Could not load communications."); }
+    finally { setLoading(false); }
   }
   useEffect(() => { load(); }, [leadId]);
 
-  const filtered = comms.filter((c) => channel === "sms" ? c.channel === "sms" : channel === "call" ? c.channel !== "sms" : true);
+  const messages = channel === "sms" || channel === "messages";
+  const filtered = comms.filter((c) => channel === "sms" ? ["sms", "mms"].includes(c.channel) : channel === "messages" ? ["sms", "mms", "email"].includes(c.channel) : channel === "call" ? ["call", "voicemail"].includes(c.channel) : true);
 
   function call() {
     if (!phone) return;
@@ -29,11 +37,16 @@ export default function CommsTimeline({ leadId, phone, channel, fence }: { leadI
     setMsg("Opening dialer… place the call in JustCall.");
   }
   async function sendSms() {
-    if (!smsBody.trim()) return;
+    if (sending.current || !smsBody.trim() || !phone || !fileMaySendComms(fence)) return;
+    sending.current = true;
     setBusy(true); setMsg("");
-    const r = await fetch("/api/justcall/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "sms", lead_id: leadId, to: phone, body: smsBody }) });
-    const d = await r.json(); setBusy(false);
-    if (d.ok) { setSmsBody(""); load(); } else setMsg(d.error || "SMS failed");
+    try {
+      const r = await fetch("/api/justcall/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "sms", lead_id: leadId, to: phone, body: smsBody }) });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "The text could not be confirmed. Check message history before retrying.");
+      setSmsBody(""); await load();
+    } catch (e: any) { setMsg(e.message || "The text could not be confirmed. Check message history before retrying."); }
+    finally { sending.current = false; setBusy(false); }
   }
 
   const canSend = fileMaySendComms(fence);
@@ -42,11 +55,11 @@ export default function CommsTimeline({ leadId, phone, channel, fence }: { leadI
   return (
     <div>
       <div className="row" style={{ gap: 8, marginBottom: 14, alignItems: "center" }}>
-        {channel !== "sms" && <button className="btn gold sm" onClick={call} disabled={busy || !phone}>📞 Call {phone || "—"}</button>}
+        {!messages && <button className="btn gold sm" onClick={call} disabled={busy || !phone}>📞 Call {phone || "—"}</button>}
         {msg && <span className="muted" style={{ fontSize: 12 }}>{msg}</span>}
       </div>
 
-      {canSend && channel === "sms" && (
+      {canSend && messages && (
         <>
           <div className="row" style={{ gap: 8, marginBottom: 6 }}>
             <input placeholder={phone ? `Text ${phone}…` : "No phone on file"} value={smsBody} onChange={(e) => setSmsBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendSms()} style={{ flex: 1 }} disabled={!phone} />
@@ -58,14 +71,14 @@ export default function CommsTimeline({ leadId, phone, channel, fence }: { leadI
       )}
 
       {loading && <p className="muted" style={{ fontSize: 13 }}>Loading…</p>}
-      {!loading && filtered.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No {channel === "sms" ? "messages" : "calls"} yet.</p>}
+      {!loading && !loadError && filtered.length === 0 && <p className="muted" style={{ fontSize: 13 }}>No {messages ? "messages" : "calls"} yet.</p>}
 
       <div className="comm-feed">
         {filtered.map((c) => (
           <div key={c.id} className={`comm-item ${c.direction}`}>
             <div className="comm-head">
               <span className="comm-icon">{ICON[c.channel] || "•"}</span>
-              <strong>{c.channel === "sms" ? "Text" : c.channel === "voicemail" ? "Voicemail" : "Call"}</strong>
+              <strong>{c.channel === "sms" || c.channel === "mms" ? "Text" : c.channel === "email" ? "Email" : c.channel === "voicemail" ? "Voicemail" : "Call"}</strong>
               <span className="comm-dir">{c.direction}{c.call_kind === "dialer" ? " · dialer" : ""}</span>
               {c.agent_name && <span className="muted" style={{ fontSize: 12 }}>· {c.agent_name}</span>}
               <span className="spacer" />

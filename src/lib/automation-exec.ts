@@ -88,13 +88,18 @@ async function runStep(step: Step, ctx: { lead: any; firmId: string | null; orig
       return { email: "queued" };
     }
     case "send_to_firm": {
-      // Assemble the campaign's firm packet and email it. force resends past guard.
+      // Assemble the matter's firm packet and email it. force resends past
+      // the guard. An automation run carries no claim, so delivery resolves
+      // the file's single matter (or the single matter on its campaign) and
+      // refuses a file with several rather than guessing (Astra round 7b #57).
       const { deliverLeadToFirm } = await import("@/lib/firm-delivery");
       const res = await deliverLeadToFirm({
         leadId: lead.id, triggeredBy: "automation", actorName: "Automation",
         force: step.config?.force === true,
       });
-      return res.ok ? { firm_delivery: res.skipped ? res.skipped : "sent", to: res.to } : { firm_delivery: "failed", error: res.error };
+      return res.ok
+        ? { firm_delivery: res.skipped ? res.skipped : "sent", to: res.to, claim_id: res.claimId ?? null, warning: res.warning ?? null }
+        : { firm_delivery: "failed", error: res.error, claim_id: res.claimId ?? null, ambiguous: !!res.ambiguous };
     }
     case "wait":
     case "branch":

@@ -1,21 +1,40 @@
 // ============================================================================
-// Firm delivery. When a file reaches an unlocks_firm status (or the owner clicks
-// "Send to firm now"), assemble the campaign's chosen artifacts and email them
-// to the firm with a mail-merged template. Four toggleable attachments:
+// Firm delivery. When a matter reaches an unlocks_firm status (or someone
+// clicks "Send to firm"), assemble its campaign's chosen artifacts and email
+// them to the firm with a mail-merged template. Four toggleable attachments:
 //   1. Intake Q&A as PDF        (attach_intake_pdf)
 //   2. Intake Q&A as CSV        (attach_intake_csv)
 //   3. Signed retainer packet   (attach_retainer)
 //   4. Certificate of signature (attach_certificate)
-// A per-lead guard (firm_sent_at) stops the auto-trigger from double-sending;
-// manual/force resends bypass the guard. Every attempt is logged.
+//
+// ONE delivery is ONE matter (claim), resolved through resolveMatter: the
+// named claim, else the file's only matter, else the single matter on the
+// file's campaign. Ambiguity or a failed lookup refuses; nothing guesses a
+// sibling (Astra round 7b #57). Everything comes from that claim:
+//   - its campaign's delivery setup (master switch, addresses, templates,
+//     attachment toggles), read by the CLAIM's campaign_id,
+//   - its intake (answers, case type, campaign form),
+//   - its signing evidence: the newest main agreement must be completed and
+//     not voided, bound to the matter (matterRowsFilter). A null legacy row counts only
+//     for a file's sole matter. On a passenger's own file the agreement is
+//     the passenger's.
+// The sent-once guard is per matter (claims.firm_sent_at / firm_send_result).
+// The file-level fields (leads.firm_sent_at / firm_send_result) are still
+// written as an echo for the screens that read them. Manual/force resends
+// bypass the guard, never the packet checks. Every attempt is logged with the
+// claim it was for.
 // ============================================================================
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { retainerTokens, fillTemplate } from "@/lib/retainer-tokens";
-import { loadIntakeBundle, buildIntakePdf, buildIntakeCsvSingle } from "@/lib/intake-render";
+import { loadIntakeBundle, buildIntakePdf, buildIntakeCsvSingle, hasIntakeQuestions, type IntakeBundle } from "@/lib/intake-render";
 import { buildCertificatePdf } from "@/lib/certificate";
 import { recordAudit } from "@/lib/audit";
-import { downloadSignedDoc, listSubmissionDocs } from "@/lib/signed-docs";
+import { downloadSignedDoc, listSubmissionDocs, signedDocPath } from "@/lib/signed-docs";
 import { establishDocCount, expectedPacketPaths } from "@/lib/mva-call/esign";
+import { resolveMatter, rowBelongsToMatter, type MatterClaim } from "@/lib/matter";
+import { getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
+import { beginFirmDispatch, finishFirmDispatch } from "@/lib/firm-delivery-dispatch";
+import { sameName } from "@/lib/linked-files";
 
 interface Attachment { filename: string; content: string; kind: string; } // content = base64
 
@@ -34,6 +53,9 @@ function strToB64(s: string): string {
 function safeName(s: string): string {
   return String(s || "file").replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "") || "file";
 }
+function errText(e: any): string {
+  return String(e?.message ?? e ?? "unknown error");
+}
 
 const DEFAULT_SUBJECT = "New signed file: {{contact.full_name}} ({{case.lead_no}})";
 const DEFAULT_BODY =
@@ -46,104 +68,304 @@ const DEFAULT_BODY =
   "<p>Attached documents are listed in this email. Reply here with any questions.</p>" +
   "<p>Innovative Intake</p>";
 
-export interface DeliverResult { ok: boolean; error?: string; skipped?: string; attachments?: string[]; to?: string; }
+const NOTHING_SENT = "Nothing was emailed.";
 
-// Deliver one lead to its firm. `force` bypasses the sent-once guard (manual resend).
+export interface DeliverResult {
+  ok: boolean;
+  error?: string;
+  skipped?: string;
+  attachments?: string[];
+  to?: string;
+  /** The matter this attempt was for. Absent when no single matter resolved. */
+  claimId?: string;
+  /** The file has several matters and none was named. */
+  ambiguous?: boolean;
+  /** The email went out, but something recorded after it did not save. */
+  warning?: string;
+  recoveryRequired?: boolean;
+  attemptKey?: string;
+}
+
+export interface FirmEmail {
+  from: string;
+  to: string[];
+  cc?: string[];
+  reply_to?: string;
+  subject: string;
+  html: string;
+  attachments: { filename: string; content: string }[];
+  idempotencyKey?: string;
+}
+
+/** Seams for tests. Production passes nothing. */
+export interface DeliverDeps {
+  db?: any;
+  sendEmail?: (m: FirmEmail) => Promise<{ ok: true } | { ok: false; error: string; uncertain?: boolean }>;
+  audit?: (row: any) => Promise<void>;
+  loadBundle?: (db: any, leadId: string, claimId: string) => Promise<IntakeBundle | null>;
+  now?: () => string;
+  buildCertificate?: typeof buildCertificatePdf;
+}
+
+async function sendViaResend(m: FirmEmail): Promise<{ ok: true } | { ok: false; error: string; uncertain?: boolean }> {
+  const key = (globalThis as any)?.process?.env?.RESEND_API_KEY;
+  if (!key) return { ok: false, error: "email not configured (RESEND_API_KEY missing in Cloudflare)" };
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", ...(m.idempotencyKey ? { "Idempotency-Key": m.idempotencyKey } : {}) },
+      signal: AbortSignal.timeout(30_000),
+      body: JSON.stringify({
+        from: m.from, to: m.to, cc: m.cc?.length ? m.cc : undefined, reply_to: m.reply_to,
+        subject: m.subject, html: m.html, attachments: m.attachments,
+      }),
+    });
+    if (r.ok) return { ok: true };
+    const d = await r.json().catch(() => ({}));
+    return { ok: false, uncertain: r.status >= 500 || r.status === 408, error: (d as any)?.message || `email send failed (${r.status})` };
+  } catch (e: any) {
+    return { ok: false, uncertain: true, error: e?.message || "email send error" };
+  }
+}
+
+type Matter = { claim: MatterClaim; sole: boolean };
+
+export interface MatterSendState {
+  /** When this matter went to the firm, or null if it has not. */
+  sentAt: string | null;
+  /** The last recorded result for this matter ("sent" or "error: ..."). */
+  result: string | null;
+  /** True when the only record is from before per-matter tracking. */
+  legacy: boolean;
+}
+
+/**
+ * Has THIS matter already gone to the firm? ONE definition, read by the
+ * delivery guard and by the Send to firm button.
+ *   claims.firm_sent_at is the guard.
+ *   Before per-matter tracking the only record was the file-level
+ *   leads.firm_sent_at. It still counts for the matter it can be tied to:
+ *   the file's only matter, or, on a file with several, a matter whose
+ *   campaign has a logged successful delivery from that time (those rows
+ *   carry no claim). It never blocks a sibling on another campaign, and a
+ *   send under this code never counts for a sibling.
+ * A failed read is an error, never "not sent".
+ */
+export async function matterSendState(
+  db: any,
+  lead: { id: string; firm_sent_at?: string | null; firm_send_result?: string | null },
+  m: Matter,
+): Promise<{ ok: true; state: MatterSendState } | { ok: false; error: string }> {
+  const { data: row, error } = await db.from("claims").select("firm_sent_at, firm_send_result").eq("id", m.claim.id).maybeSingle();
+  if (error) return { ok: false, error: `Could not read whether this matter was already sent: ${error.message}.` };
+  const result: string | null = row?.firm_send_result ?? null;
+  if (row?.firm_sent_at) return { ok: true, state: { sentAt: row.firm_sent_at, result, legacy: false } };
+  if (lead.firm_sent_at) {
+    if (m.sole) return { ok: true, state: { sentAt: lead.firm_sent_at, result: result ?? lead.firm_send_result ?? null, legacy: true } };
+    if (m.claim.campaign_id) {
+      const { data: logs, error: lErr } = await db.from("firm_deliveries").select("created_at")
+        .eq("lead_id", lead.id).eq("ok", true).is("claim_id", null).eq("campaign_id", m.claim.campaign_id)
+        .order("created_at", { ascending: false }).limit(1);
+      if (lErr) return { ok: false, error: `Could not read this file's delivery history: ${lErr.message}.` };
+      if (logs?.length) return { ok: true, state: { sentAt: logs[0].created_at ?? lead.firm_sent_at, result: result ?? "sent", legacy: true } };
+    }
+  }
+  return { ok: true, state: { sentAt: null, result, legacy: false } };
+}
+
+// Deliver ONE matter to its firm. `force` bypasses the sent-once guard
+// (manual resend), never the packet checks.
 export async function deliverLeadToFirm(opts: {
   leadId: string;
+  /** The matter to send. Without it, the file's single matter or the single matter on its campaign. */
+  claimId?: string | null;
   triggeredBy: "auto" | "manual" | "automation";
   actorName?: string | null;
   force?: boolean;
-}): Promise<DeliverResult> {
-  const admin = supabaseAdmin();
-  const sb = admin; // renderers accept any client; admin is fine for system send
+}, deps: DeliverDeps = {}): Promise<DeliverResult> {
+  const db = deps.db ?? supabaseAdmin();
+  const audit = deps.audit ?? (async (row: any) => { await recordAudit(row); });
+  const loadBundle = deps.loadBundle ?? loadIntakeBundle;
+  const sendEmail = deps.sendEmail ?? sendViaResend;
+  const now = deps.now ?? (() => new Date().toISOString());
+  const makeCertificate = deps.buildCertificate ?? buildCertificatePdf;
 
-  // Load lead + campaign config.
-  const { data: lead } = await admin.from("leads").select("*").eq("id", opts.leadId).maybeSingle();
-  if (!lead) return { ok: false, error: "lead not found" };
+  const { data: lead, error: leadErr } = await db.from("leads").select("*").eq("id", opts.leadId).maybeSingle();
+  if (leadErr) return { ok: false, error: `Could not read the file: ${leadErr.message}. ${NOTHING_SENT}` };
+  if (!lead) return { ok: false, error: `File not found. ${NOTHING_SENT}` };
+  if (lead.archived_at) return { ok: false, error: `This file is archived. Restore it before delivery. ${NOTHING_SENT}` };
 
-  // Guard: already sent and not forcing.
-  if (lead.firm_sent_at && !opts.force) return { ok: true, skipped: "already sent" };
+  // ---- Which matter, exactly. Never a guess. ----
+  const res = await resolveMatter(db, opts.leadId, { claimId: opts.claimId ?? null, campaignId: lead.campaign_id ?? null });
+  if (!res.ok) return { ok: false, ambiguous: !!res.ambiguous, error: `${res.error} ${NOTHING_SENT}` };
+  const claim = res.claim;
+  const matter: Matter = { claim, sole: res.sole };
+  // The campaign whose setup applies: the claim's own. A legacy claim with no
+  // campaign recorded uses the file's only when it is the file's sole matter.
+  const campaignId: string | null = claim.campaign_id ?? (matter.sole ? lead.campaign_id ?? null : null);
 
-  const campaignId = lead.campaign_id;
-  let cfg: any = null;
-  if (campaignId) {
-    const { data: c } = await admin.from("campaigns").select("*").eq("id", campaignId).maybeSingle();
-    cfg = c;
+  // Every refusal after this point is recorded on the matter, the file echo
+  // and the delivery log, and says so if any of those writes failed.
+  let to = "";
+  let cc: string[] = [];
+  let subject: string | null = null;
+  const attachments: Attachment[] = [];
+  let dispatchKey: string | null = null;
+
+  async function record(ok: boolean, error: string | null): Promise<string[]> {
+    const problems: string[] = [];
+    const stamp = now();
+    try {
+      const { error: e } = await db.from("firm_deliveries").insert({
+        lead_id: opts.leadId, claim_id: claim.id, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
+        to_email: to || null, cc_email: cc.join(", ") || null, subject,
+        attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
+        ok, error, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
+        dispatch_key: dispatchKey,
+      });
+      if (e) problems.push(`the delivery log did not save (${e.message})`);
+    } catch (e) { problems.push(`the delivery log did not save (${errText(e)})`); }
+    try {
+      const { data: hit, error: e } = await db.from("claims")
+        .update(ok ? { firm_sent_at: stamp, firm_send_result: "sent" } : { firm_send_result: `error: ${error}` })
+        .eq("id", claim.id).select("id");
+      if (e) problems.push(`this matter's delivery record did not save (${e.message})`);
+      else if (!hit?.length) problems.push("this matter's delivery record did not save (the matter was not found)");
+    } catch (e) { problems.push(`this matter's delivery record did not save (${errText(e)})`); }
+    try {
+      const { error: e } = await db.from("leads")
+        .update(ok ? { firm_sent_at: stamp, firm_send_result: "sent", stage: "sent_to_firm" } : { firm_send_result: `error: ${error}` })
+        .eq("id", opts.leadId);
+      if (e) problems.push(`the file's delivery record did not save (${e.message})`);
+    } catch (e) { problems.push(`the file's delivery record did not save (${errText(e)})`); }
+    return problems;
   }
-  if (!cfg) return { ok: false, error: "no campaign on this lead; cannot resolve firm delivery config" };
+  async function refuse(msg: string): Promise<DeliverResult> {
+    const full = `${msg} ${NOTHING_SENT}`;
+    const problems = await record(false, full);
+    return {
+      ok: false, claimId: claim.id, to: to || undefined,
+      error: problems.length ? `${full} Also, ${problems.join("; ")}.` : full,
+    };
+  }
+
+  // A claim or campaign of another firm never sends this file (tenant rule).
+  if (claim.firm_id && lead.firm_id && claim.firm_id !== lead.firm_id) {
+    return refuse("This matter is recorded under a different firm than the file.");
+  }
+
+  // ---- Guard: this matter already sent, and not forcing. ----
+  if (!opts.force) {
+    const st = await matterSendState(db, lead, matter);
+    if (!st.ok) return { ok: false, claimId: claim.id, error: `${st.error} ${NOTHING_SENT}` };
+    if (st.state.sentAt) return { ok: true, claimId: claim.id, skipped: "This matter was already sent to the firm." };
+  }
+
+  // ---- The claim's campaign: delivery setup and master switch. ----
+  if (!campaignId) {
+    // No campaign means no master switch to be on: the auto-trigger stands
+    // down the same way it does for a switched-off campaign. A person or an
+    // automation that asked for the send gets the reason.
+    if (opts.triggeredBy === "auto") return { ok: true, claimId: claim.id, skipped: "Automatic delivery is off: this matter has no campaign." };
+    return refuse("This matter has no campaign, so there is no firm delivery setup for it.");
+  }
+  const { data: cfg, error: cfgErr } = await db.from("campaigns").select("*").eq("id", campaignId).maybeSingle();
+  if (cfgErr) return refuse(`Could not read the campaign's delivery setup (${cfgErr.message}).`);
+  if (!cfg) return refuse("This matter's campaign no longer exists, so there is no firm delivery setup for it.");
+  if (cfg.firm_id && lead.firm_id && cfg.firm_id !== lead.firm_id) {
+    return refuse("This matter's campaign belongs to a different firm than the file.");
+  }
 
   // Auto-trigger respects the master switch; manual button ignores it.
-  if (opts.triggeredBy === "auto" && cfg.firm_delivery_on !== true) return { ok: true, skipped: "auto delivery off for campaign" };
+  if (opts.triggeredBy === "auto" && cfg.firm_delivery_on !== true) {
+    return { ok: true, claimId: claim.id, skipped: "Automatic delivery is off for this matter's campaign." };
+  }
 
-  const to = String(cfg.firm_email || "").trim();
-  if (!to) return { ok: false, error: "campaign has no firm email set" };
-  const cc = String(cfg.firm_cc || "").split(/[,;]/).map((s: string) => s.trim()).filter(Boolean);
+  to = String(cfg.firm_email || "").trim();
+  cc = String(cfg.firm_cc || "").split(/[,;]/).map((s: string) => s.trim()).filter(Boolean);
   const replyTo = String(cfg.firm_reply_to || "").trim() || undefined;
+  if (!to) return refuse("This campaign has no firm email set.");
 
-  // Tokens for mail-merge (client + case + campaign). The answers come from
-  // THIS campaign's claim, not whichever row the database returned first
-  // (Astra round 5: delivery picked one unordered claim).
-  let answers: Record<string, any> = {};
-  try {
-    const { data: claims } = await admin.from("claims").select("answers, campaign_id, created_at")
-      .eq("lead_id", opts.leadId).order("created_at", { ascending: false });
-    const claim = (claims ?? []).find((c: any) => campaignId && c.campaign_id === campaignId) ?? (claims ?? [])[0];
-    answers = claim?.answers ?? {};
-  } catch {}
+  // Tokens for mail-merge (client + case + campaign), from THIS claim.
+  const answers: Record<string, any> = (claim.answers ?? {}) as Record<string, any>;
   const tokens = retainerTokens(lead, answers);
-  tokens["campaign.name"] = cfg.name || lead.campaign || "";
+  tokens["campaign.name"] = cfg.name || claim.campaign || lead.campaign || "";
   tokens["firm.name"] = cfg.firm_name || "";
+  if (claim.claim_type) tokens["case.type"] = claim.claim_type;
 
-  const subject = fillTemplate(String(cfg.firm_subject_tpl || DEFAULT_SUBJECT), tokens);
+  subject = fillTemplate(String(cfg.firm_subject_tpl || DEFAULT_SUBJECT), tokens);
   const bodyHtml = fillTemplate(String(cfg.firm_body_tpl || DEFAULT_BODY), tokens);
 
   // ---- Assemble the selected attachments ----
-  const attachments: Attachment[] = [];
   const nameBase = safeName(lead.claimant_name || lead.lead_no || "claimant");
 
-  const bundle = await loadIntakeBundle(sb, opts.leadId);
-
-  // A configured artifact that fails to build REFUSES the send instead of
-  // quietly shipping without it: the campaign promised the firm this
-  // attachment (Astra round 5: a failed intake-PDF render was omitted from a
-  // "successful" delivery).
-  let intakePdfFailed: string | null = null;
-  if (cfg.attach_intake_pdf !== false && bundle) {
-    try {
-      const bytes = await buildIntakePdf(bundle);
-      attachments.push({ filename: `${nameBase}_intake.pdf`, content: toB64(bytes), kind: "intake_pdf" });
-    } catch (e: any) { intakePdfFailed = e?.message || "intake PDF failed to build"; }
-  }
-  if (cfg.attach_intake_csv === true && bundle) {
-    try {
-      const csv = buildIntakeCsvSingle(bundle);
-      attachments.push({ filename: `${nameBase}_intake.csv`, content: strToB64(csv), kind: "intake_csv" });
-    } catch {}
+  // The intake. A configured intake artifact that cannot be built REFUSES
+  // the send instead of quietly shipping without it (Astra round 5), and a
+  // missing intake is a refusal too, never a lighter packet (round 7b #57).
+  const wantPdf = cfg.attach_intake_pdf !== false;
+  const wantCsv = cfg.attach_intake_csv === true;
+  let intakeFailed: string | null = null;
+  if (wantPdf || wantCsv) {
+    let bundle: IntakeBundle | null = null;
+    try { bundle = await loadBundle(db, opts.leadId, claim.id); }
+    catch (e) { intakeFailed = `the intake could not be loaded (${errText(e)})`; }
+    if (!intakeFailed && !bundle) intakeFailed = "this matter's intake could not be found";
+    else if (bundle && !hasIntakeQuestions(bundle)) intakeFailed = "no intake questions were found for this matter's case type";
+    if (bundle && !intakeFailed && wantPdf) {
+      try {
+        const bytes = await buildIntakePdf(bundle);
+        attachments.push({ filename: `${nameBase}_intake.pdf`, content: toB64(bytes), kind: "intake_pdf" });
+      } catch (e) { intakeFailed = `the intake PDF could not be built (${errText(e)})`; }
+    }
+    if (bundle && !intakeFailed && wantCsv) {
+      try {
+        const csv = buildIntakeCsvSingle(bundle);
+        attachments.push({ filename: `${nameBase}_intake.csv`, content: strToB64(csv), kind: "intake_csv" });
+      } catch (e) { intakeFailed = `the intake CSV could not be built (${errText(e)})`; }
+    }
   }
 
   const wantRetainer = cfg.attach_retainer !== false;
   const wantCert = cfg.attach_certificate !== false;
+  // MVA delivery follows agent review of a primary-signed matter. Attachment
+  // choices control the email contents, never whether the matter is ready.
+  const requirePrimary = String(claim.claim_type || cfg.case_type || lead.case_type || "").trim().toLowerCase() === "mva";
+  const checkPacket = requirePrimary || wantRetainer;
+  const checkCertificate = requirePrimary || wantCert;
 
-  // DocuSeal signings first (esign_submissions). Legacy SignWell rows in
-  // signable_documents still attach below, so historical files keep working —
-  // but delivery no longer reads ONLY the legacy store (Astra audit, Sep 27).
+  // An active provisional emergency supersedes older primary evidence for
+  // every campaign, including campaigns that intentionally omit attachments.
+  const selected = await getMatterAgreement(db, lead, res);
+  if (!selected.ok) return refuse(selected.error);
+  const d = selected.row;
+  const emergency = await getMatterEmergency(db, lead, res);
+  if (!emergency.ok) return refuse(emergency.error);
+  if (emergencySupersedes(d, emergency.row)) return refuse("This matter has a newer provisional emergency agreement. Complete the DocuSeal re-sign, or use an explicitly approved provisional delivery workflow before sending it to the firm.");
+  if (requirePrimary && !d) return refuse("No signed agreement is stored for this matter yet. MVA delivery requires its current completed DocuSeal packet and signing certificate.");
+
+  // The designated agreement (DocuSeal): the newest main agreement bound to
+  // THIS matter, including voided/incomplete rows. A sibling's agreement, a voided
+  // one, or a null legacy row on a file with several matters never stands
+  // in (Astra round 7b #57). On a passenger's own file every agreement is
+  // the passenger's, so that is the main one there.
   let dsCertMissing = false;
   let dsPacketShort = false;
-  if (wantRetainer || wantCert) {
-    const { data: dsAll } = await admin.from("esign_submissions")
-      .select("id, submission_id, template_key, campaign_id, completed_pdf_path, cert_pdf_path, status, doc_count")
-      .eq("lead_id", opts.leadId).eq("status", "completed").order("created_at");
-    // THIS campaign's signings, plus legacy rows with no campaign recorded.
-    // A sibling matter's agreement belongs to its own delivery, never this
-    // one's packet (Astra round 5).
-    const dsRows = (dsAll ?? []).filter((d: any) => !d.campaign_id || !campaignId || d.campaign_id === campaignId);
-    for (const d of dsRows ?? []) {
-      if (wantRetainer && !d.completed_pdf_path) {
+  let selectedDocuSeal = false;
+  if (requirePrimary || wantRetainer || wantCert) {
+    if (d) {
+      selectedDocuSeal = true;
+      if (agreementIsVoided(d)) return refuse("This matter's current agreement was voided. A new agreement must be signed before delivery.");
+      if (d.status !== "completed") return refuse("This matter's current agreement is not complete yet. Finish it before delivery.");
+      // A corrected contact name cannot silently relabel immutable evidence.
+      // For a guardian-signed packet, compare the injured person, not guardian.
+      const agreementPerson = d.injured_name || d.signer_name;
+      if (agreementPerson && lead.claimant_name && !sameName(agreementPerson, lead.claimant_name)) return refuse(`This agreement names ${agreementPerson}, but the file now names ${lead.claimant_name}. Review the mismatch and void/re-sign the corrected agreement before delivery. The original stays in history.`);
+      if (requirePrimary && ((d.completed_pdf_path && d.completed_pdf_path !== signedDocPath(lead.firm_id, `ds-${d.submission_id}`, "signed")) || (d.cert_pdf_path && d.cert_pdf_path !== signedDocPath(lead.firm_id, `ds-${d.submission_id}`, "cert")))) return refuse("This matter's signed packet has an incorrect storage association. Recover its own agreement and certificate before delivery.");
+      if (checkPacket && !d.completed_pdf_path) {
         // A completed signing with no stored primary is an incomplete packet,
         // not a row to skip quietly (Astra round-3 review).
         dsPacketShort = true;
-      } else if (wantRetainer && d.completed_pdf_path) {
+      } else if (checkPacket && d.completed_pdf_path) {
         try {
           // The whole packet against an ESTABLISHED manifest. An unknown or
           // zero count is "packet not yet verified", never "one PDF": rows
@@ -151,14 +373,14 @@ export async function deliverLeadToFirm(opts: {
           // DocuSeal here, and if that cannot be established the send
           // refuses (Astra round 5).
           const firmFolder = String(d.completed_pdf_path).split("/")[0];
-          const count = await establishDocCount(admin, d);
+          const count = await establishDocCount(db, d);
           if (count == null) {
             dsPacketShort = true;
             console.error(`firm delivery: packet size unknown for ${d.id} and DocuSeal could not confirm it`);
           } else {
             // Exact expected names, in order: a stray -99 never stands in
             // for a missing -2 (Astra round 5).
-            const stored = await listSubmissionDocs(admin, firmFolder, String(d.submission_id));
+            const stored = await listSubmissionDocs(db, firmFolder, String(d.submission_id));
             let n = 0;
             for (const path of expectedPacketPaths(firmFolder, String(d.submission_id), count)) {
               if (!stored.includes(path)) {
@@ -166,20 +388,20 @@ export async function deliverLeadToFirm(opts: {
                 console.error(`firm delivery: DocuSeal signed PDF missing at ${path} for ${d.id}`);
                 continue;
               }
-              const buf = await downloadSignedDoc(admin, path);
-              if (buf) { n++; attachments.push({ filename: `${nameBase}_retainer_signed${n > 1 ? `_${n}` : ""}.pdf`, content: toB64(buf), kind: "retainer" }); }
+              const buf = await downloadSignedDoc(db, path);
+              if (buf?.length) { n++; if (wantRetainer) attachments.push({ filename: `${nameBase}_retainer_signed${n > 1 ? `_${n}` : ""}.pdf`, content: toB64(buf), kind: "retainer" }); }
               else { dsPacketShort = true; console.error(`firm delivery: DocuSeal signed PDF unreadable at ${path} for ${d.id}`); }
             }
           }
         } catch (e: any) { dsPacketShort = true; console.error(`firm delivery: DocuSeal signed PDF failed for ${d.id}: ${e?.message ?? e}`); }
       }
-      if (wantCert && d.cert_pdf_path) {
+      if (checkCertificate && d.cert_pdf_path) {
         try {
-          const buf = await downloadSignedDoc(admin, d.cert_pdf_path);
-          if (buf) attachments.push({ filename: `${nameBase}_signing_certificate.pdf`, content: toB64(buf), kind: "certificate" });
+          const buf = await downloadSignedDoc(db, d.cert_pdf_path);
+          if (buf?.length) { if (wantCert) attachments.push({ filename: `${nameBase}_signing_certificate.pdf`, content: toB64(buf), kind: "certificate" }); }
           else dsCertMissing = true;
         } catch (e: any) { dsCertMissing = true; console.error(`firm delivery: DocuSeal certificate failed for ${d.id}: ${e?.message ?? e}`); }
-      } else if (wantCert && d.completed_pdf_path && !d.cert_pdf_path) {
+      } else if (checkCertificate && !d.cert_pdf_path) {
         // Completed signing with no stored certificate: the packet is not
         // whole yet (Astra round 3).
         dsCertMissing = true;
@@ -187,11 +409,40 @@ export async function deliverLeadToFirm(opts: {
     }
   }
 
-  // Legacy signed retainers (SignWell-era signable_documents rows).
-  if (wantRetainer || wantCert) {
-    const { data: docs } = await admin.from("signable_documents")
-      .select("*").eq("lead_id", opts.leadId).eq("status", "signed").order("packet_seq");
-    for (const d of docs ?? []) {
+  // Legacy signed retainers (SignWell-era signable_documents rows). They
+  // carry no claim or campaign of their own, so the same matter rule applies:
+  // a row counts for the file's sole matter, or, on a file with several,
+  // only when its retainer was explicitly associated with this claim
+  // (retainers.claim_id, migration 0108).
+  if ((wantRetainer || wantCert) && !selectedDocuSeal) {
+    const { data: docs, error: sdErr } = await db.from("signable_documents")
+      .select("*").eq("lead_id", opts.leadId).order("created_at", { ascending: false }).order("packet_seq");
+    if (sdErr) return refuse(`Could not read this file's older signed retainers (${sdErr.message}).`);
+    let legacy: any[] = docs ?? [];
+    const owner = new Map<string, string | null>();
+    if (legacy.length) {
+      const rids = Array.from(new Set(legacy.map((d: any) => d.retainer_id).filter(Boolean))) as string[];
+      if (rids.length) {
+        const { data: rets, error: rErr } = await db.from("retainers").select("id, claim_id").eq("lead_id", lead.id).in("id", rids);
+        if (rErr) return refuse(`Could not read which matter this file's older signed retainers belong to (${rErr.message}).`);
+        for (const r of rets ?? []) owner.set(String(r.id), r.claim_id ?? null);
+      }
+    }
+    legacy = legacy.filter((d: any) => (!d.firm_id || d.firm_id === lead.firm_id)
+      && (!d.retainer_id || owner.has(String(d.retainer_id)))
+      && rowBelongsToMatter({ claim_id: d.retainer_id ? owner.get(String(d.retainer_id)) ?? null : null, campaign_id: null }, matter));
+    // One designated packet, including its UNSIGNED members. Filtering signed
+    // rows first turned a half-signed packet into an apparently complete one.
+    const groupOf = (d: any) => d.packet_group || d.retainer_id || d.id;
+    if (legacy.length) {
+      const newest = legacy.slice().sort((a: any, b: any) => String(b.created_at || b.sent_at || b.signed_at || "").localeCompare(String(a.created_at || a.sent_at || a.signed_at || "")))[0];
+      legacy = legacy.filter((d: any) => groupOf(d) === groupOf(newest));
+      const wholeGroup = (docs ?? []).filter((d: any) => groupOf(d) === groupOf(newest));
+      if (wholeGroup.length !== legacy.length) return refuse("Some documents in this agreement packet are not associated with the selected matter. Correct the whole packet's association before delivery.");
+      if (legacy.some((d: any) => d.audit?.emergency)) return refuse("This is a provisional emergency agreement. Complete the DocuSeal re-sign, or use an explicitly approved provisional delivery workflow before sending it to the firm.");
+      if (legacy.some((d: any) => d.status !== "signed")) return refuse("The emergency/legacy agreement packet is not fully signed. Finish every document before delivery.");
+    }
+    for (const d of legacy) {
       // Signed retainer PDF (fetch the completed file bytes).
       if (wantRetainer && (d.completed_pdf_path || d.completed_pdf_url)) {
         try {
@@ -199,26 +450,28 @@ export async function deliverLeadToFirm(opts: {
           // Only an external provider link (SignWell) is fetched over HTTP.
           let buf: Uint8Array | null = null;
           if (d.completed_pdf_path) {
-            buf = await downloadSignedDoc(admin, d.completed_pdf_path);
+            buf = await downloadSignedDoc(db, d.completed_pdf_path);
           } else if (/^https?:\/\//.test(d.completed_pdf_url)) {
             const r = await fetch(d.completed_pdf_url);
             if (r.ok) buf = new Uint8Array(await r.arrayBuffer());
-            else console.error(`firm delivery: signed PDF fetch ${r.status} for signable ${d.id}`);
+            else return refuse(`The signed PDF for ${d.title || "an agreement document"} could not be downloaded (${r.status}).`);
           }
           if (buf) {
             const label = safeName(d.title || "retainer");
             attachments.push({ filename: `${nameBase}_${label}_signed.pdf`, content: toB64(buf), kind: "retainer" });
           } else {
-            console.error(`firm delivery: signed PDF missing for signable ${d.id}`);
+            return refuse(`The signed PDF for ${d.title || "an agreement document"} is missing. The whole packet is required.`);
           }
         } catch (e: any) {
-          console.error(`firm delivery: signed PDF failed for signable ${d.id}: ${e?.message ?? e}`);
+          return refuse(`The signed PDF for ${d.title || "an agreement document"} could not be read (${errText(e)}).`);
         }
+      } else if (wantRetainer) {
+        return refuse(`No signed PDF is stored for ${d.title || "an agreement document"}. The whole packet is required.`);
       }
       // Certificate of signature (generate from the audit fields on the row).
       if (wantCert) {
         try {
-          const cert = await buildCertificatePdf({
+          const cert = await makeCertificate({
             envelopeId: d.envelope_id || d.id,
             title: d.title || "Signed Document",
             signerName: d.signed_name || d.signer_name || lead.claimant_name || "Client",
@@ -234,109 +487,74 @@ export async function deliverLeadToFirm(opts: {
           });
           const label = safeName(d.title || "certificate");
           attachments.push({ filename: `${nameBase}_${label}_certificate.pdf`, content: toB64(cert), kind: "certificate" });
-        } catch {}
+        } catch (e) { return refuse(`The signing certificate for ${d.title || "an agreement document"} could not be built (${errText(e)}).`); }
       }
     }
   }
 
   // A delivery that is configured to carry the signed retainer must actually
-  // carry one. An email going out without it looked like success while the
-  // firm got an empty packet (Astra audit, Sep 27). Manual force overrides.
-  // Force bypasses the already-sent guard, never this: a "signed file" email
-  // with no signed retainer in it does not go out (Astra review, Sep 27).
+  // carry one. Force bypasses the already-sent guard, never this: a "signed
+  // file" email with no signed retainer in it does not go out (Astra, Sep 27).
   if (wantRetainer && !attachments.some((a) => a.kind === "retainer")) {
-    const msg = "no signed retainer is stored for this file yet; nothing was emailed";
-    await admin.from("firm_deliveries").insert({
-      lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
-      to_email: to, cc_email: cc.join(", ") || null, subject,
-      attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
-      ok: false, error: msg, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
-    });
-    await admin.from("leads").update({ firm_send_result: `error: ${msg}` }).eq("id", opts.leadId);
-    return { ok: false, error: msg, to };
+    return refuse("No signed agreement is stored for this matter yet.");
   }
-  if (wantRetainer && dsPacketShort) {
-    const msg = "the signed packet is not complete in storage yet (a required PDF is missing); open the file's agreement screen to recover it, then send again. Nothing was emailed";
-    await admin.from("firm_deliveries").insert({
-      lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
-      to_email: to, cc_email: cc.join(", ") || null, subject,
-      attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
-      ok: false, error: msg, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
-    });
-    await admin.from("leads").update({ firm_send_result: `error: ${msg}` }).eq("id", opts.leadId);
-    return { ok: false, error: msg, to };
+  if (checkPacket && dsPacketShort) {
+    return refuse("The signed packet is not complete in storage yet (a required PDF is missing). Open the file's agreement screen to recover it, then send again.");
   }
-  if (intakePdfFailed) {
-    const msg = `the intake PDF this campaign attaches could not be built (${intakePdfFailed}); nothing was emailed`;
-    await admin.from("firm_deliveries").insert({
-      lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
-      to_email: to, cc_email: cc.join(", ") || null, subject,
-      attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
-      ok: false, error: msg, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
-    });
-    await admin.from("leads").update({ firm_send_result: `error: ${msg}` }).eq("id", opts.leadId);
-    return { ok: false, error: msg, to };
+  if (intakeFailed) {
+    return refuse(`The intake this campaign attaches is not ready: ${intakeFailed}.`);
   }
-  if (wantCert && dsCertMissing) {
-    const msg = "the signing certificate has not stored yet; open the file's agreement screen to recover it, then send again. Nothing was emailed";
-    await admin.from("firm_deliveries").insert({
-      lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
-      to_email: to, cc_email: cc.join(", ") || null, subject,
-      attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
-      ok: false, error: msg, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
-    });
-    await admin.from("leads").update({ firm_send_result: `error: ${msg}` }).eq("id", opts.leadId);
-    return { ok: false, error: msg, to };
+  if ((checkCertificate && dsCertMissing) || (wantCert && !attachments.some((a) => a.kind === "certificate"))) {
+    return refuse("The signing certificate has not stored yet. Open the file's agreement screen to recover it, then send again.");
   }
 
-  // ---- Send via Resend (with attachments) ----
-  const key = (globalThis as any)?.process?.env?.RESEND_API_KEY;
+  // ---- Send ----
+  // Reserve only after packet readiness. The database serializes callers on
+  // the claim, including forced sends; no timer silently steals a send whose
+  // result may already have reached the provider.
+  const reservation = await beginFirmDispatch(db, opts.leadId, claim.id, lead.firm_id ?? null, campaignId, !!opts.force);
+  if (!reservation.ok) return {
+    ok: !!reservation.skipped, claimId: claim.id, skipped: reservation.skipped,
+    error: reservation.skipped ? undefined : reservation.error,
+    recoveryRequired: reservation.recoveryRequired, attemptKey: reservation.attemptKey,
+  };
+  const attemptKey = reservation.attemptKey;
+  dispatchKey = attemptKey;
   const from = (globalThis as any)?.process?.env?.EMAIL_FROM || "ClaimReach <noreply@claimreach.com>";
-  let sendOk = false; let sendErr: string | undefined;
-
-  if (!key) {
-    sendErr = "email not configured (RESEND_API_KEY missing in Cloudflare)";
-  } else {
-    try {
-      const r = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from, to: [to], cc: cc.length ? cc : undefined, reply_to: replyTo,
-          subject, html: bodyHtml,
-          attachments: attachments.map((a) => ({ filename: a.filename, content: a.content })),
-        }),
-      });
-      if (r.ok) sendOk = true;
-      else { const d = await r.json().catch(() => ({})); sendErr = (d as any)?.message || `email send failed (${r.status})`; }
-    } catch (e: any) { sendErr = e?.message || "email send error"; }
-  }
+  let sendOk = false; let sendErr: string | undefined; let uncertain = false;
+  try {
+    const r = await sendEmail({
+      from, to: [to], cc: cc.length ? cc : undefined, reply_to: replyTo,
+      subject, html: bodyHtml,
+      attachments: attachments.map((a) => ({ filename: a.filename, content: a.content })),
+      idempotencyKey: `firm-delivery-${attemptKey}`,
+    });
+    if (r.ok) sendOk = true; else { sendErr = r.error; uncertain = !!r.uncertain; }
+  } catch (e) { sendErr = errText(e); uncertain = true; }
 
   // ---- Log + guard + audit ----
-  await admin.from("firm_deliveries").insert({
-    lead_id: opts.leadId, campaign_id: campaignId, firm_id: lead.firm_id ?? null,
-    to_email: to, cc_email: cc.join(", ") || null, subject,
-    attachments: attachments.map((a) => ({ name: a.filename, kind: a.kind })),
-    ok: sendOk, error: sendErr ?? null, triggered_by: opts.triggeredBy, actor_name: opts.actorName ?? null,
-  });
-
-  if (sendOk) {
-    await admin.from("leads").update({ firm_sent_at: new Date().toISOString(), firm_send_result: "sent", stage: "sent_to_firm" }).eq("id", opts.leadId);
-  } else {
-    await admin.from("leads").update({ firm_send_result: `error: ${sendErr || "unknown"}` }).eq("id", opts.leadId);
-  }
-
+  const dispatchError = await finishFirmDispatch(db, claim.id, attemptKey, sendOk ? "sent" : uncertain ? "uncertain" : "failed", sendErr ?? null);
+  const problems = await record(sendOk, sendOk ? null : (sendErr || "unknown"));
+  if (dispatchError) problems.push(`the delivery reservation did not settle (${dispatchError})`);
+  const campName = cfg.name || claim.campaign || "";
   try {
-    await recordAudit({
-      firm_id: lead.firm_id ?? null, lead_id: opts.leadId, actor_name: opts.actorName ?? "System",
+    await audit({
+      firm_id: lead.firm_id ?? null, lead_id: opts.leadId, claim_id: claim.id, actor_name: opts.actorName ?? "System",
       category: "system",
       description: sendOk
-        ? `Sent to firm (${to}) with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}.`
-        : `Firm send failed: ${sendErr}.`,
-      meta: { to, cc, attachments: attachments.map((a) => a.kind), triggered_by: opts.triggeredBy },
+        ? `Sent to firm (${to})${campName ? ` for ${campName}` : ""} with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}.`
+        : `Firm send failed${campName ? ` for ${campName}` : ""}: ${sendErr}.`,
+      meta: { to, cc, attachments: attachments.map((a) => a.kind), triggered_by: opts.triggeredBy, claim_id: claim.id, campaign_id: campaignId, attempt_key: attemptKey, uncertain },
     });
-  } catch {}
+  } catch (e) { problems.push(`the activity log entry did not save (${errText(e)})`); }
 
-  if (!sendOk) return { ok: false, error: sendErr, to };
-  return { ok: true, attachments: attachments.map((a) => a.filename), to };
+  if (!sendOk) {
+    const msg = uncertain
+      ? `The provider's delivery result could not be confirmed (${sendErr || "unknown error"}). The email may have gone out. An owner or admin must check and reconcile this attempt before another send.`
+      : `The email to the firm was rejected: ${sendErr || "unknown error"}.`;
+    return { ok: false, claimId: claim.id, to, attemptKey, recoveryRequired: uncertain || !!dispatchError, error: problems.length ? `${msg} Also, ${problems.join("; ")}.` : msg };
+  }
+  const out: DeliverResult = { ok: true, claimId: claim.id, attachments: attachments.map((a) => a.filename), to, attemptKey, recoveryRequired: !!dispatchError };
+  if (problems.length) out.warning = `Sent, but ${problems.join("; ")}. Check delivery history before an intentional resend; automatic retries are blocked.`;
+  return out;
 }

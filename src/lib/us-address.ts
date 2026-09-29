@@ -60,18 +60,36 @@ export function joinUsAddress(a: { street?: string | null; city?: string | null;
 }
 
 // The lead columns from a one-line address. `fresh` (the agent just typed a
-// new home address) replaces all four; otherwise (tidying a record that came
-// in on one line) only blank city/state/ZIP are filled.
+// new home address) replaces all four: a new address with no ZIP clears the
+// old ZIP (mail_zip: null) rather than pairing the new city and state with
+// the old one (Astra round 7b). Otherwise (tidying a record that came in on
+// one line) only blank city/state/ZIP are filled and nothing is cleared.
+export function mailColumnsFrom(
+  current: { mail_city?: string | null; mail_state?: string | null; mail_zip?: string | null },
+  line: string | null | undefined,
+  fresh?: false,
+): Record<string, string> | null;
+export function mailColumnsFrom(
+  current: { mail_city?: string | null; mail_state?: string | null; mail_zip?: string | null },
+  line: string | null | undefined,
+  fresh: boolean,
+): Record<string, string | null> | null;
 export function mailColumnsFrom(
   current: { mail_city?: string | null; mail_state?: string | null; mail_zip?: string | null },
   line: string | null | undefined,
   fresh = false,
-): Record<string, string> | null {
+): Record<string, string | null> | null {
   const sp = splitUsAddress(line);
   if (!sp) return null;
-  const out: Record<string, string> = { mail_addr1: sp.street };
-  if (fresh || !String(current.mail_city || "").trim()) out.mail_city = sp.city;
-  if (fresh || !String(current.mail_state || "").trim()) out.mail_state = sp.state;
-  if (sp.zip && (fresh || !String(current.mail_zip || "").trim())) out.mail_zip = sp.zip;
+  const out: Record<string, string | null> = { mail_addr1: sp.street };
+  if (fresh) {
+    out.mail_city = sp.city;
+    out.mail_state = sp.state;
+    out.mail_zip = sp.zip || null;
+    return out;
+  }
+  if (!String(current.mail_city || "").trim()) out.mail_city = sp.city;
+  if (!String(current.mail_state || "").trim()) out.mail_state = sp.state;
+  if (sp.zip && !String(current.mail_zip || "").trim()) out.mail_zip = sp.zip;
   return out;
 }

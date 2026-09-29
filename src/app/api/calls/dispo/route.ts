@@ -6,7 +6,7 @@ import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/repor
 import { signedPdfAttachment } from "@/lib/signed-docs";
 import { validateDispo, DISPO_STATUS, DISPO_FIXED_DQ_KEY, DISPO_LABEL, DEFAULT_CALL_REASONS } from "@/lib/mva-call/dispo";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
-import { resolveMatter } from "@/lib/matter";
+import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { recordAudit } from "@/lib/audit";
 import { fireEvent } from "@/lib/webhook-deliver";
 import { sendEmail } from "@/lib/email";
@@ -30,31 +30,30 @@ export async function POST(req: NextRequest) {
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
   const d = v.value;
 
-  const { data: lead, error: leadErr } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
-  if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });
-  if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
+  const context = await resolveSigningMatter(sb, leadId, {
+    claimId: raw?.claim_id ? String(raw.claim_id) : null,
+    callId: raw?.call_id ? String(raw.call_id) : null,
+  });
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  const { lead, matter, campaignId } = context;
   const admin = supabaseAdmin();
 
   // The call's ONE matter: the claim the console pinned, else the claim the
   // call session was pinned to, else the file's single matter. Ambiguity
   // stops here (Astra round 6: a campaign-derived scope could widen).
-  let pinned: string | null = raw?.claim_id ? String(raw.claim_id) : null;
-  if (!pinned && raw?.call_id) {
-    const { data: cs } = await sb.from("intake_calls").select("claim_id").eq("id", String(raw.call_id)).eq("lead_id", lead.id).maybeSingle();
-    pinned = cs?.claim_id ?? null;
-  }
-  const matter = await resolveMatter(sb, lead.id, { claimId: pinned, campaignId: lead.campaign_id ?? null });
-  if (!matter.ok) return NextResponse.json({ error: matter.error, ambiguous: !!matter.ambiguous }, { status: matter.status });
   const claimId = matter.claim.id;
-
   // Signed means a real signature. The agent cannot declare one; an owner or
-  // admin can, for a file signed outside ClaimReach.
-  if (d.dispo === "signed" && !["owner", "admin"].includes(me.role)) {
-    const { data: sig } = await admin.from("esign_submissions").select("id, status")
-      .eq("lead_id", lead.id).in("status", ["signed", "completed"])
-      .or(matter.via === "only" ? `claim_id.eq.${claimId},claim_id.is.null` : `claim_id.eq.${claimId}`)
-      .limit(1).maybeSingle();
-    if (!sig) return NextResponse.json({ error: "There's no signed agreement on this file yet. Pick E-sign sent." }, { status: 409 });
+  // admin can, for a file signed outside ClaimReach. Other dispositions do
+  // not depend on signing reads: a provider-record outage must not block DNC.
+  let currentAgreement: any = null;
+  if (d.dispo === "signed") {
+    const agreement = await getMatterAgreement(sb, lead, matter);
+    if (!agreement.ok) return NextResponse.json({ error: agreement.error }, { status: agreement.status });
+    const emergency = await getMatterEmergency(sb, lead, matter);
+    if (!emergency.ok) return NextResponse.json({ error: emergency.error }, { status: emergency.status });
+    if (emergencySupersedes(agreement.row, emergency.row)) return NextResponse.json({ error: "This matter has a newer provisional emergency agreement. Finish the DocuSeal re-sign before recording a primary signed disposition; the emergency agreement remains in history." }, { status: 409 });
+    currentAgreement = agreementIsVoided(agreement.row) ? null : agreement.row;
+    if (!["owner", "admin"].includes(me.role) && (!currentAgreement || !["signed", "completed"].includes(currentAgreement.status))) return NextResponse.json({ error: "There's no current signed agreement on this matter yet. Pick E-sign sent." }, { status: 409 });
   }
 
   // Reason keys must be real rows, and their labels go on the file.
@@ -105,11 +104,11 @@ export async function POST(req: NextRequest) {
   if (callId) {
     const { data: upd, error } = await sb.from("intake_calls").update(close).eq("id", callId).eq("lead_id", lead.id).select("id").maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (!upd) callId = null;
+    if (!upd) return NextResponse.json({ error: "The status was saved, but this call is no longer available. Refresh the file before trying again." }, { status: 409 });
   }
   if (!callId) {
     const { data: ins, error } = await sb.from("intake_calls").insert({
-      firm_id: lead.firm_id, campaign_id: lead.campaign_id, lead_id: lead.id,
+      firm_id: lead.firm_id, campaign_id: campaignId, lead_id: lead.id,
       agent_id: me.id, agent_name: me.name, caller_id: lead.phone || lead.lead_no || "unknown",
       first_name: lead.first_name, call_type: "mva_console", claim_id: claimId, answers: {}, ...close,
     }).select("id").single();
@@ -131,7 +130,7 @@ export async function POST(req: NextRequest) {
   await recordAudit({
     firm_id: lead.firm_id, lead_id: lead.id, actor: me.id, actor_name: me.name ?? "Agent", category: "call",
     description: `Call ended: ${DISPO_LABEL[d.dispo]}${labels.length ? ` (${labels.join(", ")})` : ""}${when ? `, call back ${when}` : ""}.`,
-    meta: { call_id: callId, dispo: d.dispo, reasons: d.reasons, callback_at: d.callbackAt },
+    meta: { claim_id: claimId, campaign_id: campaignId, call_id: callId, dispo: d.dispo, reasons: d.reasons, callback_at: d.callbackAt },
   });
 
   try {
@@ -139,8 +138,8 @@ export async function POST(req: NextRequest) {
       lead_id: lead.id, claim_id: claimId, lead_no: lead.lead_no, call_id: callId, dispo: d.dispo, dispo_label: DISPO_LABEL[d.dispo],
       reasons: d.reasons, reason_labels: labels, callback_at: d.callbackAt, note: d.note,
       agent: me.name, claimant_name: lead.claimant_name, phone: lead.phone, email: lead.email,
-      campaign: lead.campaign, status: status ?? null,
-    }, { campaignId: lead.campaign_id ?? null });
+      campaign: matter.claim.campaign, status: status ?? null,
+    }, { campaignId });
   } catch (e) { console.error("call.dispositioned webhook failed", e); }
 
   // Signed: email the case to whoever is checked. Report what really happened.
@@ -149,19 +148,14 @@ export async function POST(req: NextRequest) {
   if (d.dispo === "signed" && d.notify.length) {
     // The whole case: summary, qualifiers, every question and answer, and the
     // signed agreement when it is already complete.
-    const [{ data: call }, { data: sub }] = await Promise.all([
-      sb.from("intake_calls").select("answers").eq("id", callId).maybeSingle(),
-      sb.from("esign_submissions").select("id, status, template_key, signer_name, injured_name, sent_at, signed_at, completed_at, completed_pdf_path")
-        .eq("lead_id", lead.id).is("pax_index", null).neq("status", "voided")
-        .or(matter.via === "only" ? `claim_id.eq.${claimId},claim_id.is.null` : `claim_id.eq.${claimId}`)
-        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    ]);
+    const { data: call } = await sb.from("intake_calls").select("answers").eq("id", callId).maybeSingle();
+    const sub = currentAgreement;
     const origin = new URL(req.url).origin;
-    const report = caseReport(lead, call?.answers || {}, sub);
-    const link = `${origin}/app/${leadKeyOf(lead)}`;
+    const report = caseReport({ ...lead, campaign: matter.claim.campaign, case_type: matter.claim.claim_type }, matter.claim.answers?.mva_call || call?.answers || {}, sub);
+    const link = `${origin}/leads/${leadKeyOf(lead)}?claim=${claimId}`;
     const pdf = sub?.completed_pdf_path ? await signedPdfAttachment(admin, sub.completed_pdf_path, `${report.name} agreement`) : { file: null };
     const attachments = pdf.file ? [pdf.file] : [];
-    const html = caseReportHtml(report, { link, note: `${me.name || "An agent"} signed this file${lead.campaign ? ` on ${lead.campaign}` : ""}.`, attached: attachments.length > 0 });
+    const html = caseReportHtml(report, { link, note: `${me.name || "An agent"} signed this file${matter.claim.campaign ? ` on ${matter.claim.campaign}` : ""}.`, attached: attachments.length > 0 });
     const text = caseReportText(report, link);
     for (const to of d.notify) {
       const r = await sendEmail({ to, subject: `Signed: ${report.name}${lead.lead_no ? `, ${lead.lead_no}` : ""}`, html, text, attachments });

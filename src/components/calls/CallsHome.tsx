@@ -132,9 +132,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
             <div className="cc-home-hi">{first ? `Hi, ${first}` : "App"}</div>
             <div className="cc-home-sub">{dueNow ? `${dueNow} call back${dueNow === 1 ? "" : "s"} due now` : `${data.open.length} open`}</div>
           </div>
-          {data.me.role === "agent"
-            ? <button className="cc-home-link" style={{ border: "none", background: "none", fontFamily: "inherit", cursor: "pointer" }} onClick={async () => { try { await supabaseBrowser().auth.signOut(); } finally { window.location.href = "/login"; } }}>Sign out</button>
-            : <a className="cc-home-link" href="/dashboard">Full app</a>}
+          <a className="cc-home-link" href="/dashboard">Dashboard</a>
         </div>
         <input className="cc-field cc-search" type="search" inputMode="search" placeholder="Search name, phone or lead number" aria-label="Search files" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>

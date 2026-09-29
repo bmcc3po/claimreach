@@ -15,18 +15,15 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current objective
 
-- Outcome: claimreach_round7b.zip for the launched MVA desk: standard fields (one name and one column per field on every screen, export and webhook), void a sent or signed agreement, plus the round 7 hotfix (hard-mapped contact, address split, Simple form radio buttons + File section).
-- Why it matters: Brett cannot build webhooks without standardized default mappings; TMP-1186 had the wrong agreement out with no way to change it.
-- Definition of done: tsc clean, suites green, next-on-pages build, overlay verified on origin/main 23f7f38, zip delivered.
+- Outcome: v8 checkpoint saved at Brett's request (stop and save). See HANDOFF.md for the full completed / open list.
+- Definition of done for the next session: one MVA question spine across all four views, remaining matter binding, signing lifecycle, classic Retainer tab, cadence phase 1.
 
 ## Current state
 
-- Status: round7b built. Still open from Astra round 6: #57 delivery by claim, #58 QA evidence, #59 dirty autosave, #62 MMS inbound_media, #63 signed classifier/drip/notify lease, #65 cadence, #66 classic Retainer tab.
-- Working branch: round7 (local; delivery by zip upload; git push is 403 from this session)
-- Deployment or preview: 0108 and 0109 (+0109b) APPLIED live. 0108 dropped the old two-argument move_leads_to_firm, so bulk "Move to firm" fails on the deployed round-6 code until round 7 is live.
-- Live data actions on Brett's request: TMP-1186's unsigned Alabama/Georgia agreement set to expired with an audit entry so the Nevada one can be sent; Brett to archive DocuSeal submission 11647066.
-- Nevada templates: NV and NV_FLAT now exist for INNO MVA (Brett ran Set up agreements).
-- Last verified result: tsc clean; standard-fields 7, us-address 9, server 13, engine 51, lead-ingest 10, SsnDob 3, docuseal 12 pass; standard record columns checked against live schema
+- Status: checkpoint. Not deployed. Live = PR #40 (round 7b).
+- Working branch: round8 (local; zip delivery; push is 403 from this session). Base main 822338f.
+- Last verified result: tsc zero errors; next-on-pages Build completed, Edge Function Routes (193); offline suites all passing (matter 5, standard-fields 24, us-address 10, lead-ingest 12, server 13, engine 51, SSN/DOB 3, docuseal 12, firm-delivery 20, bulk-move-firm 13, qa-evidence 18, contact-saves 23, notify-signed 23, statuses 8, drip-dispatch 11, comms 11, inbound-media 19, signed-docs 17, file-fence 41, drip-rules 17).
+- No new migrations in this checkpoint (0108, 0109, 0109b already applied live).
 
 ## Work completed
 
