@@ -159,6 +159,23 @@ function dateOnly(v: string | null): string | null {
   return null;
 }
 
+// LawRuler sends a display name, not a ClaimReach user ID. Only a unique,
+// active exact name or email match may own the file.
+export async function resolveLawRulerAssignee(admin: any, value: string | null): Promise<string | null> {
+  const key = (value || "").toLowerCase().replace(/[^a-z0-9@.]+/g, " ").trim();
+  if (!key) return null;
+  const { data, error } = await admin.from("app_users").select("id, email, full_name, active, role")
+    .eq("active", true);
+  if (error) throw new Error(`assignee lookup: ${error.message}`);
+  const matches = (data ?? []).filter((u: any) => {
+    if (!u?.id || !["agent", "manager", "admin", "owner", "qa"].includes(u.role)) return false;
+    const email = String(u.email || "").toLowerCase().trim();
+    const name = String(u.full_name || "").toLowerCase().replace(/[^a-z0-9@.]+/g, " ").trim();
+    return email === key || name === key;
+  });
+  return matches.length === 1 ? matches[0].id : null;
+}
+
 export interface IngestResult { ok: boolean; lead_id?: string; lead_no?: string | null; created?: boolean; error?: string; status?: number }
 
 /**
@@ -183,7 +200,7 @@ export async function ingestLead(admin: any, opts: {
   if (!lrId && phoneNorm.length !== 10 && !n.email) return { ok: false, status: 400, error: "a lead needs a phone number or email" };
 
   // Every column `want` can fill is read here, so "fill blanks only" sees what the file already has.
-  const COLS = "id, lead_no, first_name, last_name, claimant_name, phone, email, dob, mail_addr1, mail_city, mail_state, mail_zip, marketing_source, case_description, lawruler_url, lawruler_ref_no, external_id, campaign_id, home_phone, work_phone, phone_alt, incident_start, incident_city, incident_state";
+  const COLS = "id, lead_no, first_name, last_name, claimant_name, phone, email, dob, mail_addr1, mail_city, mail_state, mail_zip, marketing_source, case_description, lawruler_url, lawruler_ref_no, external_id, campaign_id, assigned_agent, home_phone, work_phone, phone_alt, incident_start, incident_city, incident_state";
   // A failed lookup stops here: guessing "no match" would make a second file.
   let existing: any = null;
   if (lrId) {
@@ -203,7 +220,13 @@ export async function ingestLead(admin: any, opts: {
 
   const name = n.name || [n.first, n.last].filter(Boolean).join(" ") || null;
   const parts = (n.name || "").split(/\s+/).filter(Boolean);
+  let assignedAgent: string | null = null;
+  if (via === "lawruler" && n.assignee) {
+    try { assignedAgent = await resolveLawRulerAssignee(admin, n.assignee); }
+    catch (e) { return { ok: false, status: 500, error: e instanceof Error ? e.message : "assignee lookup failed" }; }
+  }
   const want: Record<string, any> = {
+    assigned_agent: assignedAgent,
     first_name: n.first || parts[0] || null,
     last_name: n.last || (parts.length > 1 ? parts.slice(1).join(" ") : null),
     claimant_name: name,

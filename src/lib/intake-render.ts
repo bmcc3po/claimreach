@@ -93,6 +93,22 @@ export function hasIntakeQuestions(b: IntakeBundle): boolean {
   return intakeSections(b).some((s) => s.rows.length > 0);
 }
 
+/** The same resolved question/answer rows used by the PDF and CSV, escaped for email. */
+export function buildIntakeEmailHtml(b: IntakeBundle): string {
+  const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[char]!));
+  const sections = intakeSections(b).map((section) => {
+    const rows = section.rows.map((row) =>
+      `<tr><th scope="row" style="text-align:left;vertical-align:top;padding:7px 12px 7px 0;width:42%;font-weight:600">${escape(row.q)}</th>` +
+      `<td style="vertical-align:top;padding:7px 0;white-space:pre-wrap">${escape(row.a)}</td></tr>`
+    ).join("");
+    return `<h3 style="font-size:15px;margin:20px 0 6px">${escape(section.title)}</h3>` +
+      `<table style="border-collapse:collapse;width:100%;font-size:13px">${rows}</table>`;
+  }).join("");
+  return `<section aria-label="Intake questions and answers"><h2 style="font-size:18px;margin:24px 0 8px">Intake questions and answers</h2>${sections}</section>`;
+}
+
 // Load everything needed to render ONE matter's intake: the named claim's
 // answers, case type and campaign form, never whichever claim the database
 // returned first (Astra round 7b #57: a file with two matters rendered the

@@ -176,7 +176,12 @@ function deps(db: any, o: Partial<DeliverDeps> = {}): DeliverDeps & { sent: Firm
     db, sent,
     sendEmail: async (m) => { sent.push(m); return { ok: true }; },
     audit: async () => {},
-    loadBundle: async () => { throw new Error("intake not expected in this test"); },
+    loadBundle: async (_db, leadId, claimId) => ({
+      lead: db.tables.leads.find((r: Row) => r.id === leadId),
+      claim: db.tables.claims.find((r: Row) => r.id === claimId),
+      answers: { account: "Answered" }, caseType: "test",
+      fields: [{ id: "account", kind: "text", label: "What happened?" }],
+    }),
     now: () => "2026-09-28T12:00:00.000Z",
     ...o,
   };
@@ -193,6 +198,9 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.ok(r1.ok && !r1.skipped, JSON.stringify(r1));
     assert.equal(r1.claimId, "aaa1");
     assert.equal(d.sent[0].to[0], "intake-ca01@firm.test");
+    assert.match(d.sent[0].html, /Intake questions and answers/);
+    assert.match(d.sent[0].html, /What happened\?/);
+    assert.match(d.sent[0].html, /Answered/);
     assert.equal(retainerOf(d.sent[0]), b64(bytes("primary 5001")));
     const cA = db.tables.claims.find((c: Row) => c.id === "aaa1");
     const cB = db.tables.claims.find((c: Row) => c.id === "bbb2");

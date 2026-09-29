@@ -547,7 +547,7 @@ That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passeng
 <div className="cc-sec-h" style={{paddingTop: "14px"}}>Texts</div>
 </>)}
 {!!(v.textEmpty) && (<><div className="cc-cue" style={{textAlign: "center", margin: "28px 0"}}>No texts with {v.callerFirst} yet.</div></>)}
-{(v.texts || []).map((m: any, i44: number) => (<Fragment key={i44}><div className={cx(m.cls)}><div>{m.body}</div>{!!(m.hasStatus) && (<><div className="cc-bub-s">{m.status}</div></>)}</div></Fragment>))}
+{(v.texts || []).map((m: any, i44: number) => (<Fragment key={i44}><div className={cx(m.cls)}><div>{m.body}</div>{(m.when || m.hasStatus) && (<><div className="cc-bub-s">{[m.when, m.status].filter(Boolean).join(" · ")}</div></>)}</div></Fragment>))}
 {!!(v.canResend) && (<><div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div></>)}
 {!!(v.canVoid) && (<div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip" onClick={v.voidAgreement}>{v.voidLabel}</button></div>)}
 {!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.textError}</div></div>}

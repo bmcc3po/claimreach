@@ -29,26 +29,28 @@ export default async function AppHomePage() {
       .eq("disposition", "callback").not("callback_at", "is", null).gte("callback_at", days(3))
       .order("callback_at", { ascending: true }).limit(100),
     // Out for signature in the last three days.
-    sb.from("esign_submissions").select("lead_id, status, signer_name, sent_at, via, leads(claimant_name, phone)")
+    sb.from("esign_submissions").select("lead_id, campaign_id, status, signer_name, sent_at, via, leads(claimant_name, phone, campaign_id, archived_at)")
       .in("status", ["sent", "opened"]).gte("sent_at", days(3)).order("sent_at", { ascending: false }).limit(100),
     // Done: calls that ended in the last two days.
-    sb.from("intake_calls").select("lead_id, disposition, reason, agent_name, ended_at, leads(claimant_name, phone)")
+    sb.from("intake_calls").select("lead_id, campaign_id, disposition, reason, agent_name, ended_at, leads(claimant_name, phone, campaign_id, archived_at)")
       .eq("status", "ended").gte("ended_at", days(2)).order("ended_at", { ascending: false }).limit(100),
     // Texts that came in over the last three days.
-    sb.from("communications").select("lead_id, phone_raw, phone_norm, body, occurred_at, leads(claimant_name, phone, campaign_id)")
+    sb.from("communications").select("lead_id, phone_raw, phone_norm, body, occurred_at, leads(claimant_name, phone, campaign_id, archived_at)")
       .eq("channel", "sms").eq("direction", "inbound").gte("occurred_at", days(3))
       .order("occurred_at", { ascending: false }).limit(150),
   ]);
   const me = meRes.data;
   if (!me) redirect("/firm-login");
   const notes: string[] = [];
-  const campaigns = campRes.data ?? [];
+  const pilot = me.role !== "owner";
+  const campaigns = (campRes.data ?? []).filter((c: any) => !pilot ||
+    (c.name === "INNO MVA" && c.case_type === "mva" && (firmRes.data ?? []).some((f: any) => f.id === c.firm_id && f.slug === "tmp")));
   const campIds = campaigns.map((c: any) => c.id);
   const firmById = new Map((firmRes.data ?? []).map((f: any) => [f.id, f]));
   const cbLeadIds = Array.from(new Set((cbRes.data ?? []).map((r: any) => r.lead_id)));
 
   // Second wave: open files, the latest call on each call back, e-sign setup.
-  const setupCamps = ["owner", "admin"].includes(me.role)
+  const setupCamps = me.role === "owner"
     ? campaigns.filter((c: any) => packetsFor((firmById.get(c.firm_id) as any)?.slug, c.case_type)) : [];
   const [leadRes, latestRes, tplRes, statusRes] = await Promise.all([
     campIds.length
@@ -73,7 +75,7 @@ export default async function AppHomePage() {
   catch (error) { eligibilityReady = false; notes.push(error instanceof Error ? error.message : "Could not check external contact holds."); }
   if (statusRes.error) notes.push("Case statuses did not load. Contact queues are paused until they can be checked.");
   const eligible = (lead: any, claim: any) => eligibilityReady && isAcquisitionEligible(lead, claim, { statuses, holds });
-  const reviews = [...holds.values()].filter(signal => signal.outcome === 'review_required' && allLeads.get(signal.lead_id)?.claims?.some((c: any) => c.id === signal.claim_id && c.firm_id === signal.firm_id));
+  const reviews = [...holds.values()].filter(signal => signal.outcome === 'review_required' && allLeads.get(signal.lead_id)?.claims?.some((c: any) => c.id === signal.claim_id && c.firm_id === signal.firm_id && campIds.includes(c.campaign_id)));
 
   // Open files: new or still being worked, newest first.
   if (leadRes.error) notes.push(`Open files did not load: ${leadRes.error.message}`);
@@ -96,16 +98,19 @@ export default async function AppHomePage() {
   const seenCb = new Set<string>();
   for (const r of cbRes.data ?? []) {
     const lead = allLeads.get(r.lead_id), claim = acquisitionClaimForRow(lead, r);
-    if (latestRes.error || !claim || !eligible(lead, claim) || seenCb.has(claim.id) || latestBy[claim.id] !== r.created_at) continue;
+    if (latestRes.error || !claim || !campIds.includes(claim.campaign_id) || !eligible(lead, claim) || seenCb.has(claim.id) || latestBy[claim.id] !== r.created_at) continue;
     seenCb.add(claim.id);
     callbacks.push({ id: r.lead_id, name: lead.claimant_name, phone: lead.phone, sub: [r.reason, r.agent_name].filter(Boolean).join(", "), at: r.callback_at, due: r.callback_at, tag: "Call back", href: `/app/${r.lead_id}?claim=${claim.id}` });
   }
 
   if (waitRes.error) notes.push(`Agreements did not load: ${waitRes.error.message}`);
-  const waiting: HomeRow[] = (waitRes.data ?? []).map((r: any) => ({ id: r.lead_id, name: r.leads?.claimant_name || r.signer_name, phone: r.leads?.phone, sub: `Sent by ${String(r.via || "").toLowerCase()}`, at: r.sent_at, tag: r.status === "opened" ? "Opened" : "Sent" }));
+  const waiting: HomeRow[] = (waitRes.data ?? []).filter((r: any) => !pilot ||
+    (r.leads && !r.leads.archived_at && campIds.includes(r.campaign_id || r.leads.campaign_id)))
+    .map((r: any) => ({ id: r.lead_id, name: r.leads?.claimant_name || r.signer_name, phone: r.leads?.phone, sub: `Sent by ${String(r.via || "").toLowerCase()}`, at: r.sent_at, tag: r.status === "opened" ? "Opened" : "Sent" }));
 
   if (doneRes.error) notes.push(`Finished calls did not load: ${doneRes.error.message}`);
-  const done: HomeRow[] = (doneRes.data ?? []).filter((r: any) => r.lead_id).map((r: any) => ({
+  const done: HomeRow[] = (doneRes.data ?? []).filter((r: any) => r.lead_id && (!pilot ||
+    (r.leads && !r.leads.archived_at && campIds.includes(r.campaign_id || r.leads.campaign_id)))).map((r: any) => ({
     id: r.lead_id, name: r.leads?.claimant_name, phone: r.leads?.phone,
     sub: [r.reason, r.agent_name].filter(Boolean).join(", "), at: r.ended_at,
     tag: DISPO_LABEL[r.disposition as DispoCode] || r.disposition || "Ended",
@@ -118,6 +123,7 @@ export default async function AppHomePage() {
   const seenTx = new Set<string>();
   for (const r of textRes.data ?? []) {
     const lead = (r as any).leads;
+    if (pilot && (!r.lead_id || !lead || lead.archived_at || !campIds.includes(lead.campaign_id))) continue;
     if (r.lead_id && lead?.campaign_id && !campIds.includes(lead.campaign_id)) continue;
     const k = r.lead_id || `p:${r.phone_norm}`;
     if (seenTx.has(k)) continue;
@@ -142,5 +148,5 @@ export default async function AppHomePage() {
     campaigns: campaigns.map((c: any) => ({ id: c.id, name: c.name, firm: (firmById.get(c.firm_id) as any)?.name || "", kind: c.case_type })),
     open, callbacks, waiting, done, texts, setup, notes,
   };
-  return <>{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner/admin review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`/leads/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || 'Open matter'}</Link>: {r.source_status || 'Status missing'} — {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
+  return <>{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`${pilot ? "/app" : "/leads"}/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || 'Open matter'}</Link>: {r.source_status || 'Status missing'} — {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
 }

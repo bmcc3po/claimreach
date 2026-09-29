@@ -273,7 +273,7 @@ function Texts({ v }: { v: any }) {
         {!!v.textEmpty && <div className="cc-cue" style={{ textAlign: "center", margin: "28px 0" }}>No texts with {v.callerFirst} yet.</div>}
         {(v.texts || []).map((m: any, i: number) => (
           <div key={i} className={m.cls.split(" ").map((c: string) => "cc-" + c).join(" ")}>
-            <div>{m.body}</div>{!!m.hasStatus && <div className="cc-bub-s">{m.status}</div>}
+            <div>{m.body}</div>{(m.when || m.hasStatus) && <div className="cc-bub-s">{[m.when, m.status].filter(Boolean).join(" · ")}</div>}
           </div>
         ))}
         {!!v.canResend && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div>}

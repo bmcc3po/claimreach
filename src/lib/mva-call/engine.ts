@@ -2005,7 +2005,7 @@ export class CallEngine {
       closeText: () => this.set('text', 'open', false),
       textOpen: !!s.text.open,
       textEmpty: s.text.thread.length === 0,
-      texts: s.text.thread.map((m) => ({ body: m.body, status: m.status || '', hasStatus: !!m.status, cls: 'bub ' + m.from })),
+      texts: s.text.thread.map((m) => ({ body: m.body, status: m.status || '', hasStatus: !!m.status, when: m.at ? fmtWhen(m.at) : '', cls: 'bub ' + m.from })),
       textDraft: this.field('text', 'draft'),
       textCantSend: !String(s.text.draft || '').trim(),
       sendText: () => this.sendText(String(this.state.text.draft || '').trim()),

@@ -5,6 +5,7 @@ import { bouncePath, isSafeFirmNext } from "@/lib/m6";
 import { safeAppNext } from "@/lib/mva-call/links";
 import { isInternalRole } from "@/lib/permissions";
 import { isPartnerIdentity, partnerMayUsePath } from "@/lib/partner-access";
+import { pilotStaffApiAllowed, pilotStaffPageAllowed } from "@/lib/inno-pilot-access";
 
 function isAuthPage(path: string) {
   return path === "/login" || path === "/firm-login" || path === "/partner-login" || path.startsWith("/auth");
@@ -67,8 +68,11 @@ export async function middleware(req: NextRequest) {
     if (!user) return res;
     if (isPartnerIdentity(user)) return new NextResponse("forbidden", { status: 403 });
     const { data: me, error } = await supabase.from("app_users")
-      .select("id, active").eq("id", user.id).maybeSingle();
+      .select("id, active, role").eq("id", user.id).maybeSingle();
     if (error || !me || me.active === false) return new NextResponse("forbidden", { status: 403 });
+    if (isInternalRole(me.role) && me.role !== "owner" && !pilotStaffApiAllowed(path)) {
+      return new NextResponse("forbidden", { status: 403 });
+    }
     return res;
   }
 
@@ -97,6 +101,18 @@ export async function middleware(req: NextRequest) {
     const appNext = safeAppNext(path + (req.nextUrl.search || ""));
     if (appNext) url.searchParams.set("next", appNext);
     return NextResponse.redirect(url);
+  }
+
+  if (user && isProtected && !isAuthPage(path) && !path.startsWith("/partner")) {
+    const { data: me } = await supabase.from("app_users").select("role, active").eq("id", user.id).maybeSingle();
+    if (me?.active === false) {
+      const url = req.nextUrl.clone(); url.pathname = "/login"; url.search = "";
+      return NextResponse.redirect(url);
+    }
+    if (me && isInternalRole(me.role) && me.role !== "owner" && !pilotStaffPageAllowed(path)) {
+      const url = req.nextUrl.clone(); url.pathname = "/app"; url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
 
   if (user) {

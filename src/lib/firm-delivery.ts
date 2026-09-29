@@ -26,7 +26,7 @@
 // ============================================================================
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { retainerTokens, fillTemplate } from "@/lib/retainer-tokens";
-import { loadIntakeBundle, buildIntakePdf, buildIntakeCsvSingle, hasIntakeQuestions, type IntakeBundle } from "@/lib/intake-render";
+import { loadIntakeBundle, buildIntakePdf, buildIntakeCsvSingle, buildIntakeEmailHtml, hasIntakeQuestions, type IntakeBundle } from "@/lib/intake-render";
 import { buildCertificatePdf } from "@/lib/certificate";
 import { recordAudit } from "@/lib/audit";
 import { downloadSignedDoc, listSubmissionDocs, signedDocPath } from "@/lib/signed-docs";
@@ -294,30 +294,30 @@ export async function deliverLeadToFirm(opts: {
   if (claim.claim_type) tokens["case.type"] = claim.claim_type;
 
   subject = fillTemplate(String(cfg.firm_subject_tpl || DEFAULT_SUBJECT), tokens);
-  const bodyHtml = fillTemplate(String(cfg.firm_body_tpl || DEFAULT_BODY), tokens);
+  let bodyHtml = fillTemplate(String(cfg.firm_body_tpl || DEFAULT_BODY), tokens);
 
   // ---- Assemble the selected attachments ----
   const nameBase = safeName(lead.claimant_name || lead.lead_no || "claimant");
 
-  // The intake. A configured intake artifact that cannot be built REFUSES
-  // the send instead of quietly shipping without it (Astra round 5), and a
-  // missing intake is a refusal too, never a lighter packet (round 7b #57).
+  // The body and both artifacts use this one matter's resolved question set.
+  // A missing intake refuses the send, rather than shipping a partial packet.
   const wantPdf = cfg.attach_intake_pdf !== false;
   const wantCsv = cfg.attach_intake_csv === true;
   let intakeFailed: string | null = null;
-  if (wantPdf || wantCsv) {
-    let bundle: IntakeBundle | null = null;
-    try { bundle = await loadBundle(db, opts.leadId, claim.id); }
-    catch (e) { intakeFailed = `the intake could not be loaded (${errText(e)})`; }
-    if (!intakeFailed && !bundle) intakeFailed = "this matter's intake could not be found";
-    else if (bundle && !hasIntakeQuestions(bundle)) intakeFailed = "no intake questions were found for this matter's case type";
-    if (bundle && !intakeFailed && wantPdf) {
+  let bundle: IntakeBundle | null = null;
+  try { bundle = await loadBundle(db, opts.leadId, claim.id); }
+  catch (e) { intakeFailed = `the intake could not be loaded (${errText(e)})`; }
+  if (!intakeFailed && !bundle) intakeFailed = "this matter's intake could not be found";
+  else if (bundle && !hasIntakeQuestions(bundle)) intakeFailed = "no intake questions were found for this matter's case type";
+  if (bundle && !intakeFailed) {
+    bodyHtml += buildIntakeEmailHtml(bundle);
+    if (wantPdf) {
       try {
         const bytes = await buildIntakePdf(bundle);
         attachments.push({ filename: `${nameBase}_intake.pdf`, content: toB64(bytes), kind: "intake_pdf" });
       } catch (e) { intakeFailed = `the intake PDF could not be built (${errText(e)})`; }
     }
-    if (bundle && !intakeFailed && wantCsv) {
+    if (!intakeFailed && wantCsv) {
       try {
         const csv = buildIntakeCsvSingle(bundle);
         attachments.push({ filename: `${nameBase}_intake.csv`, content: strToB64(csv), kind: "intake_csv" });
@@ -502,7 +502,7 @@ export async function deliverLeadToFirm(opts: {
     return refuse("The signed packet is not complete in storage yet (a required PDF is missing). Open the file's agreement screen to recover it, then send again.");
   }
   if (intakeFailed) {
-    return refuse(`The intake this campaign attaches is not ready: ${intakeFailed}.`);
+    return refuse(`The intake Q&A for this matter is not ready: ${intakeFailed}.`);
   }
   if ((checkCertificate && dsCertMissing) || (wantCert && !attachments.some((a) => a.kind === "certificate"))) {
     return refuse("The signing certificate has not stored yet. Open the file's agreement screen to recover it, then send again.");
