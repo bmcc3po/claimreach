@@ -10,9 +10,10 @@ const lead = { id: 'lead-one', firm_id: 'tmp', lawruler_ref_no: '266951', source
 const completed = { claim_id: 'matter-one', lead_id: 'lead-one', firm_id: 'tmp', provider: 'docuseal',
   pax_index: null, voided_at: null, status: 'completed', completed_pdf_path: 'tmp/signed.pdf',
   cert_pdf_path: 'tmp/cert.pdf', signed_at: '2026-09-28T10:10:00Z' };
-const build = (leads: any[], agreements: any[] = []) => buildPartnerRows({
-  refs: [ref], leads, claims: [{ id: 'matter-one', lead_id: 'lead-one', firm_id: 'tmp', campaign: 'INNO MVA', status: 'new' }],
+const build = (leads: any[], agreements: any[] = [], claim: any = {}) => buildPartnerRows({
+  refs: [ref], leads, claims: [{ id: 'matter-one', lead_id: 'lead-one', firm_id: 'tmp', campaign: 'INNO MVA', status: 'new', ...claim }],
   calls: [{ lead_id: 'lead-one', firm_id: 'tmp', direction: 'outbound' }], agreements, agents: [], statuses: DEFAULT_STATUSES,
+  dqReasons: [{ key: 'already_rep', label: 'Already represented' }],
 });
 
 assert.equal(isPartnerIdentity({ app_metadata: { account_type: 'partner' } }), true);
@@ -25,6 +26,9 @@ const visible = build([lead, { ...lead, id: 'other-firm', firm_id: 'other' }, { 
 assert.equal(visible.length, 1);
 assert.equal(visible[0].name, 'Synthetic Person');
 assert.equal(visible[0].speedMinutes, 7);
+const importedWithoutReceipt = build([{ ...lead, lawruler_created_at: null, created_at: '2026-09-28T10:00:00Z' }])[0];
+assert.equal(importedWithoutReceipt.receivedAt, null);
+assert.equal(importedWithoutReceipt.speedMinutes, null);
 assert.equal(visible[0].claimReachCalls, 1);
 assert.equal(visible[0].syncState, 'imported');
 assert.equal(visible[0].signed, false);
@@ -39,6 +43,9 @@ const lawRulerDq = build([{ ...lead, vendor_fields: { lawruler_status: 'Already 
 assert.equal(lawRulerDq.sourceDqReported, true);
 assert.equal(lawRulerDq.sourceDqReason, 'Already Represented');
 assert.equal(lawRulerDq.disqualified, false);
+const finalizedDq = build([lead], [], { status: 'dq', dq_reason_key: 'already_rep' })[0];
+assert.equal(finalizedDq.disqualified, true);
+assert.equal(finalizedDq.dqReason, 'Already represented');
 const genericDq = build([{ ...lead, vendor_fields: { lawruler_status: 'Disqualified' } }])[0];
 assert.equal(genericDq.sourceDqReported, true);
 assert.equal(genericDq.sourceDqReason, null);
