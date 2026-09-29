@@ -156,6 +156,7 @@ function agreement(id: string, sub: string, o: Row = {}): { row: Row; files: Rec
   const row: Row = {
     id, lead_id: L, firm_id: FIRM, claim_id: null, campaign_id: "ca01", pax_index: null, status: "completed", voided_at: null,
     submission_id: sub, template_key: "tmp_mva", doc_count: 1,
+    agent_reviewed_at: "2026-09-01T01:00:00Z", agent_reviewed_by: "agent-1",
     completed_pdf_path: `${FIRM}/signed-ds-${sub}.pdf`, cert_pdf_path: `${FIRM}/cert-ds-${sub}.pdf`,
     created_at: "2026-09-01T00:00:00Z", ...o,
   };
@@ -189,6 +190,15 @@ function deps(db: any, o: Partial<DeliverDeps> = {}): DeliverDeps & { sent: Firm
 const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed\.pdf$/.test(a.filename))?.content;
 
 (async () => {
+  await t("a completed packet without agent review cannot reach the firm", async () => {
+    const a = agreement("unreviewed", "4999", { claim_id: "aaa1", agent_reviewed_at: null });
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [a] });
+    const d = deps(db);
+    const result = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "auto", actorName: "QA" }, d);
+    assert.equal(result.ok, false);
+    assert.match(result.error || "", /agent must review/i);
+    assert.equal(d.sent.length, 0);
+  });
   await t("two matters on one file deliver independently; the first's sent guard never blocks the second", async () => {
     const a = agreement("e1", "5001", { claim_id: "aaa1", campaign_id: "ca01" });
     const b = agreement("e2", "5002", { claim_id: "bbb2", campaign_id: "cb02" });

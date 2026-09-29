@@ -97,5 +97,33 @@ t("stale callback cannot resurrect a freshly voided row or touch provider", asyn
   const prior = globalThis.fetch; globalThis.fetch = async () => { throw new Error("provider must not be called"); };
   try { assert.equal(await syncSubmission(db, stale), "voided"); assert.ok(db.ops.every((o) => o.kind === "select")); } finally { globalThis.fetch = prior; }
 });
+t("strict webhook sync rejects a failed local agreement read while ordinary polling keeps its status", async () => {
+  const db = world(); db.tables.esign_submissions[0].status = "sent";
+  db.failOn = (op) => op.table === "esign_submissions" && op.kind === "select" ? "offline failure" : null;
+  assert.equal(await syncSubmission(db, db.tables.esign_submissions[0]), "sent");
+  await assert.rejects(syncSubmission(db, db.tables.esign_submissions[0], { strict: true }), /current agreement/);
+});
+t("strict webhook sync rejects a failed provider read while ordinary polling keeps its status", async () => {
+  const db = world(); db.tables.esign_submissions[0].status = "sent"; db.tables.esign_submissions[0].error = null;
+  const prior = globalThis.fetch; globalThis.fetch = async () => { throw new Error("provider offline"); };
+  try {
+    assert.equal(await syncSubmission(db, db.tables.esign_submissions[0]), "sent");
+    await assert.rejects(syncSubmission(db, db.tables.esign_submissions[0], { strict: true }), /verify the DocuSeal agreement/);
+  } finally { globalThis.fetch = prior; }
+});
+t("strict webhook sync rejects an unsaved signature transition", async () => {
+  const db = world(); db.tables.esign_submissions[0].status = "sent"; db.tables.esign_submissions[0].error = null;
+  db.failOn = (op) => op.table === "esign_submissions" && op.kind === "update" ? "offline failure" : null;
+  const priorFetch = globalThis.fetch, priorKey = process.env.DOCUSEAL_API_KEY;
+  process.env.DOCUSEAL_API_KEY = "offline-test-key";
+  globalThis.fetch = async () => new Response(JSON.stringify({ id: 123, status: "pending", submitters: [{ role: "Client", status: "completed", completed_at: "2026-09-29T12:00:00Z" }] }), { status: 200 });
+  try {
+    await assert.rejects(syncSubmission(db, db.tables.esign_submissions[0], { strict: true }), /persist the DocuSeal status transition/);
+    assert.equal(db.tables.esign_submissions[0].status, "sent");
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorKey === undefined) delete process.env.DOCUSEAL_API_KEY; else process.env.DOCUSEAL_API_KEY = priorKey;
+  }
+});
 
 (async () => { for (const [name, fn] of tests) { await fn(); console.log("ok", name); } console.log(`${tests.length} passed`); })().catch((e) => { console.error(e); process.exit(1); });

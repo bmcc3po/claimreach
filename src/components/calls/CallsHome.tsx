@@ -10,12 +10,12 @@ export interface HomeRow { id: string; name?: string | null; phone?: string | nu
 export interface HomeData {
   me: { name: string; role: string };
   campaigns: { id: string; name: string; firm: string; kind: string }[];
-  open: HomeRow[]; callbacks: HomeRow[]; waiting: HomeRow[]; done: HomeRow[]; texts: HomeRow[];
+  open: HomeRow[]; callbacks: HomeRow[]; waiting: HomeRow[]; done: HomeRow[]; texts: HomeRow[]; review: HomeRow[];
   setup: { campaignId: string; name: string; have: number; need: number; docuseal: boolean }[];
   notes: string[];
 }
 
-type Tab = "open" | "callbacks" | "texts" | "waiting" | "done";
+type Tab = "open" | "review" | "callbacks" | "texts" | "waiting" | "done";
 
 function fmtPhone(raw?: string | null) {
   const d = String(raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
@@ -45,7 +45,8 @@ function clock(iso?: string | null) {
 
 export default function CallsHome({ data }: { data: HomeData }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>(() => (data.callbacks.some((r) => r.due && Date.parse(r.due) <= Date.now()) ? "callbacks" : "open"));
+  const [tab, setTab] = useState<Tab>(() => data.callbacks.some((r) => r.due && Date.parse(r.due) <= Date.now())
+    ? "callbacks" : data.review.length ? "review" : "open");
   const [q, setQ] = useState("");
   const [results, setResults] = useState<any[] | null>(null);
   const [searchErr, setSearchErr] = useState("");
@@ -60,6 +61,15 @@ export default function CallsHome({ data }: { data: HomeData }) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
+  // A DocuSeal signature can arrive while the agent is working the queue.
+  // Refresh the server-backed lists while this screen is visible so signed
+  // files move into Review without requiring a manual browser reload.
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden && !sheet && !q.trim()) router.refresh(); };
+    const timer = setInterval(refresh, 20000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", refresh); };
+  }, [router, sheet, q]);
   // "Take a call" in the side menu lands here with ?new=1 (and ?phone= from a text).
   useEffect(() => {
     try {
@@ -89,8 +99,8 @@ export default function CallsHome({ data }: { data: HomeData }) {
     return () => clearTimeout(t);
   }, [q]);
 
-  const lists: Record<Tab, HomeRow[]> = { open: data.open, callbacks: data.callbacks, texts: data.texts, waiting: data.waiting, done: data.done };
-  const tabs: [Tab, string][] = [["open", "Open"], ["callbacks", "Call backs"], ["texts", "Texts"], ["waiting", "Signing"], ["done", "Done"]];
+  const lists: Record<Tab, HomeRow[]> = { open: data.open, review: data.review, callbacks: data.callbacks, texts: data.texts, waiting: data.waiting, done: data.done };
+  const tabs: [Tab, string][] = [["open", "Open"], ["review", "Review signed"], ["callbacks", "Call backs"], ["texts", "Texts"], ["waiting", "Signing"], ["done", "Recent"]];
   const rows = lists[tab];
   const dueNow = useMemo(() => data.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.callbacks, now]);
 
@@ -130,7 +140,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
         <div className="cc-home-h">
           <div>
             <div className="cc-home-hi">{first ? `Hi, ${first}` : "App"}</div>
-            <div className="cc-home-sub">{dueNow ? `${dueNow} call back${dueNow === 1 ? "" : "s"} due now` : `${data.open.length} open`}</div>
+            <div className="cc-home-sub">{dueNow ? `${dueNow} call back${dueNow === 1 ? "" : "s"} due now` : data.review.length ? `${data.review.length} client-signed agreement${data.review.length === 1 ? "" : "s"} to review` : `${data.open.length} open`}</div>
           </div>
           <a className="cc-home-link" href="/dashboard">Dashboard</a>
         </div>
@@ -146,6 +156,12 @@ export default function CallsHome({ data }: { data: HomeData }) {
         </nav>
       )}
       <main className="cc-main" style={{ gap: 12 }}>
+        {results === null && tab === "review" && <div className="cc-cue" style={{ marginTop: 0 }}>
+          The client signed, but the office signer and final certificate are still pending. Open each file, review the client-signed preview, then record the review before completing or correcting it.
+        </div>}
+        {results === null && tab === "done" && <div className="cc-cue" style={{ marginTop: 0 }}>
+          These calls ended, but their files may still be open. Tap a file to keep working; the call history stays on the file.
+        </div>}
         {data.notes.map((n, i) => <div key={i} className="cc-stop"><div className="cc-cue cc-red" style={{ marginTop: 0 }}>{n}</div></div>)}
         {data.setup.map((s) => (
           <div key={s.campaignId} className="cc-card">
@@ -175,7 +191,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
           </>
         ) : rows.length === 0 ? (
           <div className="cc-cue" style={{ textAlign: "center", marginTop: 28 }}>
-            {tab === "open" ? "No open files. New calls show up here." : tab === "callbacks" ? "No call backs scheduled." : tab === "texts" ? "No texts in the last three days." : tab === "waiting" ? "Nothing out for signature." : "Nothing finished in the last two days."}
+            {tab === "open" ? "No open files. New calls show up here." : tab === "review" ? "No client-signed agreements need review." : tab === "callbacks" ? "No call backs scheduled." : tab === "texts" ? "No texts in the last three days." : tab === "waiting" ? "Nothing out for signature." : "No calls ended in the last two days."}
           </div>
         ) : (
           <div className="cc-grp">

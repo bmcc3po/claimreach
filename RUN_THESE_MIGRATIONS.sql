@@ -3463,7 +3463,7 @@ $$;
 
 create or replace function public.cr_inno_mva_campaign_id()
 returns uuid language sql stable security definer set search_path = public, pg_temp as $$
-  select case when count(*) = 1 then max(c.id) else null end
+  select case when count(*) = 1 then (array_agg(c.id))[1] else null end
   from public.campaigns c join public.firms f on f.id = c.firm_id
   where c.name = 'INNO MVA' and c.case_type = 'mva'
     and c.active = true and f.slug = 'tmp';
@@ -3496,16 +3496,27 @@ returns boolean language sql stable security definer set search_path = public, p
   );
 $$;
 
+create or replace function public.cr_claim_matches_lead(p_claim_id uuid, p_lead_id uuid)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (
+    select 1 from public.claims c
+    where c.id = p_claim_id and c.lead_id = p_lead_id
+      and public.cr_can_access_inno_mva_claim(c.id)
+  );
+$$;
+
 revoke all on function public.cr_is_owner() from public;
 revoke all on function public.cr_inno_mva_campaign_id() from public;
 revoke all on function public.cr_inno_mva_firm_id() from public;
 revoke all on function public.cr_can_access_inno_mva_lead(uuid) from public;
 revoke all on function public.cr_can_access_inno_mva_claim(uuid) from public;
+revoke all on function public.cr_claim_matches_lead(uuid,uuid) from public;
 grant execute on function public.cr_is_owner() to authenticated, service_role;
 grant execute on function public.cr_inno_mva_campaign_id() to authenticated, service_role;
 grant execute on function public.cr_inno_mva_firm_id() to authenticated, service_role;
 grant execute on function public.cr_can_access_inno_mva_lead(uuid) to authenticated, service_role;
 grant execute on function public.cr_can_access_inno_mva_claim(uuid) to authenticated, service_role;
+grant execute on function public.cr_claim_matches_lead(uuid,uuid) to authenticated, service_role;
 
 -- A restrictive policy ANDs with every existing permissive policy. This is
 -- crucial: adding one more permissive scoped policy would leave is_internal()
@@ -3540,12 +3551,18 @@ begin
       if column_type = 'uuid' then
         predicate := 'public.cr_can_access_inno_mva_lead(lead_id)';
         if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = t.table_name and column_name = 'claim_id' and data_type = 'uuid') then
-          predicate := predicate || ' and (claim_id is null or public.cr_can_access_inno_mva_claim(claim_id))';
+          predicate := predicate || ' and (claim_id is null or public.cr_claim_matches_lead(claim_id,lead_id))';
         end if;
       elsif exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = t.table_name and column_name = 'claim_id' and data_type = 'uuid') then
         predicate := 'public.cr_can_access_inno_mva_claim(claim_id)';
       elsif exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = t.table_name and column_name = 'campaign_id' and data_type = 'uuid') then
         predicate := 'campaign_id = public.cr_inno_mva_campaign_id()';
+      end if;
+      if predicate <> 'false' and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = t.table_name and column_name = 'firm_id' and data_type = 'uuid') then
+        predicate := predicate || ' and firm_id = public.cr_inno_mva_firm_id()';
+      end if;
+      if predicate <> 'false' and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = t.table_name and column_name = 'campaign_id' and data_type = 'uuid') then
+        predicate := predicate || ' and campaign_id = public.cr_inno_mva_campaign_id()';
       end if;
     end if;
     execute format('drop policy if exists cr_inno_mva_staff_wall on public.%I', t.table_name);
@@ -3557,6 +3574,21 @@ begin
     -- uses archive/update paths, so only the owner may delete rows directly.
     execute format('drop policy if exists cr_pilot_no_hard_delete on public.%I', t.table_name);
     execute format('create policy cr_pilot_no_hard_delete on public.%I as restrictive for delete to authenticated using (not public.is_internal() or public.cr_is_owner())', t.table_name);
+  end loop;
+end $$;
+
+-- Hide settings from staff and also deny direct Data API writes to the
+-- configuration behind them. The read wall alone does not block updates.
+do $$
+declare t text;
+begin
+  foreach t in array array['campaigns','firms','routing_rules','statuses','dq_reasons','call_dispo_reasons'] loop
+    execute format('drop policy if exists cr_pilot_config_insert on public.%I', t);
+    execute format('drop policy if exists cr_pilot_config_update on public.%I', t);
+    execute format('drop policy if exists cr_pilot_config_delete on public.%I', t);
+    execute format('create policy cr_pilot_config_insert on public.%I as restrictive for insert to authenticated with check (not public.is_internal() or public.cr_is_owner())', t);
+    execute format('create policy cr_pilot_config_update on public.%I as restrictive for update to authenticated using (not public.is_internal() or public.cr_is_owner()) with check (not public.is_internal() or public.cr_is_owner())', t);
+    execute format('create policy cr_pilot_config_delete on public.%I as restrictive for delete to authenticated using (not public.is_internal() or public.cr_is_owner())', t);
   end loop;
 end $$;
 
@@ -3660,5 +3692,24 @@ update public.campaigns
 set attach_intake_pdf = true, attach_intake_csv = true
 where id = public.cr_inno_mva_campaign_id()
   and firm_id = public.cr_inno_mva_firm_id();
+
+commit;
+
+-- 0118 Agreement correction and agent review (LOCAL; apply after 0117).
+-- Signed originals remain evidence while a corrected copy is sent. The
+-- correction is held from QA and firm delivery until supervisor resolution.
+begin;
+
+alter table public.esign_submissions
+  add column if not exists replacement_requested_at timestamptz,
+  add column if not exists replacement_requested_by uuid,
+  add column if not exists replacement_reason text,
+  add column if not exists replacement_of uuid references public.esign_submissions(id) on delete set null,
+  add column if not exists agent_reviewed_at timestamptz,
+  add column if not exists agent_reviewed_by uuid;
+
+create index if not exists esign_submissions_replacement_review_idx
+  on public.esign_submissions (lead_id, claim_id, replacement_requested_at)
+  where replacement_requested_at is not null and voided_at is null;
 
 commit;

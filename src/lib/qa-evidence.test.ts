@@ -12,6 +12,7 @@ import * as permissions from "./permissions";
 import * as matter from "./matter";
 import * as signedDocs from "./signed-docs";
 import * as agreementNames from "./mva-call/agreement-names";
+import * as replacement from "./mva-call/replacement";
 
 let pass = 0;
 const t = async (name: string, fn: () => Promise<void> | void) => { await fn(); pass++; console.log("ok", name); };
@@ -66,6 +67,7 @@ const sub = (id: string, o: Record<string, any>) => ({
   status: "completed", submission_id: `ds-${id}`, completed_pdf_path: `${FIRM}/signed-ds-ds-${id}.pdf`,
   cert_pdf_path: `${FIRM}/cert-ds-ds-${id}.pdf`, doc_count: 1, voided_at: null, template_key: "TX",
   signer_name: "Pat Example", signed_at: "2026-09-20T10:00:00Z", completed_at: "2026-09-20T10:05:00Z", created_at: `2026-09-20T10:00:0${id.length % 10}Z`,
+  agent_reviewed_at: "2026-09-20T10:03:00Z", agent_reviewed_by: "agent-1",
   ...o,
 });
 
@@ -153,6 +155,7 @@ function world(seed: { claims?: any[]; subs?: any[]; retainers?: any[]; signable
     "@/lib/mva-call/esign": { packetShort: async (_admin: any, row: any) => short.has(row.id) },
     "@/lib/signed-docs": signedDocs,
     "@/lib/mva-call/agreement-names": agreementNames,
+    "@/lib/mva-call/replacement": replacement,
   });
   const post = (body: any) => route.POST({ url: "https://synthetic.invalid/api/qa", json: async () => body });
   const approve = (extra: any = {}) => post({
@@ -175,6 +178,24 @@ const refusedCleanly = (w: ReturnType<typeof world>) => {
     assert.deepEqual(r.body, { ok: true, status: "signed_approved" });
     assert.deepEqual(w.statusCalls[0].claimIds, [MVA]);
     assert.equal(w.tables.qa_reviews.length, 1);
+  });
+
+  await t("QA cannot approve a completed agreement the agent has not reviewed", async () => {
+    const w = world({ subs: [sub("s1", { claim_id: MVA, agent_reviewed_at: null })] });
+    const r = await w.approve();
+    assert.equal(r.status, 409);
+    assert.match(r.body.error, /agent must review/i);
+    refusedCleanly(w);
+  });
+
+  await t("a corrected packet cannot reach QA while its signed original awaits supervisor review", async () => {
+    const original = sub("s1", { claim_id: MVA, status: "signed", completed_at: null, replacement_requested_at: "2026-09-20T11:00:00Z" });
+    const corrected = sub("s2", { claim_id: MVA, replacement_of: "s1", created_at: "2026-09-21T10:00:00Z" });
+    const w = world({ subs: [original, corrected] });
+    const r = await w.approve();
+    assert.equal(r.status, 409);
+    assert.match(r.body.error, /supervisor review/i);
+    refusedCleanly(w);
   });
 
   await t("client-signed only (Signed, not completed) is refused", async () => {

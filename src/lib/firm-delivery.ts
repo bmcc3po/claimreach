@@ -31,10 +31,11 @@ import { buildCertificatePdf } from "@/lib/certificate";
 import { recordAudit } from "@/lib/audit";
 import { downloadSignedDoc, listSubmissionDocs, signedDocPath } from "@/lib/signed-docs";
 import { establishDocCount, expectedPacketPaths } from "@/lib/mva-call/esign";
-import { resolveMatter, rowBelongsToMatter, type MatterClaim } from "@/lib/matter";
+import { resolveMatter, matterRowsFilter, rowBelongsToMatter, type MatterClaim } from "@/lib/matter";
 import { getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
+import { signingReleaseGate } from "@/lib/mva-call/replacement";
 import { beginFirmDispatch, finishFirmDispatch } from "@/lib/firm-delivery-dispatch";
-import { sameName } from "@/lib/linked-files";
+import { sameName, paxParentId } from "@/lib/linked-files";
 
 interface Attachment { filename: string; content: string; kind: string; } // content = base64
 
@@ -338,6 +339,16 @@ export async function deliverLeadToFirm(opts: {
   const selected = await getMatterAgreement(db, lead, res);
   if (!selected.ok) return refuse(selected.error);
   const d = selected.row;
+  if (requirePrimary) {
+    let historyQuery = db.from("esign_submissions")
+      .select("id, status, created_at, voided_at, replacement_requested_at, replacement_of, agent_reviewed_at, pax_index")
+      .eq("lead_id", lead.id).or(matterRowsFilter(res)).order("created_at", { ascending: false });
+    if (!paxParentId(lead.external_id)) historyQuery = historyQuery.is("pax_index", null);
+    const { data: history, error: historyError } = await historyQuery;
+    if (historyError) return refuse(`Could not check agreement corrections before delivery (${historyError.message}).`);
+    const releaseProblem = signingReleaseGate(history ?? []);
+    if (releaseProblem) return refuse(releaseProblem);
+  }
   const emergency = await getMatterEmergency(db, lead, res);
   if (!emergency.ok) return refuse(emergency.error);
   if (emergencySupersedes(d, emergency.row)) return refuse("This matter has a newer provisional emergency agreement. Complete the DocuSeal re-sign, or use an explicitly approved provisional delivery workflow before sending it to the firm.");

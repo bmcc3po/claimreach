@@ -7,6 +7,7 @@ import { docusealConfigured } from "@/lib/docuseal";
 import { DISPO_LABEL, type DispoCode } from "@/lib/mva-call/dispo";
 import { APP_CASE_TYPES } from "@/lib/mva-call/links";
 import { acquisitionClaimForRow, isAcquisitionEligible, loadMvaAcquisitionHolds, type MvaAcquisitionSignal } from "@/lib/lawruler-mva-status";
+import { clientSignedReviewQueue, type ClientSignedReviewRow, type ReviewMatter } from "@/lib/mva-call/review-queue";
 import type { StatusDef } from "@/lib/statuses";
 import Link from "next/link";
 import CallsHome, { type HomeData, type HomeRow } from "@/components/calls/CallsHome";
@@ -32,7 +33,7 @@ export default async function AppHomePage() {
     sb.from("esign_submissions").select("lead_id, campaign_id, status, signer_name, sent_at, via, leads(claimant_name, phone, campaign_id, archived_at)")
       .in("status", ["sent", "opened"]).gte("sent_at", days(3)).order("sent_at", { ascending: false }).limit(100),
     // Done: calls that ended in the last two days.
-    sb.from("intake_calls").select("lead_id, campaign_id, disposition, reason, agent_name, ended_at, leads(claimant_name, phone, campaign_id, archived_at)")
+    sb.from("intake_calls").select("lead_id, claim_id, campaign_id, disposition, reason, agent_name, ended_at, leads(claimant_name, phone, campaign_id, archived_at)")
       .eq("status", "ended").gte("ended_at", days(2)).order("ended_at", { ascending: false }).limit(100),
     // Texts that came in over the last three days.
     sb.from("communications").select("lead_id, phone_raw, phone_norm, body, occurred_at, leads(claimant_name, phone, campaign_id, archived_at)")
@@ -47,12 +48,13 @@ export default async function AppHomePage() {
     (c.name === "INNO MVA" && c.case_type === "mva" && (firmRes.data ?? []).some((f: any) => f.id === c.firm_id && f.slug === "tmp")));
   const campIds = campaigns.map((c: any) => c.id);
   const firmById = new Map((firmRes.data ?? []).map((f: any) => [f.id, f]));
+  const innoCampIds = campaigns.filter((c: any) => c.name === "INNO MVA" && c.case_type === "mva" && (firmById.get(c.firm_id) as any)?.slug === "tmp").map((c: any) => c.id);
   const cbLeadIds = Array.from(new Set((cbRes.data ?? []).map((r: any) => r.lead_id)));
 
   // Second wave: open files, the latest call on each call back, e-sign setup.
   const setupCamps = me.role === "owner"
     ? campaigns.filter((c: any) => packetsFor((firmById.get(c.firm_id) as any)?.slug, c.case_type)) : [];
-  const [leadRes, latestRes, tplRes, statusRes] = await Promise.all([
+  const [leadRes, latestRes, tplRes, statusRes, reviewRes] = await Promise.all([
     campIds.length
       ? sb.from("leads").select("id, firm_id, archived_at, lead_no, claimant_name, phone, campaign, created_at, last_called_at, marketing_source, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, created_at)")
           .in("campaign_id", campIds).is("archived_at", null).order("created_at", { ascending: false }).limit(200)
@@ -64,7 +66,21 @@ export default async function AppHomePage() {
       ? sb.from("esign_templates").select("campaign_id, key").in("campaign_id", setupCamps.map((c: any) => c.id)).eq("provider", "docuseal")
       : Promise.resolve({ data: [], error: null } as any),
     sb.from("statuses").select("*"),
+    innoCampIds.length
+      ? sb.from("esign_submissions").select("id, lead_id, claim_id, campaign_id, firm_id, status, signed_at, voided_at, agent_reviewed_at, signer_name, template_key, leads(id, firm_id, campaign_id, archived_at, claimant_name, phone)")
+          .in("campaign_id", innoCampIds).eq("status", "signed").is("voided_at", null).is("agent_reviewed_at", null)
+          .order("signed_at", { ascending: false }).limit(200)
+      : Promise.resolve({ data: [], error: null } as any),
   ]);
+
+  const reviewClaimIds = [...new Set((reviewRes.data ?? []).map((r: any) => r.claim_id).filter(Boolean))] as string[];
+  const reviewClaimRes = reviewClaimIds.length
+    ? await sb.from("claims").select("id, lead_id, firm_id, campaign_id, claim_type").in("id", reviewClaimIds)
+    : { data: [], error: null };
+  if (reviewRes.error || reviewClaimRes.error) notes.push("Signed review queue did not load. Do not assume there are no client signatures awaiting review.");
+  const review = reviewRes.error || reviewClaimRes.error ? [] : clientSignedReviewQueue(
+    (reviewRes.data ?? []) as ClientSignedReviewRow[], (reviewClaimRes.data ?? []) as ReviewMatter[], innoCampIds,
+  );
 
   const allLeads = new Map<string, any>();
   for (const row of cbRes.data || []) if ((row as any).leads?.id) allLeads.set(row.lead_id, (row as any).leads);
@@ -113,6 +129,7 @@ export default async function AppHomePage() {
     (r.leads && !r.leads.archived_at && campIds.includes(r.campaign_id || r.leads.campaign_id)))).map((r: any) => ({
     id: r.lead_id, name: r.leads?.claimant_name, phone: r.leads?.phone,
     sub: [r.reason, r.agent_name].filter(Boolean).join(", "), at: r.ended_at,
+    href: `/app/${r.lead_id}${r.claim_id ? `?claim=${r.claim_id}` : ""}`,
     tag: DISPO_LABEL[r.disposition as DispoCode] || r.disposition || "Ended",
   }));
 
@@ -146,7 +163,7 @@ export default async function AppHomePage() {
   const data: HomeData = {
     me: { name: me.full_name || "", role: me.role },
     campaigns: campaigns.map((c: any) => ({ id: c.id, name: c.name, firm: (firmById.get(c.firm_id) as any)?.name || "", kind: c.case_type })),
-    open, callbacks, waiting, done, texts, setup, notes,
+    open, callbacks, waiting, done, texts, review, setup, notes,
   };
   return <>{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`${pilot ? "/app" : "/leads"}/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || 'Open matter'}</Link>: {r.source_status || 'Status missing'} — {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
 }

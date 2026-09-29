@@ -57,7 +57,7 @@ export default function CallView({ v }: { v: any }) {
 {wide && <WsLeft v={v} />}
 <IxTop v={v} />
 <main className={`cc-main ix-main${v.fullView ? " fi-main" : ""}${v.choreView ? " ch-main" : ""}`}>
-{!!v.nameReview && <div className="cc-stop" role="status"><p>{v.nameReview}</p>{v.canUseRecordName && <button type="button" className="cc-btn" onClick={v.useRecordName}>Use corrected PNC name</button>}{v.sendLive && v.voidAgreement && <button type="button" className="cc-btn" onClick={v.voidAgreement}>Void incorrect agreement</button>}</div>}
+{!!v.nameReview && <div className="cc-stop" role="status"><p>{v.nameReview}</p>{v.canUseRecordName && <button type="button" className="cc-btn" onClick={v.useRecordName}>{v.canReplace ? "Use corrected PNC name" : "Use PNC name"}</button>}{v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>Void incorrect agreement</button>}{v.canReplace && <button type="button" className="cc-btn" onClick={() => v.jumpTo("send")}>Review corrected agreement below</button>}</div>}
 {!!v.emergencyNotice && <div className="cc-stop" role="status"><p>{v.emergencyNotice}</p>{v.prepareResign && <button type="button" className="cc-btn" onClick={v.prepareResign}>Prepare DocuSeal re-sign</button>}</div>}
 {!!(v.choreView) && <ChoreList v={v} />}
 {!!(v.formView) && <FormView v={v} />}
@@ -349,6 +349,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.sendLive) && (<>
 {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
 <div className="cc-steps">{(v.sendSteps || []).map((st: any, i32: number) => (<Fragment key={i32}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div>
+{v.canReplace && <div className="cc-card"><div className="cc-card-h">Send a correction</div><p className="cc-cue">The original stays in history. If the client signed it, the supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn cc-full" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></div>}
 {!!(v.notSigned) && (<>
 <div className="cc-say">
 <div className="cc-say-label">{STAY.label}</div>

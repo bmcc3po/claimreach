@@ -7,6 +7,7 @@ import { resolveMatter, matterRowsFilter, rowBelongsToMatter } from "@/lib/matte
 import { packetShort } from "@/lib/mva-call/esign";
 import { SIGNED_BUCKET } from "@/lib/signed-docs";
 import { agreementName } from "@/lib/mva-call/agreement-names";
+import { signingReleaseGate } from "@/lib/mva-call/replacement";
 
 export const runtime = "edge";
 
@@ -306,7 +307,7 @@ export async function POST(req: NextRequest) {
 // offered back as candidates to attach on purpose (needs_association).
 // A read failure is an error, never "no evidence" and never "evidence".
 // ---------------------------------------------------------------------------
-const SUB_COLS = "id, lead_id, claim_id, campaign_id, firm_id, provider, status, pax_index, submission_id, completed_pdf_path, cert_pdf_path, doc_count, voided_at, template_key, signer_name, signed_at, completed_at, created_at";
+const SUB_COLS = "id, lead_id, claim_id, campaign_id, firm_id, provider, status, pax_index, submission_id, completed_pdf_path, cert_pdf_path, doc_count, voided_at, replacement_requested_at, replacement_of, agent_reviewed_at, template_key, signer_name, signed_at, completed_at, created_at";
 const RET_COLS = "id, lead_id, claim_id, status, completed_pdf_url, signer_name, signed_at, created_at";
 
 type EvidenceCandidate = { kind: "esign" | "retainer"; id: string; label: string; signed_at: string | null };
@@ -353,14 +354,25 @@ async function matterEvidence(admin: any, leadId: string, claimId: string): Prom
     .eq("lead_id", leadId).eq("provider", "docuseal").or(matterRowsFilter(m))
     .order("created_at", { ascending: false });
   if (sErr) return { ok: false, status: 500, error: `Could not read this matter's agreements: ${sErr.message}` };
+  const releaseProblem = signingReleaseGate(subs ?? []);
+  if (releaseProblem) return { ok: false, status: 409, error: releaseProblem };
+  const activeCurrent = (subs ?? []).find((s: any) => !isVoided(s));
+  const correctedCurrent = activeCurrent?.replacement_of ? activeCurrent : null;
   let clientOnly = false, short = false, voided = false;
   for (const s of subs ?? []) {
     if (isVoided(s)) { voided = true; continue; }
+    // A newer corrected packet supersedes any older completed packet. The
+    // old signed evidence remains visible, but can never authorize QA.
+    if (correctedCurrent && s.id !== correctedCurrent.id) continue;
     if (s.status === "signed") { clientOnly = true; continue; }
     if (s.status !== "completed") continue;
     if (!(await packetWhole(admin, s))) { short = true; continue; }
     return { ok: true, kind: "esign", id: s.id };
   }
+  if (correctedCurrent) return { ok: false, status: 409,
+    error: short
+      ? "The corrected agreement's signed PDF or certificate is missing. Recover its complete packet before QA approval."
+      : "The corrected agreement has not produced a complete signed packet. The original cannot authorize QA approval." };
 
   // 2. A retainer attached to this claim, signed, with its PDF stored.
   const { data: rets, error: rErr } = await admin.from("retainers").select(RET_COLS)

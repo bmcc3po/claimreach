@@ -7,16 +7,17 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { FakeDb } from './test-fake-db';
 import { DEFAULT_STATUSES } from './statuses';
 import * as acquisition from './lawruler-mva-status';
+import * as signedReview from './mva-call/review-queue';
 
 const now = new Date().toISOString();
 const lead = (id: string, statuses: string[], kind = 'mva') => ({
-  id, firm_id: 'firm', campaign_id: 'campaign', case_type: kind, campaign: 'INNO MVA', archived_at: null, assigned_agent: 'operator',
+  id, firm_id: 'firm', campaign_id: 'campaign', case_type: kind, campaign: 'INNO MVA', archived_at: null, wip_pending: false, assigned_agent: 'operator',
   claimant_name: `Synthetic ${id}`, lead_no: `TEST-${id}`, phone: '2025550100', stage: 'referral_received', created_at: now, updated_at: now,
   claims: statuses.map((status, i) => ({ id: `${id}-claim${i}`, lead_id: id, firm_id: 'firm', campaign_id: 'campaign', campaign: 'INNO MVA', claim_type: kind, status, created_at: now })),
 });
 function fixture(leads: any[]) {
-  const db = new FakeDb({ leads, claims: leads.flatMap(l => l.claims), statuses: DEFAULT_STATUSES, campaigns: [{ id: 'campaign', name: 'INNO MVA', firm_id: 'firm', case_type: 'mva', active: true }],
-    firms: [{ id: 'firm', slug: 'firm', name: 'Synthetic firm' }], app_users: [{ id: 'operator', role: 'agent', full_name: 'Synthetic operator' }], intake_calls: [], lead_activity: [], communications: [], esign_submissions: [], esign_templates: [] });
+  const db = new FakeDb({ leads, claims: leads.flatMap(l => l.claims), statuses: DEFAULT_STATUSES, campaigns: [{ id: 'campaign', name: 'INNO MVA', firm_id: 'firm', firms: { slug: 'tmp' }, case_type: 'mva', active: true }],
+    firms: [{ id: 'firm', slug: 'tmp', name: 'Synthetic firm' }], app_users: [{ id: 'operator', role: 'agent', full_name: 'Synthetic operator' }], intake_calls: [], lead_activity: [], communications: [], esign_submissions: [], esign_templates: [] });
   const from = db.from.bind(db);
   db.from = ((table: string) => { const query: any = from(table); query.not = (column: string, op: string, value: any) => { assert.equal(op, 'is'); assert.equal(value, null); return query.neq(column, value); }; return query; }) as any;
   return db;
@@ -34,7 +35,7 @@ function page(file: string, db: FakeDb) {
     '@/lib/supabase-server': { supabaseServer: async () => db }, '@/lib/auth-user': { authUser: async () => ({ data: { user: { id: 'operator' } } }) },
     '@/lib/mva-call/esign': { packetsFor: () => null }, '@/lib/docuseal': { docusealConfigured: () => false }, '@/lib/mva-call/dispo': { DISPO_LABEL: { callback: 'Call back' } },
     '@/lib/mva-call/links': { APP_CASE_TYPES: ['mva'] }, '@/lib/questionnaire': { STAGE_LABELS: { referral_received: 'Referral received' } },
-    '@/lib/lawruler-mva-status': acquisition, '@/components/calls/CallsHome': { __esModule: true, default: 'calls-home' },
+    '@/lib/lawruler-mva-status': acquisition, '@/lib/mva-call/review-queue': signedReview, '@/components/calls/CallsHome': { __esModule: true, default: 'calls-home' },
   };
   const exp: any = {}; new Function('require', 'exports', js)((name: string) => { assert.ok(name in mods, `Unexpected import ${name}`); return mods[name]; }, exp);
   return exp.default;
@@ -64,7 +65,7 @@ let count = 0; const test = async (name: string, fn: () => any) => { await fn();
     hold(db, held, held.claims[0]); callback(db, held, held.claims[0]); callback(db, ambiguous, null);
     const tree = await page('(calls)/app', db)(), data = findHome(tree), html = renderToStaticMarkup(tree);
     assert.equal(data.callbacks.length, 0); assert.ok(data.open.every((r: any) => r.id !== 'held'));
-    assert.match(html, /LawRuler status needs review/); assert.match(html, /standardized DQ reason/); assert.match(html, /\/leads\/held\?claim=held-claim0/);
+    assert.match(html, /LawRuler status needs review/); assert.match(html, /standardized DQ reason/); assert.match(html, /\/app\/held\?claim=held-claim0/);
   });
   await test('actual App page pauses acquisition lists on failed hold lookup or current call read', async () => {
     const file = lead('open', ['new']);
@@ -73,11 +74,26 @@ let count = 0; const test = async (name: string, fn: () => any) => { await fn();
       const data = findHome(await page('(calls)/app', db)()); assert.equal(data.open.length, 0); assert.equal(data.callbacks.length, 0); assert.ok(data.notes.length > 0);
     }
   });
-  await test('actual Dial Queue removes closed MVA and holds, retains eligible sibling and Motel retention', async () => {
+  await test('actual agent Dial Queue removes closed MVA, holds, and non-MVA siblings', async () => {
     const signed = lead('signed', ['signed_grievous']), mixed = lead('mixed', ['dq', 'new']), held = lead('held', ['new']), motel = lead('motel', ['retained'], 'motel_trafficking');
     const db = fixture([signed, mixed, held, motel]); hold(db, held, held.claims[0]);
     const html = renderToStaticMarkup(await page('(internal)/queue', db)({ searchParams: Promise.resolve({ view: 'dial' }) }));
-    assert.doesNotMatch(html, /TEST-signed/); assert.doesNotMatch(html, /TEST-held/); assert.match(html, /TEST-mixed/); assert.match(html, /\/leads\/mixed\?claim=mixed-claim1/); assert.match(html, /TEST-motel/); assert.match(html, /LawRuler status needs review/);
+    assert.doesNotMatch(html, /TEST-signed/); assert.doesNotMatch(html, /TEST-held/); assert.match(html, /TEST-mixed/); assert.match(html, /\/app\/mixed\?claim=mixed-claim1/); assert.doesNotMatch(html, /TEST-motel/); assert.match(html, /LawRuler status needs review/);
+  });
+  await test('actual agent work queue excludes non-MVA sibling while owner retains it', async () => {
+    const mixed = lead('mixed-sibling', ['new', 'retained']); mixed.claims[1].claim_type = 'motel_trafficking';
+    const motel = lead('motel', ['retained'], 'motel_trafficking');
+    mixed.wip_pending = true; motel.wip_pending = true;
+    const db = fixture([mixed, motel]);
+    for (const view of ['dial', 'mine', 'fix']) {
+      const pilotHtml = renderToStaticMarkup(await page('(internal)/queue', db)({ searchParams: Promise.resolve({ view }) }));
+      assert.match(pilotHtml, /\/app\/mixed-sibling\?claim=mixed-sibling-claim0/);
+      assert.doesNotMatch(pilotHtml, /mixed-sibling-claim1/);
+      assert.doesNotMatch(pilotHtml, /TEST-motel/);
+    }
+    db.tables.app_users[0].role = 'owner';
+    const ownerHtml = renderToStaticMarkup(await page('(internal)/queue', db)({ searchParams: Promise.resolve({ view: 'dial' }) }));
+    assert.match(ownerHtml, /TEST-motel/);
   });
   await test('actual My Work keeps assigned signed records visible and both queue modes exclude archives', async () => {
     const signed = lead('signed', ['signed_grievous']), archived = lead('archived', ['new']); archived.archived_at = now as any;

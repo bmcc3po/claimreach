@@ -10,6 +10,7 @@ import { listSubmissionDocs, uploadSignedDoc, SIGNED_BUCKET } from "@/lib/signed
 import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
 import { notifySigned, signedNoticeDue } from "@/lib/notify-signed";
 import { resolveSigningMatter, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "./signing-matter";
+import { ensureClientSignedSnapshot } from "./client-signed";
 
 // Persisted with the signature transition so a crash or failed claim write
 // cannot leave a signed agreement permanently disconnected from its matter.
@@ -129,14 +130,21 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
  * Pull DocuSeal's view of one agreement and move our row forward. Never moves
  * backwards (a stale poll after a webhook is a no-op). Returns the status.
  */
-export async function syncSubmission(admin: any, row: any, opts: { actorName?: string; origin?: string } = {}): Promise<string> {
+export async function syncSubmission(admin: any, row: any, opts: { actorName?: string; origin?: string; strict?: boolean } = {}): Promise<string> {
   if (!row?.submission_id) return row?.status || "sent";
   const fresh = await admin.from("esign_submissions").select("*").eq("id", row.id).maybeSingle();
-  if (fresh.error || !fresh.data) return row.status;
+  if (fresh.error || !fresh.data) {
+    if (opts.strict) throw new Error("Could not read the current agreement for webhook synchronization.");
+    return row.status;
+  }
   row = fresh.data;
   // A voided agreement stays voided: a late DocuSeal event never brings it
   // back or signs the matter with it (Brett, Sep 28).
   if (row.status === "voided" || row.voided_at) return "voided";
+  // Preserve the first signer's PDF before the office signer finishes. This
+  // snapshot is review evidence, not the final packet or delivery artifact.
+  // A later poll retries if DocuSeal had not generated the preview yet.
+  if (row.status === "signed") await ensureClientSignedSnapshot(admin, row);
   // Durable notify retry: a signed agreement whose team email never went out
   // (failed send, crash after claiming) retries on ANY later sync, not only
   // the first signed transition (Astra round 5). notifySigned claims the
@@ -153,7 +161,10 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
     return "completed";
   }
   const got = await getSubmission(row.submission_id);
-  if (!got.ok) return row.status;
+  if (!got.ok) {
+    if (opts.strict) throw new Error("Could not verify the DocuSeal agreement for webhook synchronization.");
+    return row.status;
+  }
   const sub = got.data;
   const next = statusFrom(sub);
   if ((STATUS_RANK[next] ?? 0) <= (STATUS_RANK[row.status] ?? 0)) return row.status;
@@ -201,10 +212,27 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
   // Only the request that actually moves the row does the side effects.
   const { data: moved, error } = await admin.from("esign_submissions").update(patch)
     .eq("id", row.id).eq("status", row.status).is("voided_at", null).select("id").maybeSingle();
-  if (error) { console.error("esign sync update failed", error.message); return row.status; }
-  if (!moved) return next;
+  if (error) {
+    console.error("esign sync update failed", error.message);
+    if (opts.strict) throw new Error("Could not persist the DocuSeal status transition.");
+    return row.status;
+  }
+  if (!moved) {
+    // A competing poll or webhook may have won the compare-and-set. A webhook
+    // may acknowledge it only after confirming the transition exists locally.
+    if (opts.strict) {
+      const latest = await admin.from("esign_submissions").select("status, voided_at").eq("id", row.id).maybeSingle();
+      if (latest.error || !latest.data || (!latest.data.voided_at && latest.data.status !== "voided" &&
+          (STATUS_RANK[latest.data.status] ?? -1) < (STATUS_RANK[next] ?? 0))) {
+        throw new Error("Could not confirm the DocuSeal status transition after a concurrent update.");
+      }
+      return latest.data.status;
+    }
+    return next;
+  }
 
   if (firstSigned) {
+    if (next === "signed") await ensureClientSignedSnapshot(admin, { ...row, ...patch });
     const recovered = await recoverSignedTransition(admin, { ...row, ...patch });
     if (!recovered) {
       await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: "ClaimReach", category: "retainer",

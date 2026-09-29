@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
-import { archiveSubmission } from "@/lib/docuseal";
+import { archiveSubmission, expireSubmission, getSubmission } from "@/lib/docuseal";
 import { recordAudit } from "@/lib/audit";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { isSignedStatus } from "@/lib/statuses";
@@ -9,6 +9,7 @@ import { agreementName } from "@/lib/mva-call/agreement-names";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided } from "@/lib/mva-call/signing-matter";
 import { matterRowsFilter } from "@/lib/matter";
 import { paxParentId } from "@/lib/linked-files";
+import { ensureClientSignedSnapshot } from "@/lib/mva-call/client-signed";
 
 export const runtime = "edge";
 
@@ -19,9 +20,8 @@ export const runtime = "edge";
 //
 // Brett, Sep 28: "I need the ability to void a sent retainer, and to delete
 // one if the PNC signed it incorrectly and we had to resend."
-//   Not signed yet  : any staff member. The DocuSeal link is archived first;
-//                     if DocuSeal will not archive it, nothing changes (the
-//                     PNC could still sign a link we called void).
+//   Not signed yet  : owner/admin only. DocuSeal confirms expiry before the
+//                     local void; archive alone does not disable a link.
 //   Signed/complete : owner or admin only. The row and its stored PDFs are
 //                     kept as evidence, marked voided with who, when and why.
 // Either way the matter goes back to Contacting when this was its only live
@@ -33,6 +33,11 @@ export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const me = await requireStaff(sb);
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // A replacement send is a separate, indivisible action for agents. A direct
+  // void leaves the claimant with no agreement and belongs to owner/admin.
+  if (!["owner", "admin"].includes(me.role)) {
+    return NextResponse.json({ error: "Only an owner or admin can void an agreement. To correct an unsigned agreement, send a different replacement with a reason." }, { status: 403 });
+  }
   const b = await req.json().catch(() => null);
   const reason = String(b?.reason || "").trim().slice(0, 300);
   if (reason.length < 3) return NextResponse.json({ error: "Say why it is being voided (for example: wrong agreement, sent to the wrong number)." }, { status: 400 });
@@ -60,21 +65,28 @@ export async function POST(req: NextRequest) {
 
   const signed = SIGNED.includes(row.status);
   if (!signed && !UNSIGNED.includes(row.status)) return NextResponse.json({ error: `This agreement is ${row.status}; it cannot be voided.` }, { status: 409 });
-  if (signed && !["owner", "admin"].includes(me.role)) {
-    return NextResponse.json({ error: "The PNC already signed this one. Only an owner or admin can void a signed agreement." }, { status: 403 });
+  if (row.status === "signed") {
+    const snapshot = await ensureClientSignedSnapshot(admin, row);
+    if (!snapshot.ok) return NextResponse.json({ error: `Could not preserve the client-signed original (${snapshot.error}). Nothing was voided.` }, { status: 503 });
   }
-
-  // Kill the link. An unsigned agreement whose link DocuSeal will not archive
-  // stays as it is: calling it void while the PNC can still sign it would
-  // bring the wrong agreement back as signed.
+  // An archive only hides a DocuSeal submission. For an unsigned contract we
+  // must expire and verify the old signing link before calling it void here.
   let dsNote = "";
   if (row.submission_id) {
-    const a = await archiveSubmission(row.submission_id);
-    if (!a.ok && a.status !== 404) {
-      if (!signed) {
-        return NextResponse.json({ error: `DocuSeal did not cancel the signing link (${a.error}). Nothing changed. Try again in a minute; if it keeps failing, archive it in DocuSeal and try again.` }, { status: 502 });
+    if (!signed) {
+      const expired = await expireSubmission(row.submission_id, new Date(Date.now() - 60_000).toISOString());
+      if (!expired.ok) return NextResponse.json({ error: `DocuSeal did not expire the signing link (${expired.error}). Nothing changed.` }, { status: 502 });
+      const checked = await getSubmission(row.submission_id);
+      const expiry = checked.ok ? Date.parse(String(checked.data?.expire_at || "")) : NaN;
+      if (!checked.ok || !Number.isFinite(expiry) || expiry > Date.now()) {
+        return NextResponse.json({ error: "DocuSeal did not confirm that the signing link expired. Nothing was voided; an owner must reconcile the file." }, { status: 502 });
       }
-      dsNote = ` DocuSeal did not archive it (${a.error}); the signed copy stays on the file either way.`;
+      const clientSigned = Array.isArray(checked.data?.submitters) && checked.data.submitters.some((s: any) =>
+        s.role === "Client" && (s.completed_at || s.status === "completed"));
+      if (clientSigned) return NextResponse.json({ error: "The client signed this agreement while it was being cancelled. Refresh and review the signed copy before voiding it." }, { status: 409 });
+    } else {
+      const a = await archiveSubmission(row.submission_id);
+      if (!a.ok && a.status !== 404) dsNote = ` DocuSeal did not archive it (${a.error}); the signed copy stays on the file either way.`;
     }
   }
 

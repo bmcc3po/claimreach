@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   if (!emergency.ok) return NextResponse.json({ error: emergency.error }, { status: emergency.status });
   if (emergencySupersedes(row, emergency.row)) return NextResponse.json({ error: "A newer emergency packet supersedes this agreement. Prepare the DocuSeal re-sign first; the original stays in history." }, { status: 409 });
   const agreementPerson = row.injured_name || row.signer_name;
-  if (agreementPerson && context.lead.claimant_name && !sameName(agreementPerson, context.lead.claimant_name)) return NextResponse.json({ error: `This agreement still names ${agreementPerson}, but the file now names ${context.lead.claimant_name}. Review it, then void and resend the corrected agreement before office completion.` }, { status: 409 });
+  if (agreementPerson && context.lead.claimant_name && !sameName(agreementPerson, context.lead.claimant_name)) return NextResponse.json({ error: `This agreement still names ${agreementPerson}, but the file now names ${context.lead.claimant_name}. Report the error and send a corrected agreement before office completion.` }, { status: 409 });
 
   // Some firms require the full 9-digit SSN on the agreement (per-campaign
   // switch, Brett Sep 27). Enforced here so the rule holds from every screen.
@@ -56,6 +56,9 @@ export async function POST(req: NextRequest) {
 
   if (row.status === "completed") return NextResponse.json({ ok: true, already: true });
   if (row.status !== "signed") return NextResponse.json({ error: "The PNC has not signed yet. This unlocks the moment they do." }, { status: 409 });
+  if (!row.agent_reviewed_at || !row.agent_reviewed_by) {
+    return NextResponse.json({ error: "Review the client's signed agreement in the File panel and confirm it is correct before completing the office signature." }, { status: 409 });
+  }
   if (!row.intake_submitter_id) return NextResponse.json({ error: "This agreement has no second signer to complete." }, { status: 409 });
 
   // Step 2 also dates the firm's line, on the office clock.

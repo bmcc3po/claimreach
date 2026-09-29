@@ -15,9 +15,9 @@ import { resolveMatter, matterRowsFilter } from "@/lib/matter";
 import { getMatterAgreement, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { joinUsAddress } from "@/lib/us-address";
 
-export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ text?: string; claim?: string }> }) {
+export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ text?: string; claim?: string; review?: string }> }) {
   const { id: key } = await params;
-  const { text, claim: claimParam } = await searchParams;
+  const { text, claim: claimParam, review } = await searchParams;
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   if (!user) redirect("/login");
@@ -188,6 +188,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
       agreementId: mainRes.row?.id ?? null,
       emergency: emergency.row ? { needsResign: emergencySupersedes(mainRes.row, emergency.row), status: emergency.row.status } : null,
       openText: text === "1",
+      openReview: !!review,
       canPreview: !!packetsFor(firm?.slug, claim.claim_type),
       ssnRequireFull: campRes?.data?.ssn_require_full === true,
       threeWay,
@@ -201,6 +202,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
         campaign: claim.campaign || (singleMatter ? lead.campaign : "") || "",
         leadNo: lead.lead_no || "",
         agentName: me.full_name || "",
+        agentRole: me.role,
         firmSpoken: firmSpoken(firm?.name),
         textFrom: from ? fmtPhone(from) : "",
         saved,

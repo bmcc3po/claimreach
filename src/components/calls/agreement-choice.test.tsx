@@ -82,13 +82,14 @@ test("all four renderers expose the same selected contract and approval control"
     assert.match(html, /aria-label="Non-tiered approval reason"/);
   }
 });
-test("sent and signed views show the actual stored contract despite changed draft state", () => {
+test("sent and signed views preserve the stored contract while offering a separate correction draft", () => {
   for (const status of ["sent", "opened", "signed"]) {
     const e = make(keys, status, "NV_FLAT"); e.set("story", "city", "Dallas, TX");
     for (const mode of ["guided", "full", "chore", "form"]) {
       e.setView(mode); e.go("send"); const html = renderToStaticMarkup(<CallView v={e.renderVals()} />);
       assert.ok(html.includes("Contract already sent") && html.includes("Nevada non-tiered"));
-      assert.ok(!html.includes('aria-label="Agreement contract"'));
+      assert.ok(html.includes('aria-label="Agreement contract"'));
+      assert.ok(html.includes('Report error and send corrected agreement'));
     }
     e.renderVals().contractChoice.select("TX"); assert.equal(e.state.send.nvVariant, "tiered");
     assert.equal(e.props.esign.templateKey, "NV_FLAT");
@@ -129,7 +130,7 @@ test("actual Agreement panel replaces the iframe immediately and never labels a 
   const sent = make(keys, "sent", "NV_FLAT");
   view.rerender({ ...props, v: sent.renderVals(), preview: { href: "/unrelated-draft", checks: [] } });
   assert.equal(walk(view.tree, n => n.type === "iframe").length, 0); assert.match(text(view.tree), /Nevada non-tiered/);
-  assert.match(text(view.tree), /void it first/); assert.equal(rt.posts().length, 0);
+  assert.match(text(view.tree), /report the error and send the replacement/); assert.equal(rt.posts().length, 0);
 });
 let sendNode: ts.MethodDeclaration | undefined, reviewNode: ts.Expression | undefined;
 const visit = (n: ts.Node) => {
@@ -140,11 +141,22 @@ const visit = (n: ts.Node) => {
 test("actual Send posts the resolved choice and binds returned contract identity independently of the draft", async () => {
   const e = make(); e.renderVals().contractChoice.select("NV_FLAT"); e.renderVals().contractChoice.reason.set({ target: { value: "Synthetic approval" } });
   e.set("story", "city", "Dallas, TX");
+  e.setState({ send: { ...e.state.send, sentNameReview: "Original signer needs correction" } });
   let body: any; const agreementId = { current: null };
-  const send = compile(`exports.send = () => ${sendNode!.body!.getText()};`, ["e", "post", "leadId", "init", "callId", "emergencyResign", "agreementId", "setNeedsResign", "todayMDY", "doiOf"], [() => e, async (_: string, b: any) => { body = b; return { agreement_id: "new", template_key: "TX", status: "sent" }; }, "synthetic", { claimId: "matter" }, { current: "call" }, { current: false }, agreementId, noop, () => "09/28/2026", doiOf]).send;
+  const send = compile(`exports.send = (replacementReason) => ${sendNode!.body!.getText()};`, ["e", "post", "leadId", "init", "callId", "emergencyResign", "agreementId", "setNeedsResign", "todayMDY", "doiOf"], [() => e, async (_: string, b: any) => { body = b; return { agreement_id: "new", template_key: "TX", status: "sent" }; }, "synthetic", { claimId: "matter" }, { current: "call" }, { current: false }, agreementId, noop, () => "09/28/2026", doiOf]).send;
   send(); await Promise.resolve(); await Promise.resolve();
   assert.equal(body.nv_variant, "tiered"); assert.equal(body.nv_reason, undefined); assert.equal(body.claim_id, "matter");
-  assert.equal(e.props.esign.templateKey, "TX"); assert.equal(agreementId.current, "new");
+  assert.equal(e.props.esign.templateKey, "TX"); assert.equal(agreementId.current, "new"); assert.equal(e.state.send.sentNameReview, "");
+});
+test("an unconfirmed replacement never clears the original signer warning", async () => {
+  const e = make(keys, "signed", "NV");
+  e.setState({ send: { ...e.state.send, sentNameReview: "Original signer needs correction" } });
+  const agreementId = { current: "old" };
+  const send = compile(`exports.send = (replacementReason) => ${sendNode!.body!.getText()};`, ["e", "post", "leadId", "init", "callId", "emergencyResign", "agreementId", "setNeedsResign", "todayMDY", "doiOf"], [() => e, async () => ({ status: "sent" }), "synthetic", { claimId: "matter" }, { current: "call" }, { current: false }, agreementId, noop, () => "09/28/2026", doiOf]).send;
+  send("Correcting claimant's legal name"); await Promise.resolve(); await Promise.resolve();
+  assert.equal(agreementId.current, "old"); assert.equal(e.state.send.status, "signed");
+  assert.match(e.state.send.sentNameReview, /Original signer needs correction/);
+  assert.match(e.state.send.error, /not confirmed/);
 });
 test("Review and send closes the phone panel and moves to the same engine signing controls", () => {
   for (const mode of ["guided", "full", "chore", "form"]) {

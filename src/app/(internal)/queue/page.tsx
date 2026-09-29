@@ -44,6 +44,14 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     if (error) loadError = "The working queue did not load. Refresh before calling anyone from this list.";
   }
 
+  // The agent pilot is INNO MVA only. A lead can have sibling matters, so the
+  // campaign filter on the lead alone must not expose a non-MVA claim.
+  if (pilot) leads = leads.flatMap(l => {
+    const pilotClaims = (l.claims || []).filter((c: any) =>
+      c.lead_id === l.id && c.firm_id === l.firm_id && c.campaign_id === pilotCampaignId && c.claim_type === "mva");
+    return pilotClaims.length ? [{ ...l, claims: pilotClaims, queueClaimId: pilotClaims[0].id }] : [];
+  });
+
   const sourceLeads = new Map<string, any>(leads.map(l => [l.id, l]));
   let holds = new Map<string, MvaAcquisitionSignal>();
   const statusRes = await sb.from("statuses").select("*");

@@ -11,7 +11,7 @@ node verification/run-tests.cjs
 node node_modules/typescript/bin/tsc --noEmit
 ```
 
-The runner discovers all source/root `*.test.ts` and `*.test.tsx` suites and runs the three additional route/PostgreSQL checks. It blocks external fetch/HTTP by default; test fixtures provide their own fake transport. Results go to a temporary directory, or set `CLAIMREACH_TEST_OUTPUT` to an explicit output directory. `NODE_PATH` is only used to locate test tooling, not by the application.
+The runner discovers all source/root `*.test.ts` and `*.test.tsx` suites and runs the additional route/PostgreSQL checks. It blocks external fetch/HTTP by default; test fixtures provide their own fake transport. Results go to a temporary directory, or set `CLAIMREACH_TEST_OUTPUT` to an explicit output directory. `NODE_PATH` is only used to locate test tooling, not by the application.
 
 For a Cloudflare packaging check on Linux, use the existing `pages:build` script. The Windows verification machine additionally used Git Bash on PATH and the local adapter below for npm/npx process spawning and Vercel directory symlinks:
 
@@ -28,4 +28,4 @@ node node_modules/@cloudflare/next-on-pages/bin/index.js --no-color
 
 The adapter is verification tooling only. It maps Windows npm shims to their installed Node entrypoints and directory symlinks to junctions. Do not preload it in the application or production deployment. Placeholder configuration is sufficient for packaging, not deployment.
 
-SQL suites execute migrations 0110 and 0111 against isolated in-memory PostgreSQL with synthetic tables. They verify transactional behavior, grants and guards but do not emulate multi-session concurrency or the complete deployed Supabase environment.
+SQL suites execute migrations 0110, 0111, and 0115 against isolated in-memory PostgreSQL with synthetic tables. Migration 0115 is tested with owner and agent JWTs, restrictive row policies, pilot and nonpilot files, cross-firm/claim write attempts, configuration writes, and privileged RPC calls. These checks do not emulate multi-session concurrency or the complete deployed Supabase environment.
