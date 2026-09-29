@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { mailColumnsFrom } from "@/lib/us-address";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { mapInbound, canonicalToLeadColumns, firstNonEmpty } from "@/lib/webhooks";
-import { isLorReadyStatus, isLorStatus, lrAttachmentPlan, mergeLorIngest, type LorStatus } from "@/lib/m6";
+import { isLorReadyStatus, isLorStatus, mergeLorIngest, type LorStatus } from "@/lib/m6";
 import { normalizeLead, loadCampaigns, chooseCampaign, ingestLead, redactForLog } from "@/lib/lead-ingest";
 import { mapLawRulerStatus, shouldApplyLr } from "@/lib/lawruler-status";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
+import { LR_MAX_BODY_BYTES, recordLawRulerSource, resolveLawRulerMatter, storeLawRulerOriginals, validateLawRulerOriginal } from "@/lib/lawruler-documents";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -62,12 +63,27 @@ function secretOk(req: NextRequest): boolean {
 
 // Accepts multipart/form-data (what LawRuler sends), urlencoded, or JSON.
 async function parseBody(req: NextRequest): Promise<{ fields: Record<string, any>; files: Attachment[]; rawNote: string }> {
+  const declared = Number(req.headers.get("content-length") || 0);
+  if (declared > LR_MAX_BODY_BYTES) throw new Error("LawRuler request exceeds 20 MiB.");
+  const reader = req.body?.getReader();
+  const chunks: Uint8Array[] = []; let size = 0;
+  if (reader) {
+    while (true) {
+      const part = await reader.read(); if (part.done) break;
+      size += part.value.byteLength;
+      if (size > LR_MAX_BODY_BYTES) { await reader.cancel(); throw new Error("LawRuler request exceeds 20 MiB."); }
+      chunks.push(part.value);
+    }
+  }
+  const bytes = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  const body = new Request(req.url, { method: "POST", headers: req.headers, body: bytes.buffer });
   const ct = (req.headers.get("content-type") || "").toLowerCase();
   const fields: Record<string, any> = {};
   const files: Attachment[] = [];
 
   if (ct.includes("multipart/form-data") || ct.includes("application/x-www-form-urlencoded")) {
-    const fd = await req.formData();
+    const fd = await body.formData();
     for (const [k, v] of fd.entries()) {
       if (typeof v === "string") {
         fields[k] = v;
@@ -83,12 +99,13 @@ async function parseBody(req: NextRequest): Promise<{ fields: Record<string, any
     return { fields, files, rawNote: ct.split(";")[0] };
   }
 
-  const text = await req.text();
+  const text = await body.text();
   try {
     const j = JSON.parse(text);
-    return { fields: j && typeof j === "object" ? j : {}, files: [], rawNote: "json" };
+    if (!j || typeof j !== "object" || Array.isArray(j)) throw new Error("Expected an object.");
+    return { fields: j, files: [], rawNote: "json" };
   } catch {
-    return { fields: {}, files: [], rawNote: `unparsed:${ct || "none"}` };
+    throw new Error("The LawRuler body must be JSON or form data.");
   }
 }
 
@@ -140,24 +157,29 @@ function compact<T extends Record<string, any>>(o: T): Partial<T> {
 }
 
 export async function POST(req: NextRequest) {
+  // Authentication and bounded parsing precede privileged logging or ingestion.
+  if (!secretOk(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  let parsed: Awaited<ReturnType<typeof parseBody>>;
+  try { parsed = await parseBody(req); }
+  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid request." }, { status: 400 }); }
+  const { fields, files, rawNote } = parsed;
+  const recoveryMode = String(fields.recovery_mode ?? "").trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(fields, "recovery_mode") && recoveryMode !== "historical") return NextResponse.json({ error: "The supported recovery_mode is historical. Omit it for an ordinary live webhook.", saved: false }, { status: 400 });
+  const historical = recoveryMode === "historical";
+  // Original URLs need an approved host/transport contract. Never fetch a URL
+  // from an incoming payload with service credentials or call it recovered.
+  if (Object.entries(fields).some(([key, value]) => /attachment|document|retainer|intake.*url/i.test(key) && /https?:\/\//i.test(typeof value === "string" ? value : JSON.stringify(value)))) return NextResponse.json({ error: "Remote original URLs are not imported. Supply PDF/CSV multipart originals with matching LawRuler identity; an allowlisted URL transport must be configured separately.", saved: false, attachments_complete: false }, { status: 422 });
   const admin = supabaseAdmin();
-  const { fields, files, rawNote } = await parseBody(req);
-
-  // Log the envelope BEFORE doing anything else. If this route explodes we
-  // still want to see exactly what LawRuler sent, including attachment shape.
-  const manifest = files.map((f) => ({ name: f.name, type: f.contentType, bytes: f.bytes.byteLength }));
-  const envelope = {
-    content_type: rawNote,
-    field_keys: Object.keys(fields),
-    fields: redactForLog(fields),
-    attachments: manifest,
+  const manifest = files.map(f => ({ name: f.name, type: f.contentType, bytes: f.bytes.byteLength }));
+  const redact = (value: any, depth = 0): any => {
+    if (depth > 6) return "[nested content omitted]";
+    if (typeof value === "string") return value.slice(0, 8000);
+    if (Array.isArray(value)) return value.slice(0, 50).map(x => redact(x, depth + 1));
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(redactForLog(value)).map(([k, v]) => [k, redact(v, depth + 1)]));
+    return value;
   };
+  const envelope = { content_type: rawNote, field_keys: Object.keys(fields), fields: redact(fields), attachments: manifest };
   const logId = await log(admin, null, "received", 200, envelope, null);
-
-  if (!secretOk(req)) {
-    await log(admin, null, "failed", 401, envelope, "bad or missing x-lr-secret");
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
 
   // LawRuler's Test button sends each mapped field as its own placeholder
   // ("{{default95}}-Lead ID"), never a real lead. Fixed text in a hook (the
@@ -179,13 +201,41 @@ export async function POST(req: NextRequest) {
   // keeps its own path below, unchanged.
   if ((clean(fields.campaign) || "").toLowerCase() !== "motel6") {
     const norm = normalizeLead(fields);
-    const camp = chooseCampaign(norm.caseType, await loadCampaigns(admin));
+    const camps = await loadCampaigns(admin);
+    const camp = chooseCampaign(norm.caseType, camps);
     if (camp) {
-      const r = await ingestLead(admin, { lead: norm, campaign: camp, via: "lawruler" });
+      if (!norm.leadId || !/^\d{1,30}$/.test(norm.leadId)) return NextResponse.json({ error: "Supply the numeric LawRuler LeadID." }, { status: 400 });
+      if (!camps.some(c => c.active && c.name.toLowerCase() === (norm.caseType || "").trim().toLowerCase()) && camps.filter(c => c.active && c.firm_id === camp.firm_id && c.case_type === camp.case_type).length > 1) return NextResponse.json({ error: "More than one campaign matches this case type. Supply its exact campaign name." }, { status: 409 });
+      // Do not allow the ingest helper's first-match behavior to choose between
+      // duplicate source identities, or overwrite contact data before ambiguity is known.
+      const targets = await admin.from("leads").select("id").eq("firm_id", camp.firm_id).or(`lawruler_ref_no.eq.${norm.leadId},external_id.eq.${norm.leadId}`).limit(2);
+      if (targets.error || (targets.data || []).length > 1) return NextResponse.json({ error: "Cannot uniquely match this LawRuler lead. Review duplicate source identities." }, { status: 409 });
+      let digits = (norm.phone || "").replace(/\D/g, ""); if (digits.length === 11 && digits.startsWith("1")) digits = digits.slice(1);
+      if (!targets.data?.length && digits.length === 10) {
+        const phoneMatches = await admin.from("leads").select("id").eq("firm_id", camp.firm_id).eq("campaign_id", camp.id).eq("phone_norm", digits).is("archived_at", null).gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString()).limit(1);
+        if (phoneMatches.error || phoneMatches.data?.length) return NextResponse.json({ error: "This phone may match a different source identity. Verify and link its LawRuler ID before importing; a phone alone cannot bind originals." }, { status: 409 });
+      }
+      if (targets.data?.[0]) {
+        const existingMatter = await resolveLawRulerMatter(admin, { firmId: camp.firm_id, leadId: targets.data[0].id, campaignId: camp.id, campaignName: camp.name, caseType: camp.case_type, claimId: clean(fields.claim_id) });
+        if (!existingMatter.ok) return NextResponse.json({ error: existingMatter.error, saved: false }, { status: existingMatter.status });
+      }
+      const r = await ingestLead(admin, { lead: norm, campaign: camp, via: "lawruler", historical });
       await log(admin, camp.firm_id, r.ok ? "received" : "failed", r.ok ? 200 : (r.status || 500),
         { vendor_lead_id: norm.leadId, lead_no: r.lead_no ?? null, created: !!r.created, campaign: camp.name }, r.error ?? null);
       if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status || 500 });
-      return NextResponse.json({ ok: true, lead_id: r.lead_id, lead_no: r.lead_no, created: r.created, updated: !r.created, campaign: camp.name, log_id: logId, ...(r.error ? { warning: r.error } : {}) });
+      const matter = await resolveLawRulerMatter(admin, { firmId: camp.firm_id, leadId: r.lead_id!, campaignId: camp.id, campaignName: camp.name, caseType: camp.case_type, claimId: clean(fields.claim_id) });
+      if (!matter.ok) return NextResponse.json({ error: matter.error, lead_saved: true, lead_id: r.lead_id, attachments_complete: false }, { status: matter.status });
+      const scope = { firmId: camp.firm_id, leadId: r.lead_id!, claimId: matter.claim.id, vendorId: norm.leadId!, caseType: camp.case_type };
+      try { files.forEach(file => validateLawRulerOriginal(file, scope, fields)); }
+      catch (error) { return NextResponse.json({ error: String((error as Error).message), lead_saved: true, attachments_complete: false }, { status: 422 }); }
+      try {
+        await recordLawRulerSource(admin, scope, fields);
+        const originals = await storeLawRulerOriginals(admin, scope, files, fields);
+        return NextResponse.json({ ok: !r.error, lead_id: r.lead_id, claim_id: matter.claim.id, lead_no: r.lead_no, created: r.created, updated: !r.created, campaign: camp.name, originals, attachments_complete: true, status_reconciliation: "review_required", ...(historical ? { recovery_mode: "historical", communications_triggered: false } : {}), log_id: logId, ...(r.error ? { error: r.error } : {}) }, { status: r.error ? 500 : 200 });
+      } catch (error) {
+        await log(admin, camp.firm_id, "failed", 500, { lead_id: r.lead_id, claim_id: matter.claim.id }, String((error as Error).message));
+        return NextResponse.json({ error: String((error as Error).message), lead_saved: true, lead_id: r.lead_id, claim_id: matter.claim.id, attachments_complete: false }, { status: 500 });
+      }
     }
   }
 
@@ -193,14 +243,14 @@ export async function POST(req: NextRequest) {
   // campaign=motel6) takes the path below. Anything else is a case type
   // ClaimReach does not run: refuse it, so a hook set to "all case types" can
   // never turn another campaign's leads into TMP Motel 6 files.
-  if (!clean(fields.campaign)) {
+  if ((clean(fields.campaign) || "").toLowerCase() !== "motel6") {
     const ct = clean(fields.CaseType) || clean(fields.casetype) || clean(fields.case_type) || "(none)";
     await log(admin, null, "failed", 422, envelope, `case type not run in ClaimReach: ${ct}`);
     return NextResponse.json({ error: `ClaimReach does not run the case type "${ct}". Nothing was saved. Send only INNO MVA leads to this hook.` }, { status: 422 });
   }
 
   const vendorId = clean(fields.leadid) || clean(fields.external_id) || clean(fields.id);
-  if (!vendorId) {
+  if (!vendorId || !/^\d{1,30}$/.test(vendorId)) {
     await log(admin, null, "failed", 400, envelope, "missing leadid");
     return NextResponse.json({ error: "missing leadid" }, { status: 400 });
   }
@@ -281,9 +331,16 @@ export async function POST(req: NextRequest) {
   delete (base as any).phone_norm;
 
   // ---- upsert by vendor lead id -------------------------------------------
-  const { data: existing } = await admin
-    .from("leads").select("id, lead_no, case_description, case_summary")
-    .eq("firm_id", firmId).eq("external_id", vendorId).maybeSingle();
+  const { data: existingData, error: existingError } = await admin
+    .from("leads").select(["id", "lead_no", "case_description", "case_summary", ...Object.keys(base)].join(", "))
+    .eq("firm_id", firmId).or(`lawruler_ref_no.eq.${vendorId},external_id.eq.${vendorId}`).maybeSingle();
+
+  if (existingError) return NextResponse.json({ error: `Cannot safely match the LawRuler lead: ${existingError.message}` }, { status: 409 });
+  const existing = existingData as unknown as ({ id: string; lead_no: string | null; [key: string]: any } | null);
+  if (existing) {
+    const existingMatter = await resolveLawRulerMatter(admin, { firmId, leadId: existing.id, campaignName: campaign, caseType: "motel_trafficking", claimId: clean(fields.claim_id) });
+    if (!existingMatter.ok) return NextResponse.json({ error: existingMatter.error, saved: false }, { status: existingMatter.status });
+  }
 
   let leadId: string;
   let leadNo: string | null = null;
@@ -301,7 +358,14 @@ export async function POST(req: NextRequest) {
     // Details panel renders and what retainer autofill reads. On a REFIRE we
     // only fill it when it is still empty, so a human edit made in ClaimReach
     // is never clobbered by LawRuler resending the original intake text.
-    const upd: any = { ...base };
+    const upd: any = {};
+    // A historical resend is source evidence, not authority to replace an
+    // agent's corrected name, phone, address or case details. False/zero count
+    // as filled values. Read every candidate column above before deciding.
+    for (const [key, value] of Object.entries(base)) {
+      if (existing[key] == null || (typeof existing[key] === "string" && !existing[key].trim())) upd[key] = value;
+      else (base as any)[key] = existing[key];
+    }
     if (narrative && !clean(existing.case_description)) upd.case_description = narrative;
     if (summary && !clean(existing.case_summary)) upd.case_summary = summary;
     const { error } = await admin.from("leads").update(upd).eq("id", leadId);
@@ -319,7 +383,7 @@ export async function POST(req: NextRequest) {
       // leads has no `status` column. `stage` is the pipeline and it already
       // defaults to 'referral_received'. Naming a phantom column made Postgres
       // reject the entire insert, which is why every fire failed.
-      retention_started_at: new Date().toISOString(),
+      ...(historical ? {} : { retention_started_at: new Date().toISOString() }),
       ...base,
     }).select("id, lead_no").single();
     if (error) {
@@ -330,13 +394,15 @@ export async function POST(req: NextRequest) {
     leadNo = lead.lead_no;
     created = true;
 
-    await admin.from("claims").insert({
+    const { error: claimError } = await admin.from("claims").insert({
       firm_id: firmId,
       lead_id: leadId,
       claim_type: base.case_type ?? "motel_trafficking",
       campaign,
       status: "new",
     });
+
+    if (claimError) return NextResponse.json({ error: `Lead saved, claim failed: ${claimError.message}`, lead_saved: true, lead_id: leadId }, { status: 500 });
 
     if (narrative) {
       await admin.from("lead_notes").insert({
@@ -345,81 +411,43 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ---- contact web --------------------------------------------------------
-  await upsertPoints(admin, firmId, leadId, fields, base);
-
-  // ---- LOR (ingest-ready; webhook stays off until Phase C) ----------------
-  await upsertLor(admin, firmId, leadId, fields);
-
-  // ---- attachments --------------------------------------------------------
-  // PDF = Secondary interview (SSN/DOB). CSV = thin contact summary — skip.
-  // Filename leadid must match this fire's vendor id or we skip (never park
-  // a file on the wrong lead). Accept + log; never echo file bytes back.
-  const stored: string[] = [];
-  const skipped: { name: string; reason: string }[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const f = files[i];
-    const plan = lrAttachmentPlan(f.name, vendorId);
-    if (plan.action === "skip") {
-      skipped.push({ name: f.name, reason: plan.reason });
-      await log(admin, firmId, "received", 200, {
-        file: f.name, reason: plan.reason,
-        filename_leadid: plan.vendorLeadId, vendor_lead_id: vendorId,
-      }, `attachment skipped: ${plan.reason}`);
-      continue;
-    }
-    const safe = plan.kind === "secondary_interview"
-      ? "secondary_interview.pdf"
-      : f.name.replace(/[^\w.\-]/g, "_").slice(0, 120);
-    const path = `${firmId}/${leadId}/${Date.now()}_${i}_${safe}`;
-    const up = await admin.storage.from("case-docs").upload(path, f.bytes, {
-      contentType: plan.kind === "secondary_interview"
-        ? "application/pdf"
-        : (f.contentType || "application/octet-stream"),
-      upsert: false,
-    });
-    if (!up.error) {
-      await admin.from("case_documents").insert({
-        firm_id: firmId, lead_id: leadId,
-        doc_type: plan.docType,
-        file_name: plan.fileName, storage_path: path,
-        uploaded_by_name: "LawRuler",
-      });
-      stored.push(plan.fileName);
-    } else {
-      await log(admin, firmId, "failed", 500, { file: f.name }, `storage: ${up.error.message}`);
-    }
+  try {
+    await upsertPoints(admin, firmId, leadId, { ...fields, ...base }, base);
+    if (!historical) await upsertLor(admin, firmId, leadId, fields);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Related import fields failed.", lead_saved: true, lead_id: leadId, attachments_complete: false }, { status: 500 });
   }
 
-  // Record the raw LawRuler status so nothing is lost even if it does not map
-  // onto a ClaimReach status. Mapping happens downstream, not here.
-  const lrStatus = clean(fields.status);
-  if (lrStatus) {
-    await admin.from("lead_activity").insert({
-      firm_id: firmId, lead_id: leadId, kind: "system",
-      body: `LawRuler status: ${lrStatus}`,
-      meta: { source: "lawruler", status: lrStatus, vendor_lead_id: vendorId },
-    });
-    // Secondaries still worked in LawRuler: keep the ClaimReach status in step
-    // so the file reads done or not done here too (src/lib/lawruler-status.ts).
-    const mapped = mapLawRulerStatus(lrStatus);
-    if (mapped) {
-      const { data: cur } = await admin.from("claims").select("status").eq("lead_id", leadId).order("created_at", { ascending: true }).limit(1).maybeSingle();
-      if (shouldApplyLr(cur?.status, mapped)) {
-        const st = await setClaimStatusForLeads({ leadIds: [leadId], status: mapped.status, dqReasonKey: mapped.dqReasonKey ?? null, dqNote: mapped.dqNote ?? null, actorName: "LawRuler" });
-        if (!st.ok) await log(admin, firmId, "failed", 500, { lead_id: leadId, lawruler_status: lrStatus }, `status: ${st.error}`);
-      }
+  // Every campaign files originals through the same exact-matter path.
+  const matter = await resolveLawRulerMatter(admin, { firmId, leadId, campaignName: campaign, caseType: "motel_trafficking", claimId: clean(fields.claim_id) });
+  if (!matter.ok) return NextResponse.json({ error: matter.error, lead_saved: true, lead_id: leadId, attachments_complete: false }, { status: matter.status });
+  const scope = { firmId, leadId, claimId: matter.claim.id, vendorId, caseType: "motel_trafficking" };
+  try { files.forEach(file => validateLawRulerOriginal(file, scope, fields)); }
+  catch (error) { return NextResponse.json({ error: String((error as Error).message), lead_saved: true, attachments_complete: false }, { status: 422 }); }
+  let stored: Awaited<ReturnType<typeof storeLawRulerOriginals>>;
+  try {
+    await recordLawRulerSource(admin, scope, fields);
+    stored = await storeLawRulerOriginals(admin, scope, files, fields);
+    // Keep Brett's existing secondary mappings, but never widen to siblings.
+    const mapped = mapLawRulerStatus(clean(fields.status));
+    if (!historical && mapped && shouldApplyLr(matter.claim.status, mapped)) {
+      const changed = await setClaimStatusForLeads({ leadIds: [leadId], claimIds: [matter.claim.id], expectedStatus: matter.claim.status, status: mapped.status, dqReasonKey: mapped.dqReasonKey ?? null, dqNote: mapped.dqNote ?? null, actorName: "LawRuler" });
+      if (!changed.ok) throw new Error(changed.error || "Status reconciliation failed.");
     }
+  } catch (error) {
+    await log(admin, firmId, "failed", 500, { lead_id: leadId, claim_id: matter.claim.id }, String((error as Error).message));
+    return NextResponse.json({ error: String((error as Error).message), lead_saved: true, lead_id: leadId, claim_id: matter.claim.id, attachments_complete: false }, { status: 500 });
   }
 
   await log(admin, firmId, created ? "received" : "received", 200,
-    { vendor_lead_id: vendorId, lead_no: leadNo, created, attachments: stored, skipped }, null);
+    { vendor_lead_id: vendorId, lead_no: leadNo, created, attachments: stored }, null);
 
   return NextResponse.json({
     ok: true, lead_id: leadId, lead_no: leadNo,
     created, updated: !created,
     attachments_stored: stored.length,
-    attachments_skipped: skipped.length,
+    attachments_complete: true, claim_id: matter.claim.id, originals: stored,
+    ...(historical ? { recovery_mode: "historical", status_reconciliation: "review_required", communications_triggered: false } : {}),
     log_id: logId,
   });
 }
@@ -473,9 +501,9 @@ async function upsertPoints(
   // unique on (lead_id, kind, value): a resend touches the existing row
   // instead of creating a second copy of the same number.
   const { error } = await admin.from("contact_points")
-    .upsert(rows, { onConflict: "lead_id,kind,value", ignoreDuplicates: false });
+    .upsert(rows, { onConflict: "lead_id,kind,value", ignoreDuplicates: true });
   if (error) {
-    await log(admin, firmId, "failed", 500, { rows: rows.length }, `contact_points: ${error.message}`);
+    throw new Error(`Contact points failed: ${error.message}`);
   }
 }
 
@@ -483,7 +511,7 @@ async function upsertLor(
   admin: any, firmId: string, leadId: string,
   fields: Record<string, any>,
 ) {
-  const { data: existing } = await admin
+  const { data: existing, error: existingError } = await admin
     .from("lead_lor")
     .select("status, flagged_today")
     .eq("lead_id", leadId)
@@ -499,6 +527,7 @@ async function upsertLor(
   if (!incomingStatus && incomingFlag == null && !clean(fields.lor_sent_on) && !clean(fields.lor_sent_to)) {
     return;
   }
+  if (existingError) throw new Error(`Could not read LOR state: ${existingError.message}`);
 
   const merged = mergeLorIngest(existing, {
     status: incomingStatus,
@@ -516,7 +545,7 @@ async function upsertLor(
     }),
   }, { onConflict: "lead_id" });
   if (error) {
-    await log(admin, firmId, "failed", 500, { lead_id: leadId }, `lead_lor: ${error.message}`);
+    throw new Error(`LOR state failed: ${error.message}`);
   }
 }
 

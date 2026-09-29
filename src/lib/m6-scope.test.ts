@@ -255,6 +255,11 @@ check("live LR shape: first_name + lastname", canonicalToLeadColumns(mapInbound(
   phone: null, email: null, case_type: null, campaign: null, external_id: null,
   mail_addr1: null, mail_addr2: null, mail_city: null, mail_state: null, mail_zip: "89101",
   dob: null, handling_attorney: null, marketing_source: null,
+  home_phone: null, work_phone: null, phone_alt: null, dl_number: null,
+  gender: null, preferred_language: null, client_time_zone: null,
+  incident_start: null, incident_city: null, incident_state: null,
+  ec_name: null, ec_phone: null, ec_relationship: null, case_summary: null,
+  lawruler_url: null,
 });
 const certified = canonicalToLeadColumns(mapInbound({
   first_name: "Bob", lastname: "Builder", zip: "39201",

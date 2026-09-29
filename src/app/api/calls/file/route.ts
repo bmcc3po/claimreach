@@ -5,6 +5,9 @@ import { requireStaff } from "@/lib/mva-call/server";
 import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
 import { loadStatuses } from "@/lib/claim-status";
 import { resolveStatus } from "@/lib/statuses";
+import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
+import { matterRowsFilter } from "@/lib/matter";
+import { loadLawRulerProvenance } from "@/lib/lawruler-recovery";
 
 export const runtime = "edge";
 
@@ -17,33 +20,43 @@ export async function GET(req: NextRequest) {
   const me = await requireStaff(sb);
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const leadId = new URL(req.url).searchParams.get("lead_id") || "";
+  const context = await resolveSigningMatter(sb, leadId, { claimId: new URL(req.url).searchParams.get("claim_id"), allowArchived: true });
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  const { matter } = context;
   const { data: lead } = await sb.from("leads")
-    .select("id, firm_id, lead_no, claimant_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, home_phone, work_phone, email, mail_addr1, mail_city, mail_state, mail_zip, firms(name)")
+    .select("id, firm_id, lead_no, claimant_name, first_name, last_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, home_phone, work_phone, email, mail_addr1, mail_city, mail_state, mail_zip, firms(name)")
     .eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
-  const [claimRes, esignRes, notesRaw, auditRes, docsRes, staffRes, statuses] = await Promise.all([
-    sb.from("claims").select("id, status, dq_reason_key, created_at").eq("lead_id", leadId).order("created_at", { ascending: true }).limit(1).maybeSingle(),
+  const [esignRes, notesRaw, auditRes, docsRes, staffRes, statuses] = await Promise.all([
     sb.from("esign_submissions").select("id, template_key, signer_name, injured_name, via, status, pax_index, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error, voided_at, void_reason")
-      .eq("lead_id", leadId).order("created_at", { ascending: false }).limit(20),
-    loadFileNotes(sb, leadId, lead.firm_id),
-    sb.from("audit_log").select("id, created_at, actor_name, category, description").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(100),
-    sb.from("case_documents").select("id, file_name, doc_type, storage_path, created_at, uploaded_by_name").eq("lead_id", leadId).order("created_at", { ascending: false }).limit(50),
+      .eq("lead_id", leadId).or(matterRowsFilter(matter)).order("created_at", { ascending: false }).limit(20),
+    loadFileNotes(sb, leadId, lead.firm_id, matter.claim.id),
+    sb.from("audit_log").select("id, claim_id, created_at, actor_name, category, description, meta").eq("lead_id", leadId)
+      // The real column owns the association; older writers used metadata.
+      // Only rows with neither association are shared across the file.
+      .or(`claim_id.eq.${matter.claim.id},and(claim_id.is.null,or(meta->>claim_id.eq.${matter.claim.id},meta->>claim_id.is.null))`).order("created_at", { ascending: false }).limit(100),
+    sb.from("case_documents").select("id, claim_id, file_name, doc_type, storage_path, created_at, uploaded_by_name").eq("lead_id", leadId)
+      .or(`claim_id.eq.${matter.claim.id},claim_id.is.null`).order("created_at", { ascending: false }).limit(50),
     sb.from("app_users").select("id, full_name"),
     loadStatuses(),
   ]);
+  const readError = [esignRes, auditRes, docsRes, staffRes].find((r: any) => r.error)?.error;
+  if (readError) return NextResponse.json({ error: `The file could not load completely: ${readError.message}` }, { status: 500 });
 
   const nameOf = new Map((staffRes.data ?? []).map((u: any) => [u.id, u.full_name || ""]));
   const admin = supabaseAdmin();
   const docs = await Promise.all((docsRes.data ?? []).map(async (d: any) => {
     const { data: signed } = await admin.storage.from("case-docs").createSignedUrl(d.storage_path, 600);
-    return { id: d.id, name: d.file_name, type: d.doc_type, at: d.created_at, by: d.uploaded_by_name, url: signed?.signedUrl ?? null };
+    return { id: d.id, name: d.file_name, type: d.doc_type, scope: d.claim_id ? "This matter" : "Shared file document", at: d.created_at, by: d.uploaded_by_name, url: signed?.signedUrl ?? null };
   }));
-  const st = claimRes.data?.status ?? null;
+  const st = matter.claim.status;
+  const imported = await loadLawRulerProvenance(sb, leadId, matter.claim.id);
 
   return NextResponse.json({
     lead: {
-      lead_no: lead.lead_no, name: lead.claimant_name, campaign: lead.campaign, opened: lead.created_at,
+      lead_no: lead.lead_no, name: lead.claimant_name, campaign: matter.claim.campaign || lead.campaign, opened: lead.created_at,
+      archived: !!context.lead.archived_at,
       source: lead.marketing_source, attorney: (lead as any).firms?.name ?? null,
       lawruler: lead.lawruler_ref_no, lawruler_url: lead.lawruler_url, origin: lead.origin,
     },
@@ -51,13 +64,15 @@ export async function GET(req: NextRequest) {
     // from the console so a callback or a report reads the real thing
     // (Brett, Sep 28).
     contact: {
+      first_name: lead.first_name || "", last_name: lead.last_name || "", claimant_name: lead.claimant_name || "",
       phone: lead.phone || "", email: lead.email || "",
       home_phone: (lead as any).home_phone || "", work_phone: (lead as any).work_phone || "",
       mail_addr1: lead.mail_addr1 || "", mail_city: lead.mail_city || "",
       mail_state: lead.mail_state || "", mail_zip: lead.mail_zip || "",
     },
     status: st ? { key: st, label: resolveStatus(st, statuses).label, tone: resolveStatus(st, statuses).tone } : null,
-    claim_id: claimRes.data?.id ?? null,
+    claim_id: matter.claim.id,
+    imported,
     agreements: (esignRes.data ?? []).map((a: any) => ({
       id: a.id, name: agreementName(a.template_key), signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status, pax: a.pax_index,
       voided: a.voided_at, void_reason: a.void_reason,
@@ -70,6 +85,6 @@ export async function GET(req: NextRequest) {
     notes: mergeFileNotes(notesRaw.notes, notesRaw.deskNotes, nameOf).slice(0, 60),
     history: auditRes.data ?? [],
     docs,
-    classic: ["owner", "admin", "manager"].includes(me.role),
+    classic: true,
   });
 }

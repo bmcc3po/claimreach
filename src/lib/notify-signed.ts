@@ -43,6 +43,9 @@ import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/repor
 import { signedPdfAttachment } from "@/lib/signed-docs";
 import { caseName } from "@/lib/case-name";
 import { leadKeyOf } from "@/lib/lead-key";
+import { resolveSigningMatter, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
+import { matterRowsFilter, rowBelongsToMatter } from "@/lib/matter";
+import { paxParentId } from "@/lib/linked-files";
 
 export interface NotifyRoute {
   event: string;
@@ -157,10 +160,13 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
     // Claim: read the row fresh, decide with the one rule, then take the
     // lease only if the row is still exactly as read.
     const { data: cur, error: readErr } = await admin.from("esign_submissions")
-      .select("id, status, voided_at, signed_notified_at, notify_state, notify_claimed_at, notify_attempts")
+      .select("*")
       .eq("id", row.id).maybeSingle();
     if (readErr) { console.error("signing email: could not read the agreement", row.id, readErr.message); return "read_failed"; }
-    if (!signedNoticeDue(cur)) return "not_due";
+    if (!signedNoticeDue(cur) || !["signed", "completed"].includes(cur?.status)) return "not_due";
+    // Identity and content come from the fresh row too, never the stale poll
+    // object that happened to trigger this retry.
+    row = cur;
 
     const attempts = Number(cur.notify_attempts ?? 0) || 0;
     const stamp = new Date().toISOString();
@@ -175,13 +181,23 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
     if (!claimed?.length) return "claimed_elsewhere";
     claimedAt = stamp;
 
-    const { data: lead, error: leadErr } = await admin.from("leads")
-      .select("id, lead_no, claimant_name, phone, email, dob, case_type, campaign, campaign_id, firm_id")
-      .eq("id", row.lead_id).maybeSingle();
-    if (leadErr || !lead) {
-      await settle({ notify_state: "failed", notify_error: leadErr ? `Could not read the file: ${leadErr.message}` : "The file for this agreement was not found." });
+    const context = await resolveSigningMatter(admin, row.lead_id, { claimId: row.claim_id });
+    if (!context.ok) {
+      await settle({ notify_state: "failed", notify_error: context.error });
       return "failed";
     }
+    const current = await getMatterAgreement(admin, context.lead, context.matter, row.id);
+    if (!current.ok || !current.row || current.row.voided_at || current.row.status === "voided") {
+      await settle({ notify_state: "failed", notify_error: current.ok ? "This agreement is no longer current." : current.error });
+      return "failed";
+    }
+    const emergency = await getMatterEmergency(admin, context.lead, context.matter);
+    if (!emergency.ok || emergencySupersedes(current.row, emergency.row)) {
+      await settle({ notify_state: "failed", notify_error: emergency.ok ? "A newer emergency agreement requires DocuSeal re-sign." : emergency.error });
+      return "failed";
+    }
+    const lead = { ...context.lead, campaign_id: context.campaignId,
+      campaign: context.matter.claim.campaign, case_type: context.matter.claim.claim_type };
     const { data: routes, error: routeErr } = await admin.from("notify_routes")
       .select("event, case_type, campaign_id, to_emails, cc_emails, active").eq("event", "signed").eq("active", true);
     if (routeErr) {
@@ -200,12 +216,27 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
       return "no_recipient";
     }
 
-    // The call's answers, for the summary. A passenger's file has none of its own.
-    let answers: any = {};
-    const q = admin.from("intake_calls").select("answers");
-    const { data: call } = row.call_id
-      ? await q.eq("id", row.call_id).maybeSingle()
-      : await q.eq("lead_id", row.lead_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    // Passenger envelopes name the originating parent call. Validate that
+    // link, but summarize only the passenger's own call/claim answers.
+    let answers: any = context.matter.claim.answers?.mva_call ?? {};
+    const parentId = paxParentId(lead.external_id);
+    let call: any = null;
+    if (row.call_id) {
+      const named = await admin.from("intake_calls").select("id, lead_id, firm_id, campaign_id, claim_id, answers").eq("id", row.call_id).maybeSingle();
+      if (named.error || !named.data || (named.data.firm_id && named.data.firm_id !== lead.firm_id)) {
+        await settle({ notify_state: "failed", notify_error: "Could not verify the agreement's call." }); return "failed";
+      }
+      if (named.data.lead_id === lead.id && rowBelongsToMatter(named.data, context.matter)) call = named.data;
+      else if (!parentId || named.data.lead_id !== parentId || named.data.campaign_id !== context.campaignId) {
+        await settle({ notify_state: "failed", notify_error: "The agreement's call belongs to another file or matter." }); return "failed";
+      }
+    }
+    if (!call) {
+      const latest = await admin.from("intake_calls").select("answers").eq("lead_id", lead.id)
+        .or(matterRowsFilter(context.matter)).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (latest.error) { await settle({ notify_state: "failed", notify_error: `Could not read the case summary: ${latest.error.message}` }); return "failed"; }
+      call = latest.data;
+    }
     if (call?.answers && typeof call.answers === "object") answers = call.answers;
 
     const name = row.injured_name || row.signer_name || lead.claimant_name || "New client";
@@ -216,8 +247,8 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
     // The whole case: summary, qualifiers, every question and answer, and the
     // signed agreement when DocuSeal already has it complete.
     const report = caseReport(lead, answers, row);
-    const link = `${origin}/app/${leadKeyOf(lead)}`;
-    const pdf = row.completed_pdf_path ? await signedPdfAttachment(admin, row.completed_pdf_path, `${name} agreement`) : { file: null };
+    const link = `${origin}/app/${leadKeyOf(lead)}?claim=${encodeURIComponent(context.matter.claim.id)}`;
+    const pdf = row.status === "completed" && row.completed_pdf_path ? await signedPdfAttachment(admin, row.completed_pdf_path, `${name} agreement`) : { file: null };
     const attachments = pdf.file ? [pdf.file] : [];
     const html = caseReportHtml(report, { link, note: `${who} the ${agr}agreement${row.pax_index != null ? " as a passenger" : ""}.`, attached: attachments.length > 0 });
     const r = await sendEmail({

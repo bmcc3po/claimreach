@@ -9,6 +9,8 @@ import { FiBody } from "./FullIntake";
 import { WsLeft, WsHelper, IxHead, IxBar, IxFoot } from "./IntakeWorkspace";
 import ChoreList from "./ChoreList";
 import FormView from "./FormView";
+import { GuidedIntake } from "./OneQuestion";
+import IntakeQuestion, { AgreementRecipient, QuestionControl } from "./IntakeQuestion";
 import { DobField, SsnField } from "./SsnDob";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
@@ -55,12 +57,19 @@ export default function CallView({ v }: { v: any }) {
 {v.ws === "ipad" && <aside className="ws-right" aria-label="Helper"><WsHelper v={v} /></aside>}
 <div className="cc-top ix-top">
 {!wide && <IxHead v={v} />}
+{!!v.openCaseTools && <div className="ix-case-actions">
+  <span>Contact, documents and messages</span>
+  <button type="button" className="ix-case-tools" aria-haspopup="dialog" onClick={v.openCaseTools}>Case tools</button>
+</div>}
 <IxBar v={v} />
 </div>
 <main className={`cc-main ix-main${v.fullView ? " fi-main" : ""}${v.choreView ? " ch-main" : ""}`}>
+{!!v.nameReview && <div className="cc-stop" role="status"><p>{v.nameReview}</p>{v.canUseRecordName && <button type="button" className="cc-btn" onClick={v.useRecordName}>Use corrected PNC name</button>}{v.sendLive && v.voidAgreement && <button type="button" className="cc-btn" onClick={v.voidAgreement}>Void incorrect agreement</button>}</div>}
+{!!v.emergencyNotice && <div className="cc-stop" role="status"><p>{v.emergencyNotice}</p>{v.prepareResign && <button type="button" className="cc-btn" onClick={v.prepareResign}>Prepare DocuSeal re-sign</button>}</div>}
 {!!(v.choreView) && <ChoreList v={v} />}
 {!!(v.formView) && <FormView v={v} />}
 {!!(v.fullView) && <FiBody v={v} />}
+{!!v.guidedQuestions && <GuidedIntake v={v} />}
 {!v.choreView && !v.formView && (<>
 {!!(v.bare) && (<>
 {(v.bareRows || []).map((r: any, i6: number) => (<Fragment key={i6}>
@@ -320,9 +329,8 @@ export default function CallView({ v }: { v: any }) {
 <WhereField value={v.f.city.value ?? ""} agreement={v.agreement} onChange={(t: string) => v.f.city.set({ target: { value: t } })} />
 </div>)}
 {!!(v.needDoi) && (<div>
-<div className="cc-lab">DATE OF THE WRECK</div>
-<div className="cc-chips cc-seg">{(v.storyWhen.chips || []).map((c: any, i: number) => (<button key={i} className={cx(c.cls)} onClick={c.pick}>{c.label}</button>))}</div>
-{!!(v.storyWhen.pickDate) && <input className="cc-field" style={{marginTop: "8px"}} type="date" max={v.storyWhen.date.max} aria-label="Date of the wreck" value={v.storyWhen.date.value ?? ""} onChange={v.storyWhen.date.set} />}
+<div className="cc-lab">When</div>
+<QuestionControl c={v.fi.sections.flatMap((s: any) => s.questions).find((q: any) => q.id === 'when').c} v={v} presentation="guided" />
 <div className="cc-cue">It prints on the agreement.</div>
 </div>)}
 <div>
@@ -349,15 +357,7 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-lab">SEND BY</div>
 <div className="cc-chips cc-seg">{(v.via || []).map((c: any, i31: number) => (<Fragment key={i31}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
 <div className="cc-cue">{v.viaNote}</div>
-{!!v.viaText && (<>
-{!!(v.textTo || []).length && (<>
-<div className="cc-lab" style={{marginTop: "12px"}}>TEXT IT TO</div>
-<div className="cc-chips cc-seg">{(v.textTo || []).map((c: any, i: number) => (<Fragment key={i}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-</>)}
-{!!v.textToOther && <input className="cc-field" style={{marginTop: "8px"}} type="tel" inputMode="tel" placeholder={v.herPhoneOk ? "Number to text it to" : "PNC's cell"} aria-label="Number to text the agreement to" value={v.f.phone.value ?? ""} onChange={v.f.phone.set} />}
-{!!v.textToOther && !!v.herPhoneOk && <div className="cc-cue">If someone else is signing, put their name in Signer.</div>}
-</>)}
-{!!v.viaEmail && <input className="cc-field" style={{marginTop: "8px"}} type="email" inputMode="email" autoComplete="off" placeholder="PNC's email" aria-label="PNC's email" value={v.f.email.value ?? ""} onChange={v.f.email.set} />}
+<AgreementRecipient v={v} presentation="guided" />
 </div>
 {!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener" onClick={v.onPreview}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>Preview the agreement before you send it</a>}
 {!!v.hasSendError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.sendError}</div></div>}
@@ -407,7 +407,7 @@ export default function CallView({ v }: { v: any }) {
 <div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} /></div>
 {!!(v.agreementOpen) && (<>
 <button className="cc-btn cc-full" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
-<button className="cc-btn cc-soft" onClick={v.leaveForQa}>Leave it for QA in the morning</button>
+<button className="cc-btn cc-soft" onClick={v.leaveForQa}>Finish later</button>
 </>)}
 {!!v.hasFileError && <div className="cc-cue cc-red">{v.fileError}</div>}
 {!!(v.agreementClosed) && (<><span className="cc-tag">{v.agreementNote}</span></>)}
@@ -428,15 +428,10 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.fsCrash) && (<>
 <div className="cc-card">
 <span className="cc-card-h">The crash</span>
-<div><div className="cc-lab">OTHER DRIVER'S INSURANCE</div>
-<select className="cc-field" aria-label="Other driver's insurance carrier" value={v.f.carrier.value ?? ""} onChange={v.f.carrier.set}>{(v.carriers || []).map((o: any, i35: number) => (<Fragment key={i35}><option value={o ?? ""}>{o}</option></Fragment>))}</select></div>
-<div><div className="cc-lab">POLICE REPORT NUMBER</div><input className="cc-field" type="text" aria-label="Police report number" value={v.f.report.value ?? ""} onChange={v.f.report.set} /></div>
-<div><div className="cc-lab">VEHICLE</div>
-<div style={{display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "8px"}}>
-<select className="cc-field" aria-label="Vehicle year" value={v.f.vYear.value ?? ""} onChange={v.f.vYear.set}>{(v.years || []).map((o: any, i36: number) => (<Fragment key={i36}><option value={o ?? ""}>{o}</option></Fragment>))}</select>
-<input className="cc-field" type="text" placeholder="Make" aria-label="Vehicle make" value={v.f.vMake.value ?? ""} onChange={v.f.vMake.set} />
-<input className="cc-field" type="text" placeholder="Model" aria-label="Vehicle model" value={v.f.vModel.value ?? ""} onChange={v.f.vModel.set} />
-</div></div>
+{['carrier', 'report', 'car'].map((id) => {
+  const q = v.fi.sections.flatMap((s: any) => s.questions).find((q: any) => q.id === id);
+  return q ? <IntakeQuestion key={id} q={q} v={v} presentation="guided" /> : null;
+})}
 <div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">Missed work</span><span className="cc-done-v">{v.missedWork}</span></div>
 </div>
 </>)}

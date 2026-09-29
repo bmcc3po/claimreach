@@ -9,6 +9,8 @@
 // "gate" = a checkpoint the agent must acknowledge (DQ / supervisor / safety).
 // ============================================================================
 
+import { dateBucket } from "./intake-console/engine";
+
 export type FieldKind =
   | "text" | "longtext" | "bool" | "select" | "multiselect"
   | "int" | "monthyear" | "script" | "section" | "gate" | "property_lookup"
@@ -22,7 +24,7 @@ export type FieldKind =
 
 export interface Condition {
   fieldId: string;                 // an earlier field's id
-  op: "is" | "is_not" | "any_of" | "is_blank" | "not_blank";
+  op: "is" | "is_not" | "any_of" | "is_blank" | "not_blank" | "date_bucket";
   value?: string;                  // for is/is_not
   values?: string[];              // for any_of
 }
@@ -435,6 +437,9 @@ export function fieldVisible(field: Field, answers: Record<string, any>): boolea
       }
       case "is_blank": return sv === "";
       case "not_blank": return sv !== "";
+      // Generated legacy console forms use the same existing date classifier
+      // as their code runner, including compatible old bucket-valued answers.
+      case "date_bucket": return ["le30", "mid", "old"].includes(c.value || "") && dateBucket(v) === c.value;
       default: return true;
     }
   };

@@ -171,6 +171,8 @@ export async function ingestLead(admin: any, opts: {
   via: "lawruler" | "marketer";
   /** Marketer name from the door they used, when the payload does not say. */
   marketerName?: string | null;
+  /** Explicit historical recovery must not publish a new-live-lead event. */
+  historical?: boolean;
 }): Promise<IngestResult> {
   const { lead: n, campaign: camp, via } = opts;
   const firmId = camp.firm_id;
@@ -266,10 +268,10 @@ export async function ingestLead(admin: any, opts: {
     meta: { source: via, lawruler_lead_id: lrId, marketer: n.marketer || opts.marketerName || null, channel: n.channel, status: n.status },
   }).then(() => null, () => null);
 
-  if (created && n.phone) {
+  if (created && n.phone && !opts.historical) {
     try { const { reconcileUnmatched } = await import("@/lib/comms"); await reconcileUnmatched(leadId, n.phone, firmId); } catch (e) { console.error("reconcile failed", e); }
   }
-  if (created) {
+  if (created && !opts.historical) {
     try {
       const { fireEvent } = await import("@/lib/webhook-deliver");
       await fireEvent(firmId, "lead.created", { lead_id: leadId, lead_no: leadNo, ...want, source: via }, { campaignId: camp.id });

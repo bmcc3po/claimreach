@@ -44,6 +44,29 @@ function fakeDb(tables: Record<string, Row[]>, opts: { failRead?: string[]; fail
   const writes: { table: string; op: string; row?: any; patch?: any; n?: number }[] = [];
   const db: any = {
     writes, tables,
+    // Model the SQL reservation contract; actual SQL is verified separately.
+    rpc: async (name: string, p: any) => {
+      const rows = tables.firm_delivery_dispatch ??= [];
+      const c = (tables.claims ?? []).find((r) => r.id === p.p_claim_id);
+      const d = rows.find((r) => r.claim_id === p.p_claim_id);
+      if (name === "begin_firm_delivery") {
+        if (!c || c.lead_id !== p.p_lead_id) return { error: { message: "matter mismatch" }, data: null };
+        const lead = tables.leads.find((r) => r.id === p.p_lead_id);
+        if (!lead || lead.archived_at || lead.firm_id !== p.p_firm_id || (c.firm_id ?? lead.firm_id) !== p.p_firm_id || (c.campaign_id ?? lead.campaign_id) !== p.p_campaign_id) return { error: { message: "The firm or campaign changed while preparing delivery" }, data: null };
+        if (d && ["sending", "uncertain"].includes(d.state)) return { data: { state: "blocked", attempt_key: d.attempt_key }, error: null };
+        if (!p.p_force && (c.firm_sent_at || d?.state === "sent")) return { data: { state: "sent" }, error: null };
+        const next = { claim_id: c.id, lead_id: c.lead_id, state: "sending", attempt_key: `attempt-${writes.length}-${Math.random()}` };
+        if (d) Object.assign(d, next); else rows.push(next);
+        return { data: { state: "acquired", attempt_key: next.attempt_key }, error: null };
+      }
+      if (name === "finish_firm_delivery") {
+        if (opts.failWrite?.includes("claims")) return { data: null, error: { message: "claims write failed" } };
+        if (!d || d.attempt_key !== p.p_attempt_key || d.state !== "sending") return { data: false, error: null };
+        d.state = p.p_state;
+        return { data: true, error: null };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    },
     from(table: string) {
       const st: any = { op: "select", filters: [] as ((r: Row) => boolean)[], orders: [] as [string, boolean][], limit: null, head: false, returning: false };
       const run = async (): Promise<any> => {
@@ -70,7 +93,7 @@ function fakeDb(tables: Record<string, Row[]>, opts: { failRead?: string[]; fail
       };
       const q: any = {
         select(_c?: string, o?: any) { if (st.op === "select") { if (o?.head) st.head = true; } else st.returning = true; return q; },
-        eq(k: string, v: any) { st.filters.push((r: Row) => r[k] === v); return q; },
+        eq(k: string, v: any) { st.filters.push((r: Row) => k === "audit->emergency->>claim_id" ? r.audit?.emergency?.claim_id === v : r[k] === v); return q; },
         neq(k: string, v: any) { st.filters.push((r: Row) => r[k] !== v); return q; },
         is(k: string, v: any) { st.filters.push((r: Row) => (r[k] ?? null) === v); return q; },
         in(k: string, vs: any[]) { st.filters.push((r: Row) => vs.includes(r[k])); return q; },
@@ -213,7 +236,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.match(r.error!, /does not belong to this file/);
   });
 
-  await t("a voided newest agreement is skipped for the older completed one", async () => {
+  await t("a voided current agreement never resurrects an older completed one", async () => {
     const old = agreement("e1", "5001", { claim_id: "aaa1", created_at: "2026-09-01T00:00:00Z" });
     const voided = agreement("e2", "5002", { claim_id: "aaa1", status: "voided", voided_at: "2026-09-06T00:00:00Z", created_at: "2026-09-05T00:00:00Z" });
     // A row still reading completed but carrying a void stamp is voided too.
@@ -221,10 +244,9 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [old, voided, stamped] });
     const d = deps(db);
     const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", actorName: "QA" }, d);
-    assert.ok(r.ok, JSON.stringify(r));
-    assert.equal(retainerOf(d.sent[0]), b64(bytes("primary 5001")));
-    const certs = d.sent[0].attachments.filter((x) => /certificate/.test(x.filename));
-    assert.deepEqual(certs.map((x) => x.content), [b64(bytes("cert 5001"))]);
+    assert.ok(!r.ok, JSON.stringify(r));
+    assert.match(r.error!, /voided/);
+    assert.equal(d.sent.length, 0);
   });
 
   await t("only the NEWEST completed main agreement goes; passenger rows on the caller's file do not ride along", async () => {
@@ -353,14 +375,14 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.ok(!r3.ok);
   });
 
-  await t("legacy SignWell retainers follow the same matter rule (explicit retainers.claim_id on a multi-matter file)", async () => {
+  await t("non-MVA legacy SignWell retainers follow the same matter rule (explicit retainers.claim_id on a multi-matter file)", async () => {
     const sd = (id: string, retainer: string | null) => ({ id, lead_id: L, status: "signed", packet_seq: 1, title: "Retainer", retainer_id: retainer, completed_pdf_path: `${FIRM}/signed-${id}.pdf` });
     const storage = { [`${FIRM}/signed-ab01.pdf`]: bytes("legacy mine"), [`${FIRM}/signed-ab02.pdf`]: bytes("legacy sibling") };
     const db = fakeDb({
-      leads: [leadRow()], claims: [claimRow("aaa1", "ca01"), claimRow("bbb2", "cb02")], campaigns: [camp("ca01", { attach_certificate: false })],
+      leads: [leadRow()], claims: [claimRow("aaa1", "ca01", { claim_type: "prem" }), claimRow("bbb2", "cb02", { claim_type: "prem" })], campaigns: [camp("ca01", { attach_certificate: false })],
       esign_submissions: [], firm_deliveries: [],
       signable_documents: [sd("ab01", "cafe01"), sd("ab02", "cafe02"), sd("ab03", null)],
-      retainers: [{ id: "cafe01", claim_id: "aaa1" }, { id: "cafe02", claim_id: "bbb2" }],
+      retainers: [{ id: "cafe01", lead_id: L, claim_id: "aaa1" }, { id: "cafe02", lead_id: L, claim_id: "bbb2" }],
     }, { storage });
     const d = deps(db);
     const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", actorName: "QA" }, d);
@@ -403,7 +425,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     const d = deps(db);
     const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", actorName: "QA" }, d);
     assert.ok(!r.ok);
-    assert.match(r.error!, /Could not read this matter's signed agreement/);
+    assert.match(r.error!, /Could not read the agreement/);
     assert.equal(d.sent.length, 0);
   });
 
@@ -485,6 +507,165 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     const csv = Buffer.from(d.sent[0].attachments[1].content, "base64").toString("utf8");
     assert.match(csv, /Boise/);
     assert.doesNotMatch(csv, /Reno/);
+  });
+
+  await t("certificate-only delivery without an agreement refuses before reservation or send", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01", { attach_retainer: false })] });
+    const d = deps(db);
+    const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, false); assert.match(r.error!, /certificate/); assert.equal(d.sent.length, 0);
+    assert.equal((db.tables.firm_delivery_dispatch ?? []).length, 0);
+  });
+
+  await t("a newer unsigned current agreement blocks delivery of an old completed packet", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [
+      agreement("e1", "5001", { claim_id: "aaa1" }),
+      agreement("e2", "5002", { claim_id: "aaa1", status: "sent", created_at: "2026-09-20" }),
+    ] });
+    const d = deps(db);
+    const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, false); assert.match(r.error!, /not complete/); assert.equal(d.sent.length, 0);
+  });
+
+  await t("non-MVA legacy packet refuses a missing second PDF or unsigned member", async () => {
+    for (const secondStatus of ["signed", "sent"]) {
+      const doc = (id: string, status: string, seq: number) => ({ id, lead_id: L, firm_id: FIRM, packet_group: "packet", packet_seq: seq, status, completed_pdf_path: `${FIRM}/${id}.pdf`, title: id });
+      const db = fakeDb({ leads: [leadRow()], claims: [claimRow("aaa1", "ca01", { claim_type: "prem" })], campaigns: [camp("ca01", { attach_certificate: false })],
+        esign_submissions: [], retainers: [], signable_documents: [doc("first", "signed", 1), doc("second", secondStatus, 2)] },
+        { storage: { [`${FIRM}/first.pdf`]: bytes("first") } });
+      const d = deps(db);
+      const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+      assert.equal(r.ok, false); assert.equal(d.sent.length, 0);
+    }
+  });
+
+  await t("simultaneous manual/auto/forced sends enter the provider only once", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
+    let release!: () => void; let entered!: () => void;
+    const started = new Promise<void>((r) => { entered = r; });
+    const held = new Promise<void>((r) => { release = r; });
+    let count = 0;
+    const d = deps(db, { sendEmail: async (m) => { count++; assert.match(m.idempotencyKey!, /^firm-delivery-attempt-/); entered(); await held; return { ok: true }; } });
+    const one = deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    await started;
+    const [two, three] = await Promise.all([
+      deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "auto" }, d),
+      deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", force: true }, d),
+    ]);
+    assert.equal(two.recoveryRequired, true); assert.equal(three.recoveryRequired, true); assert.equal(count, 1);
+    release(); assert.equal((await one).ok, true);
+    const intentional = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", force: true }, d);
+    assert.equal(intentional.ok, true); assert.equal(count, 2);
+  });
+
+  await t("a selected non-MVA legacy certificate failure blocks the otherwise readable packet", async () => {
+    const db = fakeDb({ leads: [leadRow()], claims: [claimRow("aaa1", "ca01", { claim_type: "prem" })], campaigns: [camp("ca01")],
+      esign_submissions: [], retainers: [], signable_documents: [{ id: "first", lead_id: L, status: "signed", title: "Agreement", completed_pdf_path: `${FIRM}/first.pdf` }] },
+      { storage: { [`${FIRM}/first.pdf`]: bytes("first") } });
+    const d = deps(db, { buildCertificate: async () => { throw new Error("synthetic certificate failure"); } });
+    const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, false); assert.match(r.error!, /synthetic certificate failure/); assert.equal(d.sent.length, 0);
+  });
+
+  await t("unknown provider result stays blocked, including forced repeat", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
+    let count = 0;
+    const d = deps(db, { sendEmail: async () => { count++; throw new Error("synthetic timeout"); } });
+    const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.recoveryRequired, true); assert.match(r.error!, /may have gone out/);
+    const retry = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", force: true }, d);
+    assert.equal(retry.recoveryRequired, true); assert.equal(count, 1);
+  });
+
+  await t("a successful email with failed final DB stamp cannot be sent again", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })], failWrite: ["claims"] });
+    const d = deps(db);
+    const first = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(first.ok, true); assert.equal(first.recoveryRequired, true);
+    const again = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", force: true }, d);
+    assert.equal(again.recoveryRequired, true); assert.equal(d.sent.length, 1);
+  });
+
+  await t("a newer provisional emergency blocks an old primary; cancelled emergency or newer primary does not", async () => {
+    for (const [status, created, blocked] of [["signed", "2026-09-30", true], ["sent", "2026-09-30", true], ["cancelled", "2026-09-30", false], ["signed", "2026-01-01", false]] as const) {
+      const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })],
+        extra: { signable_documents: [{ id: "emergency", lead_id: L, firm_id: FIRM, audit: { emergency: { claim_id: "aaa1" } }, status, created_at: created }] } });
+      const d = deps(db); const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+      assert.equal(r.ok, !blocked, JSON.stringify(r)); assert.equal(d.sent.length, blocked ? 0 : 1);
+    }
+  });
+
+  await t("recipient binding changed after assembly is rejected by reservation before provider", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
+    const original = db.rpc;
+    db.rpc = async (name: string, params: any) => { if (name === "begin_firm_delivery") db.tables.claims[0].campaign_id = "other-campaign"; return original(name, params); };
+    const d = deps(db); const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, false); assert.match(r.error!, /changed while preparing/); assert.equal(d.sent.length, 0);
+  });
+
+  await t("corrected PNC name cannot deliver old named primary evidence", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1", injured_name: "Incorrect Name", signer_name: "Incorrect Name" })] });
+    const d = deps(db), r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, false); assert.match(r.error!, /file now names Pat Doe/); assert.equal(d.sent.length, 0);
+    assert.equal(db.tables.esign_submissions[0].injured_name, "Incorrect Name");
+  });
+
+  await t("guardian signer is valid when packet injured person matches canonical PNC", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1", injured_name: "PAT  DOE", signer_name: "Guardian Doe" })] });
+    const d = deps(db), r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(d.sent.length, 1);
+  });
+
+  await t("MVA attachment switches cannot bypass current primary readiness or private packet reads", async () => {
+    const cases: { label: string; patch?: Row; missing?: string; absent?: boolean; match: RegExp }[] = [
+      { label: "no primary", absent: true, match: /current completed DocuSeal/ },
+      { label: "unsigned", patch: { status: "sent" }, match: /not complete/ },
+      { label: "voided", patch: { status: "voided" }, match: /voided/ },
+      { label: "wrong person", patch: { injured_name: "Another Person" }, match: /file now names/ },
+      { label: "missing primary pointer", patch: { completed_pdf_path: null }, match: /not complete in storage/ },
+      { label: "missing primary bytes", missing: `${FIRM}/signed-ds-5001.pdf`, match: /not complete in storage/ },
+      { label: "partial packet", patch: { doc_count: 2 }, match: /not complete in storage/ },
+      { label: "missing certificate pointer", patch: { cert_pdf_path: null }, match: /certificate/ },
+      { label: "missing certificate bytes", missing: `${FIRM}/cert-ds-5001.pdf`, match: /certificate/ },
+      { label: "foreign storage pointer", patch: { cert_pdf_path: "f999/cert-ds-5001.pdf" }, match: /storage association/ },
+    ];
+    for (const c of cases) {
+      const a = agreement("e1", "5001", { claim_id: "aaa1", ...c.patch });
+      if (c.missing) delete a.files[c.missing];
+      const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01", { attach_retainer: false, attach_certificate: false })], agreements: c.absent ? [] : [a] });
+      const d = deps(db), r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", force: true }, d);
+      assert.equal(r.ok, false, c.label); assert.match(r.error!, c.match, c.label); assert.equal(d.sent.length, 0, c.label);
+      assert.equal((db.tables.firm_delivery_dispatch ?? []).length, 0, c.label);
+    }
+  });
+
+  await t("MVA verifies the packet but includes only the configured attachments", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01", { attach_retainer: false, attach_certificate: false, attach_intake_csv: true })], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
+    const d = deps(db, { loadBundle: async () => ({ lead: leadRow(), claim: claimRow("aaa1", "ca01"), caseType: "mva", answers: { city: "Houston" }, fields: [{ id: "city", kind: "text", label: "City" }] }) });
+    const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual(d.sent[0].attachments.map(a => a.filename), ["Pat_Doe_intake.csv"]);
+  });
+
+  await t("MVA never substitutes a sibling or legacy-only agreement when attachments are disabled", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01"), claimRow("bbb2", "ca01")], campaigns: [camp("ca01", { attach_retainer: false, attach_certificate: false })], agreements: [agreement("e1", "5001", { claim_id: "bbb2" })], extra: { signable_documents: [{ id: "old", lead_id: L, firm_id: FIRM, status: "signed", completed_pdf_path: `${FIRM}/old.pdf` }] } });
+    const d = deps(db), r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, false); assert.match(r.error!, /current completed DocuSeal/); assert.equal(d.sent.length, 0);
+  });
+
+  await t("emergency-only or superseding evidence blocks every case type with both attachment switches off", async () => {
+    for (const type of ["mva", "prem"]) for (const primary of [false, true]) {
+      const db = world({ claims: [claimRow("aaa1", "ca01", { claim_type: type })], campaigns: [camp("ca01", { attach_retainer: false, attach_certificate: false })], agreements: primary ? [agreement("e1", "5001", { claim_id: "aaa1" })] : [], extra: { signable_documents: [{ id: "emergency", lead_id: L, firm_id: FIRM, audit: { emergency: { claim_id: "aaa1" } }, status: "signed", created_at: "2026-09-30" }] } });
+      const d = deps(db), r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+      assert.equal(r.ok, false, type); assert.match(r.error!, /provisional emergency/); assert.equal(d.sent.length, 0);
+      assert.equal((db.tables.firm_delivery_dispatch ?? []).length, 0);
+    }
+  });
+
+  await t("non-MVA intentional unsigned delivery remains available without an active emergency", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01", { claim_type: "prem" })], campaigns: [camp("ca01", { attach_retainer: false, attach_certificate: false })] });
+    const d = deps(db), r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(d.sent.length, 1);
   });
 
   console.log(`${pass} passed`);

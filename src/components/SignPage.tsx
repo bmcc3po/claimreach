@@ -4,10 +4,10 @@ import DocViewer from "./DocViewer";
 
 // In-house e-sign, built for the hardest case: an 89-year-old with arthritis and
 // a 4-year-old helping. SIMPLE mode = giant buttons, three taps, no reading needed.
-// ADVANCED mode = read the full document (rotate phone), manual date entry.
+// ADVANCED mode = read the full frozen document (rotate phone).
 // One signature is applied to EVERY signature/initial/date field ("insert everywhere").
 
-type Step = "loading" | "start" | "sign" | "confirm" | "done" | "error";
+type Step = "loading" | "start" | "sign" | "confirm" | "recover" | "done" | "error";
 const SIG_FONTS = [
   { id: "cursive1", css: "'Dancing Script', cursive" },
   { id: "cursive2", css: "'Great Vibes', cursive" },
@@ -31,8 +31,6 @@ export default function SignPage({ id }: { id: string }) {
   const [mode, setMode] = useState<"draw" | "type">("type"); // type is easier for elderly; default to it
   const [typedFont, setTypedFont] = useState(SIG_FONTS[0]);
   const [adopted, setAdopted] = useState<string | null>(null);
-  const [lockDate, setLockDate] = useState(true); // default: lock to today's signing date
-  const [manualDate, setManualDate] = useState("");
   const [certUrl, setCertUrl] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,9 +48,10 @@ export default function SignPage({ id }: { id: string }) {
     fetch(`/api/signable/submit?id=${id}`)
       .then((r) => r.json())
       .then((d) => {
-        if (!d.doc) { setErr("This document could not be found or has expired."); setStep("error"); return; }
+        if (!d.doc) { setErr(d.error || "This document could not be found or has expired."); setStep("error"); return; }
         setDoc(d.doc); setPdf(d.pdf || null); setName(d.doc.signer_name || "");
         if (d.doc.status === "signed") { setStep("done"); return; }
+        if (d.doc.status === "signing") { setStep("recover"); return; }
         if (d.doc.status === "cancelled") { setErr("This signing link has been cancelled. Please contact us for a new one."); setStep("error"); return; }
         setStep("start");
         fetch("/api/signable/submit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, op: "viewed" }) }).catch(() => {});
@@ -97,15 +96,23 @@ export default function SignPage({ id }: { id: string }) {
     setErr("");
     const r = await fetch("/api/signable/submit", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, op: "sign", signed_name: name, signature_data: adopted, signature_type: mode, lock_date: lockDate, manual_date: lockDate ? null : manualDate }),
+      body: JSON.stringify({ id, op: "sign", signed_name: name, signature_data: adopted, signature_type: mode, consent_accepted: true, consent_version: "emergency-v1" }),
     });
     const d = await r.json();
     if (d.ok) { setCertUrl(d.document_url || d.completed_pdf_url || d.cert_pdf_url || null); setStep("done"); } else setErr(d.error || "Could not submit your signature.");
+  }
+  async function recover() {
+    setErr("");
+    try {
+      const d = await (await fetch("/api/signable/submit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, op: "resume" }) })).json();
+      if (d.ok) { setCertUrl(d.document_url || null); setStep("done"); } else setErr(d.error || "Could not finish saving the agreement.");
+    } catch { setErr("Could not finish saving the agreement. Please try again."); }
   }
 
   // ---------- RENDER ----------
   if (step === "loading") return <div className="es-shell"><p className="es-muted">Loading…</p></div>;
   if (step === "error") return <div className="es-shell"><div className="es-card"><p className="es-err">{err}</p></div></div>;
+  if (step === "recover") return <div className="es-shell"><div className="es-card"><h1>Your signature is recorded</h1><p>Finish saving your signed document and certificate. Your signature will stay the same.</p><button className="es-btn es-btn-go" onClick={recover}>Finish saving agreement</button>{err && <p className="es-err">{err}</p>}</div></div>;
 
   if (step === "done") return (
     <div className="es-shell">
@@ -200,17 +207,6 @@ export default function SignPage({ id }: { id: string }) {
             </>
           )}
 
-          {advanced && (
-            <label className="es-check">
-              <input type="checkbox" checked={!lockDate} onChange={(e) => setLockDate(!e.target.checked)} />
-              <span>Let me enter the date myself (otherwise today's date is used)</span>
-            </label>
-          )}
-          {advanced && !lockDate && (
-            <div className="es-field"><label className="es-label">Date</label>
-              <input className="es-input" type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} /></div>
-          )}
-
           <button className="es-btn es-btn-go" onClick={confirmSig}>Use this signature →</button>
           {err && <p className="es-err">{err}</p>}
         </div>
@@ -223,7 +219,7 @@ export default function SignPage({ id }: { id: string }) {
           {fieldCount.total > 1 && (
             <p className="es-insertall">✓ This signature will be placed on all {fieldCount.total} spots in your document automatically.</p>
           )}
-          <p className="es-lead">By tapping below, this becomes your legal electronic signature, dated {lockDate || !manualDate ? new Date().toLocaleDateString() : new Date(manualDate).toLocaleDateString()}.</p>
+          <p className="es-lead">I have reviewed these documents, consent to electronic records and signatures, and adopt this signature as my electronic signature. This is an emergency in-house agreement; I may be asked to sign again through DocuSeal.</p>
           {view !== "simple" && pdf?.url && (
             <details className="es-peek">
               <summary>{view === "spots" ? "See each place your signature goes" : "See the document again before you sign"}</summary>

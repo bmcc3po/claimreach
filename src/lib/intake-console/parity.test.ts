@@ -151,6 +151,42 @@ for (const [label, gen, src] of [["mva", MVA, AUTO_QUESTIONS], ["prem", PREM, GP
   }
 }
 
+// Appointment commitment was omitted from generated showIf. Keep the stored
+// form's visibility equal at every clause and both exact date boundaries.
+const originalNow = Date.now;
+const fixedNow = Date.parse("2026-09-28T12:00:00Z");
+const ago = (days: number) => new Date(fixedNow - days * 86400000).toISOString();
+const commitmentBase: Answers = { injured: "yes", treatment: "never", willing: "yes", date: ago(90) };
+const commitmentCases: [string, Answers, boolean][] = [
+  ["eligible calendar date", commitmentBase, true],
+  ["legacy mid bucket", { ...commitmentBase, date: "mid" }, true],
+  ["legacy recent bucket", { ...commitmentBase, date: "le30" }, false],
+  ["legacy old bucket", { ...commitmentBase, date: "old" }, false],
+  ["missing date", { ...commitmentBase, date: undefined }, false],
+  ["invalid date", { ...commitmentBase, date: "not a date" }, false],
+  ["exactly thirty days", { ...commitmentBase, date: ago(30) }, false],
+  ["one millisecond past thirty days", { ...commitmentBase, date: new Date(fixedNow - 30 * 86400000 - 1).toISOString() }, true],
+  ["one millisecond before 274 days", { ...commitmentBase, date: new Date(fixedNow - 274 * 86400000 + 1).toISOString() }, true],
+  ["exactly 274 days", { ...commitmentBase, date: ago(274) }, false],
+  ["unwilling", { ...commitmentBase, willing: "no" }, false],
+  ["willingness unanswered", { ...commitmentBase, willing: undefined }, false],
+  ["already treating", { ...commitmentBase, treatment: "still" }, false],
+  ["not injured", { ...commitmentBase, injured: "no" }, false],
+];
+console.log("\nAPPOINTMENT COMMITMENT - stored form round trip");
+Date.now = () => fixedNow;
+try {
+  for (const [caseType, generated] of [["mva", MVA], ["prem", PREM]] as const) {
+    const stored = JSON.parse(JSON.stringify(generated)) as typeof generated;
+    const field = stored.fields.find(f => f.id === "commit_appointment")!;
+    for (const [name, answers, expected] of commitmentCases) {
+      check(`${caseType}: ${name} visibility`, fieldVisible(field, answers), expected);
+      check(`${caseType}: ${name} sequence`, formSequence(stored.fields, stored.askOrder, answers), consoleSequence(caseType, answers));
+    }
+    check(`${caseType}: unknown date condition cannot become visible`, fieldVisible({ ...field, showIf: { match: "all", rules: [{ fieldId: "date", op: "date_bucket", value: "unknown" }] } }, commitmentBase), false);
+  }
+} finally { Date.now = originalNow; }
+
 // ---------------------------------------------------------------- guardrails
 console.log("\nGUARDRAILS");
 const allFields = [...MVA.fields, ...PREM.fields];

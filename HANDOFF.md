@@ -1,121 +1,65 @@
-# ClaimReach v8 checkpoint handoff
+# ClaimReach v9 candidate: handoff to Claude
 
-Saved Sep 28 2026, when Brett asked to stop and save. Development stopped here. Nothing in this checkpoint is deployed.
+This v9 candidate is built on the preserved v8 ZIP import (local checkpoint `ab63de6`) on branch `codex/claimreach-v9`. **It is not deployed or merged.** The v8 handoff is preserved in `docs/handoffs/v8-checkpoint.md`. See `verification/README.md` for repeatable offline checks and the accompanying release record for the exact candidate commit and final validation. This is not a full production security certification or launch approval.
 
-## Starting point
+## Product decisions to preserve
 
-- Base: `main` at `822338f` (merged PR #40, head `577490c`). Its source is identical to the round 7b zip Astra reviewed.
-- Work branch: `round8`, local to Claude's session. `git push` is refused (403) from this session, so the zip is the delivery. There is no PR.
-- Checkpoint commit: see the last commit on `round8` (listed in the chat message with this zip).
+- Dashboard remains the starting page. Review case and resume intake keep the selected matter. Keep useful queue distinctions.
+- Guided, Collapsible, All questions and Simple form remain available. They present the same MVA questions, labels, choices, conditions, follow-ups and saved answers. Width changes presentation, not questionnaire semantics.
+- MVA is agent-owned through signing, office completion, review and firm delivery; do not add a mandatory separate QA handoff. Preserve other campaigns' required review processes.
+- DocuSeal is primary across campaigns. Keep an explicit campaign-configured in-house emergency signer during outages, with preserved original evidence and a visible re-sign requirement.
+- Preserve SMS/drip capabilities and the current **drips OFF** state. This implementation did not enable or resume them. Do not turn them on as a side effect of rollout or historical recovery.
+- Corrected client names and original signed documents are evidence. A later import or screen refresh must not silently replace them.
 
-## Status words used below
+## Implemented in this candidate
 
-- **Implemented**: code written and committed on `round8`.
-- **Tested**: automated tests below ran and passed on the integrated branch. These are offline tests with fake database, storage and provider. They are not browser, device or live-provider acceptance.
-- **Deployed**: nothing in this checkpoint is deployed. Live is still PR #40 (round 7b).
+| Area | Current implementation |
+|---|---|
+| MVA question parity | Shared question descriptors/controls serve the four renderers, including conditional representation/treatment questions, passenger capture, alternate recipient number and guided continuation. The saved section/question cursor restores the same intake position. Existing answer IDs and persisted answer structure remain compatible. |
+| Case navigation | Case destinations group History, Communications, and Documents & signing. Call-workspace utilities remain available at compact widths; Review case/Resume intake preserve matter identity. Prior intake evidence remains available as history. This is not a claim that every admin page has been redesigned. |
+| Contact and matter state | Contact/Case Details save handling, canonical first/last/display-name edits, matter-scoped summaries, keyed pending controls and same-matter routes were tightened. Draft intake names reconcile only when safe; already-issued mismatched signing names require review rather than rewriting evidence. |
+| Signing | Send/poll/resend/complete/void/preview resolve the exact matter and current agreement. Newer voided/replacement/emergency evidence cannot silently reveal an older agreement as current. Passenger contact and evidence stay with the passenger's matter. Failed signature-to-claim updates can be recovered with status comparisons and durable markers. |
+| Emergency signing | Explicit outage reason, frozen source/template/autofill snapshot, immutable packet membership, consent and one recorded signature event; completion requires the packet's stored PDFs/certificates. Evidence remains provisional and linked to the later DocuSeal re-sign. Existing signed history/downloads remain; unsnapshotted pending links need reissue. |
+| Delivery and exports | Selected packet artifacts must be complete. Delivery has a durable per-matter reservation and uncertain-outcome reconciliation. Manual delivery remains available to a permitted internal agent. PDF/CSV consume nested MVA answers, exclude SSN, and keep matter-specific signing-date filters. Whole-file archive/restore uses existing permissions and preserves evidence. |
+| LawRuler recovery | Settings has an owner/admin, firm-scoped preview and selected correction flow. Unknown labels need an explicit reviewed mapping; updates compare the expected current status and suppress historical events/delivery. Both App and legacy Motel ingestion preserve corrected populated contact fields. Original PDF/CSV bytes use private, exact-matter, hash-based storage with retry repair and separate source-signing provenance. |
 
-## Implemented and tested (offline) in this checkpoint
+## Required release work: not applied here
 
-1. **Matter rule** (`src/lib/matter.ts`)
-   - `resolveMatter` now reports `sole`, which means the lead has exactly one claim, however the claim was picked.
-   - New `matterRowsFilter` and `rowBelongsToMatter`: a legacy row with no claim counts only for a sole matter on a compatible campaign.
-   - Test: `matter.test.ts`, 5 passing.
-2. **Standard fields truth pass** (Astra 7b standard-fields review)
-   - `buildStandardRecord` uses the shared matter rule. A bad named claim fails. An ambiguous lead borrows nothing. Read errors fail. There is no 3-claim limit.
-   - Incident facts come from the matter's own call. Voided agreements are excluded. Standard keys win over event data in webhooks.
-   - The export filters by the matter's campaign, pages through everything, fails loudly on read errors, and carries the Leads filters.
-   - Fields are marked writable, derived or protected. Every writable inbound field reaches its column. LawRuler/marketer ingest fills incident and phone columns.
-   - A new address without a ZIP clears the old ZIP.
-   - Tests: standard-fields 24, us-address 10, lead-ingest 12.
-3. **Firm transfer copy-then-switch (G1)** (`leads/bulk` move_firm)
-   - Originals stay until the database commits. Every cleanup result is checked. "Nothing moved" is said only when true; partial results list the leftover paths and write an audit entry.
-   - Test: bulk-move-firm 13.
-4. **QA approval needs the matter's own complete packet (#58)** (`api/qa`, `QaPanel`)
-   - Signed-only, voided, incomplete packet and sibling evidence are refused.
-   - Unassociated legacy evidence returns `needs_association`, with an "Attach to this matter" action for owner, admin, manager or qa.
-   - Test: qa-evidence 18.
-5. **Firm delivery per matter (#57)** (`firm-delivery.ts`, `intake-render.ts`, `api/firm-delivery`, SendToFirmButton)
-   - Uses the claim's campaign settings, the claim's intake bundle, and the designated current agreement. The sent guard is per claim, and `firm_deliveries.claim_id` is written.
-   - Test: firm-delivery 20.
-6. **Contact save races** (ContactInfo, CaseDetails, console ContactCard, new `useFieldAutosave.ts`)
-   - Field-level revisions. A refresh never cancels or reverts an edit. Only changed fields are sent. A failure stays dirty.
-   - Test: contact-saves 23.
-7. **Signed-notice lease (#63)**
-   - `notify_state` lease, `no_recipient` state, Resend `Idempotency-Key`. This is at-least-once, not exactly-once.
-   - One signed classifier (`isSignedKey`) for Leads, Signed and Reports.
-   - Drip enroll/process need `drips.manage`, an active user and an RLS-visible lead. The drip kill switch `DRIP_DISPATCH_ENABLED` must be "on" to send.
-   - comms duplicate path stamps the original time.
-   - Tests: notify-signed 23, statuses 8, drip-dispatch 11, comms 11.
-8. **MMS filing (#62)** (`inbound-media.ts`, JustCall webhook, `api/inbound-media`, Settings panel)
-   - One `inbound_media` row per attachment with retry. Safe fetch: https only, no private hosts, 2 redirects max, 15s, 15 MB, type allowlist.
-   - Single match is filed; several or none are quarantined; staff resolve. Webhook counts are truthful.
-   - Test: inbound-media 19.
+**0110_firm_delivery_dispatch.sql and 0111_emergency_signing_evidence.sql are required local migrations, not applied to production.** Their append-only stanzas are in `RUN_THESE_MIGRATIONS.sql`. Review/apply them through the approved migration process with the matching server/client release. 0110 supplies dispatch reservations, identity guards and reconciliation; 0111 supplies immutable emergency evidence and controlled completion. Missing schema must remain a visible failure, not a reason to bypass the guard. Do not blindly rerun unrelated historical ledger entries.
 
-## Other tests run on the integrated branch (all passing)
+The final deployed environment still needs verification: matching application version and schema, private storage/access controls, configured provider account/template bindings, callback authentication/routing, allowed recipients and notification configuration. Mocked providers, synthetic SQL and generated PDFs do not prove a successful live provider round trip. Keep existing drips OFF during this work.
 
-engine 51, server helpers 13, SSN/DOB 3, DocuSeal 12, signed-docs 17, file-fence 41, drip-rules 17.
+## Concrete remaining boundaries
 
-Type check `npx tsc --noEmit -p .`: zero errors. `npx @cloudflare/next-on-pages`: Build completed, Edge Function Routes (193).
+1. **Generic campaign configuration.** Each campaign still needs its approved DocuSeal template and required Client/Intake roles, plus its approved emergency packet configuration. Empty configuration returns setup-required; there is no silent legacy-provider fallback. No provider templates or external account settings were configured by these workstreams. Confirm each campaign's effective packet rather than relying on an unrelated legacy-template warning.
+2. **Emergency delivery policy needs Brett's decision.** The candidate keeps emergency evidence provisional and blocks treating it as normal primary-complete evidence. Normal firm delivery requires the primary/re-sign path. Do not invent an automatic provisional-delivery override; any permitted provisional workflow, recipient wording and approval conditions must be explicitly decided. Do not claim legal enforceability from these technical tests.
+3. **Historical LawRuler resends must carry `recovery_mode=historical`.** The marker preserves source/originals pending review and suppresses App new-lead events/unmatched-comms work, Motel status/LOR workflows and a new Motel retention clock. Ordinary unmarked live-hook behavior is intentionally preserved and may trigger configured workflows. Settings preview GETs never mutate; selected POST applies reviewed exact matters. Never use unmarked bulk resends as a recovery shortcut.
+4. **Missing migration data is not reconstructed.** A status-only webhook cannot recreate an absent original retainer. Original CSVs are retained as documents; automatic CSV-column-to-MVA-answer mapping is not implemented. Review real source labels, field mapping and exact lead/matter identity before importing historical intake answers. Missing originals require a reviewed source resend/import. Remote document URLs remain blocked until an approved host/transport contract exists. Source-reported signing, stored originals and independently verified signature evidence remain distinct.
+5. **Cross-system outcomes still require reconciliation.** An uncertain delivery must be checked against the provider using its request/attempt key before an owner/admin records delivered/not delivered. Reconciliation does not send. Provider archive followed by failed local void is explicitly unresolved. Notification delivery remains provider-idempotent at-least-once, not exactly-once. Do not clear warnings merely to permit another send.
+6. **Attachment choices do not bypass MVA readiness.** Every MVA send requires its current completed, nonvoided DocuSeal agreement and its full packet plus certificate readable from private storage, even when both agreement attachments are disabled. A PNC-name mismatch blocks delivery; guardian signing compares the injured person. Only selected artifacts are emailed. A newer active emergency blocks normal delivery for every campaign regardless of attachment switches. Non-MVA campaigns retain intentionally unsigned delivery when both signing attachments are disabled and no active emergency supersedes primary evidence; that configuration is not proof of signing.
+7. **Specific UI/provider limits remain.** Resending an existing DocuSeal email link is an explicit unsupported action; do not substitute SMS. Confirm real browser/device behavior and same-matter navigation after the matching release. Delivery Board purpose/data acceptance and the distinction between the compiled MVA question spine and configurable form-builder forms need explicit product validation; this candidate does not claim every administrative surface or form-publishing path has been unified.
 
-## Not done or partial (do not treat as fixed)
+Final suite review also repaired a pre-existing legacy form-conversion omission: generated appointment-commitment visibility now preserves the existing console's injury/treatment/willingness/date-window rule. Its stored form condition uses the existing date classifier, with both date boundaries covered. This does not publish or backfill already-stored forms and does not change the current MVA-call spine or approved question wording. The Motel scope test's exact expected mapping was updated for standard columns already present in the v8 mapper.
 
-Astra round 7b P1 items still open:
+Use the shared question spine, signing-matter resolution and status setter for further changes. Do not reintroduce a renderer-specific question list, lead-wide signing selection, mutable historical evidence or a separate provider workflow to bypass a missing configuration.
 
-- **One question spine across Guided, Collapsible, All questions and Simple form.** Not started. This is Brett's main complaint.
-  - Simple form is missing the represented-caller follow-ups.
-  - Passenger fields differ by view.
-  - Simple form drops the injury-check wording and cues.
-  - Simple form's recipient field bypasses "Another number" (`toOther`).
-  - The footer next step is wrong in Simple form, and Simple form does not scroll to the target.
-- **Matter binding still open in:**
-  - disposition (call A with claim B; event uses the lead campaign)
-  - File tab notes (oldest claim)
-  - e-sign send (template chosen from the lead campaign before the matter is resolved)
-  - resend (ignores claim)
-  - poll, complete and void (still use `claim_id OR null`, which should switch to `matterRowsFilter`)
-  - the call page (checks lead case type before the matter)
-  - classic links (drop `?claim`)
-  - the WIP banner (lead-level)
-  - emergency signable submit/packet (no claim; replay can rewrite evidence)
-- **Signing lifecycle:**
-  - A claim transition that fails after signing is not retried.
-  - The passenger child file cannot complete its own agreement (`pax_index` filter).
-  - A passenger created by email only stores the caller's phone and not their own email.
-  - Passenger void does not roll back the child claim.
-  - The case email (`api/calls/email`) can attach a voided PDF.
-  - Void race: DocuSeal archives but the PNC signed first, and no reconcile record is kept.
-- **esign.ts:** use `signedNoticeDue(row)` in `syncSubmission` and remove the "exactly once" comment (see the notify agent note).
-- **Cadence phase 1** (Brett's 15-attempt MVA schedule, 8am to 9pm client-local), and drafting e-sign chase SMS wording for Brett's approval. Not started.
-- **Classic Retainer tab** showing the real TMP DocuSeal agreements (#66). Not started.
-- **Follow-ups the agents flagged:**
-  - LeadsView bulk move does not show the move's `warning`/`cleanup_pending`.
-  - `m6-scope.test.ts` "live LR shape" expectation needs the new null keys (it was already failing before).
-  - `comms.ts` `matchLeadByPhone` filters a `leads.status` column that does not exist.
-  - The JustCall filter edge function passes only `phone_norm` matches.
-  - Drip dispatch loop still swallows errors and has no STOP/quiet-hours checks. Keep `DRIP_DISPATCH_ENABLED` off.
-  - `resolveFormKey` still reads the first claim for the intake PDF export.
-  - Firm delivery guard is read-then-stamp (a concurrent double send is possible).
-  - Hooks/in still defaults `case_type` to `motel_trafficking` when a sender omits it; Brett to decide.
+## Supporting evidence
 
-## Behavior changes Brett should know (auth/permission flagged per AGENTS.md)
+- `docs/handoffs/v9-lawruler-recovery.md`: recovery protocol, tests and data limitations.
+- `docs/handoffs/v9-delivery-export.md`: delivery/export behavior, migration and reconciliation boundaries.
+- `docs/handoffs/v9-signing.md`: signing contracts, emergency evidence and remaining provider limits.
 
-- `/api/drip`:
-  - Deactivated accounts are refused on every op.
-  - Enroll and "Run due drips" need `drips.manage` (owner, admin and manager by default). Agents and QA lose it unless they have an override.
-- QA: lead-level legacy retainers no longer count on their own. QA attaches them to the matter once.
-- JustCall webhook: outbound texts are now logged as outbound (old code logged every text as inbound). An unrecorded message returns 500 so JustCall retries.
+The accompanying release record contains final checks and candidate identity. Follow the deployment boundary above; no production rollout is implied by this handoff.
 
-## Migrations and configuration
+## Final browser inspection
 
-- 0108 and 0109 (plus 0109b void columns) are already APPLIED live, from earlier rounds. No new migration is in this checkpoint.
-- Optional env:
-  - `DRIP_DISPATCH_ENABLED`: leave unset or off.
-  - `JUSTCALL_MEDIA_HOSTS`: comma-separated allowlist for MMS media hosts, once JustCall's host is confirmed.
+Local synthetic preview used the actual CallConsole, DeskChrome, LeadWorkspace and styles with mocked endpoints and external connections blocked. Checked 390Ã—844 phone, 1024Ã—768 iPad landscape and 1440Ã—900 desktop; all four intake modes, conditional treatment follow-up, correction of a contact name and unsent draft, reload, matter separation, failed-save feedback, review/resume and signing history navigation. Fixed mobile mode crowding, the overlapping tools button, narrow dialog fields and cramped case-header identity. These are browser viewport checks, not physical-device Safari acceptance or a live provider round trip. Renderings are supplied separately.
 
-## Exact next steps
+MVA historical agreements from LawRuler/legacy providers are preserved as history; the candidate does not silently promote them to verified DocuSeal evidence. Current MVA delivery requires its current primary packet. Decide and implement any verified historical-evidence acceptance path explicitly before delivering such legacy matters.
 
-1. Upload this zip as a PR, let the Cloudflare check run, and merge only after Brett's go-ahead.
-2. Build the canonical MVA question spine: one descriptor list with id, label, full question, options, condition, requiredness and save path, consumed by all four views. Add a cross-view parity test that renders each view and compares question ids and options.
-3. Finish matter binding in dispo, the File tab, e-sign send/resend/poll/complete/void, the call page gate, classic links, the WIP banner and emergency signing, using `resolveMatter` plus `matterRowsFilter`.
-4. Signing lifecycle items above, then the esign.ts notice change.
-5. Classic Retainer tab (#66), then cadence phase 1.
+## Candidate validation
+
+- TypeScript: zero errors.
+- Offline suite runner: 54/54 suites passed on the final implementation, including 36 delivery scenarios, 20 signing route scenarios and real in-memory PostgreSQL checks for both new migrations.
+- Cloudflare packaging: exit 0, Vercel Build Completed, 193 Edge Function Routes and final Build completed. A local Windows adapter was required; instructions are in verification/README.md. Build warnings include platform/cache notices and one non-blocking CSS flex alignment compatibility warning.
+- No live-provider round trip, deployment or production migration was performed for v9.

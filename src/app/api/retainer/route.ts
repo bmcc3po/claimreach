@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { retainerTokens, fillTemplate } from "@/lib/retainer-tokens";
 import { recordAudit } from "@/lib/audit";
+import { gateUser } from "@/lib/gate";
+import { isInternalRole } from "@/lib/permissions";
+import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
 export const runtime = "edge";
 
 export async function GET(req: NextRequest) {
@@ -9,8 +12,13 @@ export async function GET(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const lead_id = new URL(req.url).searchParams.get("lead_id");
+  const claimId = new URL(req.url).searchParams.get("claim_id");
+  const context = await resolveSigningMatter(sb, lead_id || "", { claimId, allowArchived: true });
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const { data: templates } = await sb.from("retainer_templates").select("id, name, case_type, is_default").order("name");
-  const { data: retainers } = await sb.from("retainers").select("*").eq("lead_id", lead_id).order("created_at", { ascending: false });
+  const { data: retainers, error } = await sb.from("retainers").select("*").eq("lead_id", lead_id)
+    .or(context.matter.sole ? `claim_id.eq.${context.matter.claim.id},claim_id.is.null` : `claim_id.eq.${context.matter.claim.id}`).order("created_at", { ascending: false });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const { data: lead } = await sb.from("leads").select("id, first_name, last_name, claimant_name, email, phone, case_type").eq("id", lead_id).maybeSingle();
   return NextResponse.json({ templates: templates ?? [], retainers: retainers ?? [], lead: lead ?? null });
 }
@@ -20,6 +28,10 @@ export async function POST(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const b = await req.json();
+  const me = await gateUser(sb);
+  if (!me || !isInternalRole(me.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (["generate", "set_status", "delete"].includes(b.op)) return NextResponse.json({ error: "Legacy retainers are preserved as history. Use the matter's DocuSeal agreement or emergency packet; signed evidence cannot be manually changed or deleted here." }, { status: 409 });
+  if (["save_template", "delete_template"].includes(b.op) && !me.can("settings.manage")) return NextResponse.json({ error: "Template setup requires settings permission." }, { status: 403 });
 
   if (b.op === "generate") {
     const { data: lead } = await sb.from("leads").select("*").eq("id", b.lead_id).single();

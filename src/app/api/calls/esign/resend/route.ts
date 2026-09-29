@@ -3,6 +3,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, firmSpoken } from "@/lib/mva-call/server";
 import { sendJustCallSms } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
+import { resolveSigningMatter, getMatterAgreement, agreementIsVoided } from "@/lib/mva-call/signing-matter";
 
 export const runtime = "edge";
 
@@ -16,13 +17,16 @@ export async function POST(req: NextRequest) {
   const leadId = String(b?.lead_id || "");
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
 
-  const { data: row } = await sb.from("esign_submissions").select("*")
-    .eq("lead_id", leadId).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (!row || !["sent", "opened"].includes(row.status)) return NextResponse.json({ error: "There's no open agreement to resend." }, { status: 409 });
+  const context = await resolveSigningMatter(sb, leadId, { claimId: b?.claim_id });
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  const selected = await getMatterAgreement(sb, context.lead, context.matter, b?.agreement_id);
+  if (!selected.ok) return NextResponse.json({ error: selected.error }, { status: selected.status });
+  const row = selected.row;
+  if (!row || agreementIsVoided(row) || !["sent", "opened"].includes(row.status)) return NextResponse.json({ error: "There's no open agreement to resend." }, { status: 409 });
+  if (row.via === "Email") return NextResponse.json({ error: "This agreement was emailed. Ask the signer to check their inbox and spam." }, { status: 409 });
   if (!row.sign_url || !row.phone) return NextResponse.json({ error: "This one went by email. Ask the PNC to check their inbox and spam." }, { status: 409 });
 
-  const { data: lead } = await sb.from("leads").select("perm_text").eq("id", leadId).maybeSingle();
-  if (lead?.perm_text === false) return NextResponse.json({ error: "The PNC asked not to be texted." }, { status: 409 });
+  if (context.lead.perm_text === false) return NextResponse.json({ error: "The PNC asked not to be texted." }, { status: 409 });
   const admin = supabaseAdmin();
   const { data: firm } = await admin.from("firms").select("name").eq("id", row.firm_id).maybeSingle();
   const from = process.env.JUSTCALL_DEFAULT_FROM || "";
@@ -34,5 +38,5 @@ export async function POST(req: NextRequest) {
     lead_id: leadId, firm_id: row.firm_id, channel: "sms", direction: "outbound", phone_raw: row.phone, phone_norm: normPhone(row.phone),
     agent_name: me.name, body, provider: "justcall", send_status: "sent", occurred_at: new Date().toISOString(), purpose: "esign",
   });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, claim_id: context.matter.claim.id, agreement_id: row.id });
 }

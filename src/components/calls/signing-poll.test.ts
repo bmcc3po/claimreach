@@ -1,0 +1,75 @@
+// Actual poll callback extracted from CallConsole. No timers, network or provider.
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import ts from "typescript";
+
+const file = path.resolve(__dirname, "CallConsole.tsx");
+const source = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+let callback: ts.Node | undefined;
+const visit = (node: ts.Node) => {
+  if (ts.isCallExpression(node) && node.expression.getText() === "setInterval" && node.arguments[0]?.getText().includes("/api/calls/esign?")) callback = node.arguments[0];
+  ts.forEachChild(node, visit);
+};
+visit(source); assert.ok(callback, "The signing poll exists");
+const code = ts.transpileModule(`exports.make = (fetch, engine, agreementId, emergencyResign, init, callId, setNeedsResign, setEmergencyStatus) => (${callback.getText()});`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const exp: any = {}; new Function("exports", code)(exp);
+function harness() {
+  const engine = { state: { send: { status: "sent" }, file: { agreement: "open", pax: { "0": "sent" } } } as any,
+    setState(patch: any) { this.state = { ...this.state, ...patch }; } };
+  const agreementId = { current: "original" }, emergencyResign = { current: false };
+  const responses: ((value: any) => void)[] = [];
+  const fetch = () => new Promise((resolve) => responses.push(resolve));
+  const emergency = { needsResign: false, status: "" };
+  const poll = exp.make(fetch, engine, agreementId, emergencyResign, { leadId: "lead", claimId: "matter" }, { current: "call" }, (value: boolean) => { emergency.needsResign = value; }, (value: string) => { emergency.status = value; });
+  const reply = (body: any) => responses.shift()!({ ok: true, json: async () => body });
+  return { engine, agreementId, emergencyResign, emergency, poll, reply };
+}
+let count = 0;
+const check = async (name: string, fn: () => Promise<void>) => { await fn(); count++; console.log("ok", name); };
+(async () => {
+  await check("ordinary current primary and passenger completion still update", async () => {
+    const h = harness(), pending = h.poll(); h.reply({ agreement_id: "original", status: "signed", complete: true, pax: { "0": "signed" } }); await pending;
+    assert.equal(h.engine.state.send.status, "signed"); assert.equal(h.engine.state.file.agreement, "done"); assert.equal(h.engine.state.file.pax["0"], "signed");
+  });
+  await check("passenger poll cannot relock a prepared emergency re-sign draft", async () => {
+    const h = harness(); h.emergencyResign.current = true; h.engine.state.send.status = "ready";
+    const pending = h.poll(); h.reply({ agreement_id: "original", status: "signed", complete: true, pax: { "0": "signed" } }); await pending;
+    assert.equal(h.engine.state.send.status, "ready"); assert.equal(h.engine.state.file.agreement, "open"); assert.equal(h.engine.state.file.pax["0"], "signed");
+  });
+  await check("preparation after a poll starts also protects the draft when its response arrives", async () => {
+    const h = harness(), pending = h.poll(); h.emergencyResign.current = true; h.engine.state.send.status = "ready";
+    h.reply({ agreement_id: "original", status: "signed", complete: true }); await pending;
+    assert.equal(h.engine.state.send.status, "ready"); assert.equal(h.engine.state.file.agreement, "open");
+  });
+  await check("old in-flight response cannot replace the newly sent agreement ID or completion state", async () => {
+    const h = harness(), pending = h.poll(); h.agreementId.current = "replacement";
+    h.reply({ agreement_id: "original", status: "signed", complete: true, pax: { "0": "signed" } }); await pending;
+    assert.equal(h.agreementId.current, "replacement"); assert.equal(h.engine.state.send.status, "sent"); assert.equal(h.engine.state.file.agreement, "open");
+    assert.equal(h.engine.state.file.pax["0"], "signed");
+  });
+  await check("poll for the replacement itself can complete normally", async () => {
+    const h = harness(); h.agreementId.current = "replacement";
+    const pending = h.poll(); h.reply({ agreement_id: "replacement", status: "signed", complete: true }); await pending;
+    assert.equal(h.engine.state.send.status, "signed"); assert.equal(h.engine.state.file.agreement, "done");
+  });
+  await check("current poll carries fresh emergency status into the office-completion guard", async () => {
+    const h = harness(), pending = h.poll();
+    h.reply({ agreement_id: "original", status: "signed", emergency: { needs_resign: true, status: "signed" } }); await pending;
+    assert.deepEqual(h.emergency, { needsResign: true, status: "signed" });
+  });
+  await check("generic signing desk hides old office completion for pending or signed superseding emergency", async () => {
+    const signing = ts.createSourceFile("CaseSigning.tsx", fs.readFileSync(path.resolve(__dirname, "../CaseSigning.tsx"), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let condition: ts.Expression | undefined;
+    const find = (node: ts.Node) => {
+      if (ts.isBinaryExpression(node) && ts.isJsxElement(node.right) && node.right.openingElement.tagName.getText() === "button" && node.right.children.some((c) => ts.isJsxText(c) && c.text.trim() === "Finish office signing")) condition = node.left;
+      ts.forEachChild(node, find);
+    };
+    find(signing); assert.ok(condition);
+    const source = ts.transpileModule(`exports.visible = (status) => !!(${condition.getText()});`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+    const component: any = {}; new Function("exports", source)(component);
+    for (const emergency of [{ needs_resign: true, status: "sent" }, { needs_resign: true, status: "signed" }]) assert.equal(component.visible({ status: "signed", complete: false, emergency }), false);
+    assert.equal(component.visible({ status: "signed", complete: false, emergency: { needs_resign: false } }), true);
+  });
+  console.log(`${count} signing poll scenarios passed`);
+})().catch((e) => { console.error(e); process.exitCode = 1; });

@@ -334,6 +334,29 @@ const rec = (r: any) => { assert.ok(r.ok, r.ok ? "" : r.error); return r.record 
     assert.equal(csv.split("\n").length, 4);
   });
 
+  await t("export signed-date bounds use matter evidence, exclude unsigned siblings, and include the final day", async () => {
+    const tb = base();
+    tb.leads[0].signed_at = "2026-01-01T00:00:00Z";
+    tb.esign_submissions = [sub("a-signed", "a1", "TX", "2026-09-28T23:59:59Z")];
+    let out = await loadStandardExport(fakeDb(tb), { signedFrom: "2026-09-28", signedTo: "2026-09-28" });
+    assert.ok(out.ok); assert.deepEqual(out.ok ? out.records.map((r) => r.claim_id) : [], ["a1"]);
+    tb.leads[0].signed_at = "2026-09-28T00:00:00Z";
+    tb.esign_submissions = [sub("a-old", "a1", "TX", "2026-09-27T23:59:59Z"), sub("b-next", "b2", "NV", "2026-09-29T00:00:00Z")];
+    out = await loadStandardExport(fakeDb(tb), { signedFrom: "2026-09-28", signedTo: "2026-09-28" });
+    assert.ok(out.ok); assert.deepEqual(out.ok ? out.records : [], []);
+    const unfiltered = await loadStandardExport(fakeDb(tb), {});
+    assert.ok(unfiltered.ok && unfiltered.records.length === 2);
+  });
+
+  await t("export signed-date retains sole legacy date fallback but never assigns it to sibling matters", async () => {
+    const tb = base(); tb.leads[0].signed_at = "2026-09-28T12:00:00Z";
+    let out = await loadStandardExport(fakeDb(tb), { signedFrom: "2026-09-28" });
+    assert.ok(out.ok); assert.deepEqual(out.ok ? out.records : [], []);
+    tb.claims = [{ ...A }];
+    out = await loadStandardExport(fakeDb(tb), { signedFrom: "2026-09-28" });
+    assert.ok(out.ok && out.records.length === 1 && out.records[0].sign_date === tb.leads[0].signed_at);
+  });
+
   await t("export: any failed read fails the whole export (the route answers 500)", async () => {
     for (const table of ["leads", "claims", "esign_submissions", "intake_calls", "statuses", "firms"]) {
       const out = await loadStandardExport(fakeDb(exportTables(), { [table]: "synthetic failure" }), {});

@@ -17,12 +17,20 @@ const CORE_KEYS = [
 // Contact Info tab — caller information + emergency contact. These fields are
 // the single source of truth (stored on the lead). Any inline-in-intake copy
 // reads/writes the same data, so they stay in sync (most recent write wins).
-export default function ContactInfo({ lead, claimType, editMode = true, onRequestEdit, points = [], onSaved }: {
+type ContactInfoProps = {
   lead: any; claimType?: string; editMode?: boolean; onRequestEdit?: () => void;
   points?: { id: string; kind: string; value: string; label?: string | null; status: string }[];
   /** Reports successfully saved values so the parent's live copy stays fresh. */
   onSaved?: (patch: Record<string, any>) => void;
-}) {
+};
+
+export default function ContactInfo(props: ContactInfoProps) {
+  // Pending autosaves belong to the original lead even if a parent reuses this
+  // mounted component for another file. Its cleanup flushes with the old ID.
+  return <ContactInfoRecord key={props.lead.id} {...props} />;
+}
+
+function ContactInfoRecord({ lead, claimType, editMode = true, onRequestEdit, points = [], onSaved }: ContactInfoProps) {
   const allFields = contactFieldsForType(claimType ?? "motel_trafficking");
 
   // Conditions the field definitions do not carry yet. Keyed by field id.
@@ -49,6 +57,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
   };
   // The record's values as this tab last saw them in its props.
   const seen = useRef<Record<string, any> | null>(null);
+  const acknowledgedName = useRef<Record<string, any>>({});
   // Autosave a second after the last edit, no manual Save needed. Only the
   // fields a person changed are sent, with their values when the save goes
   // out. A failed write keeps them unsaved and says so. Switching tabs sends
@@ -70,11 +79,12 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       // failed write looked identical to a successful one. Never again: if it
       // did not save, the screen says so.
       if (!r.ok || d.error) throw new Error(d.error || "Could not save. Nothing was written.");
+      acknowledgedName.current = d.contact?.claimant_name ? { claimant_name: d.contact.claimant_name } : {};
     },
     onSaved: (patch) => {
       // This save coming back through the parent's copy is not a refresh.
       if (seen.current) for (const k of Object.keys(patch)) seen.current[k] = patch[k];
-      onSaved?.(patch);
+      onSaved?.({ ...patch, ...acknowledgedName.current });
     },
   });
   function set(k: string, v: any) { edit({ [k]: v }); }
@@ -162,6 +172,10 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
   // date of death immediately rather than on a reload.
   const merged: Record<string, any> = { ...lead, ...vals };
   const fields = allFields.filter((fld) => {
+    // MVA uses the canonical contact block above and the shared call spine.
+    // Historical generic-form aliases stay on the record, not as a second
+    // editable first/last/address form that disagrees with the call.
+    if (claimType === "mva") return false;
     const rule = HIDE_UNLESS[fld.id];
     if (rule && !rule(merged)) return false;
     return fieldVisible(fld as any, merged);
@@ -227,8 +241,8 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
     <div>
       <div className="section-title">Client Name</div>
       <div className="grid2">
-        <div className="field"><label style={{ fontSize: 13 }}>First name</label><input value={vals.first_name} onChange={(e) => set("first_name", e.target.value)} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Last name</label><input value={vals.last_name} onChange={(e) => set("last_name", e.target.value)} /></div>
+        <div className="field"><label htmlFor="contact-first-name" style={{ fontSize: 13 }}>First name</label><input id="contact-first-name" value={vals.first_name} onChange={(e) => set("first_name", e.target.value)} /></div>
+        <div className="field"><label htmlFor="contact-last-name" style={{ fontSize: 13 }}>Last name</label><input id="contact-last-name" value={vals.last_name} onChange={(e) => set("last_name", e.target.value)} /></div>
       </div>
       <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Full name (auto): <strong>{[vals.first_name, vals.last_name].filter(Boolean).join(" ") || "—"}</strong></div>
 
@@ -272,6 +286,7 @@ export default function ContactInfo({ lead, claimType, editMode = true, onReques
       {points.length > 0 && <ContactPointsList points={points} />}
       {blocks.length > 0 && <div className="section-title" style={{ marginTop: 18 }}>Additional Contact Fields</div>}
       {blocks}
+      {claimType === "mva" && allFields.some((f) => !CORE_KEYS.includes(f.id) && lead[f.id] != null && lead[f.id] !== "") && <details className="case-emergency"><summary>Historical contact-form values</summary><p className="muted">Earlier form entries are retained here. Use the fields above for this client's current contact details.</p>{allFields.filter((f) => !CORE_KEYS.includes(f.id) && !["section", "script"].includes(f.kind) && lead[f.id] != null && lead[f.id] !== "").map((f) => <div className="ro-field" key={f.id}><span className="ro-label">{f.label}</span><span className="ro-value">{f.id.includes("ssn") ? "Protected identifier on file" : String(lead[f.id])}</span></div>)}</details>}
       <div className="seg-nav">
         <div className="spacer" />
         {/* "Saved" only when nothing is waiting to save and the last write landed. */}

@@ -1,114 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { signedDocPath, signedDocLink, uploadSignedDoc } from "@/lib/signed-docs";
+import { emergencyView, finishEmergencyPacket } from "@/lib/emergency-signing";
 export const runtime = "edge";
 
-async function sha256Hex(s: string) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-// GET ?group= -> list the docs in this packet for the public signing page.
 export async function GET(req: NextRequest) {
   const group = new URL(req.url).searchParams.get("group");
   if (!group) return NextResponse.json({ error: "missing group" }, { status: 400 });
-  const admin = supabaseAdmin();
-  const { data: docs } = await admin.from("signable_documents")
-    .select("id, title, body_html, status, signer_name, certified, envelope_id, pdf_template_id, packet_seq")
-    .eq("packet_group", group).order("packet_seq");
-  if (!docs || docs.length === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
-
-  // Attach PDF render info for any PDF docs.
-  const out: any[] = [];
-  for (const d of docs) {
-    let pdf: any = null;
-    if (d.pdf_template_id) {
-      const { data: tpl } = await admin.from("pdf_templates").select("file_path, fields, page_count, file_name").eq("id", d.pdf_template_id).maybeSingle();
-      if (tpl?.file_path) {
-        const { data: signed } = await admin.storage.from("retainer-pdfs").createSignedUrl(tpl.file_path, 3600);
-        pdf = { url: signed?.signedUrl || null, fields: tpl.fields || [], page_count: tpl.page_count || 1, file_name: tpl.file_name };
-      }
-    }
-    out.push({ ...d, pdf });
-  }
-  return NextResponse.json({ group, docs: out, signer_name: docs[0].signer_name });
+  const db = supabaseAdmin();
+  const result = await db.from("signable_documents").select("*").eq("packet_group", group).order("packet_seq");
+  if (result.error || !result.data?.length) return NextResponse.json({ error: "Signing packet not found." }, { status: 404 });
+  if (result.data.some((d: any) => ["cancelled", "declined"].includes(d.status))) return NextResponse.json({ error: "This signing link is no longer open." }, { status: 409 });
+  try { return NextResponse.json({ group, docs: await Promise.all(result.data.map((d: any) => emergencyView(db, d))), signer_name: result.data[0].signer_name }); }
+  catch (error: any) { return NextResponse.json({ error: error.message }, { status: 409 }); }
 }
 
-// POST -> sign EVERY doc in the packet with one signature (the 5-tap ceremony's
-// final "Insert Everywhere + I Agree" step). Applies signature, stamps PDFs.
 export async function POST(req: NextRequest) {
-  const b = await req.json();
-  if (!b.group) return NextResponse.json({ error: "missing group" }, { status: 400 });
-  const admin = supabaseAdmin();
+  const b = await req.json().catch(() => null);
+  if (!b?.group) return NextResponse.json({ error: "missing group" }, { status: 400 });
+  const db = supabaseAdmin();
+  const result = await db.from("signable_documents").select("*").eq("packet_group", b.group).order("packet_seq");
+  if (result.error || !result.data?.length) return NextResponse.json({ error: "Signing packet not found." }, { status: 404 });
   const ip = req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
-  const now = new Date().toISOString();
-
-  const { data: docs } = await admin.from("signable_documents").select("*").eq("packet_group", b.group).order("packet_seq");
-  if (!docs || docs.length === 0) return NextResponse.json({ error: "not found" }, { status: 404 });
-
   if (b.op === "viewed") {
-    await admin.from("signable_documents").update({ status: "viewed", viewed_at: now, viewed_ip: ip }).eq("packet_group", b.group).eq("status", "sent");
-    return NextResponse.json({ ok: true });
+    const { error } = await db.from("signable_documents").update({ status: "viewed", viewed_at: new Date().toISOString(), viewed_ip: ip }).eq("packet_group", b.group).eq("status", "sent");
+    return NextResponse.json(error ? { error: "Could not record the view." } : { ok: true }, { status: error ? 503 : 200 });
   }
-
-  // Sign all docs in the group.
-  const lead_id = docs[0].lead_id;
-  let tokens: Record<string, string> = {};
-  try {
-    const { data: lead } = await admin.from("leads").select("*").eq("id", lead_id).maybeSingle();
-    const { data: claim } = await admin.from("claims").select("answers").eq("lead_id", lead_id).limit(1).maybeSingle();
-    const { retainerTokens } = await import("@/lib/retainer-tokens");
-    tokens = retainerTokens(lead, claim?.answers ?? {});
-  } catch {}
-
-  for (const doc of docs) {
-    const docHash = await sha256Hex((doc.body_html || doc.title || "") + "|" + (doc.envelope_id || ""));
-    let completedUrl: string | null = null;
-    let completedPath: string | null = null;
-    if (doc.pdf_template_id) {
-      try {
-        const { data: tpl } = await admin.from("pdf_templates").select("file_path, fields").eq("id", doc.pdf_template_id).maybeSingle();
-        if (tpl?.file_path) {
-          const { data: file } = await admin.storage.from("retainer-pdfs").download(tpl.file_path);
-          if (file) {
-            const srcBytes = new Uint8Array(await file.arrayBuffer());
-            const { stampPdf } = await import("@/lib/pdf-stamp");
-            const stamped = await stampPdf({ sourceBytes: srcBytes, fields: tpl.fields || [], signaturePng: b.signature_data || null, signerName: b.signed_name || doc.signer_name || "Client", signedDate: new Date(now), tokens });
-            completedPath = await uploadSignedDoc(admin, signedDocPath(doc.firm_id, doc.envelope_id, "signed"), stamped);
-            completedUrl = signedDocLink(doc.id, "signed");
-          }
-        }
-      } catch (e: any) {
-        completedPath = null; completedUrl = null;
-        console.error(`packet ${b.group} doc ${doc.id}: signed PDF not saved: ${e?.message ?? e}`);
-      }
-    }
-    const { error: sErr } = await admin.from("signable_documents").update({
-      status: "signed", signed_at: now, signature_data: b.signature_data || null,
-      signed_name: b.signed_name || null, signature_type: b.signature_type || "drawn",
-      signed_ip: ip, doc_hash: docHash, completed_pdf_url: completedUrl, completed_pdf_path: completedPath,
-    }).eq("id", doc.id);
-    if (sErr) {
-      console.error(`packet ${b.group} doc ${doc.id}: signature not saved: ${sErr.message}`);
-      return NextResponse.json({ error: "Your signature could not be saved. Please try again." }, { status: 500 });
-    }
-  }
-
-  // Route the file forward (first doc carries the lead; set the signed status
-  // on the lead's own campaign's matter, never a sibling claim — Astra round 5).
-  try {
-    // The setter resolves this lead's ONE matter or refuses (never widens).
-    const { setClaimStatusForLeads } = await import("@/lib/claim-status");
-    const st = await setClaimStatusForLeads({ leadIds: [lead_id], status: "signed_grievous" });
-    if (!st.ok) console.error(`packet ${b.group}: signed status not set: ${st.error}`);
-    try {
-      const { data: ld } = await admin.from("leads").select("lead_no, claimant_name, firm_id").eq("id", lead_id).maybeSingle();
-      await admin.from("notifications").insert({
-        firm_id: ld?.firm_id ?? null, sender: null, sender_name: "E-Sign", recipient: null, lead_id,
-        body: `Signed: ${ld?.claimant_name || "Client"} signed the retainer packet (${docs.length} document${docs.length === 1 ? "" : "s"})${ld?.lead_no ? ` (${ld.lead_no})` : ""}.`,
-      });
-    } catch {}
-  } catch {}
-
-  return NextResponse.json({ ok: true, signed: docs.length });
+  try { return NextResponse.json(await finishEmergencyPacket(db, result.data, b, { ip, ua: req.headers.get("user-agent") || "" })); }
+  catch (error: any) { return NextResponse.json({ error: error.message }, { status: 409 }); }
 }

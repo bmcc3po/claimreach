@@ -20,7 +20,7 @@ export interface PreviewInfo {
 
 const PHASE_LABEL: Record<string, string> = { open: "Open", story: "Story", body: "Injury", car: "Car", money: "Money", send: "Send", file: "File", close: "Close" };
 
-export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, story, summary, onDialState }: {
+export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, onDialState }: {
   v: any;
   /** The JustCall dialer in the Phone tab: on a call, ringing, ready. */
   onDialState?: (s: DialerState) => void;
@@ -35,6 +35,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   focusLines: { key: string; n: number } | null;
   phones: PhoneRow[];
   leadId: string;
+  claimId: string;
   story: { city: string; crash: Date | null };
 }) {
   // The dialer stays loaded once opened, so switching tabs never drops a call.
@@ -59,7 +60,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
       {tab === "know" && <Knowledge v={v} phase={phase} fill={fill} focusLines={focusLines} />}
       {tab === "texts" && <Texts v={v} />}
       {tab === "retainer" && <Retainer v={v} preview={preview} />}
-      {tab === "file" && <FileTab leadId={leadId} lead={lead} />}
+      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} />}
       {tab === "tools" && <Tools v={v} story={story} />}
       {phoneOn && (
         <div className="cc-side-b cc-side-phone" hidden={tab !== "phone"}>
@@ -356,6 +357,7 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
   // split the first time the card sees it (Brett, Sep 28).
   const first = (() => {
     const f = {
+      first_name: initial.first_name || "", last_name: initial.last_name || "", claimant_name: initial.claimant_name || "",
       phone: initial.phone || "", email: initial.email || "",
       home_phone: initial.home_phone || "", work_phone: initial.work_phone || "",
       mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
@@ -367,11 +369,13 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
   const [open, setOpen] = useState(false);
   // What the record holds, so the call's own copy follows a save exactly.
   const saved = useRef<Record<string, string>>({
+    first_name: initial.first_name || "", last_name: initial.last_name || "", claimant_name: initial.claimant_name || "",
     phone: initial.phone || "", email: initial.email || "",
     home_phone: initial.home_phone || "", work_phone: initial.work_phone || "",
     mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
     mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
   });
+  const acknowledged = useRef<Record<string, string> | null>(null);
   // A save sends only the fields the agent changed, with what they hold when
   // it goes out, so the Activity Log says what really changed and a phone the
   // call just saved is never sent back as its old value (Astra round 7b).
@@ -387,16 +391,25 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
       }
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) throw new Error(j.error || "The contact did not save.");
+      acknowledged.current = j.contact || null;
     },
     onSaved: (patch) => {
       const prev = saved.current;
       const s = { ...prev, ...(patch as Record<string, string>) };
+      const nameChanged = ["first_name", "last_name", "claimant_name"].some((k) => Object.prototype.hasOwnProperty.call(patch, k));
+      if (nameChanged) {
+        const canonical = acknowledged.current;
+        for (const key of ["first_name", "last_name", "claimant_name"]) if (typeof canonical?.[key] === "string") s[key] = canonical[key];
+        if (!canonical?.claimant_name) s.claimant_name = [s.first_name, s.last_name].filter(Boolean).join(" ").trim();
+        incoming({ first_name: s.first_name, last_name: s.last_name, claimant_name: s.claimant_name });
+      }
       saved.current = s;
       // The call's own copy follows (the File step's home address, the send).
       try {
         window.dispatchEvent(new CustomEvent("cr:contact", { detail: {
           leadId, addr: joinUsAddress({ street: s.mail_addr1, city: s.mail_city, state: s.mail_state, zip: s.mail_zip }),
           phone: s.phone, email: s.email, prevPhone: prev.phone, prevEmail: prev.email,
+          ...(nameChanged ? { name: s.claimant_name, previousName: prev.claimant_name || [prev.first_name, prev.last_name].filter(Boolean).join(" "), first_name: s.first_name, last_name: s.last_name, claimant_name: s.claimant_name } : {}),
         } }));
       } catch { /* the console is not on this page */ }
     },
@@ -414,7 +427,7 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
       const d = e?.detail || {};
       if (d.leadId !== leadId) return;
       const upd: Record<string, string> = {};
-      for (const k of ["phone", "email", "mail_addr1", "mail_city", "mail_state", "mail_zip"]) if (typeof d[k] === "string") upd[k] = d[k];
+      for (const k of ["first_name", "last_name", "claimant_name", "phone", "email", "mail_addr1", "mail_city", "mail_state", "mail_zip"]) if (typeof d[k] === "string") upd[k] = d[k];
       if (!Object.keys(upd).length) return;
       saved.current = { ...saved.current, ...upd };
       incoming(upd);
@@ -441,6 +454,7 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
         <button type="button" className="cc-chip cc-sm" onClick={() => setOpen((v) => !v)}>{open ? "Done" : "Edit"}</button>
       </div>
       {!open && (<>
+        <div className="cc-chk"><span className="cc-chk-k">PNC name</span><span className="cc-chk-v">{[f.first_name, f.last_name].filter(Boolean).join(" ") || f.claimant_name || "Not on file"}</span></div>
         <div className="cc-chk"><span className="cc-chk-k">Cell</span><span className="cc-chk-v">{f.phone || "Not on file"}</span></div>
         {!!f.home_phone && <div className="cc-chk"><span className="cc-chk-k">Home phone</span><span className="cc-chk-v">{f.home_phone}</span></div>}
         {!!f.work_phone && <div className="cc-chk"><span className="cc-chk-k">Work phone</span><span className="cc-chk-v">{f.work_phone}</span></div>}
@@ -449,6 +463,11 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
         {gaps.length > 0 && <button type="button" className="cc-cue cc-red" style={{ background: "none", border: 0, padding: 0, marginTop: 6, cursor: "pointer", textAlign: "left" }} onClick={() => setOpen(true)}>Missing {gaps.join(", ")}. Tap to add.</button>}
       </>)}
       {open && (<>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <label style={{ flex: 1, minWidth: 0 }}><span className="cc-lab">FIRST NAME</span><input className="cc-field" type="text" autoComplete="given-name" aria-label="PNC first name" value={f.first_name} onChange={set("first_name")} /></label>
+          <label style={{ flex: 1, minWidth: 0 }}><span className="cc-lab">LAST NAME</span><input className="cc-field" type="text" autoComplete="family-name" aria-label="PNC last name" value={f.last_name} onChange={set("last_name")} /></label>
+        </div>
+        <div className="cc-cue" style={{ marginBottom: 8 }}>Correct the PNC's legal name here. An agreement already sent keeps its original name until it is voided and replaced.</div>
         <div className="cc-lab">CELL</div>
         <input className="cc-field" type="tel" inputMode="tel" aria-label="Cell" value={f.phone} onChange={set("phone")} />
         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
@@ -472,7 +491,7 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
   );
 }
 
-function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said: string; tags: string[] } | null }) {
+function FileTab({ leadId, claimId, lead }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
@@ -480,19 +499,19 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
   const [saving, setSaving] = useState(false);
   const load = async () => {
     try {
-      const r = await fetch(`/api/calls/file?lead_id=${encodeURIComponent(leadId)}`);
+      const r = await fetch(`/api/calls/file?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`);
       const j = await r.json();
       if (!r.ok || j.error) throw new Error(j.error || "The file did not load.");
       setD(j); setErr("");
     } catch (e: any) { setErr(e.message); }
   };
-  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leadId]);
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leadId, claimId]);
   const addNote = async () => {
     const body = note.trim();
     if (!body) return;
     setSaving(true);
     try {
-      const r = await fetch("/api/notes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: d?.claim_id, scope, body }) });
+      const r = await fetch("/api/notes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, scope, body }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) throw new Error(j.error || "The note did not save.");
       setNote(""); await load();
@@ -507,11 +526,11 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
       : "Why are you voiding this agreement? (For example: wrong agreement, wrong number.)");
     if (!why || !why.trim()) return;
     try {
-      const r = await fetch("/api/calls/esign/void", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: a.id, reason: why.trim() }) });
+      const r = await fetch("/api/calls/esign/void", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, id: a.id, reason: why.trim() }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) throw new Error(j.error || "The agreement did not void.");
       await load();
-      try { window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, pax: a.pax } })); } catch { /* no console on this page */ }
+      try { window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, claimId, pax: a.pax } })); } catch { /* no console on this page */ }
     } catch (e: any) { setErr(e.message); }
   };
   if (!d) return <div className="cc-side-b">{err ? <div className="cc-cue cc-red">{err}</div> : <div className="cc-cue" style={{ textAlign: "center", marginTop: 24 }}>Loading the file</div>}</div>;
@@ -578,7 +597,7 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
           <div className="cc-grp">
             {d.docs.map((x: any) => (
               <a key={x.id} className="cc-lrow" href={x.url || "#"} target="_blank" rel="noopener">
-                <span className="cc-lrow-main"><span className="cc-lrow-n" style={{ fontSize: 15 }}>{x.name}</span><span className="cc-lrow-s">{[x.type, x.by].filter(Boolean).join(", ")}</span></span>
+                <span className="cc-lrow-main"><span className="cc-lrow-n" style={{ fontSize: 15 }}>{x.name}</span><span className="cc-lrow-s">{[x.scope, x.type, x.by].filter(Boolean).join(", ")}</span></span>
                 <span className="cc-lrow-t">{fmtWhen(x.at)}</span>
               </a>
             ))}
@@ -597,7 +616,7 @@ function FileTab({ leadId, lead }: { leadId: string; lead: { from: string; said:
           ))}
         </div>
       )}
-      {d.classic && <a className="cc-cue" style={{ margin: "4px", textAlign: "center" }} href={`/leads/${encodeURIComponent(L.lead_no || leadId)}?classic=1`}>Open the classic file page (status, QA, lock, send to firm)</a>}
+      {d.classic && <a className="cc-cue" style={{ margin: "4px", textAlign: "center" }} href={`/leads/${encodeURIComponent(L.lead_no || leadId)}?claim=${encodeURIComponent(claimId)}`}>Review case & send to firm</a>}
     </div>
   );
 }

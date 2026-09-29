@@ -94,6 +94,10 @@ export async function setClaimStatusForLeads(opts: {
   actorId?: string | null;
   actorName?: string | null;
   statuses?: StatusDef[];
+  /** Single-target compare-and-set; a stale preview must never overwrite a newer decision. */
+  expectedStatus?: string | null;
+  /** Historical reconciliation is not a new signing or a reason to contact anyone. */
+  historical?: boolean;
 }, deps: StatusDeps = {}): Promise<SetStatusResult> {
   const db = deps.db ?? supabaseAdmin();
   const audit = deps.audit ?? (async (row: any) => { const { recordAudit } = await import("@/lib/audit"); await recordAudit(row); });
@@ -126,6 +130,9 @@ export async function setClaimStatusForLeads(opts: {
   const { data: priorRows, error: priorErr } = await pq;
   if (priorErr) return { ok: false, error: priorErr.message };
   const prior = (priorRows ?? []) as any[];
+  const compareStatus = Object.prototype.hasOwnProperty.call(opts, "expectedStatus");
+  if (compareStatus && (prior.length !== 1 || !targetIds || targetIds.length !== 1)) return { ok: false, error: "A status comparison requires one exact matter." };
+  if (compareStatus && (prior[0].status ?? null) !== (opts.expectedStatus ?? null)) return { ok: false, error: "This matter's status changed after the preview. Refresh before applying." };
   if (targetIds) {
     // The claim and the lead are ONE identity (Astra rounds 4-5).
     if (prior.length !== targetIds.length) return { ok: false, error: "That claim no longer exists. Refresh the file and try again." };
@@ -144,6 +151,7 @@ export async function setClaimStatusForLeads(opts: {
 
   let cq = db.from("claims").update(patch);
   cq = targetIds ? cq.in("id", targetIds) : cq.in("lead_id", opts.leadIds);
+  if (compareStatus) cq = opts.expectedStatus == null ? cq.is("status", null) : cq.eq("status", opts.expectedStatus);
   const { data: changed, error } = await cq.select("id, lead_id");
   if (error) return { ok: false, error: error.message };
   if (!changed?.length) {
@@ -162,10 +170,10 @@ export async function setClaimStatusForLeads(opts: {
     const { data: sibs, error: sErr } = await db.from("claims").select("id, status").eq("lead_id", leadId);
     if (sErr) { flagErrors.push(sErr.message); continue; }
     const flags: any = queueFlagsFor((sibs ?? []).map((c: any) => c.status), list);
-    if (def.phase === "in_qa" && def.key !== "wip" && def.key !== "signed_wip") flags.qa_entered_at = new Date().toISOString();
-    if (!flags.qa_pending && !flags.wip_pending) flags.qa_entered_at = null;
+    if (!opts.historical && def.phase === "in_qa" && def.key !== "wip" && def.key !== "signed_wip") flags.qa_entered_at = new Date().toISOString();
+    if (!opts.historical && !flags.qa_pending && !flags.wip_pending) flags.qa_entered_at = null;
     // Mark signed_at when entering the signed track for the first time.
-    if (def.key === "signed_grievous") flags.signed_at = new Date().toISOString();
+    if (def.key === "signed_grievous" && !opts.historical) flags.signed_at = new Date().toISOString();
     // A signed intake is complete, not still "Referral Received" (Astra, Sep 27).
     if (String(def.key).startsWith("signed")) flags.stage = "intake_complete";
     const { error: fErr } = await db.from("leads").update(flags).eq("id", leadId);
@@ -188,7 +196,7 @@ export async function setClaimStatusForLeads(opts: {
         meta: { status: opts.status, dq_reason_key: opts.dqReasonKey ?? null, claim_ids: mine.map((r) => r.id) },
       });
     } catch (e) { console.error("status audit failed", e); }
-    try { await automation({ type: "status_changed", lead_id: leadId, toStatus: opts.status }); }
+    try { if (!opts.historical) await automation({ type: "status_changed", lead_id: leadId, toStatus: opts.status }); }
     catch (e) { console.error("automation trigger failed", e); }
 
     // Outbound webhook: ONE event per changed claim, carrying THAT claim's
@@ -200,7 +208,7 @@ export async function setClaimStatusForLeads(opts: {
       row = r.data;
     } catch { row = null; }
     for (const c of mine) {
-      if (row?.firm_id) {
+      if (row?.firm_id && !opts.historical) {
         try {
           const evt = statusEventFor(def, priorById.get(String(c.id))?.status);
           await webhook(row.firm_id, evt,
@@ -210,7 +218,7 @@ export async function setClaimStatusForLeads(opts: {
       }
       // Auto firm delivery for THIS matter (guarded per claim; respects the
       // campaign master switch). Never blocks the status write.
-      if (def.unlocks_firm === true) {
+      if (def.unlocks_firm === true && !opts.historical) {
         try { await deliver({ leadId, claimId: String(c.id), triggeredBy: "auto", actorName: opts.actorName ?? "System" }); }
         catch (e) { console.error("firm delivery trigger failed", e); }
       }

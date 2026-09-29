@@ -25,7 +25,13 @@ function toPayload(patch: Record<string, any>): Record<string, any> {
 
 // Case-management layer: routing/people, content, dates, tags, events. Separate
 // from the intake questionnaire. Saves to the leads row + case_events.
-export default function CaseDetails({ lead, staff = [], editMode = true, onRequestEdit, fence, onSaved }: { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void; fence?: FileFence; onSaved?: (patch: Record<string, any>) => void }) {
+type CaseDetailsProps = { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void; fence?: FileFence; onSaved?: (patch: Record<string, any>) => void };
+
+export default function CaseDetails(props: CaseDetailsProps) {
+  return <CaseDetailsRecord key={props.lead.id} {...props} />;
+}
+
+function CaseDetailsRecord({ lead, staff = [], editMode = true, onRequestEdit, fence, onSaved }: CaseDetailsProps) {
   // The record's values as this tab last saw them in its props.
   const seen = useRef<Record<string, any> | null>(null);
   // Autosave a second after the last edit, no manual Save needed. Only the

@@ -2,12 +2,14 @@
 import { fileMayEditLead, type FileFence } from "@/lib/file-fence";
 import { LOR_STATUSES } from "@/lib/m6";
 import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
+import { isSignedKey, resolveStatus } from "@/lib/statuses";
 
 // The front door. When anyone opens a file, they land here: who this is,
 // what kind of case, where it stands, last contact, recent notes, then clear
 // "where do you want to go" actions. Works even when the file is empty.
-export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence, identified = [], lor = null, lastComm = null, points = [] }: {
+export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence, identified = [], lor = null, lastComm = null, points = [], intakeAnswered }: {
   lead: any; activeClaim: any; notes?: any[]; callLogs?: any[];
+  intakeAnswered?: number;
   onGo: (tab: string) => void;
   fence?: FileFence;
   identified?: IdentifiedProperty[];
@@ -22,8 +24,8 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
 
   // qualification state -> single clear status chip
   const stateChip = (() => {
-    if (status === "signed") return { label: "Signed & retained", cls: "ok" };
     if (status === "sent" || status === "delivered") return { label: "Sent to firm", cls: "info" };
+    if (isSignedKey(status)) return { label: activeClaim?.claim_type === "mva" && /^signed_/.test(status) ? "Signed · agent review" : resolveStatus(status).label, cls: "ok" };
     if (qual === "dq" || status === "dq") return { label: "Disqualified", cls: "bad" };
     if (lead.currently_represented) return { label: "Already represented", cls: "warn" };
     if (qual === "qualified") return { label: "Qualified", cls: "ok" };
@@ -38,7 +40,7 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
   const livePoints = points.filter((p) => p.status !== "dead" && p.status !== "opted_out");
   const recentNotes = (notes || []).slice(0, 3);
   const diagnosis = activeClaim?.answers?.qualified_injury || activeClaim?.answers?.date_of_diagnosis || lead.diagnosis;
-  const intakeProgress = activeClaim?.answers ? Object.keys(activeClaim.answers).filter((k) => activeClaim.answers[k] !== "" && activeClaim.answers[k] != null).length : 0;
+  const intakeProgress = intakeAnswered ?? (activeClaim?.answers ? Object.keys(activeClaim.answers).filter((k) => !["__meta", "mva_call"].includes(k) && activeClaim.answers[k] !== "" && activeClaim.answers[k] != null).length : 0);
 
   const addr = [lead.mail_addr1, [lead.mail_city, lead.mail_state].filter(Boolean).join(", "), lead.mail_zip].filter(Boolean).join(" · ");
   const stamped = [lead.property_name, lead.property_street, [lead.property_city, lead.property_state].filter(Boolean).join(", "), lead.property_zip].filter(Boolean).join(" · ");

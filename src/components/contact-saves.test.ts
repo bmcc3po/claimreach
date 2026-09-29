@@ -6,7 +6,7 @@
 // small React stand-in with real effect cleanup and unmount, a fake clock,
 // fake fetch and fake window events. No network, no database.
 import assert from "node:assert/strict";
-import { createRuntime, one, text, fieldControl, type Node } from "./contact-saves.harness";
+import { createRuntime, one, walk, text, fieldControl, type Node } from "./contact-saves.harness";
 
 let passed = 0;
 const tests: [string, () => Promise<void>][] = [];
@@ -128,8 +128,53 @@ t("ContactInfo: leaving the tab sends the pending edit at once", async () => {
   assert.deepEqual(rt.posts()[0].body.lead, { first_name: "TYPED_NAME" });
 });
 
-t("ContactInfo: the mailing address is one value, not two copies that overwrite each other", async () => {
+t("ContactInfo: switching files flushes the old name to the old lead and starts clean", async () => {
+  const { rt, view, props, firstName } = contactInfo();
+  view.act(type(firstName(), "OLD_FILE_DRAFT"));
+  view.rerender({ ...props, lead: { ...LEAD, id: "lead-2", first_name: "NEW_FILE" } });
+  assert.equal(firstName().props.value, "NEW_FILE");
+  await rt.settle();
+  assert.deepEqual(rt.posts().map((p) => p.body), [{ op: "save", lead_id: "lead-1", lead: { first_name: "OLD_FILE_DRAFT" } }]);
+  view.act(type(firstName(), "NEW_FILE_EDIT"));
+  await rt.advance(1000);
+  assert.deepEqual(rt.posts()[1].body, { op: "save", lead_id: "lead-2", lead: { first_name: "NEW_FILE_EDIT" } });
+});
+
+t("ContactInfo: a held old-file save and queued correction never target the next file", async () => {
+  const { rt, view, props, firstName } = contactInfo();
+  rt.hold();
+  view.act(type(firstName(), "FIRST_DRAFT")); await rt.advance(1000);
+  view.act(type(firstName(), "FINAL_DRAFT"));
+  view.rerender({ ...props, lead: { ...LEAD, id: "lead-2", first_name: "NEW_FILE" } });
+  await rt.release();
+  assert.equal(rt.posts().length, 2);
+  assert.deepEqual(rt.posts()[1].body, { op: "save", lead_id: "lead-1", lead: { first_name: "FINAL_DRAFT" } });
+  await rt.release();
+  assert.equal(firstName().props.value, "NEW_FILE");
+  await rt.advance(5000);
+  assert.ok(rt.posts().every((p) => p.body.lead_id === "lead-1"));
+});
+
+t("ContactInfo: successful split-name save returns the server canonical display name to its parent", async () => {
+  const { rt, view, props, firstName } = contactInfo();
+  const saved: any[] = [];
+  view.rerender({ ...props, onSaved: (p: any) => saved.push(p) });
+  rt.replyWith(() => ({ status: 200, body: { ok: true, contact: { first_name: "New", last_name: "OLD_LAST", claimant_name: "New OLD_LAST" } } }));
+  view.act(type(firstName(), "New")); await rt.advance(1000);
+  assert.deepEqual(saved, [{ first_name: "New", claimant_name: "New OLD_LAST" }]);
+});
+
+t("ContactInfo: MVA presents one canonical mailing address and saves only that edit", async () => {
   const { rt, view } = contactInfo();
+  assert.equal(walk(view.tree, (n) => (n.type as any)?.name === "FieldRenderer").length, 0, "MVA has no second legacy contact form");
+  view.act(type(fieldControl(view.tree, "Address"), "22 New Rd"));
+  await rt.advance(1000);
+  assert.deepEqual(rt.posts()[0].body.lead, { mail_addr1: "22 New Rd" });
+});
+
+t("ContactInfo: non-MVA shared mailing-address controls still use one saved value", async () => {
+  const { rt, view, props } = contactInfo();
+  view.rerender({ ...props, claimType: "motel_trafficking" });
   const formCopy = () => one(view.tree, (n) => (n.type as any)?.name === "FieldRenderer" && n.props.field?.id === "mail_addr1", "form's street field");
   view.act(() => formCopy().props.onChange("22 New Rd"));
   assert.equal(fieldControl(view.tree, "Address").props.value, "22 New Rd");
@@ -219,6 +264,30 @@ t("CaseDetails: leaving the tab sends the pending edit at once", async () => {
   view.unmount();
   await rt.settle();
   assert.equal(posts().length, 1);
+});
+
+t("CaseDetails: switching files flushes the old summary under the old ID", async () => {
+  const { rt, view, props, summary, posts } = caseDetails();
+  view.act(type(summary(), "OLD_FILE_DRAFT"));
+  view.rerender({ ...props, lead: { ...LEAD, id: "lead-2", case_summary: "NEW_FILE_SUMMARY" } });
+  assert.equal(summary().props.value, "NEW_FILE_SUMMARY");
+  await rt.settle();
+  assert.deepEqual(posts().map((p) => p.body), [{ lead_id: "lead-1", case_summary: "OLD_FILE_DRAFT" }]);
+  view.act(type(summary(), "NEW_FILE_EDIT")); await rt.advance(1000);
+  assert.deepEqual(posts()[1].body, { lead_id: "lead-2", case_summary: "NEW_FILE_EDIT" });
+});
+
+t("CaseDetails: an in-flight old save cannot carry its queued tags onto the next lead", async () => {
+  const { rt, view, props, summary, tags, posts } = caseDetails();
+  rt.hold();
+  view.act(type(summary(), "OLD_FILE_DRAFT")); await rt.advance(1000);
+  view.act(type(tags(), "old-file-only"));
+  view.rerender({ ...props, lead: { ...LEAD, id: "lead-2", case_tags: ["new-file"] } });
+  await rt.release();
+  assert.deepEqual(posts()[1].body, { lead_id: "lead-1", case_tags: ["old-file-only"] });
+  await rt.release();
+  assert.equal(tags().props.value, "new-file");
+  assert.ok(posts().every((p) => p.body.lead_id === "lead-1"));
 });
 
 // ------------------------------------------------ call console ContactCard
@@ -353,6 +422,28 @@ t("ContactCard: leaving the call sends the pending edit at once", async () => {
   await rt.settle();
   assert.equal(rt.posts().length, 1);
   assert.deepEqual(rt.posts()[0].body.lead, { email: "draft@example.invalid" });
+});
+
+t("ContactCard: a successful name correction emits canonical and previous names after acknowledgement", async () => {
+  const { rt, view, box, openEdit } = contactCard({ ...CARD_INITIAL, first_name: "Old", last_name: "Tester", claimant_name: "Old Tester" });
+  openEdit(); rt.hold();
+  view.act(type(box("PNC first name"), "New")); await rt.advance(900);
+  assert.equal(rt.dispatched.filter((e) => e.type === "cr:contact").length, 0);
+  assert.deepEqual(rt.posts()[0].body.lead, { first_name: "New" });
+  await rt.release({ status: 200, body: { ok: true, contact: { first_name: "New", last_name: "Tester", claimant_name: "New Tester" } } });
+  const event = rt.dispatched.find((e) => e.type === "cr:contact")!.detail;
+  assert.equal(event.name, "New Tester"); assert.equal(event.previousName, "Old Tester");
+  assert.equal(event.first_name, "New"); assert.equal(event.last_name, "Tester");
+});
+
+t("ContactCard: a rejected name correction keeps the draft and emits no canonical name", async () => {
+  const { rt, view, box, openEdit } = contactCard({ ...CARD_INITIAL, first_name: "Old", last_name: "Tester", claimant_name: "Old Tester" });
+  openEdit();
+  rt.replyWith(() => ({ status: 409, body: { error: "The name changed on another screen." } }));
+  view.act(type(box("PNC last name"), "Draft")); await rt.advance(900);
+  assert.equal(box("PNC last name").props.value, "Draft");
+  assert.match(text(view.tree), /name changed on another screen/);
+  assert.equal(rt.dispatched.filter((e) => e.type === "cr:contact").length, 0);
 });
 
 (async () => {

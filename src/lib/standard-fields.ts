@@ -592,8 +592,6 @@ export async function loadStandardExport(db: any, f: ExportFilter, chunk = 150):
     if (f.city) q = q.eq("mail_city", f.city);
     if (f.since) q = q.gte("created_at", f.since);
     if (f.until) q = q.lt("created_at", nextDay(f.until));
-    if (f.signedFrom) q = q.gte("signed_at", f.signedFrom);
-    if (f.signedTo) q = q.lt("signed_at", nextDay(f.signedTo));
     return q.order("created_at", { ascending: true }).order("id", { ascending: true });
   }, "the files");
   if (!leads.ok) return leads;
@@ -630,7 +628,15 @@ export async function loadStandardExport(db: any, f: ExportFilter, chunk = 150):
     firmNames: new Map(ok(firms).map((x) => [String(x.id), x.name])),
     staffNames: new Map(staff.rows.map((u) => [String(u.id), u.full_name])),
   });
-  return { ok: true, records };
+  // Signing belongs to the exported matter, not its person's lead-level copy.
+  // Filter only after resolving each record's own agreement evidence/date.
+  const signedFrom = f.signedFrom ? Date.parse(f.signedFrom) : null;
+  const signedUntil = f.signedTo ? Date.parse(nextDay(f.signedTo)) : null;
+  const filtered = signedFrom === null && signedUntil === null ? records : records.filter((record) => {
+    const signed = record.sign_date ? Date.parse(record.sign_date) : NaN;
+    return Number.isFinite(signed) && (signedFrom === null || signed >= signedFrom) && (signedUntil === null || signed < signedUntil);
+  });
+  return { ok: true, records: filtered };
 }
 
 function csvEscape(x: any): string {

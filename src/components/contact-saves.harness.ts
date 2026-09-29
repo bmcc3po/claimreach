@@ -3,7 +3,8 @@
 // It runs the REAL component source (compiled by the TypeScript compiler from
 // node_modules) against a small stand-in for React: hooks keep their slots
 // across renders, effects run after each render with the previous cleanup
-// first, and unmount runs every cleanup. Child components are not rendered
+// first, and unmount runs every cleanup. A hook-free root wrapper is unwrapped
+// once, honoring its child key before the new record renders. Other children are not rendered
 // (the tree is plain {type, props} objects), and the clock, timers, fetch and
 // window events are fakes the test controls. Nothing touches a network or a
 // database. Same approach as Astra's round 7b probe, with unmount, held and
@@ -16,7 +17,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 
 export type Req = { url: string; method: string; body: any };
 export type Reply = { status: number; body?: any };
-export type Node = { type: any; props: Record<string, any> };
+export type Node = { type: any; props: Record<string, any>; key?: string | null };
 
 type Held = { req: Req; resolve: (r: Reply) => void; reject: (e: unknown) => void };
 
@@ -98,8 +99,8 @@ export function createRuntime() {
   };
   react.useLayoutEffect = react.useEffect;
   const jsxRuntime = {
-    jsx: (type: any, props: any) => ({ type, props: props ?? {} }),
-    jsxs: (type: any, props: any) => ({ type, props: props ?? {} }),
+    jsx: (type: any, props: any, key?: string) => ({ type, props: props ?? {}, key: key ?? null }),
+    jsxs: (type: any, props: any, key?: string) => ({ type, props: props ?? {}, key: key ?? null }),
     Fragment: "Fragment",
   };
 
@@ -148,11 +149,24 @@ export function createRuntime() {
     let current = props;
     let tree: any = null;
     let mounted = true;
+    let child: { type: any; key: any } | null = null;
+    const cleanup = () => {
+      for (const s of slots) if (s && s.kind === "effect" && typeof s.cleanup === "function") { const c = s.cleanup; s.cleanup = undefined; c(); }
+    };
     const render = () => {
       if (!mounted) return tree;
       for (let n = 0; n < 50; n++) {
         cursor = 0; dirty = false;
         tree = Component(current);
+        // ContactInfo/CaseDetails now wrap their stateful record in a key.
+        // Execute only this root boundary, not arbitrary shallow children.
+        if (cursor === 0 && typeof tree?.type === "function") {
+          if (child && (child.type !== tree.type || child.key !== tree.key)) {
+            cleanup(); slots = []; queued = [];
+          }
+          child = { type: tree.type, key: tree.key };
+          tree = tree.type(tree.props);
+        }
         const effects = queued; queued = [];
         for (const e of effects) { const c = slots[e.i].cleanup; slots[e.i].cleanup = undefined; if (typeof c === "function") c(); }
         for (const e of effects) { const r = e.fn(); slots[e.i].cleanup = typeof r === "function" ? r : undefined; }
@@ -167,7 +181,7 @@ export function createRuntime() {
       act(fn: () => void) { fn(); return render(); },
       unmount() {
         mounted = false;
-        for (const s of slots) if (s && s.kind === "effect" && typeof s.cleanup === "function") { const c = s.cleanup; s.cleanup = undefined; c(); }
+        cleanup();
       },
     };
     return view;

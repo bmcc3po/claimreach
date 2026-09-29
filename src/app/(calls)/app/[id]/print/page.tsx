@@ -6,30 +6,34 @@ import { caseReport } from "@/lib/mva-call/report";
 import PrintActions from "@/components/calls/PrintActions";
 import CanonicalUrl from "@/components/CanonicalUrl";
 import { resolveLeadKey, leadKeyOf } from "@/lib/lead-key";
+import { resolveSigningMatter, getMatterAgreement, agreementIsVoided } from "@/lib/mva-call/signing-matter";
+import { matterRowsFilter } from "@/lib/matter";
 
 // The whole case on one page: the automatic summary, the six qualifiers,
 // every intake question with its answer, and the agreement. Print it from the
 // phone (Share, Print) or email it. No SSN on this page, ever.
-export default async function PrintCase({ params }: { params: Promise<{ id: string }> }) {
+export default async function PrintCase({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ claim?: string }> }) {
   const { id: key } = await params;
   const sb = await supabaseServer();
   const id = await resolveLeadKey(sb, key);
   if (!id) notFound();
-  const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", id).maybeSingle();
-  if (!lead) notFound();
-  const [{ data: call }, { data: sub }, { data: claim }] = await Promise.all([
-    sb.from("intake_calls").select("answers, agent_name, updated_at").eq("lead_id", id).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
-    sb.from("esign_submissions").select("id, status, template_key, signer_name, injured_name, sent_at, signed_at, completed_at, completed_pdf_path")
-      .eq("lead_id", id).is("pax_index", null).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    sb.from("claims").select("status").eq("lead_id", id).order("created_at", { ascending: true }).limit(1).maybeSingle(),
+  const context = await resolveSigningMatter(sb, id, { claimId: (await searchParams).claim, allowArchived: true });
+  if (!context.ok) return <div className="cc-print"><h1>Choose a matter before exporting</h1><p>{context.error}</p><a href={`/leads/${encodeURIComponent(key)}`}>Review file</a></div>;
+  const { lead, matter } = context;
+  const claim = matter.claim;
+  const [{ data: call }, agreement] = await Promise.all([
+    sb.from("intake_calls").select("answers, agent_name, updated_at").eq("lead_id", id).or(matterRowsFilter(matter)).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+    getMatterAgreement(sb, lead, matter),
   ]);
-  const r = caseReport(lead, call?.answers || {}, sub);
+  if (!agreement.ok) throw new Error(agreement.error);
+  const sub = agreementIsVoided(agreement.row) ? null : agreement.row;
+  const r = caseReport({ ...lead, campaign: claim.campaign, case_type: claim.claim_type }, claim.answers?.mva_call || call?.answers || {}, sub);
   const status = claim?.status ? String(claim.status).replace(/_/g, " ") : "";
 
   return (
     <div className="cc-print cr-report">
       <CanonicalUrl path={`/app/${leadKeyOf(lead)}/print`} />
-      <a className="cc-home-link cc-noprint" href={`/app/${leadKeyOf(lead)}`}>Back to the call</a>
+      <a className="cc-home-link cc-noprint" href={`/app/${leadKeyOf(lead)}?claim=${claim.id}`}>Back to the call</a>
       <h1>{r.name}</h1>
       <div className="cr-sub">{[r.sub, status, call?.agent_name ? `Intake by ${call.agent_name}` : ""].filter(Boolean).join(", ")}</div>
 
@@ -61,7 +65,7 @@ export default async function PrintCase({ params }: { params: Promise<{ id: stri
         </div>
       </section>
 
-      <PrintActions leadId={id} hasPdf={r.agreement.hasPdf} />
+      <PrintActions leadId={id} claimId={claim.id} agreementId={sub?.id} hasPdf={r.agreement.hasPdf} />
     </div>
   );
 }

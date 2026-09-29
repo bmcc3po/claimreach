@@ -101,13 +101,14 @@ let provider: (s: Sent) => { status: number; json: any } | "THROW" = () => ({ st
 
 const SUB_ID = "5b0c3a4e-1111-4222-8333-944455556666";
 const LEAD_ID = "8f0e0e0e-aaaa-4bbb-8ccc-dddddddddddd";
+const CLAIM_ID = "7f0e0e0e-aaaa-4bbb-8ccc-dddddddddddd";
 function world(sub: Partial<Row> = {}, opts: { routes?: NotifyRoute[] } = {}) {
   sent = [];
   provider = () => ({ status: 200, json: { id: "em_1" } });
   const row: Row = {
     id: SUB_ID, lead_id: LEAD_ID, firm_id: "firm-tmp", submission_id: "ds-77", status: "signed", call_id: null,
     signer_name: "Maria Lopez", injured_name: "Maria Lopez", template_key: "TX", pax_index: null,
-    completed_pdf_path: null, voided_at: null, signed_notified_at: null,
+    completed_pdf_path: null, voided_at: null, signed_notified_at: null, claim_id: CLAIM_ID, campaign_id: "c-tmp",
     notify_state: null, notify_claimed_at: null, notify_attempts: 0, notify_error: null, ...sub,
   };
   const db = new FakeDb({
@@ -115,6 +116,7 @@ function world(sub: Partial<Row> = {}, opts: { routes?: NotifyRoute[] } = {}) {
     leads: [{ id: LEAD_ID, lead_no: "TMP-101", claimant_name: "Maria Lopez", phone: "8325550148", email: null, dob: null, case_type: "mva", campaign: "TMP MVA", campaign_id: "c-tmp", firm_id: "firm-tmp" }],
     notify_routes: (opts.routes ?? [R({ case_type: "mva", to_emails: ["mva@ii.com"] })]) as any[],
     intake_calls: [],
+    claims: [{ id: CLAIM_ID, lead_id: LEAD_ID, firm_id: "firm-tmp", campaign_id: "c-tmp", campaign: "TMP MVA", claim_type: "mva", answers: {}, status: "signed_grievous" }],
   });
   return { db, row, stored: () => db.tables.esign_submissions[0] };
 }
@@ -256,6 +258,55 @@ t("a slow sender's failure never overwrites a later sender's sent", async () => 
   assert.equal(await notifySigned(w.db, w.row), "failed");
   assert.equal(w.stored().notify_state, "sent");
   assert.equal(w.stored().notify_error, null);
+});
+
+t("matter B uses its campaign recipients and own answers, never newest sibling A", async () => {
+  const w = world({}, { routes: [R({ campaign_id: "c-b", to_emails: ["b@ii.com"] }), R({ campaign_id: "c-tmp", to_emails: ["a@ii.com"] })] });
+  w.db.tables.claims[0].campaign_id = "c-b";
+  w.db.tables.claims[0].campaign = "Matter B";
+  w.db.tables.claims.push({ ...w.db.tables.claims[0], id: "6f0e0e0e-aaaa-4bbb-8ccc-dddddddddddd", campaign_id: "c-tmp" });
+  w.db.tables.intake_calls = [
+    { lead_id: LEAD_ID, claim_id: CLAIM_ID, created_at: "2026-09-27", answers: { story: { text: "OWN-B-STORY" } } },
+    { lead_id: LEAD_ID, claim_id: w.db.tables.claims[1].id, created_at: "2026-09-28", answers: { story: { text: "PRIVATE-A-STORY" } } },
+  ];
+  assert.equal(await notifySigned(w.db, w.row), "sent");
+  assert.deepEqual(sent[0].body.to, ["b@ii.com"]);
+  assert.ok(JSON.stringify(sent[0].body).includes("OWN-B-STORY"));
+  assert.ok(!JSON.stringify(sent[0].body).includes("PRIVATE-A-STORY"));
+});
+
+t("fresh submission identity overrides stale poll identity", async () => {
+  const w = world();
+  assert.equal(await notifySigned(w.db, { ...w.row, lead_id: "wrong-lead", claim_id: "wrong-claim" }), "sent");
+  assert.equal(sent.length, 1);
+});
+
+t("a named foreign call blocks the notification", async () => {
+  const w = world({ call_id: "foreign" });
+  w.db.tables.intake_calls = [{ id: "foreign", lead_id: "someone-else", firm_id: "firm-tmp", claim_id: CLAIM_ID }];
+  assert.equal(await notifySigned(w.db, w.row), "failed");
+  assert.equal(sent.length, 0);
+});
+
+t("an unsigned or replaced agreement never sends a signing notice", async () => {
+  const w = world({ status: "sent" });
+  assert.equal(await notifySigned(w.db, w.row), "not_due");
+  w.stored().status = "signed";
+  w.stored().created_at = "2026-09-27";
+  w.db.tables.esign_submissions.push({ ...w.stored(), id: "new", created_at: "2026-09-28", status: "voided" });
+  assert.equal(await notifySigned(w.db, w.row), "failed");
+  assert.equal(sent.length, 0);
+});
+
+t("passenger summary uses their own claim instead of parent's originating call", async () => {
+  const parent = "1f0e0e0e-aaaa-4bbb-8ccc-dddddddddddd";
+  const w = world({ call_id: "parent-call", pax_index: 0 });
+  w.db.tables.leads[0].external_id = `${parent}:pax:p1`;
+  w.db.tables.claims[0].answers = { mva_call: { story: { text: "CHILD-OWN-STORY" } } };
+  w.db.tables.intake_calls = [{ id: "parent-call", lead_id: parent, campaign_id: "c-tmp", firm_id: "firm-tmp", answers: { story: { text: "PARENT-PRIVATE-STORY" } } }];
+  assert.equal(await notifySigned(w.db, w.row), "sent");
+  assert.ok(JSON.stringify(sent[0].body).includes("CHILD-OWN-STORY"));
+  assert.ok(!JSON.stringify(sent[0].body).includes("PARENT-PRIVATE-STORY"));
 });
 
 // ---------------------------------------------------------------- email header
