@@ -17,6 +17,9 @@ export interface PartnerDashboardRow {
   signed: boolean;
   disqualified: boolean;
   sourceStatus: string | null;
+  sourceSignedReported: boolean;
+  sourceDqReported: boolean;
+  sourceDqReason: string | null;
   dqReason: string | null;
   signedAt: string | null;
   syncState: 'import_pending' | 'identity_review' | 'matter_review' | 'imported';
@@ -50,6 +53,14 @@ export function buildPartnerRows(opts: {
     const calls = lead ? opts.calls.filter(c => c.lead_id === lead.id && c.firm_id === ref.firm_id && c.direction === 'outbound') : [];
     const receivedAt = lead?.lawruler_created_at || lead?.created_at || null;
     const syncState: PartnerDashboardRow['syncState'] = matches.length > 1 ? 'identity_review' : !lead ? 'import_pending' : matters.length !== 1 ? 'matter_review' : 'imported';
+    const sourceStatus = typeof lead?.vendor_fields?.lawruler_status === 'string'
+      ? lead.vendor_fields.lawruler_status.trim() : null;
+    const sourceStatusKey = sourceStatus?.toLowerCase() || '';
+    const sourceSignedReported = /^signed(?:\b|[-_:])/.test(sourceStatusKey) || claim?.status === 'external_signed_review';
+    const sourceDqReported = ['disqualified', 'already represented', 'wrong number', 'do not call request', 'not interested', 'duplicate'].includes(sourceStatusKey)
+      || claim?.status === 'external_dq_review';
+    const sourceDqReason = ['already represented', 'wrong number', 'do not call request', 'not interested', 'duplicate'].includes(sourceStatusKey)
+      ? sourceStatus : null;
     return {
       sourceLeadId: ref.source_lead_id,
       leadNo: lead?.lead_no || null,
@@ -64,7 +75,7 @@ export function buildPartnerRows(opts: {
       claimStatus: claim ? labels.get(claim.status) || claim.status : null,
       signed: !!agreement,
       disqualified: !!claim && statusDefs.get(claim.status)?.qualify === 'disqualify',
-      sourceStatus: typeof lead?.vendor_fields?.lawruler_status === 'string' ? lead.vendor_fields.lawruler_status : null,
+      sourceStatus, sourceSignedReported, sourceDqReported, sourceDqReason,
       dqReason: claim?.dq_reason || claim?.dq_reason_key || null,
       signedAt: agreement?.signed_at || null,
       syncState,

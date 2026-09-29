@@ -73,6 +73,8 @@ export default async function PartnerPage() {
   const imported = rows.filter(r => r.syncState === "imported").length;
   const signed = rows.filter(r => r.signed).length;
   const dq = rows.filter(r => r.disqualified).length;
+  const sourceSigned = rows.filter(r => r.sourceSignedReported).length;
+  const sourceDq = rows.filter(r => r.sourceDqReported).length;
   const missing = rows.length - imported;
 
   return <main className={styles.shell}>
@@ -84,18 +86,18 @@ export default async function PartnerPage() {
     <section className={styles.stats} aria-label="Partner lead summary">
       <div><span>Approved leads</span><strong>{rows.length}</strong></div>
       <div><span>In ClaimReach</span><strong>{imported}</strong></div>
-      <div><span>DocuSeal packet stored</span><strong>{signed}</strong></div>
-      <div><span>Disqualified in ClaimReach</span><strong>{dq}</strong></div>
+      <div><span>LawRuler reports signed</span><strong>{sourceSigned}</strong><small>{signed} verified DocuSeal packets</small></div>
+      <div><span>LawRuler reports DQ</span><strong>{sourceDq}</strong><small>{dq} finalized with a standard reason</small></div>
     </section>
     {missing > 0 && <p className={styles.notice}>{missing} approved source {missing === 1 ? "lead is" : "leads are"} awaiting import or identity review. Source statuses and call activity may be newer than ClaimReach until reconciliation completes.</p>}
-    <p className={styles.caption}>Status from LawRuler is shown separately from ClaimReach case status. A signed count requires that matter's completed, non-voided DocuSeal agreement and stored PDF plus certificate. Speed to lead uses the source receipt time and the first dial recorded here; missing call data is shown as missing, never as zero.</p>
+    <p className={styles.caption}>LawRuler signing and DQ counts are source reports, shown separately from verified ClaimReach outcomes. A verified signed packet requires that matter's completed, non-voided DocuSeal agreement, PDF and certificate. Speed to lead uses the source receipt time and the first dial recorded here; missing call data is shown as missing, never as zero.</p>
     <div className={styles.tableWrap}><table className={styles.table}>
       <thead><tr><th>Lead</th><th>Contact</th><th>Case state</th><th>DQ reason</th><th>Speed to lead</th><th>Follow-up</th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.sourceLeadId}>
         <td><strong>{row.name || "Awaiting import"}</strong><small>LR #{row.sourceLeadId}{row.leadNo ? ` · ${row.leadNo}` : ""}</small><small>{row.marketingSource || "Source not recorded"}</small></td>
         <td>{row.phone || "Phone not synced"}<small>{row.email || "Email not synced"}</small></td>
         <td><strong>{row.claimStatus || (row.syncState === "import_pending" ? "Import pending" : "Review needed")}</strong><small>LawRuler: {row.sourceStatus || "Not synced"}</small>{row.signedAt && <small>Signed record: {formatTime(row.signedAt)}</small>}</td>
-        <td>{row.disqualified ? (row.dqReason || "Reason not synced") : "—"}</td>
+        <td>{row.disqualified ? (row.dqReason || "Standard reason missing") : row.sourceDqReported ? (row.sourceDqReason ? `LawRuler: ${row.sourceDqReason}` : "LawRuler reason not supplied; owner review pending") : "—"}</td>
         <td>{row.speedMinutes === null ? "Not recorded here" : `${row.speedMinutes} min`}<small>Received: {formatTime(row.receivedAt)}</small><small>First dial: {formatTime(row.firstDialedAt)}</small></td>
         <td>{row.agentName || "Unassigned"}<small>ClaimReach calls: {row.claimReachCalls ?? "—"}</small><small>Last call: {formatTime(row.lastCalledAt)}</small></td>
       </tr>)}</tbody>
