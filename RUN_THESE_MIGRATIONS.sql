@@ -3553,8 +3553,42 @@ begin
       'create policy cr_inno_mva_staff_wall on public.%I as restrictive for all to authenticated using (not public.is_internal() or public.cr_is_owner() or (%s)) with check (not public.is_internal() or public.cr_is_owner() or (%s))',
       t.table_name, predicate, predicate
     );
+    -- The existing internal ALL policies also permit hard DELETE. The pilot
+    -- uses archive/update paths, so only the owner may delete rows directly.
+    execute format('drop policy if exists cr_pilot_no_hard_delete on public.%I', t.table_name);
+    execute format('create policy cr_pilot_no_hard_delete on public.%I as restrictive for delete to authenticated using (not public.is_internal() or public.cr_is_owner())', t.table_name);
   end loop;
 end $$;
+
+-- app_users_manage lets a user update their own entire row, including role and
+-- permission overrides. Staff cannot write app_users during the pilot; firm
+-- users may continue editing profile fields but cannot change access fields.
+drop policy if exists cr_pilot_user_update on public.app_users;
+create policy cr_pilot_user_update on public.app_users as restrictive for update to authenticated
+  using (not public.is_internal() or public.cr_is_owner())
+  with check (not public.is_internal() or public.cr_is_owner());
+drop policy if exists cr_pilot_user_insert on public.app_users;
+create policy cr_pilot_user_insert on public.app_users as restrictive for insert to authenticated
+  with check (public.cr_is_owner());
+
+create or replace function public.cr_guard_user_privileges()
+returns trigger language plpgsql set search_path = public, pg_temp as $$
+begin
+  if current_user = 'authenticated' and not public.cr_is_owner() and (
+    new.id is distinct from old.id or new.role is distinct from old.role
+    or new.firm_id is distinct from old.firm_id
+    or new.active is distinct from old.active
+    or new.perm_overrides is distinct from old.perm_overrides
+    or new.email is distinct from old.email
+  ) then
+    raise exception 'Only the owner may change account access or login identity.';
+  end if;
+  return new;
+end $$;
+revoke all on function public.cr_guard_user_privileges() from public;
+drop trigger if exists cr_guard_user_privileges on public.app_users;
+create trigger cr_guard_user_privileges before update on public.app_users
+  for each row execute function public.cr_guard_user_privileges();
 
 -- Two callable SECURITY DEFINER functions can bypass row policies. Number
 -- minting must be pinned to the pilot firm, and the Motel 6 touch RPC must
