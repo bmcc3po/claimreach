@@ -7,7 +7,6 @@ export const runtime = "edge";
 // Scheduled drip processor. Requires CRON_SECRET via x-cron-secret header.
 // Point a Cloudflare Cron Trigger / external scheduler at this daily.
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
   const secret = process.env.CRON_SECRET;
   const provided = req.headers.get("x-cron-secret");
   if (!secret || provided !== secret) return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -18,18 +17,18 @@ export async function GET(req: NextRequest) {
 
   const admin = supabaseAdmin();
   const { data: due } = await admin.from("drips_due").select("*").limit(500);
-  const origin = url.origin;
   let fired = 0;
   const held: { lead_id: string; reason: string }[] = [];
   for (const d of due ?? []) {
     if (d.campaign === "motel6") continue;
     const eligible = await mayDispatchMvaAcquisition(admin, { firmId: d.firm_id, leadId: d.lead_id, claimId: d.claim_id });
     if (!eligible.allowed) { held.push({ lead_id: d.lead_id, reason: eligible.reason }); continue; }
-    if (d.channel === "sms" && d.phone) {
-      await fetch(`${origin}/api/justcall`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "text", to: d.phone, body: d.template }),
-      }).catch(() => {});
+    // The internal JustCall route requires a user session. Cron has none.
+    // Until a service-authorized sender is wired, never claim a text/email
+    // went out or move its next_due date.
+    if (d.channel === "sms" || d.channel === "email") {
+      held.push({ lead_id: d.lead_id, reason: `${d.channel} delivery is not configured for scheduled drips.` });
+      continue;
     }
     await admin.from("notes").insert({
       firm_id: d.firm_id, lead_id: d.lead_id, author_name: "Drip",

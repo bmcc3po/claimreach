@@ -115,12 +115,12 @@ export async function POST(req: NextRequest) {
     for (const d of due ?? []) {
       const eligible = await mayDispatchMvaAcquisition(admin, { firmId: d.firm_id, leadId: d.lead_id, claimId: d.claim_id });
       if (!eligible.allowed) { held.push({ lead_id: d.lead_id, reason: eligible.reason }); continue; }
-      // Fire the touch. Call reminders just log; text/email attempt JustCall.
-      if (d.channel === "sms" && d.phone) {
-        await fetch(`${new URL(req.url).origin}/api/justcall`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "text", to: d.phone, body: d.template }),
-        }).catch(() => {});
+      // Manual processing also runs server-side without forwarding the
+      // operator's session. Hold unwired channels instead of logging them as
+      // sent and silently advancing the cadence.
+      if (d.channel === "sms" || d.channel === "email") {
+        held.push({ lead_id: d.lead_id, reason: `${d.channel} delivery is not configured for scheduled drips.` });
+        continue;
       }
       // Log a note + advance next_due by cadence.
       await admin.from("notes").insert({

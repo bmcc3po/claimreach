@@ -33,59 +33,42 @@ async function shouldStop(stops: string[], runId: string, leadId: string, starte
   return null;
 }
 
-// Merge basic tokens into message bodies.
-function fillTokens(body: string, lead: any): string {
-  return (body || "")
-    .replace(/\{\{first_name\}\}/gi, lead.first_name || (lead.claimant_name || "").split(" ")[0] || "")
-    .replace(/\{\{full_name\}\}/gi, lead.claimant_name || "")
-    .replace(/\{\{phone\}\}/gi, lead.phone || "");
-}
-
 async function runStep(step: Step, ctx: { lead: any; firmId: string | null; origin: string; runId: string; automationId: string }): Promise<any> {
   const admin = supabaseAdmin();
   const { lead, firmId } = ctx;
   switch (step.type) {
     case "send_sms": {
-      const body = fillTokens(step.config?.body || "", lead);
-      if (!lead.phone) return { skipped: "no phone" };
-      const r = await fetch(`${ctx.origin}/api/justcall`, {
-        method: "POST", headers: { "Content-Type": "application/json", "x-automation": "1" },
-        body: JSON.stringify({ action: "text", lead_id: lead.id, to: lead.phone, body }),
-      }).catch(() => null);
-      return { sms: r?.ok ? "sent" : "failed" };
+      // /api/justcall requires an operator session; a cron self-request has
+      // none. A real service sender must check consent and provider receipt.
+      return { error: "Automated SMS delivery is not configured." };
     }
     case "create_task": {
-      await admin.from("notes").insert({
+      const { error } = await admin.from("notes").insert({
         firm_id: firmId, lead_id: lead.id, author_name: "Automation", scope: "file",
         body: `Task: ${step.config?.subject || "Follow up"} (auto-created).`,
       });
-      return { task: "created" };
+      return error ? { error: `Could not create task: ${error.message}` } : { task: "created" };
     }
     case "change_status": {
       const res = await setClaimStatusForLeads({
         leadIds: [lead.id], status: step.config?.status,
         dqReasonKey: step.config?.dq_reason_key ?? null, actorName: "Automation",
       });
-      return { status: res.ok ? step.config?.status : res.error };
+      return res.ok ? { status: step.config?.status } : { error: res.error || "Status change failed." };
     }
     case "assign": {
-      await admin.from("leads").update({ assigned_agent: step.config?.agent_id ?? null }).eq("id", lead.id);
-      return { assigned: step.config?.agent_id ?? "unassigned" };
+      const { error } = await admin.from("leads").update({ assigned_agent: step.config?.agent_id ?? null }).eq("id", lead.id);
+      return error ? { error: `Could not assign agent: ${error.message}` } : { assigned: step.config?.agent_id ?? "unassigned" };
     }
     case "place_call": {
-      await admin.from("notes").insert({
+      const { error } = await admin.from("notes").insert({
         firm_id: firmId, lead_id: lead.id, author_name: "Automation", scope: "file",
         body: `Call task: agent to call ${lead.phone || "lead"} (auto).`,
       });
-      return { call_task: "created" };
+      return error ? { error: `Could not create call reminder: ${error.message}` } : { call_task: "created" };
     }
     case "send_email": {
-      // Email send wires to the notify/email path in Channels zip; log for now.
-      await admin.from("notes").insert({
-        firm_id: firmId, lead_id: lead.id, author_name: "Automation", scope: "file",
-        body: `Email queued: ${step.config?.subject || "(no subject)"}.`,
-      });
-      return { email: "queued" };
+      return { error: "Automated email delivery is not configured." };
     }
     case "send_to_firm": {
       // Assemble the matter's firm packet and email it. force resends past
@@ -146,7 +129,7 @@ export async function drainQueue(origin: string, limit = 200): Promise<{ ran: nu
     }
 
     const { data: lead } = await admin.from("leads").select("*").eq("id", q.lead_id).maybeSingle();
-    let result: any = { skipped: "no lead" };
+    let result: any = { error: "Lead no longer exists." };
     if (lead) {
       result = await runStep(step, { lead, firmId: q.firm_id, origin, runId: run.id, automationId: q.automation_id }).catch((e: any) => ({ error: String(e?.message ?? e) }));
       if (step.type !== "wait" && step.type !== "branch") {
@@ -157,6 +140,15 @@ export async function drainQueue(origin: string, limit = 200): Promise<{ ran: nu
       }
     }
 
+    const failed = !!result?.error || result?.sms === "failed" || result?.firm_delivery === "failed";
+    if (failed) {
+      const reason = String(result.error || `${step.type} failed`);
+      await admin.from("automation_queue").update({ state: "failed", ran_at: new Date().toISOString(), result }).eq("id", q.id);
+      await admin.from("automation_runs").update({ state: "stopped", stop_reason: reason, ended_at: new Date().toISOString() }).eq("id", run.id);
+      await admin.from("automation_events").insert({ run_id: run.id, automation_id: q.automation_id, lead_id: q.lead_id, kind: "error", detail: step.type, meta: result });
+      stopped++;
+      continue;
+    }
     await admin.from("automation_queue").update({ state: "done", ran_at: new Date().toISOString(), result }).eq("id", q.id);
     await admin.from("automation_events").insert({ run_id: run.id, automation_id: q.automation_id, lead_id: q.lead_id, kind: "step_run", detail: step.type, meta: result });
 

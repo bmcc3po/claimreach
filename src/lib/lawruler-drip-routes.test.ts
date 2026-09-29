@@ -40,12 +40,12 @@ const request = (secret = 'offline-secret') => new Request('https://synthetic.in
 const processRequest = () => ({ url: 'https://synthetic.invalid/api/drip', json: async () => ({ op: 'process' }) });
 let count = 0; const test = async (name: string, fn: () => any) => { await fn(); count++; console.log('ok', name); };
 (async () => {
-  await test('actual manual and cron dispatch skip signed/DQ/held/archive/ambiguous MVA without notes or cadence advance', async () => {
+  await test('manual and cron hold unwired SMS as well as ineligible MVA without false notes or cadence advance', async () => {
     for (const cron of [false, true]) {
       const db = fixture(), h = harness(db, cron); const result = cron ? await h.GET(request()) : await h.POST(processRequest());
-      assert.equal(result.status, 200); assert.equal(result.body.fired, 1); assert.equal(result.body.held.length, 5); assert.equal(h.fetches.length, 1);
-      assert.equal(db.tables.notes.length, 1); assert.equal(db.tables.notes[0].lead_id, 'open');
-      for (const row of db.tables.drip_enrollments) assert.equal(!!row.last_sent, row.id === 'enrollment-open');
+      assert.equal(result.status, 200); assert.equal(result.body.fired, 0); assert.equal(result.body.held.length, 6); assert.equal(h.fetches.length, 0);
+      assert.equal(db.tables.notes.length, 0);
+      for (const row of db.tables.drip_enrollments) assert.equal(row.last_sent, null);
     }
   });
   await test('dispatch rechecks canonical status at execution, not earlier due-list snapshot', async () => {
@@ -70,11 +70,11 @@ let count = 0; const test = async (name: string, fn: () => any) => { await fn();
     const db = fixture(), cron = harness(db, true), manual = harness(db, false, true, false);
     assert.equal((await cron.GET(request('wrong'))).status, 403); assert.equal((await manual.POST(processRequest())).status, 401); assert.equal(db.ops.length, 0);
   });
-  await test('exact eligible MVA sibling can dispatch while unrelated non-MVA retention keeps existing semantics', async () => {
+  await test('exact eligible MVA sibling is held for unwired SMS while note-only reminders still work', async () => {
     const db = fixture(); db.tables.drips_due = [{ ...db.tables.drips_due.find(d => d.lead_id === 'ambiguous')!, claim_id: 'second-claim' }];
     db.tables.claims.find(c => c.id === 'ambiguous-claim')!.status = 'dq';
-    const h = harness(db, true), result = await h.GET(request()); assert.equal(result.body.fired, 1); assert.equal(result.body.held.length, 0);
-    const old = fixture(); old.tables.drips_due = [old.tables.drips_due[0]]; old.tables.leads[0].case_type = 'motel_trafficking'; old.tables.claims[0].claim_type = 'motel_trafficking'; old.tables.claims[0].status = 'retained';
+    const h = harness(db, true), result = await h.GET(request()); assert.equal(result.body.fired, 0); assert.equal(result.body.held.length, 1);
+    const old = fixture(); old.tables.drips_due = [{ ...old.tables.drips_due[0], channel: 'call_reminder' }]; old.tables.leads[0].case_type = 'motel_trafficking'; old.tables.claims[0].claim_type = 'motel_trafficking'; old.tables.claims[0].status = 'retained';
     assert.equal((await harness(old, true).GET(request())).body.fired, 1);
   });
   await test('actual due-list GET hides held acquisition work and reports reasons without writes', async () => {
