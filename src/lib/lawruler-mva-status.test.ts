@@ -3,6 +3,7 @@ import { FakeDb } from './test-fake-db';
 import { DEFAULT_STATUSES, isSignedKey } from './statuses';
 import { acquisitionClaimForRow, EXTERNAL_DQ_REVIEW, EXTERNAL_SIGNED_REVIEW, isAcquisitionEligible, loadMvaAcquisitionHolds, mayDispatchMvaAcquisition, reconcileLawRulerMvaStatus } from './lawruler-mva-status';
 import { loadLawRulerProvenance } from './lawruler-recovery';
+import { queueFlagsFor, setClaimStatusForLeads } from './claim-status';
 
 const F = 'firm-one', L = 'lead-one', C = 'claim-one', P = 'campaign-one';
 const input = { firmId: F, leadId: L, claimId: C, campaignId: P, sourceStatus: 'Signed e-Sign' };
@@ -58,14 +59,39 @@ const test = async (name: string, fn: () => any) => { await fn(); count++; conso
     const db = fixture(); db.tables.lawruler_aliases.push({ alias: 'Signed e-Sign', status_key: 'contacting' });
     const result = await reconcileLawRulerMvaStatus(db, input); assert.equal(result.outcome, 'review_required'); assert.equal(result.acquisition_hold, false); assert.equal(db.tables.claims[0].status, 'new');
   });
-  await test('DQ requires real active configured reason; missing or inactive reason still holds this matter', async () => {
+  await test('imported DQ stays terminal with missing reason and never enters QA or follow-up', async () => {
     for (const dqReasonKey of [undefined, 'missing', 'retired']) {
       const db = fixture(); const result = await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified', dqReasonKey });
       assert.equal(result.outcome, 'review_required'); assert.equal(result.acquisition_hold, true); assert.equal(db.tables.claims[0].status, EXTERNAL_DQ_REVIEW); assert.equal(await eligible(db), false);
-      assert.equal(db.tables.claims[0].dq_reason_key, undefined);
+      assert.equal(db.tables.claims[0].dq_reason_key, null);
+      assert.equal(db.tables.claims[0].qualification, 'dq');
+      assert.equal(db.tables.leads[0].qa_pending, false);
+      assert.equal(db.tables.leads[0].wip_pending, false);
     }
     const db = fixture(); const result = await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified', dqReasonKey: 'criteria' });
     assert.equal(result.outcome, 'applied'); assert.equal(db.tables.claims[0].dq_reason_key, 'criteria'); assert.equal(db.tables.claims[0].qualification, 'dq');
+  });
+  await test('old database definition cannot route imported DQ into QA; real QA sibling keeps its own queue flag', async () => {
+    for (const siblingStatus of [null, 'signed_qa']) {
+      const db = fixture();
+      Object.assign(db.tables.statuses.find(s => s.key === EXTERNAL_DQ_REVIEW)!, { track: 'intake', phase: 'in_qa', qualify: 'undetermined' });
+      if (siblingStatus) db.tables.claims.push({ ...db.tables.claims[0], id: 'qa-sibling', campaign_id: 'sibling-campaign', status: siblingStatus });
+      await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified' });
+      assert.equal(db.tables.claims[0].status, EXTERNAL_DQ_REVIEW);
+      assert.equal(db.tables.claims[0].qualification, 'dq');
+      assert.equal(db.tables.leads[0].qa_pending, !!siblingStatus);
+      assert.deepEqual(queueFlagsFor([EXTERNAL_DQ_REVIEW], db.tables.statuses as any), { qa_pending: false, wip_pending: false });
+      assert.equal(await eligible(db), false);
+    }
+  });
+  await test('missing imported reason exception cannot bypass staff DQ reason requirement', async () => {
+    for (const [status, historical] of [['dq', true], ['dq', false], [EXTERNAL_DQ_REVIEW, false]] as const) {
+      const db = fixture();
+      const result = await setClaimStatusForLeads({ leadIds: [L], claimIds: [C], status, historical, statuses: DEFAULT_STATUSES }, { db });
+      assert.equal(result.ok, false);
+      assert.match(result.error || '', /reason is required/);
+      assert.equal(db.tables.claims[0].status, 'new');
+    }
   });
   await test('pending DQ can complete with reviewed standard reason without clearing its hold', async () => {
     const db = fixture(); await reconcileLawRulerMvaStatus(db, { ...input, sourceStatus: 'Disqualified' });

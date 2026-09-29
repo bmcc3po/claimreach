@@ -68,7 +68,12 @@ t("every engine-owned top-level property in CallView resolves", () => {
   // CallConsole supplies them; optional callbacks are intentionally absent
   // when re-sign is unavailable or the case-tools panel is already inline.
   roots.delete("emergencyNotice"); roots.delete("prepareResign");
-  roots.delete("openCaseTools");
+  roots.delete("openCaseTools"); roots.delete("openFile");
+  // Supplied by CallConsole's secure identity state, not the shared engine.
+  roots.delete("identityStatus");
+  roots.delete("identitySaveError");
+  roots.delete("identityRetry");
+  roots.delete("identitySavedMode");
   const states: Array<(e: CallEngine) => void> = [
     () => {},
     (e) => e.setState({ phase: "story" }),
@@ -866,6 +871,16 @@ t("a completed primary re-sign can resume ordinary office completion", () => {
   e.props.agreementSuperseded = false;
   const before = calls.length; e.renderVals().completeAgreement();
   assert.equal(calls.length, before + 1); assert.equal(calls[calls.length - 1], "completeAgreement");
+});
+
+t("agent view picker offers only All questions and Simple form without changing answers", () => {
+  const e = mk();
+  e.setState({ story: { ...e.state.story, city: "Las Vegas, NV" } });
+  const before = e.state.story.city;
+  assert.deepEqual(e.renderVals().modes.map((mode: any) => mode.label), ["All questions", "Simple form"]);
+  e.setView("chore");
+  e.setView("form");
+  assert.equal(e.state.story.city, before);
 });
 
 console.log(passed, "passed");

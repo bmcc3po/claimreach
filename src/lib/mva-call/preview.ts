@@ -6,7 +6,7 @@ import type { Packet } from "@/lib/esign-packets/tmp-mva";
 import { AGREEMENT_NAMES } from "./agreement-names";
 export const AGREEMENT_NAME: Record<string, string> = AGREEMENT_NAMES;
 
-export async function stampPreview(src: Uint8Array, packet: Packet, key: string, input: { signer: string; injured: string; today: string; doi?: string }): Promise<Uint8Array> {
+export async function stampPreview(src: Uint8Array, packet: Packet, key: string, input: { signer: string; injured: string; today: string; doi?: string; dob?: string; ssnSaved?: boolean }): Promise<Uint8Array> {
   const { signer, injured, today } = input;
   const doi = input.doi || "";
   const pdf = await PDFDocument.load(src);
@@ -20,8 +20,8 @@ export async function stampPreview(src: Uint8Array, packet: Packet, key: string,
     "Signing Date": { text: today || "MISSING: today's date", missing: !today },
     "Accident Date": { text: doi || "MISSING: date of the wreck", missing: !doi },
     "Firm Date": { text: "Dated at step 2", missing: false },
-    "Patient DOB": { text: "Added by intake after she signs", missing: false },
-    "Patient SSN": { text: "Added by intake after she signs", missing: false },
+    "Patient DOB": { text: input.dob || "Can be added after client signs", missing: false },
+    "Patient SSN": { text: input.ssnSaved ? "Saved SSN; hidden in this preview" : "Can be added after client signs", missing: false },
   };
 
   for (const f of packet.fields as any[]) {
@@ -33,7 +33,7 @@ export async function stampPreview(src: Uint8Array, packet: Packet, key: string,
       const y = H - a.y * H - h;
       if (f.type === "signature") {
         page.drawRectangle({ x, y, width: w, height: h, color: rgb(0.91, 0.94, 0.98), borderColor: rgb(0.09, 0.2, 0.31), borderWidth: 0.8, borderDashArray: [3, 2] });
-        page.drawText("She signs here", { x: x + 4, y: y + Math.max(2, (h - 8) / 2), size: 8, font, color: rgb(0.09, 0.2, 0.31) });
+        page.drawText("Client signs here", { x: x + 4, y: y + Math.max(2, (h - 8) / 2), size: 8, font, color: rgb(0.09, 0.2, 0.31) });
         continue;
       }
       const v = values[f.name] || { text: "", missing: false };

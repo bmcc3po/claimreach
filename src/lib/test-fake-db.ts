@@ -67,6 +67,7 @@ export class FakeQuery {
   private op: Op;
   private one = false;
   private lim = Infinity;
+  private offset = 0;
   private wantRows = false;
   private count = false;
   private head = false;
@@ -86,6 +87,7 @@ export class FakeQuery {
   or(v: string) { this.op.filters.push(["or", "", v]); return this; }
   order(col: string, opts?: { ascending?: boolean }) { this.sort.push({ col, ascending: opts?.ascending !== false }); return this; }
   limit(n: number) { this.lim = n; return this; }
+  range(from: number, to: number) { this.offset = from; this.lim = to - from + 1; return this; }
   maybeSingle() { this.one = true; return this; }
   single() { this.one = true; return this; }
   private run(): { data: any; error: any; count?: number } {
@@ -108,7 +110,7 @@ export class FakeQuery {
       return 0;
     });
     if (this.head) return { data: null, error: null, count: matching.length };
-    const hit = matching.slice(0, this.lim);
+    const hit = matching.slice(this.offset, this.offset + this.lim);
     if (this.op.kind === "update") {
       for (const r of hit) Object.assign(r, this.op.patch);
       const result = hit.map((r) => ({ ...r }));

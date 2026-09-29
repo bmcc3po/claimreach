@@ -6,13 +6,14 @@ import { syncSubmission, ssnForForm } from "@/lib/mva-call/esign";
 import { recordAudit } from "@/lib/audit";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { sameName } from "@/lib/linked-files";
+import { readIdentityForSigning, saveIdentity, normalizeIdentityValue } from "@/lib/mva-call/identity";
 
 export const runtime = "edge";
 
 // POST /api/calls/esign/complete  { lead_id, dob, ssn }
 // Intake is the second signer. DOB and SSN go onto the HIPAA pages, the date
-// goes under the firm's signature, and the agreement completes. We keep the DOB and the last 4 only;
-// the full SSN lives on the signed PDF in private storage, never in a column.
+// goes under the firm's signature, and the agreement completes. Saved SSN is
+// read from encrypted storage on the server, never rehydrated in the browser.
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const me = await requireStaff(sb);
@@ -20,11 +21,35 @@ export async function POST(req: NextRequest) {
 
   const b = await req.json().catch(() => null);
   const leadId = String(b?.lead_id || "");
-  const dob = parseDob(b?.dob);
-  const ssn = ssnForForm(b?.ssn);
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
   const context = await resolveSigningMatter(sb, leadId, { claimId: b?.claim_id });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  const dob = parseDob(b?.dob || context.lead.dob);
+  let rawSsn = b?.ssn;
+  const identityScope = { leadId: context.lead.id, claimId: context.matter.claim.id, firmId: context.lead.firm_id };
+  if (b?.use_saved_identity === true || rawSsn) {
+    const saved = await readIdentityForSigning(supabaseAdmin(), identityScope);
+    if (!saved.ok) return NextResponse.json({ error: saved.error }, { status: saved.status });
+    if (b?.use_saved_identity === true) rawSsn = saved.identity?.ssn;
+    else {
+      // An already-open older app can still post the raw field. Retain its
+      // first capture securely too, but never overwrite a newer saved value.
+      const mode = String(rawSsn).replace(/\D/g, "").length === 4 ? "last4" : "full";
+      const digits = normalizeIdentityValue(rawSsn, mode);
+      if (!digits) return NextResponse.json({ error: "SSN should be all 9 digits or the last 4." }, { status: 400 });
+      if (saved.identity) {
+        if (digits !== saved.identity.ssn && !(mode === "last4" && digits === saved.identity.ssn.slice(-4))) {
+          return NextResponse.json({ error: "The saved SSN differs from this entry. Refresh the file and save the corrected identity before completing." }, { status: 409 });
+        }
+        rawSsn = saved.identity.ssn;
+      } else {
+        const kept = await saveIdentity(supabaseAdmin(), identityScope, { ssn: digits, mode, expectedVersion: 0, actorId: me.id });
+        if (!kept.ok) return NextResponse.json({ error: kept.error }, { status: kept.status });
+        rawSsn = digits;
+      }
+    }
+  }
+  const ssn = ssnForForm(rawSsn);
   const isMva = context.matter.claim.claim_type === "mva";
   if ((isMva || b?.dob) && !dob) return NextResponse.json({ error: "Date of birth should look like 04/12/1991." }, { status: 400 });
   if ((isMva || b?.ssn) && !ssn) return NextResponse.json({ error: "SSN should be all 9 digits or the last 4." }, { status: 400 });
@@ -41,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   // Some firms require the full 9-digit SSN on the agreement (per-campaign
   // switch, Brett Sep 27). Enforced here so the rule holds from every screen.
-  const digits = String(b?.ssn || "").replace(/\D/g, "");
+  const digits = String(rawSsn || "").replace(/\D/g, "");
   if (digits.length === 4) {
     if (context.campaignId) {
       const { data: campRow, error: campErr } = await sb.from("campaigns").select("ssn_require_full").eq("id", context.campaignId).maybeSingle();
@@ -67,9 +92,9 @@ export async function POST(req: NextRequest) {
   if (!res.ok) {
     const msg = res.status === 401 || res.status === 403
       ? "DocuSeal refused our key, so the DOB and SSN did not go on the agreement. Tell your admin: DOCUSEAL_API_KEY in Cloudflare is wrong or expired."
-      : `DocuSeal did not take the DOB and SSN (${res.error}). Nothing changed. Press it again; if it fails twice, tell your admin.`;
+      : "DocuSeal did not confirm the office details. Your saved identity remains on file. Refresh the agreement status before retrying.";
     await recordAudit({ firm_id: row.firm_id, lead_id: leadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
-      description: `Completing the agreement failed: ${msg}`.slice(0, 500), meta: { submission_id: row.submission_id, status: res.status ?? null, docuseal: res.error } });
+      description: `Completing the agreement failed: ${msg}`.slice(0, 500), meta: { submission_id: row.submission_id, status: res.status ?? null } });
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 

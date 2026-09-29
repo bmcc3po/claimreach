@@ -9,7 +9,7 @@
 // webhook and firm delivery run per CHANGED claim, with that claim's own
 // answers and campaign, and name a signing only when a signing happened.
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { resolveStatus, type StatusDef } from "@/lib/statuses";
+import { needsQaReview, resolveStatus, type StatusDef } from "@/lib/statuses";
 import { resolveMatter } from "@/lib/matter";
 
 export interface SetStatusResult { ok: boolean; error?: string; claimIds?: string[]; }
@@ -50,7 +50,7 @@ export function queueFlagsFor(claimStatuses: (string | null)[], list: StatusDef[
     const d = resolveStatus(st ?? "", list);
     if (d.phase !== "in_qa") continue;
     if (d.key === "wip" || d.key === "signed_wip") wip = true;
-    else qa = true;
+    else if (needsQaReview(d.key, list)) qa = true;
   }
   return { qa_pending: qa, wip_pending: wip };
 }
@@ -108,8 +108,11 @@ export async function setClaimStatusForLeads(opts: {
   const list = opts.statuses ?? (await loadStatuses(db));
   const def = resolveStatus(opts.status, list);
 
-  // Hard gate: disqualify status requires a reason key.
-  if (def.qualify === "disqualify" && !opts.dqReasonKey) {
+  // Staff must select a reason for a new DQ. An imported closed matter stays
+  // closed when its source omitted the reason; its dedicated status flags that
+  // missing information without inventing a reason or routing it through QA.
+  const missingImportedReason = opts.historical === true && def.key === "external_dq_review";
+  if (def.qualify === "disqualify" && !opts.dqReasonKey && !missingImportedReason) {
     return { ok: false, error: "A disqualification reason is required for this status." };
   }
   if (!opts.leadIds?.length) return { ok: false, error: "No file named." };

@@ -5,17 +5,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { APP_KINDS } from "@/lib/mva-call/links";
+import { DESK_TABS, type DeskTab, type DeskQueues, type DeskRow } from "@/lib/mva-call/desk-types";
 
-export interface HomeRow { id: string; name?: string | null; phone?: string | null; sub?: string | null; at?: string | null; due?: string | null; tag?: string | null; href?: string | null; newPhone?: string | null }
+export type HomeRow = DeskRow;
 export interface HomeData {
   me: { name: string; role: string };
   campaigns: { id: string; name: string; firm: string; kind: string }[];
-  open: HomeRow[]; callbacks: HomeRow[]; waiting: HomeRow[]; done: HomeRow[]; texts: HomeRow[]; review: HomeRow[];
+  queues: DeskQueues; texts: HomeRow[];
   setup: { campaignId: string; name: string; have: number; need: number; docuseal: boolean }[];
   notes: string[];
 }
 
-type Tab = "open" | "review" | "callbacks" | "texts" | "waiting" | "done";
+type Tab = DeskTab | "texts";
 
 function fmtPhone(raw?: string | null) {
   const d = String(raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
@@ -45,8 +46,8 @@ function clock(iso?: string | null) {
 
 export default function CallsHome({ data }: { data: HomeData }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>(() => data.callbacks.some((r) => r.due && Date.parse(r.due) <= Date.now())
-    ? "callbacks" : data.review.length ? "review" : "open");
+  const [tab, setTab] = useState<Tab>(() => data.queues.callbacks.some((r) => r.due && Date.parse(r.due) <= Date.now())
+    ? "callbacks" : data.queues.signed.length ? "signed" : "new");
   const [q, setQ] = useState("");
   const [results, setResults] = useState<any[] | null>(null);
   const [searchErr, setSearchErr] = useState("");
@@ -63,7 +64,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
   // A DocuSeal signature can arrive while the agent is working the queue.
   // Refresh the server-backed lists while this screen is visible so signed
-  // files move into Review without requiring a manual browser reload.
+  // files move into Signed E-Sign without requiring a manual browser reload.
   useEffect(() => {
     const refresh = () => { if (!document.hidden && !sheet && !q.trim()) router.refresh(); };
     const timer = setInterval(refresh, 20000);
@@ -99,10 +100,9 @@ export default function CallsHome({ data }: { data: HomeData }) {
     return () => clearTimeout(t);
   }, [q]);
 
-  const lists: Record<Tab, HomeRow[]> = { open: data.open, review: data.review, callbacks: data.callbacks, texts: data.texts, waiting: data.waiting, done: data.done };
-  const tabs: [Tab, string][] = [["open", "Open"], ["review", "Review signed"], ["callbacks", "Call backs"], ["texts", "Texts"], ["waiting", "Signing"], ["done", "Recent"]];
+  const lists: Record<Tab, HomeRow[]> = { ...data.queues, texts: data.texts };
   const rows = lists[tab];
-  const dueNow = useMemo(() => data.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.callbacks, now]);
+  const dueNow = useMemo(() => data.queues.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.queues.callbacks, now]);
 
   async function startCall() {
     if (!camp) { setErr("Pick the attorney."); return; }
@@ -140,27 +140,31 @@ export default function CallsHome({ data }: { data: HomeData }) {
         <div className="cc-home-h">
           <div>
             <div className="cc-home-hi">{first ? `Hi, ${first}` : "App"}</div>
-            <div className="cc-home-sub">{dueNow ? `${dueNow} call back${dueNow === 1 ? "" : "s"} due now` : data.review.length ? `${data.review.length} client-signed agreement${data.review.length === 1 ? "" : "s"} to review` : `${data.open.length} open`}</div>
+            <div className="cc-home-sub">{dueNow ? `${dueNow} call back${dueNow === 1 ? "" : "s"} due now` : `${Object.values(data.queues).reduce((total, list) => total + list.length, 0)} active files`}</div>
           </div>
-          <a className="cc-home-link" href="/dashboard">Dashboard</a>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <button type="button" className="cc-home-link" style={{ border: 0, background: "transparent", fontFamily: "inherit", cursor: "pointer" }} aria-pressed={tab === "texts"} onClick={() => { setQ(""); setResults(null); setTab("texts"); }}>Texts{data.texts.length ? ` (${data.texts.length})` : ""}</button>
+            <a className="cc-home-link" href="/dashboard">Dashboard</a>
+          </div>
         </div>
         <input className="cc-field cc-search" type="search" inputMode="search" placeholder="Search name, phone or lead number" aria-label="Search files" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {results === null && (
         <nav className="cc-tabs" aria-label="Lists">
-          {tabs.map(([k, label]) => (
-            <button key={k} className={`cc-tab${tab === k ? " cc-on" : ""}`} onClick={() => setTab(k)}>
+          {DESK_TABS.map(([k, label]) => (
+            <button key={k} className={`cc-tab${tab === k ? " cc-on" : ""}`} aria-current={tab === k ? "page" : undefined} onClick={() => setTab(k)}>
               {label}{lists[k].length ? ` ${lists[k].length}` : ""}
             </button>
           ))}
         </nav>
       )}
       <main className="cc-main" style={{ gap: 12 }}>
-        {results === null && tab === "review" && <div className="cc-cue" style={{ marginTop: 0 }}>
-          The client signed, but the office signer and final certificate are still pending. Open each file, review the client-signed preview, then record the review before completing or correcting it.
+        {results === null && tab === "texts" && <div className="cc-cue" style={{ marginTop: 0 }}>Recent incoming texts</div>}
+        {results === null && tab === "signed" && <div className="cc-cue" style={{ marginTop: 0 }}>
+          Review the signed agreement and finish any office step. Signed files stay here until delivered or closed.
         </div>}
-        {results === null && tab === "done" && <div className="cc-cue" style={{ marginTop: 0 }}>
-          These calls ended, but their files may still be open. Tap a file to keep working; the call history stays on the file.
+        {results === null && tab === "wip" && <div className="cc-cue" style={{ marginTop: 0 }}>
+          Signed files returned by QA for corrections, such as missing DOB or a signature problem.
         </div>}
         {data.notes.map((n, i) => <div key={i} className="cc-stop"><div className="cc-cue cc-red" style={{ marginTop: 0 }}>{n}</div></div>)}
         {data.setup.map((s) => (
@@ -191,7 +195,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
           </>
         ) : rows.length === 0 ? (
           <div className="cc-cue" style={{ textAlign: "center", marginTop: 28 }}>
-            {tab === "open" ? "No open files. New calls show up here." : tab === "review" ? "No client-signed agreements need review." : tab === "callbacks" ? "No call backs scheduled." : tab === "texts" ? "No texts in the last three days." : tab === "waiting" ? "Nothing out for signature." : "No calls ended in the last two days."}
+            {tab === "new" ? "No new files." : tab === "calling" ? "No files need another call." : tab === "signed" ? "No signed files awaiting completion or delivery." : tab === "callbacks" ? "No call backs scheduled." : tab === "texts" ? "No texts in the last three days." : tab === "sent" ? "Nothing out for signature." : "No signed files returned by QA."}
           </div>
         ) : (
           <div className="cc-grp">

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
-import { requireStaff, firmSpoken } from "@/lib/mva-call/server";
+import { requireStaff, firmSpoken, parseDob, dobForForm } from "@/lib/mva-call/server";
 import { agreementChoice } from "@/lib/mva-call/agreement-choice";
 import { createSubmission, docusealConfigured, expireSubmission, getSubmission, MISSING_DOCUSEAL, plainDocuSeal, templateProblem } from "@/lib/docuseal";
-import { syncSubmission, packetsFor, templateFor } from "@/lib/mva-call/esign";
+import { syncSubmission, packetsFor, templateFor, ssnForForm } from "@/lib/mva-call/esign";
 import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
@@ -11,6 +11,7 @@ import { sameName, paxParentId } from "@/lib/linked-files";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { recordAudit } from "@/lib/audit";
 import { ensureClientSignedSnapshot } from "@/lib/mva-call/client-signed";
+import { readIdentityForSigning } from "@/lib/mva-call/identity";
 
 export const runtime = "edge";
 
@@ -26,11 +27,10 @@ const TODAY_RE = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
 export async function POST(req: NextRequest) {
   try {
     return await send(req);
-  } catch (e: any) {
-    const msg = String(e?.message || e || "unknown error").slice(0, 300);
-    console.error("esign send crashed", msg);
-    await recordAudit({ category: "retainer", description: `Agreement send failed: ${msg}`, meta: { stage: "crash", stack: String(e?.stack || "").slice(0, 1500) } });
-    return NextResponse.json({ error: `The agreement did not send. ${msg}` }, { status: 500 });
+  } catch {
+    // Provider exceptions can echo prefilled identity. Never log their body.
+    await recordAudit({ category: "retainer", description: "Agreement send failed unexpectedly. Check the agreement history before retrying.", meta: { stage: "crash" } });
+    return NextResponse.json({ error: "The agreement send could not be confirmed. Check the agreement history before retrying." }, { status: 500 });
   }
 }
 
@@ -208,6 +208,16 @@ async function send(req: NextRequest) {
   }
   if (!tpl) return NextResponse.json({ error: "E-sign is not set up for this campaign yet. An admin sets it up once from Calls." }, { status: 409 });
 
+  // Identity belongs to the actual signer file, including passenger files.
+  // Read before retiring any old agreement. Missing identity is allowed;
+  // unreadable saved identity must not silently disappear from a new packet.
+  const capturedIdentity = await readIdentityForSigning(admin, { leadId: fileLeadId, claimId: signClaimId, firmId: target.lead.firm_id });
+  if (!capturedIdentity.ok) return NextResponse.json({ error: capturedIdentity.error }, { status: capturedIdentity.status });
+  const capturedDob = paxIndex == null && b?.dob ? parseDob(b.dob) : parseDob(target.lead.dob);
+  if (paxIndex == null && b?.dob && !capturedDob) return NextResponse.json({ error: "Check the date of birth before sending, or leave it for the office step." }, { status: 400 });
+  const capturedSsn = capturedIdentity.identity ? ssnForForm(capturedIdentity.identity.ssn) : null;
+  const intakeValues = { ...(capturedDob ? { "Patient DOB": dobForForm(capturedDob) } : {}), ...(capturedSsn ? { "Patient SSN": capturedSsn.printed } : {}) };
+
   // Replacement is one deliberate send, never an agent-operated void. Verify
   // the latest provider state before changing anything: a signature can land
   // while an agent is selecting the correction. The old signed evidence stays
@@ -274,7 +284,7 @@ async function send(req: NextRequest) {
       name: signer, email: email || null, phone,
       values: { "Client Name": signer, "Injured Party Name": injured, "Signing Date": today, ...(isMva && doi ? { "Accident Date": doi } : {}) },
     },
-    intake: { email: auth?.user?.email || "intake@claimreach.com", name: me.name || "Intake" },
+    intake: { email: auth?.user?.email || "intake@claimreach.com", name: me.name || "Intake", values: intakeValues },
     emailClient: via === "Email",
     externalId: fileLeadId,
   });
@@ -282,18 +292,18 @@ async function send(req: NextRequest) {
   // The stored template is gone or empty in DocuSeal (a new key, or an old bad
   // one): make it new from the packet and try once more.
   if (!res.ok && packet && templateProblem(res.error, res.status)) {
-    const first = res.error;
+    const first = res.status ?? null;
     const t = await templateFor(admin, { firmId: lead.firm_id, campaignId: lead.campaign_id, key, packet, origin: new URL(req.url).origin, actorId: me.id, force: true });
     if (!t.ok) return failed(lead, me, t.error, { stage: "template_retry", key, first });
     tpl = { template_id: t.templateId };
     res = await submit(tpl.template_id);
   }
-  if (!res.ok) return failed(lead, me, plainDocuSeal(res.error, res.status, "send"), { stage: "docuseal", status: res.status ?? null, docuseal: res.error, template_id: tpl.template_id, key });
+  if (!res.ok) return failed(lead, me, plainDocuSeal("provider rejected request", res.status, "send"), { stage: "docuseal", status: res.status ?? null, template_id: tpl.template_id, key });
   // DocuSeal answers with the list of signers. Read it either way it comes back.
   const list: any[] = Array.isArray(res.data) ? res.data : Array.isArray((res.data as any)?.submitters) ? (res.data as any).submitters : [];
   const client = list.find((s) => s.role === "Client");
   const intake = list.find((s) => s.role === "Intake");
-  if (!client) return failed(lead, me, "DocuSeal answered without a signer. Try again.", { stage: "no_signer", answer: JSON.stringify(res.data ?? null).slice(0, 1500) });
+  if (!client) return failed(lead, me, "DocuSeal answered without a client signer. Ask an owner to check the provider before sending again.", { stage: "no_signer", submitter_count: list.length });
 
   const { data: row, error: rowErr } = await admin.from("esign_submissions").insert({
     firm_id: lead.firm_id, lead_id: fileLeadId, call_id: b?.call_id || null, campaign_id: lead.campaign_id,

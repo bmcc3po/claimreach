@@ -375,7 +375,7 @@ export default function CallView({ v }: { v: any }) {
 </>)}
 
 {!!(v.showFile) && (<>
-{!!(v.free) && (<><div id="fs-file" className="cc-sec-h">File, after the PNC signs</div></>)}
+{!!(v.free) && (<><div id="fs-file" className="cc-sec-h">File and agreement details</div></>)}
 {!!(v.guided) && (<>
 <div className="cc-fsteps" role="tablist" aria-label="Finish the file">
 {(v.fileTabs || []).map((c: any, i33: number) => (<Fragment key={i33}>
@@ -389,7 +389,7 @@ export default function CallView({ v }: { v: any }) {
 <span className="cc-card-h">Finish the agreement</span>
 <div className="cc-cue" style={{marginTop: "0"}}>These print on the HIPAA pages as the patient's. For a child, it's the child's.</div>
 <div><div className="cc-lab">DATE OF BIRTH</div><DobField value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} /></div>
-<div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} /></div>
+<div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /></div>
 {!!(v.agreementOpen) && (<>
 {v.signed && v.openFile && <button type="button" className="cc-btn cc-soft" onClick={v.openFile}>Review client-signed PDF in File</button>}
 <button className="cc-btn cc-full" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>

@@ -14,13 +14,20 @@ async function requireManager(sb: any) {
 }
 
 export async function GET(req: NextRequest) {
-  const sb = await supabaseServer();
-  const gate = await requireManager(sb);
-  if ("error" in gate) return NextResponse.json({ error: gate.error }, { status: gate.status });
-  const { data } = await sb.from("app_users")
-    .select("id, full_name, email, role, title, phone, active, perm_overrides, firm_id, created_at")
-    .order("created_at", { ascending: false });
-  return NextResponse.json({ users: data ?? [] });
+  try {
+    const sb = await supabaseServer();
+    const gate = await requireManager(sb);
+    if ("error" in gate) return NextResponse.json({ error: gate.error }, { status: gate.status });
+    const { data, error } = await sb.from("app_users")
+      .select("id, full_name, email, role, title, phone, active, perm_overrides, firm_id, created_at")
+      .order("created_at", { ascending: false });
+    if (error || !Array.isArray(data)) {
+      return NextResponse.json({ error: "Could not load staff accounts. Please retry." }, { status: 500 });
+    }
+    return NextResponse.json({ users: data }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "Could not load staff accounts. Please retry." }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -46,6 +53,17 @@ export async function POST(req: NextRequest) {
       firm_id: b.firm_id ?? me.firm_id, perm_overrides: b.perm_overrides ?? {}, active: true,
     });
     if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
+    // Do not announce a new staff account until its saved profile is readable.
+    // If verification fails, preserve the login and profile for recovery.
+    try {
+      const { data: profile, error: verifyError } = await admin.from("app_users")
+        .select("id, email").eq("id", created.user.id).maybeSingle();
+      if (verifyError || !profile || profile.id !== created.user.id || profile.email !== email) {
+        return NextResponse.json({ error: "The login was created, but ClaimReach could not verify its staff profile. Refresh Users before trying again." }, { status: 502 });
+      }
+    } catch {
+      return NextResponse.json({ error: "The login was created, but ClaimReach could not verify its staff profile. Refresh Users before trying again." }, { status: 502 });
+    }
     return NextResponse.json({ ok: true, id: created.user.id });
   }
 

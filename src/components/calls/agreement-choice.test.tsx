@@ -151,9 +151,9 @@ test("actual Send posts the resolved choice and binds returned contract identity
   const e = make(); e.renderVals().contractChoice.select("NV_FLAT"); e.renderVals().contractChoice.reason.set({ target: { value: "Synthetic approval" } });
   e.set("story", "city", "Dallas, TX");
   e.setState({ send: { ...e.state.send, sentNameReview: "Original signer needs correction" } });
-  let body: any; const agreementId = { current: null };
-  const send = compile(`exports.send = (replacementReason) => ${sendNode!.body!.getText()};`, ["e", "post", "leadId", "init", "callId", "emergencyResign", "agreementId", "setNeedsResign", "todayMDY", "doiOf"], [() => e, async (_: string, b: any) => { body = b; return { agreement_id: "new", template_key: "TX", status: "sent" }; }, "synthetic", { claimId: "matter" }, { current: "call" }, { current: false }, agreementId, noop, () => "09/28/2026", doiOf]).send;
-  send(); await Promise.resolve(); await Promise.resolve();
+  let body: any; let identitySaved = false; const agreementId = { current: null };
+  const send = compile(`exports.send = async (replacementReason) => ${sendNode!.body!.getText()};`, ["e", "post", "leadId", "init", "callId", "emergencyResign", "agreementId", "setNeedsResign", "todayMDY", "doiOf", "saveIdentityNow"], [() => e, async (_: string, b: any) => { assert.equal(identitySaved, true); body = b; return { agreement_id: "new", template_key: "TX", status: "sent" }; }, "synthetic", { claimId: "matter" }, { current: "call" }, { current: false }, agreementId, noop, () => "09/28/2026", doiOf, async () => { identitySaved = true; return true; }]).send;
+  await send(); await Promise.resolve(); await Promise.resolve();
   assert.equal(body.nv_variant, "tiered"); assert.equal(body.nv_reason, undefined); assert.equal(body.claim_id, "matter");
   assert.equal(e.props.esign.templateKey, "TX"); assert.equal(agreementId.current, "new"); assert.equal(e.state.send.sentNameReview, "");
 });
@@ -161,11 +161,18 @@ test("an unconfirmed replacement never clears the original signer warning", asyn
   const e = make(keys, "signed", "NV");
   e.setState({ send: { ...e.state.send, sentNameReview: "Original signer needs correction" } });
   const agreementId = { current: "old" };
-  const send = compile(`exports.send = (replacementReason) => ${sendNode!.body!.getText()};`, ["e", "post", "leadId", "init", "callId", "emergencyResign", "agreementId", "setNeedsResign", "todayMDY", "doiOf"], [() => e, async () => ({ status: "sent" }), "synthetic", { claimId: "matter" }, { current: "call" }, { current: false }, agreementId, noop, () => "09/28/2026", doiOf]).send;
-  send("Correcting claimant's legal name"); await Promise.resolve(); await Promise.resolve();
+  const send = compile(`exports.send = async (replacementReason) => ${sendNode!.body!.getText()};`, ["e", "post", "leadId", "init", "callId", "emergencyResign", "agreementId", "setNeedsResign", "todayMDY", "doiOf", "saveIdentityNow"], [() => e, async () => ({ status: "sent" }), "synthetic", { claimId: "matter" }, { current: "call" }, { current: false }, agreementId, noop, () => "09/28/2026", doiOf, async () => true]).send;
+  await send("Correcting claimant's legal name"); await Promise.resolve(); await Promise.resolve();
   assert.equal(agreementId.current, "old"); assert.equal(e.state.send.status, "signed");
   assert.match(e.state.send.sentNameReview, /Original signer needs correction/);
   assert.match(e.state.send.error, /not confirmed/);
+});
+test("Send refuses to create a contract when entered SSN did not save securely", async () => {
+  const e = make(); let posts = 0;
+  const send = compile(`exports.send = async (replacementReason) => ${sendNode!.body!.getText()};`, ["e", "post", "leadId", "init", "callId", "emergencyResign", "agreementId", "setNeedsResign", "todayMDY", "doiOf", "saveIdentityNow"], [() => e, async () => { posts++; return {}; }, "synthetic", { claimId: "matter" }, { current: "call" }, { current: false }, { current: null }, noop, () => "09/28/2026", doiOf, async () => false]).send;
+  await send();
+  assert.equal(posts, 0);
+  assert.match(e.state.send.error, /did not save securely/);
 });
 test("Review and send closes the phone panel and moves to the same engine signing controls", () => {
   for (const mode of ["guided", "full", "chore", "form"]) {

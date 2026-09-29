@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
-import { requireStaff } from "@/lib/mva-call/server";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
+import { requireStaff, parseDob, dobForForm } from "@/lib/mva-call/server";
 import { agreementChoice } from "@/lib/mva-call/agreement-choice";
 import { packetsFor } from "@/lib/mva-call/esign";
 import { stampPreview } from "@/lib/mva-call/preview";
 import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
+import { getIdentityMetadata } from "@/lib/mva-call/identity";
 
 export const runtime = "edge";
 
@@ -44,9 +45,15 @@ export async function GET(req: NextRequest) {
   const packet = (packets as any)[key];
   if (!packet) return NextResponse.json({ error: "This campaign's selected agreement has no preview packet." }, { status: 404 });
 
+  // Show early DOB and saved-SSN presence without decrypting identity into a
+  // browser preview or accepting identity in URL/query parameters.
+  const identity = await getIdentityMetadata(supabaseAdmin(), { leadId: context.lead.id, claimId: context.matter.claim.id, firmId: context.lead.firm_id });
+  if (!identity.ok) return NextResponse.json({ error: identity.error }, { status: identity.status });
+  const dob = parseDob(context.lead.dob);
+
   const src = await fetch(new URL(packet.path, url.origin));
   if (!src.ok) return NextResponse.json({ error: `Could not load the agreement file (${src.status}).` }, { status: 502 });
-  const out = await stampPreview(new Uint8Array(await src.arrayBuffer()), packet, key, { signer, injured, today, doi });
+  const out = await stampPreview(new Uint8Array(await src.arrayBuffer()), packet, key, { signer, injured, today, doi, dob: dob ? dobForForm(dob) : undefined, ssnSaved: identity.identity.saved });
   return new Response(out as unknown as BodyInit, {
     headers: {
       "content-type": "application/pdf",
