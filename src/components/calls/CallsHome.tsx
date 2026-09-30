@@ -10,6 +10,7 @@ import { DESK_TABS, type DeskTab, type DeskQueues, type DeskRow } from "@/lib/mv
 export type HomeRow = DeskRow;
 export interface HomeData {
   me: { name: string; role: string };
+  netflyAvailable: boolean;
   campaigns: { id: string; name: string; firm: string; kind: string }[];
   queues: DeskQueues; texts: HomeRow[];
   setup: { campaignId: string; name: string; have: number; need: number; docuseal: boolean }[];
@@ -17,6 +18,7 @@ export interface HomeData {
 }
 
 type Tab = DeskTab | "texts";
+const NETFLY_KIND = { key: "netfly", label: "NETFLY ONTAKE · Already signed" };
 
 function fmtPhone(raw?: string | null) {
   const d = String(raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
@@ -107,6 +109,19 @@ export default function CallsHome({ data }: { data: HomeData }) {
   const dueNow = useMemo(() => data.queues.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.queues.callbacks, now]);
 
   async function startCall() {
+    if (kind === NETFLY_KIND.key) {
+      if (!data.netflyAvailable) { setErr("NETFLY is not available to this account."); return; }
+      if (name.trim().length < 2) { setErr("Enter the full name from the signed NETFLY retainer."); return; }
+      setBusy(true); setErr("");
+      try {
+        const r = await fetch("/api/netfly", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ op: "start_call", name, phone }) });
+        const d = await r.json();
+        if (!r.ok || d.error || !d.file?.lead_no) throw new Error(d.error || "Could not open the NETFLY file.");
+        router.push(`/app/netfly/${encodeURIComponent(d.file.lead_no)}`);
+      } catch (e: any) { setErr(e.message || "Could not open the NETFLY file."); setBusy(false); }
+      return;
+    }
     if (!camp) { setErr("Pick the attorney."); return; }
     setBusy(true); setErr("");
     try {
@@ -129,10 +144,11 @@ export default function CallsHome({ data }: { data: HomeData }) {
     } catch (e: any) { setSetupMsg((m) => ({ ...m, [campaignId]: e.message })); }
   }
 
-  const kinds = APP_KINDS.filter((k) => data.campaigns.some((c) => c.kind === k.key));
+  const kinds = [...APP_KINDS.filter((k) => data.campaigns.some((c) => c.kind === k.key)), ...(data.netflyAvailable ? [NETFLY_KIND] : [])];
   const lines = data.campaigns.filter((c) => c.kind === kind);
   function pickKind(k: string) {
     setKind(k);
+    if (k === NETFLY_KIND.key) { setCamp(""); return; }
     if (!data.campaigns.some((c) => c.id === camp && c.kind === k)) setCamp(data.campaigns.find((c) => c.kind === k)?.id || "");
   }
   const first = (data.me.name || "").split(" ")[0];
@@ -238,8 +254,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
                   </button>
                 ))}
               </div>
-              {/* The attorney the case signs with. TMP is the only one today. */}
-              <div className="cc-sec-h">Attorney</div>
+              {kind === NETFLY_KIND.key ? <div className="cc-cue">NETFLY already obtained the signed TMP retainer. This opens its separate welcome-call file. Add NETFLY's intake note and original PDF on that file.</div> : <><div className="cc-sec-h">Attorney</div>
               <div className="cc-grp">
                 {lines.map((c, i) => (
                   <button key={c.id} className={`cc-drow${camp === c.id ? " cc-on" : ""}${i === lines.length - 1 ? " cc-end" : ""}`} onClick={() => setCamp(c.id)}>
@@ -248,14 +263,14 @@ export default function CallsHome({ data }: { data: HomeData }) {
                   </button>
                 ))}
                 {lines.length === 0 && <div className="cc-drow cc-end"><span className="cc-cue" style={{ marginTop: 0 }}>No attorney is set up for this kind of call.</span></div>}
-              </div>
-              {data.campaigns.length === 0 && <div className="cc-cue cc-red">No active car accident campaign. An admin turns one on in Settings.</div>}
+              </div></>}
+              {data.campaigns.length === 0 && !data.netflyAvailable && <div className="cc-cue cc-red">No active call campaign. An admin turns one on in Settings.</div>}
               <div className="cc-sec-h">Caller</div>
               <input className="cc-field" type="tel" inputMode="tel" placeholder="Phone number" aria-label="Caller phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <input className="cc-field" type="text" placeholder="Name, if you have it" aria-label="Caller name" value={name} onChange={(e) => setName(e.target.value)} />
-              <div className="cc-cue" style={{ marginTop: 0 }}>If this number already has an open file on this line, that file opens.</div>
+              <input className="cc-field" type="text" placeholder={kind === NETFLY_KIND.key ? "Full name on signed retainer" : "Name, if you have it"} aria-label="Caller name" value={name} onChange={(e) => setName(e.target.value)} />
+              <div className="cc-cue" style={{ marginTop: 0 }}>{kind === NETFLY_KIND.key ? "If this number already has an open NETFLY file, that file opens." : "If this number already has an open file on this line, that file opens."}</div>
               {err && <div className="cc-cue cc-red">{err}</div>}
-              <button className="cc-btn cc-full" disabled={busy || !camp} onClick={startCall}>{busy ? "Opening" : "Start the call"}</button>
+              <button className="cc-btn cc-full" disabled={busy || (kind === NETFLY_KIND.key ? name.trim().length < 2 : !camp)} onClick={startCall}>{busy ? "Opening" : kind === NETFLY_KIND.key ? "Open NETFLY welcome call" : "Start the call"}</button>
             </div>
           </div>
         </div>

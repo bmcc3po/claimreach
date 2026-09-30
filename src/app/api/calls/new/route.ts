@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
 import { normPhone } from "@/lib/comms";
+import { NETFLY_CAMPAIGN } from "@/lib/netfly-ontake";
 
 export const runtime = "edge";
 
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
 
   const { data: camp } = await sb.from("campaigns").select("id, name, firm_id, case_type, active").eq("id", campaignId).maybeSingle();
   if (!camp || !camp.active) return NextResponse.json({ error: "That campaign is not active." }, { status: 404 });
+  if (camp.name === NETFLY_CAMPAIGN) return NextResponse.json({ error: "NETFLY starts from an already signed transfer. Choose NETFLY ONTAKE in New call." }, { status: 400 });
 
   const norm = normPhone(phone);
   if (norm.length === 10) {
