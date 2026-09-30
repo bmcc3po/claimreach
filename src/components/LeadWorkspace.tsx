@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { LX } from "@/lib/lexicon";
 import FloatingDock from "./FloatingDock";
 import IntakeSurface from "./IntakeSurface";
@@ -236,7 +237,7 @@ function LeadWorkspaceRecord({
             {tab === "Contact Info" && <ContactInfo lead={leadLive} claimType={activeClaim?.claim_type} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} points={points} onSaved={liveUp} />}
             {tab === "Case Details" && (
               <>
-                <CaseDetails lead={leadLive} staff={staff} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} onSaved={liveUp} />
+                <CaseDetails lead={leadLive} staff={staff} callAgent={appCall?.agent} callDisposition={appCall?.dispo} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} onSaved={liveUp} />
               </>
             )}
             {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
@@ -446,6 +447,7 @@ function LockFileButton({ lead }: { lead: any }) {
 // Sends the matter this screen is showing (the active claim tab), never the
 // whole person: each matter has its own sent state (Astra round 7b #57).
 function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: string }) {
+  const router = useRouter();
   const [state, setState] = useState<{ sentAt: string | null; result: string | null }>({ sentAt: null, result: null });
   const [delivery, setDelivery] = useState<any>(null);
   const [dispatch, setDispatch] = useState<any>(null);
@@ -471,11 +473,14 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
 
   async function send(force: boolean) {
     const already = !!state.sentAt;
-    if (already && !force) { if (!confirm("This matter was already sent to the firm. Resend it?")) return; force = true; }
-    if (!force && !confirm(`Send this matter's packet to ${delivery?.firm || "the firm"}?\n\nTo: ${delivery?.to || "Configured recipient"}${delivery?.cc?.length ? `\nCC: ${delivery.cc.join(", ")}` : ""}`)) return;
+    const to = String(delivery?.to || "").trim();
+    const cc = Array.isArray(delivery?.cc) ? delivery.cc : String(delivery?.cc || "").split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+    if (!to) { setMsg("No firm recipient is configured. Nothing was sent."); return; }
+    if (!confirm(`Are you sure you want to ${already ? "RESEND" : "send"} this matter's packet?\n\nIt will deliver to: ${to}${cc.length ? `\nCC: ${cc.join(", ")}` : ""}\n\nFirm: ${delivery?.firm || "configured firm"}`)) return;
+    if (already) force = true;
     setBusy(true); setMsg("");
     try {
-      const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId || undefined, force }) });
+      const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId || undefined, force, expected_to: to, expected_cc: cc }) });
       const d = await r.json();
       setBusy(false);
       if (!r.ok || !d.ok) { setMsg(d.error || d.skipped || "Send failed"); try { const state = await (await fetch(`/api/firm-delivery?${q}`)).json(); setDispatch(state.dispatch); } catch {} return; }
@@ -483,6 +488,7 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
       setState({ sentAt: new Date().toISOString(), result: "sent" });
       const n = (d.attachments || []).length;
       setMsg(`Sent to ${d.to || "firm"} (${n} attachment${n === 1 ? "" : "s"})${d.warning ? `. ${d.warning}` : ""}`);
+      router.refresh();
     } catch (e: any) { setBusy(false); setMsg(e?.message || "Send error"); }
   }
   async function reconcile(delivered: boolean) {
@@ -503,7 +509,7 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   const label = busy ? "Sending…" : state.sentAt ? "Resend to firm" : "Send to firm";
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <button className="cl-btn cl-ghost cl-sm" onClick={() => send(false)} disabled={busy || !loaded || unresolved}
+      <button className="cl-btn cl-sm" onClick={() => send(false)} disabled={busy || !loaded || unresolved}
         title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this matter's documents"}>
         {label}
       </button>
@@ -549,3 +555,4 @@ function AppAnswers({ call, onShowOld }: {
     </div>
   );
 }
+
