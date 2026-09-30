@@ -47,14 +47,16 @@ export default async function QaQueuePage() {
   // actual reviewable claim, including when a closed sibling comes first.
   const { data: flagged, error: flaggedError } = await readDeskRows(() => {
     let query = sb.from("leads")
-      .select("id, lead_no, claimant_name, phone, case_type, updated_at, qa_pending, claims(status, grievous_verdict)")
+      .select("id, lead_no, claimant_name, phone, case_type, updated_at, qa_pending, claims(status, grievous_verdict, firm_id, campaign_id, claim_type)")
       .eq("qa_pending", true);
     if (me.role !== "owner") query = query.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("case_type", "mva");
     return query;
   });
   for (const l of flagged ?? []) {
     if (map.has(l.id)) continue;
-    const review = (l as any).claims?.find((c: any) => needsQaReview(c.status, statuses ?? undefined));
+    const review = (l as any).claims?.find((c: any) =>
+      needsQaReview(c.status, statuses ?? undefined) &&
+      (me.role === "owner" || (c.firm_id === me.firm_id && c.campaign_id === pilotCampaignId && c.claim_type === "mva")));
     if (!review) continue;
     map.set(l.id, { id: l.id, lead_no: l.lead_no, claimant_name: l.claimant_name, phone: l.phone, case_type: l.case_type, updated_at: l.updated_at, claims: [{ status: review.status, grievous_verdict: review.grievous_verdict }] });
   }
