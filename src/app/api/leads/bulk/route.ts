@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { isInternalRole } from "@/lib/permissions";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
+import { manualIntakeStatusAllowed } from "@/lib/statuses";
 export const runtime = "edge";
 
 // Bulk operations on selected leads. Body: { op, ids:[], ...args }
@@ -19,6 +20,13 @@ export async function POST(req: NextRequest) {
   const b = await req.json();
   const ids: string[] = Array.isArray(b.ids) ? b.ids.filter(Boolean) : [];
   if (ids.length === 0) return NextResponse.json({ error: "no leads selected" }, { status: 400 });
+  // The setter and firm-transfer helper use service credentials after this
+  // point. Bind every selected ID to the caller's RLS-visible pilot scope
+  // first; a guessed ID must never be widened into an admin write.
+  const uniqueIds = [...new Set(ids)];
+  const visible = await sb.from("leads").select("id").in("id", uniqueIds);
+  if (visible.error) return NextResponse.json({ error: "Could not verify the selected files. Refresh and try again." }, { status: 503 });
+  if (visible.data?.length !== uniqueIds.length) return NextResponse.json({ error: "One or more selected files are unavailable to this account." }, { status: 403 });
 
   try {
     if (b.op === "set_stage") {
@@ -46,6 +54,11 @@ export async function POST(req: NextRequest) {
       return await moveFirm(supabaseAdmin(), ids, String(b.firmId), String(b.campaignId), auth.user.id);
     }
     if (b.op === "set_status") {
+      const catalog = await sb.from("statuses").select("*");
+      if (catalog.error || !Array.isArray(catalog.data)) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
+      const nextStatus = catalog.data.find((item: any) => item.key === b.status);
+      if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
+      if (!manualIntakeStatusAllowed(nextStatus)) return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
       // status lives on the claim; the helper enforces the DQ-reason gate and audits.
       const { data: meName } = await sb.from("app_users").select("full_name").eq("id", auth.user.id).maybeSingle();
       // An explicit lead-wide command: every matter on every selected file.

@@ -12,7 +12,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { needsQaReview, resolveStatus, type StatusDef } from "@/lib/statuses";
 import { resolveMatter } from "@/lib/matter";
 
-export interface SetStatusResult { ok: boolean; error?: string; claimIds?: string[]; }
+export interface SetStatusResult { ok: boolean; error?: string; claimIds?: string[]; deliveryWarning?: string; }
 
 export async function loadStatuses(db?: any): Promise<StatusDef[]> {
   const { data } = await (db ?? supabaseAdmin()).from("statuses").select("*").order("sort");
@@ -176,6 +176,7 @@ export async function setClaimStatusForLeads(opts: {
   // wip_pending; both can be true at once. A failed read or write is an
   // error, never a silent "no siblings" (Astra round 6).
   const flagErrors: string[] = [];
+  const deliveryWarnings: string[] = [];
   for (const leadId of touchedLeadIds) {
     const { data: sibs, error: sErr } = await (deps.queueReadDb ?? db).from("claims").select("status").eq("lead_id", leadId);
     if (sErr) { flagErrors.push(sErr.message); continue; }
@@ -227,10 +228,20 @@ export async function setClaimStatusForLeads(opts: {
         } catch (e) { console.error("status webhook failed", e); }
       }
       // Auto firm delivery for THIS matter (guarded per claim; respects the
-      // campaign master switch). Never blocks the status write.
+      // campaign master switch). A failed or held send cannot undo an already
+      // saved QA decision, but the caller must see that handoff needs attention.
       if (def.unlocks_firm === true && !opts.historical) {
-        try { await deliver({ leadId, claimId: String(c.id), triggeredBy: "auto", actorName: opts.actorName ?? "System" }); }
-        catch (e) { console.error("firm delivery trigger failed", e); }
+        try {
+          const result = await deliver({ leadId, claimId: String(c.id), triggeredBy: "auto", actorName: opts.actorName ?? "System" });
+          if (!result?.ok) deliveryWarnings.push(`Firm handoff for matter ${c.id} needs attention: ${result?.error || "the delivery result was not confirmed"}`);
+          else if (result.skipped && result.skipped !== "This matter was already sent to the firm.") {
+            deliveryWarnings.push(`Firm handoff for matter ${c.id} is on hold: ${result.skipped}`);
+          }
+          if (result?.warning) deliveryWarnings.push(`Firm handoff for matter ${c.id}: ${result.warning}`);
+        } catch (e) {
+          console.error("firm delivery trigger failed", e);
+          deliveryWarnings.push(`Firm handoff for matter ${c.id} could not be confirmed. Check delivery history before retrying.`);
+        }
       }
     }
   }
@@ -238,5 +249,5 @@ export async function setClaimStatusForLeads(opts: {
   if (flagErrors.length) {
     return { ok: false, claimIds: Array.from(changedIds), error: `Status changed, but the queue flags did not update: ${flagErrors[0]}. Refresh the file; the QA queue may be out of step.` };
   }
-  return { ok: true, claimIds: Array.from(changedIds) };
+  return { ok: true, claimIds: Array.from(changedIds), ...(deliveryWarnings.length ? { deliveryWarning: deliveryWarnings.join(" ") } : {}) };
 }

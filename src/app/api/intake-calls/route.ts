@@ -52,10 +52,14 @@ export async function PATCH(req: NextRequest) {
   const sb = await supabaseServer();
   const g = await gateUser(sb);
   if (!g) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (g.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const b = await req.json().catch(() => ({}));
   if (!b.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const admin = supabaseAdmin();
-  const { error } = await admin.from("intake_calls").update({ post_sign: b.post_sign ?? null }).eq("id", b.id);
+  // A caller may only update a call visible to their own session. The old
+  // service-role update let a firm login change any known call UUID.
+  const { data, error } = await sb.from("intake_calls")
+    .update({ post_sign: b.post_sign ?? null }).eq("id", b.id).select("id").maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) return NextResponse.json({ error: "Call not found." }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

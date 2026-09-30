@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import * as permissions from "./permissions";
+import * as statuses from "./statuses";
 
 let pass = 0;
 const t = async (name: string, fn: () => Promise<void> | void) => { await fn(); pass++; console.log("ok", name); };
@@ -46,7 +47,7 @@ function world(opts: { docs?: any[]; extraObjects?: string[]; faults?: Faults } 
   const log: string[] = [];
   const audits: any[] = [];
 
-  function query(table: string) {
+  function query(table: string, sessionRead = false) {
     const f: ((r: any) => boolean)[] = [];
     let single = false;
     const q: any = {
@@ -57,7 +58,7 @@ function world(opts: { docs?: any[]; extraObjects?: string[]; faults?: Faults } 
       maybeSingle() { single = true; return q; },
       then(res: any, rej: any) {
         log.push(`read ${table}`);
-        if (table === "leads" && faults.leadsRead) return Promise.resolve({ data: null, error: { message: "leads unreadable" } }).then(res, rej);
+        if (table === "leads" && faults.leadsRead && !sessionRead) return Promise.resolve({ data: null, error: { message: "leads unreadable" } }).then(res, rej);
         const rows = (tables[table] ?? []).filter((r) => f.every((x) => x(r))).map((r) => ({ ...r }));
         return Promise.resolve({ data: single ? rows[0] ?? null : rows, error: null }).then(res, rej);
       },
@@ -119,12 +120,13 @@ function world(opts: { docs?: any[]; extraObjects?: string[]; faults?: Faults } 
   };
   const sb: any = {
     auth: { getUser: async () => ({ data: { user: { id: "u1" } } }) },
-    from: (table: string) => query(table),
+    from: (table: string) => query(table, true),
   };
   const route = loadRoute("src/app/api/leads/bulk/route.ts", {
     "next/server": { NextResponse: { json: (body: any, init?: any) => ({ status: init?.status ?? 200, body }) } },
     "@/lib/supabase-server": { supabaseServer: async () => sb, supabaseAdmin: () => admin },
     "@/lib/permissions": permissions,
+    "@/lib/statuses": statuses,
     "@/lib/claim-status": { setClaimStatusForLeads: async () => { throw new Error("not in this test"); } },
     "@/lib/audit": { recordAudit: async (a: any) => { audits.push(a); } },
   });

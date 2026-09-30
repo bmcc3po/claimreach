@@ -282,6 +282,20 @@ export async function deliverLeadToFirm(opts: {
     return { ok: true, claimId: claim.id, skipped: "Automatic delivery is off for this matter's campaign." };
   }
 
+  // A completed signature is not QA approval. Every MVA firm handoff,
+  // including a manual resend, must be tied to this matter's latest recorded
+  // QA approval. A generic status edit or an earlier approval followed by WIP
+  // must not release a packet to the firm.
+  if (String(claim.claim_type || cfg.case_type || lead.case_type || "").trim().toLowerCase() === "mva") {
+    if (!["signed_approved", "delivered", "retained"].includes(String(claim.status || ""))) {
+      return refuse("This MVA matter has not passed signed-file QA. Review and approve it before firm handoff.");
+    }
+    const { data: latestQa, error: qaErr } = await db.from("qa_reviews")
+      .select("decision").eq("claim_id", claim.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (qaErr) return refuse(`Could not verify this matter's QA approval (${qaErr.message}).`);
+    if (latestQa?.decision !== "approve") return refuse("This MVA matter has no current QA approval. Review it before firm handoff.");
+  }
+
   to = String(cfg.firm_email || "").trim();
   cc = String(cfg.firm_cc || "").split(/[,;]/).map((s: string) => s.trim()).filter(Boolean);
   const replyTo = String(cfg.firm_reply_to || "").trim() || undefined;

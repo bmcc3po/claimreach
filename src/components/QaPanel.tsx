@@ -65,6 +65,7 @@ export default function QaPanel({
   const [declineReason, setDeclineReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const [dupOverride, setDupOverride] = useState<any | null>(null);
   // Approval found signed agreements with no matter recorded: offer them.
   const [assoc, setAssoc] = useState<{ claimId: string; error: string; candidates: any[] } | null>(null);
@@ -113,6 +114,7 @@ export default function QaPanel({
   if (firmView) return <FirmQaStatus claimStatus={claimStatus} grievousVerdict={grievousVerdict} />;
 
   async function submit(decision: string, dqReasonKey?: string, dupAck?: boolean) {
+    if (submitted) return;
     if (!gatesSet) { setMsg("Set all three hard-gate checks first."); return; }
     if (decision === "approve" && anyRed) {
       setMsg("Cannot approve with a red hard gate. Route to WIP or Flag, or decline.");
@@ -142,6 +144,11 @@ export default function QaPanel({
       return;
     }
     if (!r.ok) { setMsg(d.error || "Could not submit"); return; }
+    if (d.delivery_warning) {
+      setSubmitted(true);
+      setMsg(`QA decision saved. ${d.delivery_warning} Check the file's firm-delivery history before any resend.`);
+      return;
+    }
     setMsg(`Routed: ${decision}. Status now ${d.status}.`);
     setDeclineReason(null);
     setTimeout(() => window.location.reload(), 800);
@@ -217,7 +224,7 @@ export default function QaPanel({
         <label>Note to agent (firm never sees)<textarea value={agentNote} onChange={(e) => setAgentNote(e.target.value)} rows={2} placeholder="You were off script here; it seemed leading." /></label>
       </div>
 
-      {msg && <div className="qa-msg">{msg}</div>}
+      {msg && <div className="qa-msg">{msg}{submitted && <div><button className="btn ghost" onClick={() => window.location.reload()}>Refresh file</button></div>}</div>}
       {assoc && (
         <div className="qa-msg">
           <div>{assoc.error}</div>
@@ -231,10 +238,10 @@ export default function QaPanel({
       )}
 
       <div className="qa-actions">
-        <button className="btn" disabled={busy || anyRed || !gatesSet} title={anyRed ? "A red hard gate blocks approval" : !gatesSet ? "Set all three hard gates first" : ""} onClick={() => submit("approve")}>Approve (unlock firm)</button>
-        <button className="btn ghost" disabled={busy} onClick={() => submit("wip")}>Back to agent (WIP)</button>
-        <button className="btn ghost" disabled={busy} onClick={() => submit("flag")}>Flag BMC</button>
-        {isBmc && <button className="btn ghost danger" disabled={busy} onClick={onDecline}>Decline (drop letter)</button>}
+        <button className="btn" disabled={busy || submitted || anyRed || !gatesSet} title={anyRed ? "A red hard gate blocks approval" : !gatesSet ? "Set all three hard gates first" : ""} onClick={() => submit("approve")}>Approve (unlock firm)</button>
+        <button className="btn ghost" disabled={busy || submitted} onClick={() => submit("wip")}>Back to agent (WIP)</button>
+        <button className="btn ghost" disabled={busy || submitted} onClick={() => submit("flag")}>Flag BMC</button>
+        {isBmc && <button className="btn ghost danger" disabled={busy || submitted} onClick={onDecline}>Decline (drop letter)</button>}
       </div>
       {anyRed && <p className="qa-gate-warn">A red hard gate is set. Approval is blocked. Route to WIP{isBmc ? ", Flag BMC, or Decline" : " or Flag BMC"}.</p>}
 

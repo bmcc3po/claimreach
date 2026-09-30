@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
+import { supabaseServer } from "@/lib/supabase-server";
 import { requirePerm } from "@/lib/gate";
 import { isInternalRole } from "@/lib/permissions";
 export const runtime = "edge";
@@ -33,10 +33,10 @@ export async function GET(req: NextRequest) {
   const campaignId = url.searchParams.get("campaign_id");
   let caseType = (url.searchParams.get("case_type") || "").toLowerCase();
   let campaignName = "";
-  const admin = supabaseAdmin();
-
   if (campaignId) {
-    const { data: c } = await admin.from("campaigns").select("name, case_type, intake_template").eq("id", campaignId).maybeSingle();
+    const { data: c, error } = await sb.from("campaigns").select("name, case_type, intake_template").eq("id", campaignId).maybeSingle();
+    if (error) return NextResponse.json({ error: "Campaign could not be read." }, { status: 500 });
+    if (!c) return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
     if (c) { caseType = (c.intake_template || c.case_type || caseType).toLowerCase(); campaignName = c.name; }
   }
   if (!caseType) return NextResponse.json({ error: "campaign_id or case_type required" }, { status: 400 });
@@ -48,16 +48,18 @@ export async function GET(req: NextRequest) {
   const cols = fields.filter((f) => !SKIP_KINDS.includes(f.kind));
 
   // The leads for this campaign (or case type).
-  let q = admin.from("leads").select("id, lead_no, claimant_name, campaign, campaign_id, case_type, created_at, phone, email, mail_addr1, mail_city, mail_state, mail_zip");
+  let q = sb.from("leads").select("id, lead_no, claimant_name, campaign, campaign_id, case_type, created_at, phone, email, mail_addr1, mail_city, mail_state, mail_zip");
   q = campaignId ? q.eq("campaign_id", campaignId) : q.eq("case_type", caseType);
-  const { data: leads } = await q.order("created_at");
+  const { data: leads, error: leadsError } = await q.order("created_at");
+  if (leadsError) return NextResponse.json({ error: "Leads could not be read. Nothing was exported." }, { status: 500 });
   const leadRows = leads ?? [];
 
   // Answers per lead.
   const ids = leadRows.map((l) => l.id);
   const answersByLead: Record<string, any> = {};
   if (ids.length) {
-    const { data: claims } = await admin.from("claims").select("lead_id, answers").in("lead_id", ids);
+    const { data: claims, error: claimsError } = await sb.from("claims").select("lead_id, answers").in("lead_id", ids);
+    if (claimsError) return NextResponse.json({ error: "Answers could not be read. Nothing was exported." }, { status: 500 });
     for (const c of claims ?? []) answersByLead[c.lead_id] = c.answers ?? {};
   }
 
