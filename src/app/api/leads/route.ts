@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
-import { FIRM_WRITABLE_STAGES } from "@/lib/questionnaire";
+import { FIRM_WRITABLE_STAGES, INTAKE, STAGES } from "@/lib/questionnaire";
 import { recordAudit } from "@/lib/audit";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { nullifyEmpty } from "@/lib/coerce";
 import { coercePropCol } from "@/lib/claim-properties";
 import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
-import { isInternalRole } from "@/lib/permissions";
+import { can, isInternalRole } from "@/lib/permissions";
 import { manualIntakeStatusAllowed } from "@/lib/statuses";
 import { intakeStatusTransitionBlock } from "@/lib/intake-status-guard";
+import { inferMailTimeZone } from "@/lib/mail-time-zone";
 
 export const runtime = "edge";
 
@@ -16,9 +17,37 @@ async function me(sb: Awaited<ReturnType<typeof supabaseServer>>) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return null;
   const { data } = await sb.from("app_users")
-    .select("id, role, firm_id, full_name, active").eq("id", auth.user.id).maybeSingle();
+    .select("id, role, firm_id, full_name, active, perm_overrides").eq("id", auth.user.id).maybeSingle();
   return data?.active === true ? { ...data, uid: auth.user.id } : null;
 }
+
+async function editableLead(sb: Awaited<ReturnType<typeof supabaseServer>>, u: NonNullable<Awaited<ReturnType<typeof me>>>, leadId: string) {
+  if (!leadId || typeof leadId !== "string") return { error: "lead_id required", status: 400 } as const;
+  const { data: lead, error } = await sb.from("leads")
+    .select("id,firm_id,campaign_id,case_type,archived_at").eq("id", leadId).maybeSingle();
+  if (error) return { error: "Could not verify this file.", status: 503 } as const;
+  if (!lead) return { error: "File not found.", status: 404 } as const;
+  if (lead.archived_at) return { error: "Restore this file before editing it.", status: 409 } as const;
+  if (u.role !== "owner") {
+    if (!u.firm_id || lead.firm_id !== u.firm_id || !lead.campaign_id || lead.case_type !== "mva")
+      return { error: "Only your firm's INNO MVA files are available.", status: 403 } as const;
+    const { data: camp, error: campError } = await sb.from("campaigns")
+      .select("id,firm_id,name,case_type,active").eq("id", lead.campaign_id).maybeSingle();
+    if (campError) return { error: "Could not verify this file's campaign.", status: 503 } as const;
+    if (!camp || camp.firm_id !== lead.firm_id || camp.name !== "INNO MVA" || camp.case_type !== "mva" || camp.active !== true)
+      return { error: "Only active INNO MVA files are available.", status: 403 } as const;
+  }
+  return { lead } as const;
+}
+
+const EDITABLE_LEAD_FIELDS = new Set([
+  ...INTAKE.filter((field) => field.scope === "lead" && !["section", "script", "gate"].includes(field.kind)).map((field) => field.id),
+  "first_name", "last_name", "claimant_name", "phone", "email", "address", "dob",
+  "mail_addr1", "mail_addr2", "mail_city", "mail_state", "mail_zip", "client_time_zone",
+  "preferred_language", "preferred_time", "preferred_contact_method", "language", "best_time",
+  "home_phone", "work_phone", "ec_name", "ec_relationship", "ec_phone", "ec_email", "ec_mail", "ec_permission_to_discuss",
+  "pnc_status", "est_value", "is_locked",
+]);
 
 // POST { op: 'create', firm_id, firm_ref_no?, lawruler_ref_no? }
 // POST { op: 'save', lead_id, lead: {...fields}, properties: [{...}] }
@@ -32,8 +61,9 @@ export async function POST(req: NextRequest) {
   const op = payload.op;
 
   if (op === "create") {
-    if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    if (!isInternalRole(u.role) || !can(u.role, u.perm_overrides, "leads.edit")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const firm_id = payload.firm_id;
+    if (!firm_id || (u.role !== "owner" && firm_id !== u.firm_id)) return NextResponse.json({ error: "This firm is not available to your account." }, { status: 403 });
     // A file must know what it is. case_type no longer carries a database
     // default, so an unstated one used to become a Motel 6 trafficking case by
     // accident. Both of these are required at every creation path now.
@@ -44,7 +74,9 @@ export async function POST(req: NextRequest) {
     // carried the id showed "No campaign" on a file that had one (Astra audit).
     const { data: camp } = await sb.from("campaigns").select("id, name, firm_id, case_type").eq("id", payload.campaign_id).maybeSingle();
     if (!camp) return NextResponse.json({ error: "That campaign does not exist." }, { status: 400 });
-    if (camp.firm_id && camp.firm_id !== firm_id) return NextResponse.json({ error: "That campaign belongs to a different firm." }, { status: 400 });
+    if (camp.firm_id !== firm_id) return NextResponse.json({ error: "That campaign belongs to a different firm." }, { status: 400 });
+    if (u.role !== "owner" && (camp.name !== "INNO MVA" || camp.case_type !== "mva" || payload.case_type !== "mva"))
+      return NextResponse.json({ error: "Only INNO MVA files are available during this pilot." }, { status: 403 });
     if (camp.case_type && payload.case_type && camp.case_type !== payload.case_type) {
       return NextResponse.json({ error: `That campaign is for ${camp.case_type}, not ${payload.case_type}. Pick a matching campaign.` }, { status: 400 });
     }
@@ -101,12 +133,20 @@ export async function POST(req: NextRequest) {
   if (op === "set_campaign") {
     if (!["owner", "admin"].includes(u.role)) return NextResponse.json({ error: "Only an owner or admin can change a file's campaign." }, { status: 403 });
     const { lead_id, campaign_id } = payload;
+    const scope = await editableLead(sb, u, lead_id);
+    if ("error" in scope) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const { data: camp } = await sb.from("campaigns").select("id, name, firm_id, case_type").eq("id", campaign_id).maybeSingle();
     if (!camp) return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
+    if (camp.firm_id !== scope.lead.firm_id)
+      return NextResponse.json({ error: "Move a file to another firm through the dedicated transfer workflow." }, { status: 403 });
+    if (u.role !== "owner" && (camp.firm_id !== u.firm_id || camp.name !== "INNO MVA" || camp.case_type !== "mva"))
+      return NextResponse.json({ error: "Only INNO MVA files are available during this pilot." }, { status: 403 });
     // Campaign is the spine: update the lead and its claim so intake/retainer/e-sign
     // all follow the new campaign.
-    await sb.from("leads").update({ campaign_id: camp.id, campaign: camp.name, firm_id: camp.firm_id }).eq("id", lead_id);
-    await sb.from("claims").update({ campaign: camp.name, campaign_id: camp.id, claim_type: camp.case_type }).eq("lead_id", lead_id);
+    const leadUpdate = await sb.from("leads").update({ campaign_id: camp.id, campaign: camp.name }).eq("id", lead_id).eq("firm_id", scope.lead.firm_id);
+    if (leadUpdate.error) return NextResponse.json({ error: leadUpdate.error.message }, { status: 500 });
+    const claimUpdate = await sb.from("claims").update({ campaign: camp.name, campaign_id: camp.id, claim_type: camp.case_type }).eq("lead_id", lead_id).eq("firm_id", scope.lead.firm_id);
+    if (claimUpdate.error) return NextResponse.json({ error: claimUpdate.error.message }, { status: 500 });
     try {
       const { recordAudit } = await import("@/lib/audit");
       await recordAudit({ firm_id: camp.firm_id, lead_id, actor: u.id, actor_name: u.full_name, category: "lead", description: `Changed campaign to "${camp.name}".` });
@@ -115,8 +155,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (op === "save") {
-    if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    if (!isInternalRole(u.role) || !can(u.role, u.perm_overrides, "leads.edit")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const { lead_id, lead, properties } = payload;
+    const scope = await editableLead(sb, u, lead_id);
+    if ("error" in scope) return NextResponse.json({ error: scope.error }, { status: scope.status });
     if (lead && "full_name" in lead) delete lead.full_name;
     // Blank fields arrive as "" — turn them into NULL so a date/number/uuid
     // column can't reject the entire update and silently drop every change.
@@ -130,6 +172,23 @@ export async function POST(req: NextRequest) {
       "status", "stage", "qa_pending", "wip_pending", "qa_entered_at", "qa_draft",
       "dq_reason_key", "dq_reason", "qualification", "esign_sent_at", "esign_date",
       "first_dialed_at", "first_opened_at", "first_opened_by", "signed_notified_at"]) delete leadPatch[k];
+    const unknown = Object.keys(leadPatch).filter((key) => !EDITABLE_LEAD_FIELDS.has(key));
+    if (unknown.length) return NextResponse.json({ error: "This form cannot edit those file fields." }, { status: 400 });
+    if (u.role !== "owner" && ("is_locked" in leadPatch || "est_value" in leadPatch && !can(u.role, u.perm_overrides, "money.view")))
+      return NextResponse.json({ error: "Only the owner can change file locks or restricted values." }, { status: 403 });
+
+    // The contact's mailing address is the scheduling clock, not the wreck
+    // state or the agent's phone area code. Preserve a manually verified time
+    // zone; infer only where the state/ZIP identifies one unambiguously.
+    if (("mail_state" in leadPatch || "mail_zip" in leadPatch) && !("client_time_zone" in leadPatch)) {
+      const prior = await sb.from("leads").select("mail_state,mail_zip,client_time_zone").eq("id", lead_id).maybeSingle();
+      if (prior.error) return NextResponse.json({ error: prior.error.message }, { status: 500 });
+      if (!prior.data) return NextResponse.json({ error: "File not found." }, { status: 404 });
+      if (!prior.data.client_time_zone) {
+        const inferred = inferMailTimeZone(leadPatch.mail_state ?? prior.data.mail_state, leadPatch.mail_zip ?? prior.data.mail_zip);
+        if (inferred) leadPatch.client_time_zone = inferred;
+      }
+    }
 
     // Contact Info owns split names; every header/search/export also reads the
     // legacy display column. Save those identities together, guarded against
@@ -150,11 +209,12 @@ export async function POST(req: NextRequest) {
       leadPatch.claimant_name = ["first_name", "last_name"].map((key) => key in leadPatch ? leadPatch[key] : (prior.data as any)[key]).filter(Boolean).join(" ").trim();
       if (!leadPatch.claimant_name) return NextResponse.json({ error: "Enter the client's name before saving." }, { status: 400 });
     }
-    let update = sb.from("leads").update(leadPatch).eq("id", lead_id);
+    let update = sb.from("leads").update(leadPatch).eq("id", lead_id).eq("firm_id", scope.lead.firm_id).is("archived_at", null);
+    if (scope.lead.campaign_id) update = update.eq("campaign_id", scope.lead.campaign_id);
     if (beforeName) for (const key of ["first_name", "last_name"] as const) {
       update = beforeName[key] == null ? update.is(key, null) : update.eq(key, beforeName[key]);
     }
-    const { data: savedContact, error: leadErr } = await update.select("id,first_name,last_name,claimant_name").maybeSingle();
+    const { data: savedContact, error: leadErr } = await update.select("id,first_name,last_name,claimant_name,client_time_zone").maybeSingle();
     if (leadErr) {
       // Postgres rejects the ENTIRE update when one field names a column that
       // does not exist, so a single typo silently threw away every other change
@@ -220,10 +280,14 @@ export async function POST(req: NextRequest) {
 
   if (op === "stage") {
     const { lead_id, stage } = payload;
+    if (!isInternalRole(u.role) || !can(u.role, u.perm_overrides, "claims.status")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    if (!STAGES.includes(stage)) return NextResponse.json({ error: "Pick a valid stage." }, { status: 400 });
+    const scope = await editableLead(sb, u, lead_id);
+    if ("error" in scope) return NextResponse.json({ error: scope.error }, { status: scope.status });
     if (u.role === "firm" && !FIRM_WRITABLE_STAGES.includes(stage)) {
       return NextResponse.json({ error: "firm may not set that stage" }, { status: 403 });
     }
-    const { error } = await sb.from("leads").update({ stage }).eq("id", lead_id);
+    const { error } = await sb.from("leads").update({ stage }).eq("id", lead_id).eq("firm_id", scope.lead.firm_id).eq("campaign_id", scope.lead.campaign_id).is("archived_at", null);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     await sb.from("lead_activity").insert({
@@ -241,6 +305,8 @@ export async function POST(req: NextRequest) {
     // side effects. A guessed hidden lead/claim must never reach an admin query.
     const context = await resolveSigningMatter(sb, String(lead_id), { claimId: claim_id ? String(claim_id) : null });
     if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+    if (u.role !== "owner" && context.lead.firm_id !== u.firm_id)
+      return NextResponse.json({ error: "This file belongs to another firm." }, { status: 403 });
     if (u.role !== "owner") {
       const { lead, matter } = context;
       const [campaigns, firm] = await Promise.all([
@@ -288,3 +354,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });
 }
+
