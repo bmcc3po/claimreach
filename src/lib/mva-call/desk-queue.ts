@@ -32,6 +32,9 @@ export function buildDeskQueues(opts: {
     const agreements = opts.agreements.filter(row => row.lead_id === lead.id);
     for (const claim of lead.claims || []) {
       if (claim.lead_id !== lead.id || claim.firm_id !== lead.firm_id || claim.claim_type !== "mva" || !allowed.has(claim.campaign_id)) continue;
+      // Imported LawRuler packets are allegations of signing until QA verifies
+      // the actual document. They belong in QA, never the Signed eSign tab.
+      if (claim.status === "external_signed_review") continue;
       const def = resolveStatus(claim.status, opts.statuses);
       if (def.qualify === "disqualify" || def.phase === "terminal" || (def.is_final && claim.status !== "external_signed_review") || ["delivered", "retained"].includes(claim.status)) continue;
       const hold = opts.holds.get(claim.id);
@@ -59,8 +62,8 @@ export function buildDeskQueues(opts: {
       } else if (active && ["sent", "opened"].includes(active.status)) {
         bucket = "sent"; row.tag = active.status === "opened" ? "Opened" : "Sent";
         row.at = active.sent_at || row.at; row.sub = agreementName(active.template_key);
-      } else if (isSignedKey(claim.status, opts.statuses) || claim.status === "external_signed_review") {
-        bucket = "signed"; row.tag = claim.status === "external_signed_review" ? "Verify imported packet" : "Signed";
+      } else if (isSignedKey(claim.status, opts.statuses) && lead.signed_at) {
+        bucket = "signed"; row.tag = "Signed";
       } else {
         if (!opts.acquisitionReady || !isAcquisitionEligible(lead, claim, { statuses: opts.statuses, holds: opts.holds })) continue;
         if (claim.status === "esign_sent" && matterAgreements.length === 0) {
@@ -81,3 +84,4 @@ export function buildDeskQueues(opts: {
     ? String(a.due || "").localeCompare(String(b.due || "")) : String(b.at || "").localeCompare(String(a.at || "")));
   return queues;
 }
+
