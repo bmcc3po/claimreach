@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { NETFLY_ANSWER_KEY, NETFLY_SECTIONS, NETFLY_FIELD_IDS, netflyFlags } from "./netfly-ontake";
+import { NETFLY_ANSWER_KEY, NETFLY_SECTIONS, NETFLY_FIELD_IDS, netflyFlags, parseNetflyHandoff } from "./netfly-ontake";
 
 assert.equal(NETFLY_ANSWER_KEY, "netfly_secondary");
 assert.equal(NETFLY_SECTIONS.length, 8);
@@ -19,4 +19,8 @@ assert.ok(netflyFlags({ hospital_days: "10 days" })[0].includes("now"));
 assert.ok(netflyFlags({ commercial_truck: "Yes", serious_injury: "Yes" })[0].includes("now"));
 assert.ok(netflyFlags({ seen_doctor: "No" }).some((item) => item.includes("No treatment")));
 assert.ok(netflyFlags({ wants_cancel: "Yes" }).some((item) => item.includes("Cancellation")));
+const source = parseNetflyHandoff("Accident Intake Note – Turnbull Law\nClient/Driver: Sample Client\nAccident Date: 09/04/2026\nAccident Summary: First sentence.\nContinued detail.\nInsurance: Details were missing, but have now been obtained.\nNext Steps: Ready for welcome call.");
+assert.deepEqual(source.map((item) => item.label), ["Client/Driver", "Accident Date", "Accident Summary", "Insurance", "Next Steps"]);
+assert.equal(source.find((item) => item.label === "Accident Summary")?.value, "First sentence. Continued detail.");
+assert.equal(source.find((item) => item.label === "Insurance")?.value, "Details were missing, but have now been obtained.");
 console.log("NETFLY source map and review triggers passed");

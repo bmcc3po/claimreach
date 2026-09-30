@@ -4,6 +4,36 @@ export const NETFLY_CAMPAIGN = "NETFLY ONTAKE";
 export const NETFLY_ANSWER_KEY = "netfly_secondary";
 export const NETFLY_RETAINER_TYPE = "netfly_signed_retainer";
 
+// NETFLY's original handoff is evidence, not an agent-confirmed answer. Keep
+// this extraction display-only; the agent explicitly records any confirmed
+// or corrected value in the separate fields below.
+export const NETFLY_HANDOFF_LABELS = [
+  "Client/Driver", "Accident Date", "Location", "Case #", "Passengers",
+  "Airbags", "Accident Summary", "Insurance", "Injuries & Treatment",
+  "Representation", "Next Steps",
+] as const;
+
+export function parseNetflyHandoff(note: string): { label: string; value: string }[] {
+  const headings = new Map(NETFLY_HANDOFF_LABELS.map((label) => [label.toLowerCase(), label]));
+  const values = new Map<string, string>();
+  let current: string | null = null;
+  for (const raw of note.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const match = /^([^:]{2,40}):\s*(.*)$/.exec(line);
+    const heading = match ? headings.get(match[1].trim().toLowerCase()) : undefined;
+    if (heading) {
+      current = heading;
+      values.set(heading, match![2].trim());
+    } else if (match) {
+      current = null;
+    } else if (current) {
+      values.set(current, `${values.get(current) || ""} ${line}`.trim());
+    }
+  }
+  return NETFLY_HANDOFF_LABELS.filter((label) => values.has(label)).map((label) => ({ label, value: values.get(label)! }));
+}
+
 export type NetflyField = {
   id: string;
   label: string;
