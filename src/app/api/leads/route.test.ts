@@ -11,6 +11,7 @@ import { isInternalRole } from "../../../lib/permissions";
 import { setClaimStatusForLeads } from "../../../lib/claim-status";
 import { DEFAULT_STATUSES, manualIntakeStatusAllowed } from "../../../lib/statuses";
 import { intakeStatusTransitionBlock } from "../../../lib/intake-status-guard";
+import * as mailTimeZone from "../../../lib/mail-time-zone";
 
 function harness(role = "agent") {
   const db = new FakeDb({
@@ -58,6 +59,7 @@ function harness(role = "agent") {
     "@/lib/statuses": { manualIntakeStatusAllowed },
     "@/lib/intake-status-guard": { intakeStatusTransitionBlock },
     "@/lib/permissions": { isInternalRole },
+    "@/lib/mail-time-zone": mailTimeZone,
     "@/lib/claim-properties": { coercePropCol: () => { throw new Error("Unexpected property write"); } },
   };
   const source = fs.readFileSync(path.resolve(__dirname, "route.ts"), "utf8");
@@ -321,3 +323,4 @@ test("same-status newer evidence or concurrent signed status defeats the conditi
   for (const [name, fn] of tests) { await fn(); console.log("ok", name); }
   console.log(`${tests.length} lead name route scenarios passed`);
 })().catch((e) => { console.error(e); process.exitCode = 1; });
+
