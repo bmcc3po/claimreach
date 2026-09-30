@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { gateUser } from "@/lib/gate";
+import { manualIntakeStatusAllowed } from "@/lib/statuses";
+import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 export const runtime = "edge";
 
 // ============================================================================
@@ -22,12 +24,12 @@ export const runtime = "edge";
 // campaign" — true, but for a firm nobody asked about.
 async function resolveFirm(admin: any, slug: string | null, fallback: string | null) {
   if (slug) {
-    const { data } = await admin.from("firms").select("id, name").eq("slug", slug).maybeSingle();
-    if (data?.id) return { id: data.id as string, name: data.name as string, matched: true };
+    const { data } = await admin.from("firms").select("id, name, slug").eq("slug", slug).maybeSingle();
+    if (data?.id) return { id: data.id as string, name: data.name as string, slug: data.slug as string, matched: true };
   }
-  if (!fallback) return { id: null, name: null, matched: false };
-  const { data: fb } = await admin.from("firms").select("id, name").eq("id", fallback).maybeSingle();
-  return { id: fallback as string, name: (fb?.name as string) ?? null, matched: false };
+  if (!fallback) return { id: null, name: null, slug: null, matched: false };
+  const { data: fb } = await admin.from("firms").select("id, name, slug").eq("id", fallback).maybeSingle();
+  return { id: fallback as string, name: (fb?.name as string) ?? null, slug: (fb?.slug as string) ?? null, matched: false };
 }
 
 export async function POST(req: NextRequest) {
@@ -60,9 +62,19 @@ export async function POST(req: NextRequest) {
 
     const caseType = b.case_type;                       // granular picker value
     const registryKey = b.registry_key || b.case_type;   // what the campaign is keyed on
-    const { data: campaign } = await admin.from("campaigns")
+    if (g.role !== "owner" && (firm.slug !== "tmp" || caseType !== "mva" || registryKey !== "mva")) {
+      return NextResponse.json({ error: "Only INNO MVA calls are available during this pilot." }, { status: 403 });
+    }
+    let campaignQuery = admin.from("campaigns")
       .select("id, name, retainer_template_id, retainer_packet, allow_live_sign, path, transfer_label, transfer_number, network_label")
-      .eq("firm_id", firmId).eq("case_type", registryKey).eq("active", true).limit(1).maybeSingle();
+      .eq("firm_id", firmId).eq("case_type", registryKey).eq("active", true);
+
+    if (g.role !== "owner") {
+      const { data: pilotId, error: pilotErr } = await admin.rpc("cr_inno_mva_campaign_id");
+      if (pilotErr || !pilotId) return NextResponse.json({ error: "Could not verify the INNO MVA campaign. Refresh and try again." }, { status: 503 });
+      campaignQuery = campaignQuery.eq("id", pilotId);
+    }
+    const { data: campaign } = await campaignQuery.limit(1).maybeSingle();
 
     if (!campaign) {
       // No campaign means no file, per the rule. But the call still happened, so
@@ -92,18 +104,20 @@ export async function POST(req: NextRequest) {
     }).select("id, lead_no").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const { data: claim } = await admin.from("claims").insert({
+    const { data: claim, error: claimErr } = await admin.from("claims").insert({
       firm_id: firmId, lead_id: lead.id, claim_type: registryKey,
-      campaign: campaign.name, status: "contacting", answers: {},
+      campaign_id: campaign.id, campaign: campaign.name, status: "contacting", answers: {},
     }).select("id").single();
+    if (claimErr || !claim) return NextResponse.json({ error: `The file ${lead.lead_no} was opened, but its matter did not save. Ask the owner to reconcile it before continuing. ${claimErr?.message ?? "No matter was returned."}`, lead_no: lead.lead_no }, { status: 500 });
 
     // Log the call alongside the file so the caller ID still ties to the recording.
-    const { data: call } = await admin.from("intake_calls").insert({
+    const { data: call, error: callErr } = await admin.from("intake_calls").insert({
       firm_id: firmId, firm_slug: b.firm_slug ?? null, agent_id: g.id, agent_name: g.name ?? null,
       caller_id: b.caller_id ?? null, first_name: b.first_name, callback: b.callback ?? null,
       call_type: b.call_type ?? null, matter: caseType, lead_id: lead.id,
       promoted_at: new Date().toISOString(),
     }).select("id").single();
+    if (callErr || !call) return NextResponse.json({ error: `The file ${lead.lead_no} and matter were saved, but this call did not log. Refresh the file before continuing. ${callErr?.message ?? "No call was returned."}`, lead_no: lead.lead_no }, { status: 500 });
 
     try {
       const { recordAudit } = await import("@/lib/audit");
@@ -119,7 +133,7 @@ export async function POST(req: NextRequest) {
     const hasPacket = (allowedRetainers ?? []).length > 0
       || !!((Array.isArray(campaign.retainer_packet) && campaign.retainer_packet.length) || campaign.retainer_template_id);
     return NextResponse.json({
-      ok: true, lead_id: lead.id, lead_no: lead.lead_no, claim_id: claim?.id ?? null, call_id: call?.id ?? null,
+      ok: true, lead_id: lead.id, lead_no: lead.lead_no, claim_id: claim.id, call_id: call.id,
       campaign: campaign?.name ?? null,
       // The console needs this to load the questionnaire that was actually
       // published for this campaign, rather than the one compiled into the app.
@@ -145,6 +159,14 @@ export async function POST(req: NextRequest) {
   // still leaves a usable file.
   if (b.op === "save") {
     if (!b.claim_id) return NextResponse.json({ error: "claim_id required" }, { status: 400 });
+    const visible = await sb.from("claims").select("id, lead_id").eq("id", b.claim_id).maybeSingle();
+    if (visible.error) return NextResponse.json({ error: "Could not verify this matter's access. Refresh and try again." }, { status: 503 });
+    if (!visible.data) return NextResponse.json({ error: "This matter is unavailable to this account." }, { status: 403 });
+    if (b.call_id) {
+      const call = await sb.from("intake_calls").select("id, lead_id").eq("id", b.call_id).maybeSingle();
+      if (call.error) return NextResponse.json({ error: "Could not verify this call's access. Refresh and try again." }, { status: 503 });
+      if (!call.data || call.data.lead_id !== visible.data.lead_id) return NextResponse.json({ error: "This call does not belong to the selected matter." }, { status: 403 });
+    }
     const patch: any = { answers: b.answers ?? {} };
     if (b.summary) patch.case_summary = b.summary;
     const { error } = await admin.from("claims").update(patch).eq("id", b.claim_id);
@@ -159,6 +181,9 @@ export async function POST(req: NextRequest) {
   // Full legal identity for the retainer. Captured only once the file qualifies.
   if (b.op === "identity") {
     if (!b.lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
+    const visible = await sb.from("leads").select("id").eq("id", b.lead_id).maybeSingle();
+    if (visible.error) return NextResponse.json({ error: "Could not verify this file's access. Refresh and try again." }, { status: 503 });
+    if (!visible.data) return NextResponse.json({ error: "This file is unavailable to this account." }, { status: 403 });
     const c = b.client ?? {};
     const full = `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim();
     const { error } = await admin.from("leads").update({
@@ -175,14 +200,35 @@ export async function POST(req: NextRequest) {
   // automations and firm-delivery trigger all fire exactly as they do elsewhere.
   if (b.op === "disposition") {
     if (!b.lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
-    if (Array.isArray(b.modifiers)) {
-      await admin.from("leads").update({ modifiers: b.modifiers }).eq("id", b.lead_id);
-    }
+    const visible = await sb.from("leads").select("id").eq("id", b.lead_id).maybeSingle();
+    if (visible.error) return NextResponse.json({ error: "Could not verify this file's access. Refresh and try again." }, { status: 503 });
+    if (!visible.data) return NextResponse.json({ error: "This file is unavailable to this account." }, { status: 403 });
     const map: Record<string, string> = {
       SIGN: "contacting", REFER: "contacting", DISQUALIFY: "dq",
       SECONDARY_REVIEW: "flag", CALLBACK: "contacting", TRANSFER: "contacting",
     };
     const status = b.status_key || map[b.disposition] || "contacting";
+    const catalog = await sb.from("statuses").select("*");
+    if (catalog.error || !Array.isArray(catalog.data)) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
+    const nextStatus = catalog.data.find((item: any) => item.key === status);
+    if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
+    if (!manualIntakeStatusAllowed(nextStatus)) {
+      // The older call console closes a genuinely signed call as signed_wip.
+      // Keep that route, but verify the provider evidence on this matter.
+      if (status !== "signed_wip") return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
+      const context = await resolveSigningMatter(sb, b.lead_id, { callId: b.call_id ?? null });
+      if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+      const agreement = await getMatterAgreement(sb, context.lead, context.matter);
+      if (!agreement.ok) return NextResponse.json({ error: agreement.error }, { status: agreement.status });
+      const emergency = await getMatterEmergency(sb, context.lead, context.matter);
+      if (!emergency.ok) return NextResponse.json({ error: emergency.error }, { status: emergency.status });
+      if (!agreement.row || agreementIsVoided(agreement.row) || !["signed", "completed"].includes(agreement.row.status) || emergencySupersedes(agreement.row, emergency.row)) {
+        return NextResponse.json({ error: "The current agreement on this matter has not been signed. Refresh and review the agreement before closing as signed." }, { status: 409 });
+      }
+    }
+    if (Array.isArray(b.modifiers)) {
+      await admin.from("leads").update({ modifiers: b.modifiers }).eq("id", b.lead_id);
+    }
     try {
       const { setClaimStatusForLeads } = await import("@/lib/claim-status");
       const res = await setClaimStatusForLeads({
@@ -211,6 +257,9 @@ export async function POST(req: NextRequest) {
   // the console resumes the questionnaire where the file left off — no duplicate.
   if (b.op === "open_existing") {
     if (!b.lead_id) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
+    const visible = await sb.from("leads").select("id").eq("id", b.lead_id).maybeSingle();
+    if (visible.error) return NextResponse.json({ error: "Could not verify this file's access. Refresh and try again." }, { status: 503 });
+    if (!visible.data) return NextResponse.json({ error: "This file is unavailable to this account." }, { status: 403 });
     const { data: lead } = await admin.from("leads")
       .select("id, lead_no, firm_id, campaign_id, campaign, case_type, claimant_name, first_name, phone, email")
       .eq("id", b.lead_id).maybeSingle();
@@ -218,14 +267,16 @@ export async function POST(req: NextRequest) {
     const firmId = lead.firm_id;
 
     // Oldest claim is the primary file; make one if somehow none exists.
-    let { data: claim } = await admin.from("claims")
+    let { data: claim } = await (g.role === "owner" ? admin : sb).from("claims")
       .select("id, claim_type, campaign, answers, status")
       .eq("lead_id", lead.id).order("created_at", { ascending: true }).limit(1).maybeSingle();
     if (!claim) {
-      const { data: created } = await admin.from("claims").insert({
+      if (g.role !== "owner") return NextResponse.json({ error: "No accessible INNO MVA matter is attached to this file. Ask the owner to reconcile it." }, { status: 409 });
+      const { data: created, error: createErr } = await admin.from("claims").insert({
         firm_id: firmId, lead_id: lead.id, claim_type: lead.case_type ?? null,
-        campaign: lead.campaign ?? null, status: "contacting", answers: {},
+        campaign_id: lead.campaign_id, campaign: lead.campaign ?? null, status: "contacting", answers: {},
       }).select("id, claim_type, campaign, answers, status").single();
+      if (createErr || !created) return NextResponse.json({ error: `This file has no matter, and a new one did not save. Ask the owner to reconcile it. ${createErr?.message ?? "No matter was returned."}` }, { status: 500 });
       claim = created ?? null;
     }
 
@@ -244,13 +295,14 @@ export async function POST(req: NextRequest) {
       || !!(campaign && ((Array.isArray(campaign.retainer_packet) && campaign.retainer_packet.length) || campaign.retainer_template_id));
 
     // Log this call against the existing file so the caller ID ties to the recording.
-    const { data: call } = await admin.from("intake_calls").insert({
+    const { data: call, error: callErr } = await admin.from("intake_calls").insert({
       firm_id: firmId, firm_slug: b.firm_slug ?? null, agent_id: g.id, agent_name: g.name ?? null,
       caller_id: b.caller_id ?? null, first_name: lead.first_name ?? lead.claimant_name ?? null,
       callback: lead.phone ?? null, call_type: b.call_type ?? "existing",
       matter: claim?.claim_type ?? lead.case_type ?? null, lead_id: lead.id,
       promoted_at: new Date().toISOString(),
     }).select("id").single();
+    if (callErr || !call) return NextResponse.json({ error: `This file reopened, but the new call did not log. Refresh before continuing. ${callErr?.message ?? "No call was returned."}` }, { status: 500 });
 
     try {
       const { recordAudit } = await import("@/lib/audit");
@@ -261,7 +313,7 @@ export async function POST(req: NextRequest) {
     } catch {}
 
     return NextResponse.json({
-      ok: true, lead_id: lead.id, lead_no: lead.lead_no, claim_id: claim?.id ?? null, call_id: call?.id ?? null,
+      ok: true, lead_id: lead.id, lead_no: lead.lead_no, claim_id: claim?.id ?? null, call_id: call.id,
       campaign: campaign?.name ?? lead.campaign ?? null,
       case_type: claim?.claim_type ?? lead.case_type ?? null,
       answers: claim?.answers ?? {},
@@ -291,6 +343,9 @@ export async function GET(req: NextRequest) {
   }
   const leadId = url.searchParams.get("lead_id");
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
+  const visible = await sb.from("leads").select("id").eq("id", leadId).maybeSingle();
+  if (visible.error) return NextResponse.json({ error: "Could not verify this file's access. Refresh and try again." }, { status: 503 });
+  if (!visible.data) return NextResponse.json({ error: "This file is unavailable to this account." }, { status: 403 });
   const admin = supabaseAdmin();
   const { data: docs } = await admin.from("signable_documents")
     .select("id, title, status, sent_at, signed_at").eq("lead_id", leadId).order("packet_seq");

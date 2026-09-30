@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { manualIntakeStatusAllowed } from "@/lib/statuses";
 
 export const runtime = "edge";
 
@@ -7,8 +8,8 @@ async function me(sb: Awaited<ReturnType<typeof supabaseServer>>) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return null;
   const { data } = await sb.from("app_users")
-    .select("id, role, firm_id, full_name").eq("id", auth.user.id).maybeSingle();
-  return data ? { ...data, uid: auth.user.id } : null;
+    .select("id, role, firm_id, full_name, active").eq("id", auth.user.id).maybeSingle();
+  return data && data.active !== false ? { ...data, uid: auth.user.id } : null;
 }
 
 // POST { op:'create', lead_id, firm_id, claim_type, campaign? }
@@ -84,6 +85,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (p.op === "status") {
+    const catalog = await sb.from("statuses").select("*");
+    if (catalog.error || !Array.isArray(catalog.data)) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
+    const nextStatus = catalog.data.find((item: any) => item.key === p.status);
+    if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
+    if (!manualIntakeStatusAllowed(nextStatus)) return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
     const { data: cl } = await sb.from("claims").select("lead_id, firm_id").eq("id", p.claim_id).maybeSingle();
     if (!cl?.lead_id) return NextResponse.json({ error: "claim has no lead" }, { status: 400 });
     // Route through the central setter: enforces the DQ-reason gate, keeps the

@@ -14,6 +14,7 @@ function world() { return new FakeDb({
   leads: [{ id: L, firm_id: "firm", campaign_id: "campaign", claimant_name: "Synthetic PNC", archived_at: null }],
   claims: [{ id: C, lead_id: L, firm_id: "firm", campaign_id: "campaign", claim_type: "mva", answers: { mva_call: { story: { text: "Selected claim" } } } }],
   intake_calls: [{ id: "call", lead_id: L, claim_id: C, firm_id: "firm", campaign_id: "campaign" }],
+  app_users: [{ id: "owner", role: "owner", active: true, email: "synthetic@example.invalid" }],
   esign_submissions: [{ id: "primary", lead_id: L, claim_id: C, firm_id: "firm", pax_index: null, status: "completed", created_at: "2026-09-01T12:00:00Z" }],
   signable_documents: [],
 }); }
@@ -44,6 +45,18 @@ function route(db: FakeDb) {
 let count = 0;
 async function check(name: string, fn: () => Promise<void>) { await fn(); count++; console.log("ok", name); }
 async function main() {
+  await check("agent cannot export a signed case to an arbitrary address through disposition", async () => {
+    const db = world(), r = route(db);
+    const result = await r.post({ notify: ["outside@example.invalid"] });
+    assert.equal(result.status, 403); assert.equal(r.emails.length, 0);
+    assert.equal(db.tables.intake_calls[0].status, undefined); assert.equal(r.statuses.length, 0);
+  });
+  await check("owner-recipient lookup failure holds the call before any write or email", async () => {
+    const db = world(); db.failOn = (op) => op.table === "app_users" ? "lookup unavailable" : null;
+    const r = route(db), result = await r.post({ notify: ["synthetic@example.invalid"] });
+    assert.equal(result.status, 503); assert.equal(r.emails.length, 0);
+    assert.equal(db.tables.intake_calls[0].status, undefined); assert.equal(r.statuses.length, 0);
+  });
   await check("newer provisional emergency prevents old primary signed disposition and notification", async () => {
     const db = world(); db.tables.signable_documents.push({ id: "emergency", lead_id: L, firm_id: "firm", status: "signed", created_at: "2026-09-28T12:00:00Z", audit: { emergency: { claim_id: C } } });
     const r = route(db), result = await r.post({ notify: ["synthetic@example.invalid"] });

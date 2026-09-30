@@ -287,7 +287,7 @@ export async function POST(req: NextRequest) {
       meta: { decision: b.decision, gates: { g_qa_pass: b.g_qa_pass, g_esign: b.g_esign, g_criteria: b.g_criteria } },
     });
 
-    return NextResponse.json({ ok: true, status: nextStatus });
+    return NextResponse.json({ ok: true, status: nextStatus, ...(res.deliveryWarning ? { delivery_warning: res.deliveryWarning } : {}) });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });

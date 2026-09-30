@@ -28,6 +28,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const sb = await supabaseServer();
   const user = await gateUser(sb);
+  // Privileged storage URLs must follow the caller's live document visibility.
+  // Internal roles other than the owner are restricted to the INNO pilot by
+  // signable_documents RLS; knowing a document UUID cannot bypass that wall.
+  if (user && isInternalRole(user.role) && user.role !== "owner") {
+    const { data: visibleDoc, error: visibilityError } = await sb.from("signable_documents")
+      .select("id").eq("id", id).maybeSingle();
+    if (visibilityError) return NextResponse.json({ error: "lookup failed" }, { status: 500, headers: noStore });
+    if (!visibleDoc) return NextResponse.json({ error: "not found" }, { status: 404, headers: noStore });
+  }
   const allowed = mayOpenSignedDoc({
     user: user ? { role: user.role, firmId: user.firmId } : null,
     internal: !!user && isInternalRole(user.role),

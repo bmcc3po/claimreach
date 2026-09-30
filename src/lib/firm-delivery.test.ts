@@ -144,7 +144,7 @@ const camp = (id: string, o: Row = {}): Row => ({
 });
 const claimRow = (id: string, campaignId: string | null, o: Row = {}): Row => ({
   id, lead_id: L, firm_id: FIRM, campaign_id: campaignId, campaign: campaignId ? `Campaign ${campaignId}` : null,
-  claim_type: "mva", status: "signed_grievous", answers: {}, created_at: `2026-09-0${id.length}T00:00:00Z`,
+  claim_type: "mva", status: "signed_approved", answers: {}, created_at: `2026-09-0${id.length}T00:00:00Z`,
   firm_sent_at: null, firm_send_result: null, ...o,
 });
 const leadRow = (o: Row = {}): Row => ({
@@ -168,6 +168,7 @@ function world(p: { lead?: Row; claims: Row[]; campaigns: Row[]; agreements?: { 
   return fakeDb({
     leads: [p.lead ?? leadRow()], claims: p.claims, campaigns: p.campaigns,
     esign_submissions: (p.agreements ?? []).map((a) => a.row), signable_documents: [], retainers: [], firm_deliveries: [],
+    qa_reviews: p.claims.map((c) => ({ lead_id: c.lead_id, claim_id: c.id, decision: "approve", created_at: "2026-09-28T11:00:00Z" })),
     ...(p.extra ?? {}),
   }, { storage, failRead: p.failRead, failWrite: p.failWrite });
 }
@@ -190,6 +191,30 @@ function deps(db: any, o: Partial<DeliverDeps> = {}): DeliverDeps & { sent: Firm
 const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed\.pdf$/.test(a.filename))?.content;
 
 (async () => {
+  await t("MVA handoff refuses a signed file before QA approval", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01", { status: "signed_qa" })], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
+    const d = deps(db);
+    const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(r.ok, false);
+    assert.match(r.error ?? "", /not passed signed-file QA/);
+    assert.equal(d.sent.length, 0);
+  });
+  await t("MVA handoff refuses missing or superseded QA approval", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
+    const d = deps(db);
+    db.tables.qa_reviews = [];
+    const missing = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(missing.ok, false);
+    assert.match(missing.error ?? "", /no current QA approval/);
+    db.tables.qa_reviews = [
+      { claim_id: "aaa1", decision: "approve", created_at: "2026-09-28T11:00:00Z" },
+      { claim_id: "aaa1", decision: "wip", created_at: "2026-09-29T11:00:00Z" },
+    ];
+    const superseded = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.equal(superseded.ok, false);
+    assert.match(superseded.error ?? "", /no current QA approval/);
+    assert.equal(d.sent.length, 0);
+  });
   await t("a completed packet without agent review cannot reach the firm", async () => {
     const a = agreement("unreviewed", "4999", { claim_id: "aaa1", agent_reviewed_at: null });
     const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [a] });
@@ -515,6 +540,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
       claims: [claimRow("aaa1", "ca01", { answers: { wreck_city: "Reno" } }), claimRow("bbb2", "cb02", { answers: { wreck_city: "Boise" } })],
       campaigns: [camp("ca01"), camp("cb02", { attach_intake_pdf: true, attach_intake_csv: true })],
       esign_submissions: [a.row], signable_documents: [], retainers: [], firm_deliveries: [],
+      qa_reviews: [{ lead_id: L, claim_id: "bbb2", decision: "approve", created_at: "2026-09-28T11:00:00Z" }],
       intake_forms: [{ campaign_id: "cb02", status: "published", version: 1, fields: [{ id: "wreck_city", kind: "text", label: "Crash city" }] }],
     }, { storage });
     const d = deps(db, { loadBundle: loadIntakeBundle });

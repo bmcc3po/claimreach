@@ -29,6 +29,18 @@ export async function POST(req: NextRequest) {
   const v = validateDispo(raw);
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
   const d = v.value;
+  // The signed-call notice is for the active owners shown by the Desk. It is
+  // not a second free-form case export path around /api/calls/email's export
+  // permission. Check before changing status or closing the call.
+  if (d.notify.length && me.role !== "owner") {
+    const { data: owners, error: ownersError } = await sb.from("app_users")
+      .select("email").eq("role", "owner").eq("active", true);
+    if (ownersError) return NextResponse.json({ error: "The owner notification list is unavailable. Nothing was closed." }, { status: 503 });
+    const allowed = new Set((owners ?? []).map((o: any) => String(o.email || "").trim().toLowerCase()).filter(Boolean));
+    if (d.notify.some((address) => !allowed.has(address))) {
+      return NextResponse.json({ error: "Signed-call notices can only go to active ClaimReach owners. Nothing was closed." }, { status: 403 });
+    }
+  }
 
   const context = await resolveSigningMatter(sb, leadId, {
     claimId: raw?.claim_id ? String(raw.claim_id) : null,
