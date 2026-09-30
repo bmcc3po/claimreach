@@ -1,6 +1,14 @@
 // Where the App lives. One definition, so a rename is one line.
 export const APP_HOME = "/app";
 export const appLead = (id: string) => `${APP_HOME}/${id}`;
+/** Staff review stays inside the Desk; owners keep the full case record. */
+export function caseFileHref(role: string, id: string, claimId?: string | null): string {
+  const q = new URLSearchParams();
+  if (claimId) q.set("claim", claimId);
+  if (role !== "owner") q.set("review", "1");
+  return `${role === "owner" ? "/leads" : APP_HOME}/${encodeURIComponent(id)}${q.size ? `?${q}` : ""}`;
+}
+export const OPEN_DESK_FILE_EVENT = "cr:open-desk-file";
 /** The link LawRuler puts in its new-lead text: /app/lr/<LawRuler lead ID>. */
 export const appLawRuler = (leadId: string) => `${APP_HOME}/lr/${encodeURIComponent(leadId)}`;
 

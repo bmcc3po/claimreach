@@ -8,6 +8,7 @@ import * as signing from "./mva-call/signing-matter";
 import * as matter from "./matter";
 import * as notes from "./file-notes";
 import * as sendAttempt from "./mva-call/send-attempt";
+import { SIGNED_QA_RETURN_STATUS } from "./statuses";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as jsxRuntime from "react/jsx-runtime";
@@ -41,7 +42,7 @@ function route(file: string, db: any) {
     "@/lib/mva-call/agreement-names": { agreementName: () => "Synthetic agreement" },
     "@/lib/mva-call/send-attempt": sendAttempt,
     "@/lib/claim-status": { loadStatuses: async () => [] },
-    "@/lib/statuses": { resolveStatus: (status: string) => ({ label: status, tone: "neutral" }) },
+    "@/lib/statuses": { SIGNED_QA_RETURN_STATUS, resolveStatus: (status: string) => ({ label: status, tone: "neutral" }) },
     "@/lib/lawruler-recovery": { loadLawRulerProvenance: async () => null },
     "@/lib/retainer-tokens": {}, "@/lib/audit": { recordAudit: async () => {} },
     "@/lib/gate": { gateUser: async () => ({ id: "agent", role: "agent", can: () => true }) },
@@ -84,9 +85,9 @@ function renderedFileText(data: any) {
   let hook = 0;
   const useState = (initial: any) => [hook++ === 0 ? data : initial, () => {}];
   const exp: any = {};
-  new Function("require", "exports", "useState", "useEffect", "useRef", "fmtWhen", "ContactCard", "LeadCard", "LawRulerSyncSummary", "FileStatusControl", code)(
+  new Function("require", "exports", "useState", "useEffect", "useRef", "fmtWhen", "ContactCard", "LeadCard", "LawRulerSyncSummary", "FileStatusControl", "SIGNED_QA_RETURN_STATUS", code)(
     (id: string) => { assert.equal(id, "react/jsx-runtime"); return jsxRuntime; },
-    exp, useState, () => {}, (initial: any) => ({ current: initial }), () => "", () => null, () => null, LawRulerSyncSummary, () => null,
+    exp, useState, () => {}, (initial: any) => ({ current: initial }), () => "", () => null, () => null, LawRulerSyncSummary, () => null, SIGNED_QA_RETURN_STATUS,
   );
   return renderToStaticMarkup(exp.render({ leadId: L, claimId: B, lead: null,
     noteDraft: { body: "", scope: "call", saving: false, error: "" }, updateNoteDraft: () => {},

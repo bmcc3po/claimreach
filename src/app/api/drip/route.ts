@@ -5,7 +5,7 @@ import {
 } from "@/lib/drip-rules";
 import { gateUser } from "@/lib/gate";
 import { dripDispatchEnabled, dripOffResult, enrollLeadInDrips, mayManageDrips } from "@/lib/drip-dispatch";
-import { mayDispatchMvaAcquisition } from "@/lib/lawruler-mva-status";
+import { loadDueDripPage, inspectDueDrip, processDueDrips } from "@/lib/drip-scheduler";
 export const runtime = "edge";
 
 const RULE_COLS = "id, name, channel, every_days, template, assign_to, active, campaign, stage, step_key, delay_days, subject, kind, method_note, fire_once";
@@ -14,19 +14,26 @@ const RULE_COLS = "id, name, channel, every_days, template, assign_to, active, c
 // filters the rule table so Motel 6 is not mixed with unscoped TMT/prison rows.
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { data, error: dueError } = await sb.from("drips_due").select("*").limit(200);
-  if (dueError) return NextResponse.json({ error: dueError.message }, { status: 500 });
+  const me = await gateUser(sb);
+  if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!mayManageDrips(me)) return NextResponse.json({ error: "You do not have permission to manage drips." }, { status: 403 });
   const due: any[] = [];
   const held: { lead_id: string; reason: string }[] = [];
-  for (const row of data ?? []) {
-    const eligible = await mayDispatchMvaAcquisition(sb, { firmId: row.firm_id, leadId: row.lead_id, claimId: row.claim_id });
-    if (eligible.allowed) due.push(row);
-    else held.push({ lead_id: row.lead_id, reason: eligible.reason });
+  let preview = { limit: 200, truncated: false };
+  try {
+    const page = await loadDueDripPage(sb);
+    preview = { limit: page.limit, truncated: page.truncated };
+    for (const row of page.rows) {
+      const eligible = await inspectDueDrip(supabaseAdmin(), row);
+      if (eligible.allowed) due.push(row);
+      else held.push({ lead_id: row.lead_id, reason: eligible.reason });
+    }
+  } catch {
+    return NextResponse.json({ error: "Could not load or verify due drips. Retry before processing." }, { status: 503 });
   }
 
   const allQ = await sb.from("drip_rules").select("campaign");
+  if (allQ.error) return NextResponse.json({ error: "Could not load drip campaigns." }, { status: 503 });
   const campaignKeys = collectDripCampaignKeys(allQ.data ?? []);
 
   const clause = dripCampaignClause(new URL(req.url).searchParams.get("campaign"));
@@ -35,11 +42,12 @@ export async function GET(req: NextRequest) {
   if (clause.kind === "eq") q = q.eq("campaign", clause.value);
   const { data: rules, error } = await q.order("every_days");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ due, held, rules: sortDripRules(rules ?? []), campaign_keys: campaignKeys });
+  return NextResponse.json({ due, held, preview, rules: sortDripRules(rules ?? []), campaign_keys: campaignKeys,
+    sending: dripDispatchEnabled() ? "reminders_only" : "off", sms_ready: false, email_ready: false }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 // POST { op:'enroll', lead_id } — enroll a lead in active drip rules.
-// POST { op:'process' } — fire all due drips (text/email), advance next_due.
+// POST { op:'process' } — atomically record eligible note-only reminders.
 // Every op needs an ACTIVE account (gateUser treats a deactivated login as
 // signed out). enroll and process also need drips.manage; process also needs
 // the kill switch on (src/lib/drip-dispatch.ts).
@@ -78,7 +86,9 @@ export async function POST(req: NextRequest) {
       delay_days: every,
     };
     if (p.id) {
-      // Never re-key or un-scope a walker row. Campaign and step_key stay put.
+      // Editing wording must not move a shared or another firm's rule to the
+      // operator's profile firm. Campaign, step_key and firm scope stay put.
+      delete row.firm_id;
       const { error } = await admin.from("drip_rules").update(row).eq("id", p.id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ ok: true, id: p.id });
@@ -109,31 +119,13 @@ export async function POST(req: NextRequest) {
     // next_due moves. 409 so the button never reads it as a successful run.
     if (!dripDispatchEnabled()) return NextResponse.json(dripOffResult(), { status: 409 });
     const admin = supabaseAdmin();
-    const { data: due } = await sb.from("drips_due").select("*").limit(100);
-    let fired = 0;
-    const held: { lead_id: string; reason: string }[] = [];
-    for (const d of due ?? []) {
-      const eligible = await mayDispatchMvaAcquisition(admin, { firmId: d.firm_id, leadId: d.lead_id, claimId: d.claim_id });
-      if (!eligible.allowed) { held.push({ lead_id: d.lead_id, reason: eligible.reason }); continue; }
-      // Manual processing also runs server-side without forwarding the
-      // operator's session. Hold unwired channels instead of logging them as
-      // sent and silently advancing the cadence.
-      if (d.channel === "sms" || d.channel === "email") {
-        held.push({ lead_id: d.lead_id, reason: `${d.channel} delivery is not configured for scheduled drips.` });
-        continue;
-      }
-      // Log a note + advance next_due by cadence.
-      await admin.from("notes").insert({
-        firm_id: d.firm_id, lead_id: d.lead_id, author_name: "Drip",
-        scope: "file", body: `Auto ${d.channel} drip "${d.name}" fired.`,
-      });
-      await admin.from("drip_enrollments").update({
-        last_sent: new Date().toISOString(),
-        next_due: new Date(Date.now() + d.every_days * 86400000).toISOString().slice(0, 10),
-      }).eq("id", d.enrollment_id);
-      fired++;
+    try {
+      const page = await loadDueDripPage(sb, 100, new Date(), "call_reminder");
+      const result = await processDueDrips(admin, page.rows);
+      return NextResponse.json({ ...result, batch: { limit: page.limit, truncated: page.truncated } }, { status: result.ok ? 200 : 503 });
+    } catch {
+      return NextResponse.json({ ok: false, fired: 0, error: "Could not load or verify due drips. No successful run was recorded." }, { status: 503 });
     }
-    return NextResponse.json({ ok: true, fired, held });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });

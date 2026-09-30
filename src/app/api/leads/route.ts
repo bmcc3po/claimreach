@@ -8,6 +8,7 @@ import { coercePropCol } from "@/lib/claim-properties";
 import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
 import { isInternalRole } from "@/lib/permissions";
 import { manualIntakeStatusAllowed } from "@/lib/statuses";
+import { intakeStatusTransitionBlock } from "@/lib/intake-status-guard";
 
 export const runtime = "edge";
 
@@ -254,16 +255,34 @@ export async function POST(req: NextRequest) {
       }
     }
     const catalog = await sb.from("statuses").select("*");
-    if (catalog.error) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
+    if (catalog.error || !Array.isArray(catalog.data)) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
     const nextStatus = (catalog.data ?? []).find((item: any) => item.key === status);
     if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
     if (!manualIntakeStatusAllowed(nextStatus)) return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
+    // Refresh the exact authorized claim under RLS and bind the write to this
+    // snapshot. Privileged signature reads happen only after all access gates.
+    const snapshot = await sb.from("claims").select("id,lead_id,firm_id,campaign_id,status,updated_at")
+      .eq("id", context.matter.claim.id).eq("lead_id", context.lead.id).maybeSingle();
+    if (snapshot.error || !snapshot.data || typeof snapshot.data.updated_at !== "string" || !Number.isFinite(Date.parse(snapshot.data.updated_at)))
+      return NextResponse.json({ error: "Could not verify this matter's current version. Refresh before changing its status." }, { status: 503 });
+    if (snapshot.data.firm_id !== context.lead.firm_id || snapshot.data.campaign_id !== context.matter.claim.campaign_id)
+      return NextResponse.json({ error: "This matter's assignment changed. Refresh before changing its status." }, { status: 409 });
+    const trustedDb = supabaseAdmin();
+    try {
+      const blocked = await intakeStatusTransitionBlock(trustedDb, {
+        lead: context.lead, claim: snapshot.data, soleClaim: context.matter.sole,
+      }, catalog.data);
+      if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
+    } catch {
+      return NextResponse.json({ error: "Could not verify this matter's signed agreement evidence. Nothing was changed; refresh and try again." }, { status: 503 });
+    }
     const res = await setClaimStatusForLeads({
       leadIds: [context.lead.id], claimIds: [context.matter.claim.id],
+      expectedStatus: snapshot.data.status, expectedUpdatedAt: snapshot.data.updated_at,
       status, dqReasonKey: dq_reason_key ?? null, dqNote: dq_note ?? null,
       actorId: u.uid, actorName: u.full_name ?? "User", statuses: catalog.data,
-    }, { db: sb, queueReadDb: supabaseAdmin() });
-    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
+    }, { db: sb, queueReadDb: trustedDb });
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: /changed after|No claim was updated/.test(res.error || "") ? 409 : 400 });
     return NextResponse.json({ ok: true });
   }
 

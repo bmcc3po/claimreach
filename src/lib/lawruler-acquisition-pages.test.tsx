@@ -10,6 +10,7 @@ import * as statusModel from './statuses';
 import * as acquisition from './lawruler-mva-status';
 import * as signedReview from './mva-call/review-queue';
 import * as deskQueue from './mva-call/desk-queue';
+import * as deskLinks from './mva-call/links';
 
 const now = new Date().toISOString();
 const lead = (id: string, statuses: string[], kind = 'mva') => ({
@@ -18,7 +19,7 @@ const lead = (id: string, statuses: string[], kind = 'mva') => ({
   claims: statuses.map((status, i) => ({ id: `${id}-claim${i}`, lead_id: id, firm_id: 'firm', campaign_id: 'campaign', campaign: 'INNO MVA', claim_type: kind, status, created_at: now })),
 });
 function fixture(leads: any[]) {
-  const db = new FakeDb({ leads, claims: leads.flatMap(l => l.claims), statuses: DEFAULT_STATUSES, campaigns: [{ id: 'campaign', name: 'INNO MVA', firm_id: 'firm', firms: { slug: 'tmp' }, case_type: 'mva', active: true }],
+  const db = new FakeDb({ leads, claims: leads.flatMap(l => l.claims.map((c: any) => ({ ...c, leads: l, 'leads.campaign_id': l.campaign_id, 'leads.archived_at': l.archived_at }))), statuses: DEFAULT_STATUSES, campaigns: [{ id: 'campaign', name: 'INNO MVA', firm_id: 'firm', firms: { slug: 'tmp' }, case_type: 'mva', active: true }],
     firms: [{ id: 'firm', slug: 'tmp', name: 'Synthetic firm' }], app_users: [{ id: 'operator', role: 'agent', full_name: 'Synthetic operator' }], intake_calls: [], lead_activity: [], communications: [], esign_submissions: [], esign_templates: [] });
   const from = db.from.bind(db);
   db.from = ((table: string) => { const query: any = from(table); query.not = (column: string, op: string, value: any) => { assert.equal(op, 'is'); assert.equal(value, null); return query.neq(column, value); }; return query; }) as any;
@@ -36,7 +37,7 @@ function page(file: string, db: FakeDb) {
     'next/link': { __esModule: true, default: (props: any) => jsx.jsx('a', props) },
     '@/lib/supabase-server': { supabaseServer: async () => db }, '@/lib/auth-user': { authUser: async () => ({ data: { user: { id: 'operator' } } }) },
     '@/lib/mva-call/esign': { packetsFor: () => null }, '@/lib/docuseal': { docusealConfigured: () => false }, '@/lib/mva-call/dispo': { DISPO_LABEL: { callback: 'Call back' } },
-    '@/lib/mva-call/links': { APP_CASE_TYPES: ['mva'] }, '@/lib/questionnaire': { STAGE_LABELS: { referral_received: 'Referral received' } },
+    '@/lib/mva-call/links': deskLinks, '@/lib/questionnaire': { STAGE_LABELS: { referral_received: 'Referral received' } },
     '@/lib/lawruler-mva-status': acquisition, '@/lib/mva-call/review-queue': signedReview, '@/lib/mva-call/desk-queue': deskQueue, '@/components/calls/CallsHome': { __esModule: true, default: 'calls-home' },
     '@/lib/statuses': statusModel,
     '@/components/ui/StatusBadge': { __esModule: true, default: (props: any) => jsx.jsx('span', { children: props.status }) },
@@ -111,7 +112,7 @@ let count = 0; const test = async (name: string, fn: () => any) => { await fn();
     const motel = lead('motel', ['retained'], 'motel_trafficking');
     mixed.wip_pending = true; motel.wip_pending = true;
     const db = fixture([mixed, motel]);
-    for (const view of ['dial', 'mine', 'fix']) {
+    for (const view of ['dial', 'mine']) {
       const pilotHtml = renderToStaticMarkup(await page('(internal)/queue', db)({ searchParams: Promise.resolve({ view }) }));
       assert.match(pilotHtml, /\/app\/mixed-sibling\?claim=mixed-sibling-claim0/);
       assert.doesNotMatch(pilotHtml, /mixed-sibling-claim1/);
@@ -121,11 +122,26 @@ let count = 0; const test = async (name: string, fn: () => any) => { await fn();
     const ownerHtml = renderToStaticMarkup(await page('(internal)/queue', db)({ searchParams: Promise.resolve({ view: 'dial' }) }));
     assert.match(ownerHtml, /TEST-motel/);
   });
+  await test('Pending my fix uses signed QA-returned claim status, not stale lead flags or sibling state', async () => {
+    const unsigned = lead('unsigned-wip', ['wip']), stale = lead('stale-flag', ['new']), mixed = lead('mixed-fix', ['new', 'signed_wip']);
+    const outside = lead('outside-fix', ['new', 'signed_wip']), archived = lead('archived-fix', ['signed_wip']);
+    unsigned.wip_pending = true; stale.wip_pending = true;
+    mixed.wip_pending = false; outside.wip_pending = true;
+    outside.claims[1].campaign_id = 'other'; outside.claims[1].claim_type = 'motel_trafficking';
+    archived.archived_at = now as any;
+    const db = fixture([unsigned, stale, mixed, outside, archived]);
+    const html = renderToStaticMarkup(await page('(internal)/queue', db)({ searchParams: Promise.resolve({ view: 'fix' }) }));
+    assert.match(html, /TEST-mixed-fix/); assert.match(html, /\/app\/mixed-fix\?claim=mixed-fix-claim1&amp;review=1/);
+    assert.match(html, /Signed: WIP/); assert.match(html, /Pending my fix<span>1<\/span>/);
+    assert.doesNotMatch(html, /TEST-unsigned-wip|TEST-stale-flag|TEST-outside-fix|TEST-archived-fix|mixed-fix-claim0/);
+  });
   await test('actual My Work keeps assigned signed records visible and both queue modes exclude archives', async () => {
     const signed = lead('signed', ['signed_grievous']), archived = lead('archived', ['new']); archived.archived_at = now as any;
     const db = fixture([signed, archived]);
     const html = renderToStaticMarkup(await page('(internal)/queue', db)({ searchParams: Promise.resolve({ view: 'mine' }) }));
     assert.match(html, /TEST-signed/); assert.doesNotMatch(html, /TEST-archived/);
+    assert.match(html, /Signed: Finish intake/); assert.doesNotMatch(html, /Referral received/);
+    assert.match(html, /\/app\/signed\?claim=signed-claim0&amp;review=1/);
   });
   console.log(`${count} actual acquisition queue page tests passed`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { FakeDb } from './test-fake-db';
+import { manualIntakeStatusAllowed, isSignedKey } from './statuses';
+import * as transitionGuard from './intake-status-guard';
 
 const source = fs.readFileSync(path.resolve(__dirname, 'automation-exec.ts'), 'utf8');
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -12,16 +14,18 @@ for (const type of ['send_sms', 'send_email']) {
   const step = { type, config: { body: 'Synthetic message', subject: 'Synthetic email' } };
   const db = new FakeDb({
     automation_queue_due: [{ id: 'queued', run_id: 'run', automation_id: 'automation', lead_id: 'lead', firm_id: 'firm', step_index: 0, stop_conditions: [], steps: [step, { type: 'create_task' }] }],
-    automation_runs: [{ id: 'run', state: 'active', started_at: '2026-09-28T00:00:00Z' }],
-    automation_queue: [{ id: 'queued', state: 'pending' }],
+    automation_runs: [{ id: 'run', automation_id: 'automation', lead_id: 'lead', firm_id: 'firm', current_step: 0, state: 'active', started_at: '2026-09-28T00:00:00Z' }],
+    automation_queue: [{ id: 'queued', state: 'pending', run_at: '2026-01-01T00:00:00Z', run_id: 'run', automation_id: 'automation', lead_id: 'lead', firm_id: 'firm', step_index: 0 }],
+    automations: [{ id: 'automation', active: true, firm_id: 'firm', steps: [step, { type: 'create_task' }], stop_conditions: [] }],
     automation_events: [],
     leads: [{ id: 'lead', firm_id: 'firm', phone: '2025550100' }],
   });
   const mods: Record<string, any> = {
     '@/lib/supabase-server': { supabaseAdmin: () => db },
-    '@/lib/automation-engine': { clampToWindow: (date: Date) => date },
+    '@/lib/automation-engine': { automationStepRunAt: (_step: any, date: Date) => date, clampToWindow: (date: Date) => date, loadAutomationTarget: async () => ({ lead: db.tables.leads[0], claim: { id: 'claim', status: 'new' }, soleClaim: true, blocked: null }) },
     '@/lib/claim-status': { setClaimStatusForLeads: async () => ({ ok: true }) },
-    '@/lib/audit': { recordAudit: async () => {} },
+    '@/lib/statuses': { manualIntakeStatusAllowed, isSignedKey },
+    '@/lib/intake-status-guard': transitionGuard,
   };
   const exp: any = {};
   new Function('require', 'exports', 'fetch', code)((name: string) => {

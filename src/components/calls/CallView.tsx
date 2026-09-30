@@ -361,7 +361,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.sendLive) && (<>
 {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
 <div className="cc-steps">{(v.sendSteps || []).map((st: any, i32: number) => (<Fragment key={i32}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div>
-{v.canReplace && <div className="cc-card"><div className="cc-card-h">Send a correction</div><p className="cc-cue">The original stays in history. If the client signed it, the supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn cc-full" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></div>}
+{v.canReplace && <details className="cc-card"><summary className="cc-card-h">Correct this agreement</summary><p className="cc-cue">The original stays in history. If the client signed it, the supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn cc-full" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
 {!!(v.notSigned) && (<>
 <div className="cc-say">
 <div className="cc-say-label">{STAY.label}</div>

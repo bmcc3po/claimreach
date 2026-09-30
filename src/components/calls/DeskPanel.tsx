@@ -6,6 +6,7 @@ import Icon from "@/components/ui/Icon";
 import AgreementChoice from "./AgreementChoice";
 import LawRulerSyncSummary from "@/components/LawRulerSyncSummary";
 import FileStatusControl from "@/components/FileStatusControl";
+import { SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
@@ -49,6 +50,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   const [phoneOn, setPhoneOn] = useState(false);
   const [dialState, setDialState] = useState<DialerState>("loading");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [correctionFor, setCorrectionFor] = useState<string | null>(null);
   // File contents unmount when another tool opens. Keep unsaved notes above
   // that boundary, scoped to their exact lead and matter while this Desk lives.
   const [noteDrafts, setNoteDrafts] = useState<Record<string, FileNoteDraft>>({});
@@ -103,8 +105,8 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
       {tab === "summary" && !!summary && <div className="cc-side-b ws-side-b">{summary}</div>}
       {tab === "know" && <Knowledge v={v} phase={phase} fill={fill} focusLines={focusLines} />}
       {tab === "texts" && <Texts v={v} />}
-      {tab === "retainer" && <Retainer v={v} preview={preview} />}
-      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} caseSummary={caseSummary} noteDraft={noteDraft} updateNoteDraft={updateNoteDraft} sendHoldNotice={v.sendHoldNotice || ""} reconcileActions={v.reconcileActions || []} reconcileBusy={!!v.reconcileBusy} reconcileMessage={v.reconcileMessage || ""} onCorrect={() => setTab("retainer")} />}
+      {tab === "retainer" && <Retainer v={v} preview={preview} correctionOpen={correctionFor === claimId} onCorrectionToggle={(open) => setCorrectionFor(open ? claimId : null)} />}
+      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} canOpenClassic={v.agentRole === "owner"} caseSummary={caseSummary} noteDraft={noteDraft} updateNoteDraft={updateNoteDraft} sendHoldNotice={v.sendHoldNotice || ""} reconcileActions={v.reconcileActions || []} reconcileBusy={!!v.reconcileBusy} reconcileMessage={v.reconcileMessage || ""} onFinishOffice={v.reviewAgreement} beforeQaResubmit={v.beforeQaResubmit} onCorrect={() => { setCorrectionFor(claimId); setTab("retainer"); }} />}
       {tab === "tools" && <Tools v={v} story={story} />}
       {phoneOn && (
         <div className="cc-side-b cc-side-phone" hidden={tab !== "phone"}>
@@ -327,14 +329,13 @@ function Texts({ v }: { v: any }) {
   );
 }
 
-function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
+function Retainer({ v, preview, correctionOpen, onCorrectionToggle }: { v: any; preview: PreviewInfo; correctionOpen: boolean; onCorrectionToggle: (open: boolean) => void }) {
   const [reload, setReload] = useState(0);
   const missing = preview.checks.filter((c) => !c.ok && !c.later).length;
   if (!v.sendReady) return <div className="cc-side-b cc-side-ret">
     {!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>Signing actions paused</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
     <div className="cc-agreement-current"><span>{v.currentAgreement ? "Contract already sent" : "Sending agreement"}</span><strong>{v.currentAgreement?.label || "Preparing the selected contract…"}</strong></div>
-    <p className="cc-cue">The original stays in File history. Select and preview the corrected agreement, then report the error and send the replacement. A client-signed original is held for supervisor review before firm delivery.</p>
-    {v.canReplace && <><AgreementChoice v={v} />{preview.href && <a className="cc-btn" href={preview.href} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn" disabled={!preview.href || missing > 0 || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></>}
+    {v.canReplace && <details open={correctionOpen} onToggle={(event) => onCorrectionToggle(event.currentTarget.open)}><summary className="cc-chip">Correct this agreement</summary><p className="cc-cue">The original stays in File history. Select and preview the corrected agreement, then report the error and send the replacement. A client-signed original is held for supervisor review before firm delivery.</p><AgreementChoice v={v} />{preview.href && <a className="cc-btn" href={preview.href} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn" disabled={!preview.href || missing > 0 || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
     {v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>{v.voidLabel}</button>}
     {v.hasSendError && <div className="cc-cue cc-red" role="status">{v.sendError}</div>}
     {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review agreement actions</button>}
@@ -542,7 +543,7 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
   );
 }
 
-function FileTab({ leadId, claimId, lead, caseSummary, noteDraft, updateNoteDraft, sendHoldNotice, reconcileActions, reconcileBusy, reconcileMessage, onCorrect }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null; caseSummary?: ReactNode; noteDraft: FileNoteDraft; updateNoteDraft: (update: (draft: FileNoteDraft) => FileNoteDraft) => void; sendHoldNotice: string; reconcileActions: { label: string; go: () => void }[]; reconcileBusy: boolean; reconcileMessage: string; onCorrect: () => void }) {
+function FileTab({ leadId, claimId, lead, canOpenClassic, caseSummary, noteDraft, updateNoteDraft, sendHoldNotice, reconcileActions, reconcileBusy, reconcileMessage, onCorrect, onFinishOffice, beforeQaResubmit }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null; canOpenClassic: boolean; caseSummary?: ReactNode; noteDraft: FileNoteDraft; updateNoteDraft: (update: (draft: FileNoteDraft) => FileNoteDraft) => void; sendHoldNotice: string; reconcileActions: { label: string; go: () => void }[]; reconcileBusy: boolean; reconcileMessage: string; onCorrect: () => void; onFinishOffice?: () => void; beforeQaResubmit?: () => Promise<boolean> }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
   const noteInput = useRef<HTMLTextAreaElement | null>(null);
@@ -551,6 +552,10 @@ function FileTab({ leadId, claimId, lead, caseSummary, noteDraft, updateNoteDraf
   const [voidTarget, setVoidTarget] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [voidBusy, setVoidBusy] = useState(false);
+  const [qaBusy, setQaBusy] = useState(false);
+  const [qaMessage, setQaMessage] = useState("");
+  const qaRequest = useRef<{ review: string; id: string } | null>(null);
+  const qaInFlight = useRef(false);
   const load = async () => {
     try {
       const r = await fetch(`/api/calls/file?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`);
@@ -571,6 +576,24 @@ function FileTab({ leadId, claimId, lead, caseSummary, noteDraft, updateNoteDraf
       updateNoteDraft((draft) => ({ ...draft, body: draft.body === note && draft.scope === scope ? "" : draft.body, saving: false, error: "" }));
       await load();
     } catch (e: any) { updateNoteDraft((draft) => ({ ...draft, saving: false, error: e.message || "The note did not save." })); }
+  };
+  const resubmitQa = async () => {
+    if (qaInFlight.current || !d?.qa_return?.id || (d?.status?.key !== SIGNED_QA_RETURN_STATUS && !(d?.status?.key === "signed_qa" && d.qa_resubmit_retry))) return;
+    qaInFlight.current = true; setQaBusy(true); setQaMessage(""); setErr("");
+    try {
+      if (!beforeQaResubmit || !(await beforeQaResubmit())) throw new Error("Corrections did not finish saving. Resolve the save error before resubmitting.");
+      if (d.qa_resubmit_retry?.qa_review_id === d.qa_return.id) qaRequest.current = { review: d.qa_return.id, id: d.qa_resubmit_retry.request_id };
+      const priorRequest = qaRequest.current;
+      const request = priorRequest && priorRequest.review === d.qa_return.id ? priorRequest : { review: d.qa_return.id, id: crypto.randomUUID() };
+      qaRequest.current = request;
+      const r = await fetch("/api/calls/qa/resubmit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, qa_review_id: d.qa_return.id, request_id: request.id }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok || j.error) throw new Error(j.error || "The matter was not resubmitted. Retry this action.");
+      setD((current: any) => ({ ...current, status: { ...current.status, key: "signed_qa" }, qa_return: null, qa_resubmit_retry: null }));
+      setQaMessage("Resubmitted to QA. Your signed agreement and history are preserved.");
+      await load();
+    } catch (e: any) { setErr(e.message || "The matter was not resubmitted."); }
+    finally { qaInFlight.current = false; setQaBusy(false); }
   };
   // Owner/admin-only server action. The reason is collected inline because
   // browser-embedded desks may suppress native prompt dialogs.
@@ -597,6 +620,9 @@ function FileTab({ leadId, claimId, lead, caseSummary, noteDraft, updateNoteDraf
   };
   if (!d) return <div className="cc-side-b">{err ? <div className="cc-cue cc-red">{err}</div> : <div className="cc-cue" style={{ textAlign: "center", marginTop: 24 }}>Loading the file</div>}</div>;
   const L = d.lead || {};
+  const activeAgreement = d.agreements.find((a: any) => a.pax == null && !a.voided);
+  const replacementHold = d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided);
+  const awaitingOfficeSigner = !sendHoldNotice && !!activeAgreement && activeAgreement.status === "signed" && !!activeAgreement.agent_reviewed_at && !replacementHold;
   const row = (k: string, val: any) => (val ? <div className="cc-chk" key={k}><span className="cc-chk-k">{k}</span><span className="cc-chk-v">{val}</span></div> : null);
   const SCOPES: [string, string][] = [["call", "Call"], ["plaintiff", "PNC"], ["case", "Case"], ["file", "File"]];
   return (
@@ -606,6 +632,12 @@ function FileTab({ leadId, claimId, lead, caseSummary, noteDraft, updateNoteDraf
       <div className="cc-card cc-file-status-card">
         <FileStatusControl leadId={leadId} claimId={claimId} current={d.status?.key || "new"} onChanged={() => { void load(); }} />
       </div>
+      {qaMessage && <div className="cc-cue" role="status">{qaMessage}</div>}
+      {(d.status?.key === SIGNED_QA_RETURN_STATUS || (d.status?.key === "signed_qa" && d.qa_resubmit_retry)) && <div className="cc-card">
+        <div className="cc-card-h">{d.qa_resubmit_retry ? "QA resubmission needs a retry" : "Returned by QA"}</div>
+        <p className="cc-cue" style={{ whiteSpace: "pre-wrap" }}>{d.qa_return?.note || "QA feedback is unavailable. Refresh this file before resubmitting."}</p>
+        <button type="button" className="cc-btn cc-full" disabled={qaBusy || !d.qa_return?.id || !!sendHoldNotice} onClick={resubmitQa}>{qaBusy ? "Saving and resubmitting" : d.qa_resubmit_retry ? "Finish QA resubmission" : "Resubmit to QA"}</button>
+      </div>}
       {caseSummary}
       <div className="cc-file-quick-actions">
         <a className="cc-chip cc-sm" href={`/app/${encodeURIComponent(L.lead_no || leadId)}/print?claim=${encodeURIComponent(claimId)}`}>Print or email</a>
@@ -657,8 +689,9 @@ function FileTab({ leadId, claimId, lead, caseSummary, noteDraft, updateNoteDraf
         </div>
       )}
 
+      {awaitingOfficeSigner && onFinishOffice && <div className="cc-card"><div className="cc-card-h">Next: finish the retainer</div><p className="cc-cue">Review recorded. Check DOB and SSN in Retainer, then complete the office step.</p><button type="button" className="cc-btn cc-full" onClick={onFinishOffice}>Continue to office completion</button></div>}
       {/\bMVA\b/i.test(String(L.campaign || "")) && <FirmHandoff leadId={leadId} claimId={claimId}
-        awaitingOfficeSigner={(() => { const active = d.agreements.find((a: any) => a.pax == null && !a.voided); return !sendHoldNotice && !!active && active.status === "signed" && !!active.agent_reviewed_at && !d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided); })()}
+        awaitingOfficeSigner={awaitingOfficeSigner}
         hasSignedPacket={(() => { const active = d.agreements.find((a: any) => a.pax == null && !a.voided); return !sendHoldNotice && !!active && active.status === "completed" && !!active.agent_reviewed_at && !!active.signed_url && !!active.cert_url && !d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided); })()} />}
 
       <div className="cc-rb-h">Notes</div>
@@ -704,7 +737,7 @@ function FileTab({ leadId, claimId, lead, caseSummary, noteDraft, updateNoteDraf
           ))}
         </div>
       )}
-      {d.classic && <a className="cc-cue" style={{ margin: "4px", textAlign: "center" }} href={`/leads/${encodeURIComponent(L.lead_no || leadId)}?claim=${encodeURIComponent(claimId)}`}>Open full case record</a>}
+      {canOpenClassic && d.classic && <a className="cc-cue" style={{ margin: "4px", textAlign: "center" }} href={`/leads/${encodeURIComponent(L.lead_no || leadId)}?claim=${encodeURIComponent(claimId)}`}>Open full case record</a>}
     </div>
   );
 }
@@ -760,7 +793,7 @@ function FirmHandoff({ leadId, claimId, hasSignedPacket, awaitingOfficeSigner }:
         {sent ? <div className="cc-cue">Sent {fmtWhen(state.firm_sent_at)}. The App will not resend this matter.</div>
           : dispatchPending ? <div className="cc-cue cc-red">The last delivery outcome needs owner review. Do not resend.</div>
           : !hasSignedPacket ? <div className="cc-cue">{awaitingOfficeSigner
-            ? "The client signed, but Intake has not finished the second signer. Check the DOB and securely saved SSN on the File step; enter any missing information and complete the agreement. Wait for the signed PDF and audit trail to store before delivery."
+            ? "The client signed. Check DOB and securely saved SSN in Retainer, then complete the office step. The signed PDF and audit trail must be stored before delivery."
             : "A completed signed agreement and audit trail are required before handoff."}</div>
           : <><div className="cc-cue">Review the signed agreement and audit trail above, then send this matter once.</div>
             <button type="button" className="cc-btn cc-full" disabled={busy || !state.delivery?.to || !state.delivery?.firm} onClick={() => void send()}>{busy ? "Sending…" : "Send signed packet to firm"}</button></>}
