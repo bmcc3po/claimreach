@@ -24,12 +24,15 @@ function harness(raw: any = { story: { text: "Before" } }) {
   let handler: (body: any) => Promise<any> = async body => ({ call_id: "call", answers: body.answers });
   const env: Record<string, any> = { ...refs, engine, init: { leadId: "lead", claimId: "claim" }, applyAnswerDelta, isAnswerObject,
     post: async (_url: string, body: any) => { sent.push(body); return handler(body); },
-    setSavedAt: noop, setTimeout: (fn: any) => { timers.push(fn); return timers.length; }, clearTimeout: noop,
+    setSavedAt: noop, setTimeout: (fn: any, delay: number) => { timers.push({ fn, delay, cancelled: false }); return timers.length; }, clearTimeout: (id: number) => { if (timers[id - 1]) timers[id - 1].cancelled = true; },
     window: { dispatchEvent: noop }, CustomEvent: class {}, console: { error: noop },
   };
   const exp: any = {};
   new Function("exports", ...Object.keys(env), code)(exp, ...Object.values(env));
-  return { engine, ...refs, sent, timers, save: () => exp.save(JSON.stringify(engine.persistable())), flush: exp.flushSave, respond: (f: typeof handler) => { handler = f; } };
+  return { engine, ...refs, sent, timers, save: () => exp.save(JSON.stringify(engine.persistable())), flush: exp.flushSave, respond: (f: typeof handler) => { handler = f; },
+    runTimer: () => { const timer = timers.find(t => !t.cancelled); assert.ok(timer, "a pending save timer"); timer.cancelled = true; timer.fn(); },
+    pendingTimers: () => timers.filter(t => !t.cancelled),
+  };
 }
 let count = 0;
 async function check(name: string, fn: () => Promise<void>) { await fn(); count++; console.log("ok", name); }
@@ -67,6 +70,90 @@ async function main() {
     assert.deepEqual(h.sent[1].base_answers, { story: { text: "First edit", city: "Austin, TX" } });
     assert.deepEqual(h.sent[1].answers, { story: { text: "Second edit", city: "Austin, TX" } });
   });
+  await check("overlapping stage navigation and late typing drain the newest snapshot without another edit", async () => {
+    const h = harness(), releases: ((value: any) => void)[] = [];
+    h.respond(() => new Promise(resolve => { releases.push(resolve); }));
+    h.engine.setView("steps");
+    h.engine.renderVals().fi.step.next.go();
+    const first = h.save();
+    h.engine.renderVals().fi.step.next.go();
+    assert.equal(await h.save(), false, "the newer debounce cannot overlap request A");
+    h.engine.set("story", "text", "Edit B while request A waits");
+    releases[0]({ answers: h.sent[0].answers }); await first;
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.pendingTimers().length, 1, "success replaces the lost debounce with a drain");
+    h.runTimer();
+    assert.equal(h.sent.length, 2);
+    assert.equal(h.sent[1].answers.at, "insurance", "latest stage position is included");
+    assert.equal(h.sent[1].answers.story.text, "Edit B while request A waits");
+    h.engine.set("story", "text", "Late edit C while request B waits");
+    assert.equal(await h.save(), false);
+    releases[1]({ answers: h.sent[1].answers });
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    assert.equal(h.pendingTimers().length, 1);
+    h.runTimer();
+    assert.equal(h.sent.length, 3);
+    assert.equal(h.sent[2].answers.story.text, "Late edit C while request B waits");
+    releases[2]({ answers: h.sent[2].answers });
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    assert.equal(h.pendingTimers().length, 0, "an equal acknowledged snapshot does not loop");
+    assert.equal(h.lastSaved.current, JSON.stringify(h.engine.persistable()));
+    assert.equal(h.saving.current, false);
+  });
+  await check("canonical object key order alone cannot create an extra save", async () => {
+    const h = harness({ story: { text: "Before", city: "Synthetic City" } });
+    const sort = (value: any): any => Array.isArray(value) ? value.map(sort) : isAnswerObject(value)
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, sort(value[key])])) : value;
+    h.engine.setView("steps"); h.engine.renderVals().fi.step.next.go();
+    h.respond(async body => ({ answers: sort(body.answers) }));
+    assert.equal(await h.save(), true);
+    assert.equal(h.lastSaved.current, JSON.stringify(h.engine.persistable()));
+    assert.equal(h.pendingTimers().length, 0);
+  });
+  await check("disposition flush waits for edits made during its request before allowing call completion", async () => {
+    const h = harness(), releases: ((value: any) => void)[] = [];
+    h.respond(() => new Promise(resolve => { releases.push(resolve); }));
+    h.engine.set("story", "text", "Edit A");
+    let complete = false;
+    const pending = h.flush().then((saved: boolean) => { complete = true; return saved; });
+    h.engine.set("story", "text", "Edit B during flush A");
+    releases[0]({ answers: h.sent[0].answers });
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    assert.equal(complete, false, "acknowledging A cannot let disposition close over B");
+    assert.equal(h.sent.length, 2);
+    assert.equal(h.sent[1].answers.story.text, "Edit B during flush A");
+    assert.equal(h.pendingTimers().length, 0, "flush owns the next write instead of racing a drain timer");
+    h.engine.set("story", "text", "Late edit C during flush B");
+    releases[1]({ answers: h.sent[1].answers });
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    assert.equal(complete, false);
+    assert.equal(h.sent.length, 3);
+    assert.equal(h.sent[2].answers.story.text, "Late edit C during flush B");
+    releases[2]({ answers: h.sent[2].answers });
+    assert.equal(await pending, true);
+    assert.equal(h.lastSaved.current, JSON.stringify(h.engine.persistable()));
+    assert.equal(h.pendingTimers().length, 0);
+    assert.equal(await h.flush(), true);
+    assert.equal(h.sent.length, 3, "already acknowledged data does not write again");
+  });
+  await check("flush stops after a failed late-edit save and preserves retry or conflict protection", async () => {
+    for (const conflict of [false, true]) {
+      const h = harness(); let release!: (value: any) => void;
+      h.engine.set("story", "text", "Edit A");
+      h.respond(() => new Promise(resolve => { release = resolve; }));
+      const pending = h.flush();
+      h.engine.set("story", "text", "Edit B survives failed flush");
+      h.respond(async () => { const error: any = Error("Synthetic flush failure"); error.conflict = conflict; throw error; });
+      release({ answers: h.sent[0].answers });
+      assert.equal(await pending, false);
+      assert.equal(h.sent.length, 2);
+      assert.equal(h.engine.state.story.text, "Edit B survives failed flush");
+      assert.notEqual(h.lastSaved.current, JSON.stringify(h.engine.persistable()));
+      assert.equal(h.pendingTimers().length, conflict ? 0 : 1);
+      if (!conflict) assert.equal(h.pendingTimers()[0].delay, 4000);
+      assert.equal(h.saveBlocked.current, conflict);
+    }
+  });
   await check("actual failed save retains baseline and schedules retry without declaring saved", async () => {
     const h = harness(), before = h.lastSaved.current;
     h.engine.set("story", "text", "Unsaved"); h.respond(async () => { throw Error("Synthetic failure"); });
@@ -79,6 +166,23 @@ async function main() {
     assert.equal(await h.save(), false); assert.equal(h.saveBlocked.current, true); assert.equal(h.timers.length, 0);
     assert.equal(h.engine.state.story.text, "Mine"); assert.match(h.engine.state.net.saveError, /story.text/);
     assert.equal(await h.flush(), false); assert.equal(h.sent.length, 1);
+  });
+  await check("a failed or conflicting in-flight request never starts the success drain", async () => {
+    for (const conflict of [false, true]) {
+      const h = harness(); let reject!: (error: any) => void;
+      h.engine.set("story", "text", "First edit");
+      h.respond(() => new Promise((_resolve, fail) => { reject = fail; }));
+      const request = h.save();
+      h.engine.set("story", "text", "Newer edit remains");
+      assert.equal(await h.save(), false);
+      const error: any = Error("Synthetic failed request"); error.conflict = conflict;
+      reject(error); assert.equal(await request, false);
+      assert.equal(h.engine.state.story.text, "Newer edit remains");
+      assert.equal(h.sent.length, 1);
+      assert.equal(h.pendingTimers().length, conflict ? 0 : 1);
+      if (!conflict) assert.equal(h.pendingTimers()[0].delay, 4000, "normal retry backoff survives");
+      assert.equal(h.saveBlocked.current, conflict);
+    }
   });
   await check("partial failure retains returned call identity for retry instead of creating another session", async () => {
     const h = harness(); h.engine.set("story", "text", "Edited");
