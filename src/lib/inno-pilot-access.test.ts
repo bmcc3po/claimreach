@@ -14,6 +14,10 @@ for (const path of ["/api/calls/esign-setup", "/api/export", "/api/console", "/a
   assert.equal(pilotStaffApiAllowed(path), false, path);
 }
 console.log("pilot route fence passed");
+assert.equal(pilotStaffApiAllowed("/api/case/details", "POST"), true);
+for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE"])
+  assert.equal(pilotStaffApiAllowed("/api/case/details", method), false);
+console.log("pilot case-details write is an exact POST exception");
 for (const path of ["/api/statuses", "/api/dq-reasons"]) {
   for (const method of ["GET", "HEAD"]) assert.equal(pilotStaffApiAllowed(path, method), true);
   for (const method of ["POST", "PUT", "PATCH", "DELETE"]) assert.equal(pilotStaffApiAllowed(path, method), false);
@@ -24,3 +28,4 @@ for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE"]) assert.equal(pil
 for (const path of ["/api/me/password/other", "/api/me/profile", "/api/me/password-reset"]) assert.equal(pilotStaffApiAllowed(path, "POST"), false);
 assert.equal(pilotStaffPageAllowed("/set-password/other"), false);
 console.log("pilot password change exception is exact and POST-only");
+
