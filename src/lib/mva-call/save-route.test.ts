@@ -7,6 +7,7 @@ import { FakeDb } from "../test-fake-db";
 import * as matter from "../matter";
 import * as merge from "./answer-merge";
 import * as server from "./server";
+import * as mailTimeZone from "../mail-time-zone";
 
 globalThis.fetch = async () => { throw Error("Network forbidden"); };
 const L = "10000000-0000-4000-8000-000000000001", C = "20000000-0000-4000-8000-000000000001";
@@ -20,6 +21,7 @@ function route(db: FakeDb, trustedDb: FakeDb = db) {
     "next/server": { NextResponse: { json: (body: any, o: any = {}) => ({ body, status: o.status ?? 200 }) } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => trustedDb },
     "@/lib/matter": matter, "@/lib/mva-call/answer-merge": merge,
+    "@/lib/mail-time-zone": mailTimeZone,
     "@/lib/mva-call/server": { ...server, requireStaff: async () => ({ id: "agent", name: "Synthetic Agent" }) },
   };
   const source = fs.readFileSync(path.resolve(__dirname, "../../app/api/calls/save/route.ts"), "utf8");
@@ -46,6 +48,15 @@ function classicRoute(db: FakeDb) {
 let count = 0;
 async function check(name: string, fn: () => Promise<void>) { await fn(); count++; console.log("ok", name); }
 async function main() {
+  await check("first saved MVA call records the intake agent and mailing time zone", async () => {
+    const db = world();
+    db.tables.leads[0].mail_state = "TX";
+    db.tables.leads[0].mail_zip = "76262";
+    const r = await route(db)();
+    assert.equal(r.status, 200);
+    assert.equal(db.tables.leads[0].intake_agent_id, "agent");
+    assert.equal(db.tables.leads[0].client_time_zone, "America/Chicago");
+  });
   await check("autosave merges agent change with existing import and unrelated claim keys", async () => {
     const db = world({ lawruler_presign: { version: 1 } });
     db.tables.claims[0].answers.mva_call.story.city = "Austin, TX";
@@ -149,3 +160,4 @@ async function main() {
   console.log(`${count} passed`);
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });
+
