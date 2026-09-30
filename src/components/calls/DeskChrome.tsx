@@ -4,7 +4,10 @@
 // top with search, new call and the full site. On a phone neither is shown (the
 // App's own back arrow and home screen do that job).
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import Icon from "@/components/ui/Icon";
+import SignOut from "@/components/SignOut";
+import { OPEN_DESK_FILE_EVENT } from "@/lib/mva-call/links";
 
 const fmtPhone = (raw?: string | null) => {
   const d = String(raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
@@ -41,16 +44,17 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
 
   const go = (r: any) => { window.location.href = `/app/${encodeURIComponent(r.lead_no || r.id)}`; };
   const [path, setPath] = useState("");
-  useEffect(() => { setPath(window.location.pathname + window.location.search); }, []);
-  const agent = role === "agent";
+  const pathname = usePathname();
+  useEffect(() => { setPath(pathname + window.location.search); }, [pathname]);
+  const owner = role === "owner";
   const links = [
     { href: "/dashboard", icon: "home", label: "Dashboard" },
     { href: "/app", icon: "mobile", label: "Desk" },
-    { href: "/leads", icon: "files", label: "Leads" },
-    { href: "/signed", icon: "signed", label: "Signed" },
+    { href: owner ? "/leads" : "/app?tab=new", icon: "files", label: owner ? "Leads" : "New leads" },
+    { href: owner ? "/signed" : "/app?tab=signed", icon: "signed", label: "Signed" },
     { href: "/queue", icon: "queue", label: "My queue" },
   ];
-  const on = (h: string) => h === "/app" ? (path === "/app" || (path.startsWith("/app") && !path.includes("new=1"))) : path.startsWith(h);
+  const on = (h: string) => h === "/app" ? (path === "/app" || path.startsWith("/app/")) : path.startsWith(h);
   const initials = (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
   return (
     <>
@@ -64,7 +68,13 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
             <Icon name={l.icon} size={19} /><span>{l.label}</span>
           </a>
         ))}
-        <a className="cd-me" href="/profile" title={`${name || "You"}, profile`} aria-label="Your profile">{initials}</a>
+        {owner ? <a className="cd-me" href="/profile" title={`${name || "You"}, profile`} aria-label="Your profile">{initials}</a>
+          : <details style={{ marginTop: "auto", position: "relative" }}>
+            <summary className="cd-me" title={`${name || "You"}, account menu`} aria-label="Account menu" style={{ cursor: "pointer", listStyle: "none" }}>{initials}</summary>
+            <div style={{ position: "absolute", bottom: 0, left: 42, minWidth: 180, padding: 12, border: "1px solid #CCD6E3", borderRadius: 8, background: "white", color: "#16324F", boxShadow: "0 4px 18px #102B4926" }}>
+              <div style={{ marginBottom: 8, fontWeight: 600 }}>{name || "Signed in"}</div><SignOut />
+            </div>
+          </details>}
       </nav>
       <header className="cc-chrome">
         <span className="cd-title">{path.includes("new=1") ? "New call" : "ClaimReach Desk"}</span>
@@ -98,7 +108,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
           )}
         </div>
         <a className="cc-chrome-new" href="/app?new=1"><Icon name="headset" size={16} />New call</a>
-        <FullSiteLink />
+        <FullSiteLink owner={owner} />
       </header>
     </>
   );
@@ -106,17 +116,20 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
 
 // On a call file (/app/TMP-1181), Full site opens THAT file's classic page
 // instead of dumping the user on the dashboard (Astra review, Sep 27).
-function FullSiteLink() {
+function FullSiteLink({ owner }: { owner: boolean }) {
   const [href, setHref] = useState("/dashboard");
+  const pathname = usePathname();
   useEffect(() => {
+    setHref("/dashboard");
     try {
-      const m = window.location.pathname.match(/^\/app\/([^\/]+)$/);
+      const m = pathname.match(/^\/app\/([^\/]+)$/);
       if (m && m[1] && !["new", "search"].includes(m[1])) {
         const q = new URLSearchParams(window.location.search);
         q.delete("text"); q.delete("classic");
         setHref(`/leads/${encodeURIComponent(decodeURIComponent(m[1]))}${q.size ? `?${q}` : ""}`);
       }
     } catch { /* keep the dashboard */ }
-  }, []);
+  }, [pathname]);
+  if (!owner && href !== "/dashboard") return <button type="button" className="cc-chrome-link" onClick={() => window.dispatchEvent(new Event(OPEN_DESK_FILE_EVENT))}><Icon name="files" size={16} />Review case</button>;
   return <a className="cc-chrome-link" href={href}><Icon name={href === "/dashboard" ? "home" : "files"} size={16} />{href === "/dashboard" ? "Dashboard" : "Review case"}</a>;
 }

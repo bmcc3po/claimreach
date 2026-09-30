@@ -6,6 +6,7 @@ import { computeAlerts, type Alert } from "@/lib/alerts";
 import { resolveStatus } from "@/lib/statuses";
 import { caseName, prettyPhone } from "@/lib/case-name";
 import HomeView, { type HomeData } from "@/components/home/HomeView";
+import { caseFileHref } from "@/lib/mva-call/links";
 
 // Days, "today" and the greeting follow the office clock, not the server's.
 const TZ = "America/Chicago";
@@ -56,24 +57,31 @@ export default async function Dashboard() {
     scopeClaim(sb.from("claims").select("id, leads!inner(archived_at)", { count: "exact", head: true }).is("leads.archived_at", null).in("status", ["new", "contacting"])),
     scopeLead(sb.from("leads").select("id", { count: "exact", head: true }).gte("signed_at", weekAgo).is("archived_at", null)),
     scopeLead(sb.from("leads").select("id, created_at").gte("created_at", since).is("archived_at", null).limit(5000)),
-    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, claims(status, campaign, campaign_id)")
+    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, claims(id, status, campaign, campaign_id)")
       .is("archived_at", null).order("updated_at", { ascending: false }).limit(8)),
     sb.from("statuses").select("*").eq("active", true),
     pilot ? Promise.resolve({ data: [] }) : sb.from("boards").select("*").order("sort_order"),
     pilot ? Promise.resolve({ data: [] }) : sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60),
-    scopeClaim(sb.from("claims").select("lead_id, campaign, leads!inner(claimant_name, lead_no, archived_at)").is("leads.archived_at", null).eq("supervisor_flag", true).limit(10)),
-    scopeClaim(sb.from("claims").select("lead_id, updated_at, leads!inner(claimant_name, lead_no, archived_at)")
+    scopeClaim(sb.from("claims").select("id, lead_id, campaign, leads!inner(claimant_name, lead_no, archived_at)").is("leads.archived_at", null).eq("supervisor_flag", true).limit(10)),
+    scopeClaim(sb.from("claims").select("id, lead_id, updated_at, leads!inner(claimant_name, lead_no, archived_at)")
       .is("leads.archived_at", null).in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).order("updated_at", { ascending: true }).limit(12)),
-    scopeClaim(sb.from("claims").select("lead_id, tier, tier_letter, tier_number, leads!inner(claimant_name, lead_no, archived_at)")
+    scopeClaim(sb.from("claims").select("id, lead_id, tier, tier_letter, tier_number, leads!inner(claimant_name, lead_no, archived_at)")
       .is("leads.archived_at", null).in("tier_letter", ["A", "B"]).in("status", ["new", "contacting", "qa", "signed_qa", "approved"]).limit(12)),
-    scopeClaim(sb.from("claims").select("lead_id, updated_at, leads!inner(claimant_name, lead_no, archived_at)")
+    scopeClaim(sb.from("claims").select("id, lead_id, updated_at, leads!inner(claimant_name, lead_no, archived_at)")
       .is("leads.archived_at", null).in("status", ["approved", "signed_approved"]).lt("updated_at", dayAgo).order("updated_at", { ascending: true }).limit(12)),
   ]);
 
   const allowedAlertIds = new Set<string>();
+  const alertClaimIds = new Map<string, string>();
   if (pilot) {
-    const { data: allowed } = await sb.from("leads").select("id").eq("campaign_id", pilotCampaignId).is("archived_at", null).limit(1000);
-    for (const row of allowed ?? []) allowedAlertIds.add(row.id);
+    const { data: allowed } = await sb.from("leads").select("id, claims(id, campaign_id)").eq("campaign_id", pilotCampaignId).is("archived_at", null).limit(1000);
+    for (const row of allowed ?? []) {
+      allowedAlertIds.add(row.id);
+      const claims = (row.claims ?? []).filter((c: any) => c.campaign_id === pilotCampaignId);
+      // A lead-level alert does not identify a sibling matter. Preserve an
+      // exact sole match; otherwise let the Desk's matter chooser ask.
+      if (claims.length === 1) alertClaimIds.set(row.id, claims[0].id);
+    }
   }
   const visibleAlerts = pilot ? alerts.filter(a => allowedAlertIds.has(a.lead_id)) : alerts;
 
@@ -98,20 +106,20 @@ export default async function Dashboard() {
   const waited = (ts?: string | null) => { const h = hrs(ts); return h >= 48 ? `${Math.round(h / 24)} days` : `${h}h`; };
 
   const needs: HomeData["needs"] = [
-    ...(flagged ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), why: "Flagged for a supervisor", tone: "bad" as const })),
+    ...(flagged ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), href: caseFileHref(role, leadKey(c.leads, c.lead_id), c.id), name: nameOf(c.leads), why: "Flagged for a supervisor", tone: "bad" as const })),
     ...visibleAlerts.map((a) => {
       const name = String(a.title || "").split(/\s+[—-]\s+/).slice(1).join(" ") || a.lead_no || "File";
-      return { key: a.lead_no || a.lead_id, name, why: `${WHY[a.kind] ?? "Needs a look"}, ${a.hours >= 48 ? `${Math.round(a.hours / 24)} days` : `${a.hours}h`}`, tone: a.severity === "bad" ? "bad" as const : "warn" as const };
+      return { key: a.lead_no || a.lead_id, href: caseFileHref(role, a.lead_no || a.lead_id, alertClaimIds.get(a.lead_id)), name, why: `${WHY[a.kind] ?? "Needs a look"}, ${a.hours >= 48 ? `${Math.round(a.hours / 24)} days` : `${a.hours}h`}`, tone: a.severity === "bad" ? "bad" as const : "warn" as const };
     }),
   ];
 
   const folds: HomeData["folds"] = [
     { id: "aging", title: "Waiting 2+ days for a first call", sub: "New or being contacted, nothing has moved",
-      rows: (agingIntake ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), right: waited(c.updated_at) })) },
+      rows: (agingIntake ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), href: caseFileHref(role, leadKey(c.leads, c.lead_id), c.id), name: nameOf(c.leads), right: waited(c.updated_at) })) },
     { id: "tier", title: "High tier, still open", sub: "Tier A and B files that are not signed yet",
-      rows: (highTier ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), right: c.tier || [c.tier_letter, c.tier_number].filter(Boolean).join("") })) },
+      rows: (highTier ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), href: caseFileHref(role, leadKey(c.leads, c.lead_id), c.id), name: nameOf(c.leads), right: c.tier || [c.tier_letter, c.tier_number].filter(Boolean).join("") })) },
     { id: "firm", title: "Qualified, waiting on the firm", sub: "Approved more than a day ago",
-      rows: (awaitingFirm ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), name: nameOf(c.leads), right: waited(c.updated_at) })) },
+      rows: (awaitingFirm ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), href: caseFileHref(role, leadKey(c.leads, c.lead_id), c.id), name: nameOf(c.leads), right: waited(c.updated_at) })) },
   ];
 
   const recentRows: HomeData["recent"] = (recent ?? []).map((l: any) => {
@@ -119,6 +127,7 @@ export default async function Dashboard() {
     const def = resolveStatus(c.status || "new", (statuses ?? []) as any);
     return {
       key: l.lead_no || l.id,
+      href: caseFileHref(role, l.lead_no || l.id, c.id),
       name: l.claimant_name || "No name yet",
       sub: [caseName(c.campaign, l.case_type), prettyPhone(l.phone), l.lead_no].filter(Boolean).join("   "),
       status: def.label,
@@ -132,6 +141,8 @@ export default async function Dashboard() {
 
   const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", hourCycle: "h23" }).format(now));
   const data: HomeData = {
+    links: pilot ? { add: "/app?new=1", all: "/app", fresh: "/app?tab=new", open: "/app?tab=calling", signed: "/app?tab=signed" }
+      : { add: "/intake", all: "/leads", fresh: "/leads", open: "/leads", signed: "/signed" },
     greeting: hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening",
     first: (me?.full_name || "").split(" ")[0] || "",
     dateLabel: now.toLocaleDateString("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }),

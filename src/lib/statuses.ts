@@ -36,7 +36,7 @@ export const DEFAULT_STATUSES: StatusDef[] = [
   { key: "esign_sent",      label: "e-Sign Sent",         track: "esign",    phase: "pre_qa",   tone: "warn", side: "agent",  qualify: "undetermined", requires_esign: true,  billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 30,  system_locked: true },
   { key: "external_signed_review", label: "LawRuler signing: verify packet", track: "esign", phase: "in_qa", tone: "warn", side: "owner", qualify: "undetermined", requires_esign: false, billable: false, unlocks_firm: false, is_final: true, lawruler_group: "Wanted/Chasing", sort: 35, system_locked: true },
   { key: "external_dq_review", label: "DQ: reason missing", track: "terminal", phase: "terminal", tone: "bad", side: "owner", qualify: "disqualify", requires_esign: false, billable: false, unlocks_firm: false, is_final: true, lawruler_group: "Rejected", sort: 36, system_locked: true },
-  { key: "signed_grievous", label: "Signed: Grievous",    track: "esign",    phase: "in_qa",    tone: "warn", side: "system", qualify: "undetermined", requires_esign: true,  billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 40,  system_locked: true },
+  { key: "signed_grievous", label: "Signed: Finish intake", track: "esign",    phase: "in_qa",    tone: "warn", side: "system", qualify: "undetermined", requires_esign: true,  billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 40,  system_locked: true },
   { key: "signed_qa",       label: "Signed: QA",          track: "esign",    phase: "in_qa",    tone: "warn", side: "qa",     qualify: "undetermined", requires_esign: true,  billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 50,  system_locked: true },
   { key: "signed_wip",      label: "Signed: WIP",         track: "esign",    phase: "in_qa",    tone: "warn", side: "agent",  qualify: "undetermined", requires_esign: true,  billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 60,  system_locked: true },
   { key: "signed_flag",     label: "Signed: Flag BMC",    track: "esign",    phase: "in_qa",    tone: "bad",  side: "owner",  qualify: "undetermined", requires_esign: true,  billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 70,  system_locked: true },
@@ -93,6 +93,8 @@ export function isBillable(key?: string, live?: StatusDef[]): boolean {
 export function inQaPhase(key?: string, live?: StatusDef[]): boolean {
   return resolveStatus(key, live).phase === "in_qa";
 }
+/** WIP in the INNO Desk means an already-signed file returned by QA. */
+export const SIGNED_QA_RETURN_STATUS = "signed_wip";
 export function needsQaReview(key?: string, live?: StatusDef[]): boolean {
   const def = resolveStatus(key, live);
   return def.phase === "in_qa" && def.key !== "wip" && def.key !== "signed_wip";

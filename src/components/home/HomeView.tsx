@@ -8,14 +8,15 @@ import { ago } from "@/lib/case-name";
 
 export type Tone = "good" | "bad" | "warn" | "info" | "neut";
 export interface HomeData {
+  links: { add: string; all: string; fresh: string; open: string; signed: string };
   greeting: string;
   first: string;
   dateLabel: string;
   kpis: { newToday: number; newYesterday: number; open: number; signed7: number; needs: number };
   series: { label: string; n: number; today: boolean }[];
-  needs: { key: string; name: string; why: string; tone: "bad" | "warn" }[];
-  folds: { id: string; title: string; sub: string; rows: { key: string; name: string; right: string }[] }[];
-  recent: { key: string; name: string; sub: string; status: string; tone: Tone; updated: string }[];
+  needs: { key: string; href: string; name: string; why: string; tone: "bad" | "warn" }[];
+  folds: { id: string; title: string; sub: string; rows: { key: string; href: string; name: string; right: string }[] }[];
+  recent: { key: string; href: string; name: string; sub: string; status: string; tone: Tone; updated: string }[];
   boards: { id: string; title: string; description: string | null; canPost: boolean; posts: { title?: string | null; body: string; author_name?: string | null; created_at: string }[] }[];
 }
 
@@ -38,6 +39,7 @@ function Ago({ ts }: { ts: string }) {
 
 export default function HomeView({ data }: { data: HomeData }) {
   const k = data.kpis;
+  const allLabel = data.links.all === "/app" ? "Desk queues" : "All leads";
   const total14 = data.series.reduce((a, b) => a + b.n, 0);
   return (
     <div>
@@ -47,24 +49,24 @@ export default function HomeView({ data }: { data: HomeData }) {
           <p className="cl-lede">{data.dateLabel}. {k.needs ? `${k.needs} ${k.needs === 1 ? "file needs" : "files need"} you.` : "Nothing is slipping."} {k.newToday ? `${k.newToday} new ${k.newToday === 1 ? "lead" : "leads"} today.` : ""}</p>
         </div>
         <div className="cl-acts">
-          <a className="cl-btn" href="/intake"><Icon name="userplus" size={16} />Add lead</a>
-          <a className="cl-btn" href="/leads"><Icon name="files" size={16} />All leads</a>
+          <a className="cl-btn" href={data.links.add}><Icon name="userplus" size={16} />Add lead</a>
+          <a className="cl-btn" href={data.links.all}><Icon name="files" size={16} />{allLabel}</a>
         </div>
       </div>
 
       <section className="cl-panel" aria-label="Today at a glance">
         <div className="cl-kpis">
-          <a className="cl-kpi" href="/leads">
+          <a className="cl-kpi" href={data.links.fresh}>
             <span className="cl-kpi-l">New today</span>
             <span className="cl-kpi-v">{k.newToday}</span>
             <span className="cl-kpi-f">{k.newYesterday} yesterday</span>
           </a>
-          <a className="cl-kpi" href="/leads">
+          <a className="cl-kpi" href={data.links.open}>
             <span className="cl-kpi-l">Open files</span>
             <span className="cl-kpi-v">{k.open}</span>
             <span className="cl-kpi-f">New or being contacted</span>
           </a>
-          <a className="cl-kpi" href="/signed">
+          <a className="cl-kpi" href={data.links.signed}>
             <span className="cl-kpi-l">Signed, last 7 days</span>
             <span className="cl-kpi-v">{k.signed7}</span>
             <span className="cl-kpi-f">Clients, not leads</span>
@@ -81,7 +83,7 @@ export default function HomeView({ data }: { data: HomeData }) {
         <div className="cl-col">
           <NeedsPanel rows={data.needs} />
           <SlippingPanel folds={data.folds} />
-          <RecentPanel rows={data.recent} />
+          <RecentPanel rows={data.recent} allHref={data.links.all} allLabel={allLabel} />
         </div>
         <div className="cl-col">
           <section className="cl-panel" aria-label="New leads, last 14 days">
@@ -124,7 +126,7 @@ function NeedsPanel({ rows }: { rows: HomeData["needs"] }) {
         <div>
           {rows.length === 0 && <div className="cl-empty"><b>All clear</b>Every file is inside its deadline.</div>}
           {shown.map((r, i) => (
-            <a key={r.key + i} className="cl-row" href={`/leads/${encodeURIComponent(r.key)}`}>
+            <a key={r.key + i} className="cl-row" href={r.href}>
               <span className={`cl-dot cl-${r.tone}`} />
               <span className="cl-row-m"><span className="cl-t1">{r.name}</span><span className="cl-t2">{r.why}</span></span>
               <span className="cl-row-r"><span className="cl-mono">{r.key}</span><span className="cl-go"><Icon name="right" size={16} /></span></span>
@@ -154,7 +156,7 @@ function SlippingPanel({ folds }: { folds: HomeData["folds"] }) {
             {on && (
               <div className="cl-fold-b">
                 {f.rows.map((r, i) => (
-                  <a key={r.key + i} className="cl-row" href={`/leads/${encodeURIComponent(r.key)}`}>
+                  <a key={r.key + i} className="cl-row" href={r.href}>
                     <span className="cl-row-m"><span className="cl-t1">{r.name}</span></span>
                     <span className="cl-row-r"><span>{r.right}</span><span className="cl-mono">{r.key}</span><span className="cl-go"><Icon name="right" size={16} /></span></span>
                   </a>
@@ -168,16 +170,16 @@ function SlippingPanel({ folds }: { folds: HomeData["folds"] }) {
   );
 }
 
-function RecentPanel({ rows }: { rows: HomeData["recent"] }) {
+function RecentPanel({ rows, allHref, allLabel }: { rows: HomeData["recent"]; allHref: string; allLabel: string }) {
   const [open, toggle] = useFold("home-recent");
   return (
     <section className={`cl-panel${open ? "" : " cl-closed"}`}>
-      <PanelHead open={open} toggle={toggle} title="Just moved" right={<a className="cl-link" href="/leads">All leads</a>} />
+      <PanelHead open={open} toggle={toggle} title="Just moved" right={<a className="cl-link" href={allHref}>{allLabel}</a>} />
       {open && (
         <div>
           {rows.length === 0 && <div className="cl-empty">No files yet.</div>}
           {rows.map((r) => (
-            <a key={r.key} className="cl-row" href={`/leads/${encodeURIComponent(r.key)}`}>
+            <a key={r.key} className="cl-row" href={r.href}>
               <span className="cl-row-m"><span className="cl-t1">{r.name}</span><span className="cl-t2">{r.sub}</span></span>
               <span className="cl-row-r">
                 <span className="cl-status" style={{ minWidth: 150 }}><span className={`cl-dot cl-${r.tone}`} />{r.status}</span>

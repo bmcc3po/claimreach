@@ -10,12 +10,13 @@ import { resolveSigningMatter } from "../../../lib/mva-call/signing-matter";
 import { isInternalRole } from "../../../lib/permissions";
 import { setClaimStatusForLeads } from "../../../lib/claim-status";
 import { DEFAULT_STATUSES, manualIntakeStatusAllowed } from "../../../lib/statuses";
+import { intakeStatusTransitionBlock } from "../../../lib/intake-status-guard";
 
 function harness(role = "agent") {
   const db = new FakeDb({
     app_users: [{ id: "operator", role, active: true, firm_id: "firm", full_name: "Offline Tester" }],
     leads: [{ id: "lead", firm_id: "firm", campaign_id: "campaign", case_type: "mva", archived_at: null, first_name: "Old", last_name: "Tester", claimant_name: "Old Tester", phone: "2025550110", stage: "referral_received" }],
-    claims: [{ id: "claim", lead_id: "lead", firm_id: "firm", campaign_id: "campaign", claim_type: "mva", status: "new" }],
+    claims: [{ id: "claim", lead_id: "lead", firm_id: "firm", campaign_id: "campaign", claim_type: "mva", status: "new", updated_at: "2026-09-29T10:00:00Z" }],
     campaigns: [{ id: "campaign", firm_id: "firm", name: "INNO MVA", case_type: "mva", active: true }],
     firms: [{ id: "firm", slug: "tmp" }],
     statuses: DEFAULT_STATUSES.map((item) => ({ ...item })),
@@ -27,12 +28,17 @@ function harness(role = "agent") {
   const cardinalityDb = new FakeDb({});
   Object.defineProperty(cardinalityDb.tables, "claims", { get: () => [...db.tables.claims, ...hiddenClaims] });
   cardinalityDb.failOn = (op) => { assert.equal(op.table, "claims");assert.equal(op.kind, "select");return null; };
-  const aggregateDb = new FakeDb({});
+  const aggregateDb = new FakeDb({ esign_submissions: [], signable_documents: [] });
   Object.defineProperty(aggregateDb.tables, "claims", { get: () => [...db.tables.claims, ...hiddenClaims] });
   aggregateDb.failOn = (op) => {
-    assert.equal(op.table, "claims", "privileged queue read must stay on claims");
-    assert.equal(op.kind, "select", "privileged queue DB must never mutate");
-    assert.ok(db.ops.some((write) => write.table === "claims" && write.kind === "update"), "queue aggregate is read only after the session target mutation");
+    assert.equal(op.kind, "select", "privileged DB must never mutate");
+    if (op.table === "claims") {
+      assert.ok(db.ops.some(write => write.table === "claims" && write.kind === "update"), "queue aggregate read occurs only after the session mutation");
+    } else {
+      assert.ok(["esign_submissions", "signable_documents"].includes(op.table), "privileged read stays on signature evidence");
+      assert.ok(db.ops.some(read => read.table === "claims" && read.kind === "select" && read.filters.some(([, col, value]) => col === "id" && value === "claim")), "authorize exact claim through RLS before evidence read");
+      assert.ok(op.filters.some(([, col, value]) => col === "lead_id" && value === "lead"));
+    }
     return null;
   };
   const session = Object.assign(db, { auth: { getUser: async () => ({ data: { user: { id: "operator" } } }) } });
@@ -50,6 +56,7 @@ function harness(role = "agent") {
     "@/lib/coerce": { nullifyEmpty },
     "@/lib/mva-call/signing-matter": { resolveSigningMatter: (sessionDb: any, leadId: string, opts: any) => resolveSigningMatter(sessionDb, leadId, { ...opts, authoritativeDb: cardinalityDb }) },
     "@/lib/statuses": { manualIntakeStatusAllowed },
+    "@/lib/intake-status-guard": { intakeStatusTransitionBlock },
     "@/lib/permissions": { isInternalRole },
     "@/lib/claim-properties": { coercePropCol: () => { throw new Error("Unexpected property write"); } },
   };
@@ -201,14 +208,14 @@ test("status retains hidden sibling QA and WIP without returning or mutating tha
     assert.equal(h.hiddenClaims[0].status, siblingStatus);
     assert.deepEqual(r.body, { ok: true });
     assert.ok(!JSON.stringify(h.audit).includes("hidden-matter"));
-    assert.equal(h.aggregateDb.ops.length, 1);
-    assert.deepEqual(h.aggregateDb.ops[0].filters, [["eq", "lead_id", "lead"]]);
+    assert.equal(h.aggregateDb.ops.filter(op => op.table === "claims").length, 1);
+    assert.deepEqual(h.aggregateDb.ops.find(op => op.table === "claims")!.filters, [["eq", "lead_id", "lead"]]);
   }
 });
 
 test("failed sibling aggregate preserves prior queue flags and reports an incomplete update", async () => {
   const h = harness();Object.assign(h.row(), { qa_pending: true, wip_pending: true });
-  h.aggregateDb.failOn = () => "Queue read unavailable";
+  h.aggregateDb.failOn = op => op.table === "claims" ? "Queue read unavailable" : null;
   const r = await h.status();
   assert.equal(r.status, 400);
   assert.equal(h.db.tables.claims[0].status, "contacting");
@@ -233,6 +240,81 @@ test("manual contact and callback changes work; unknown, inactive, or unreadable
   assert.equal((await inactive.status()).status, 400);assert.equal(inactive.writes().length, 0);
   const failed = harness();failed.db.failOn = (op) => op.table === "statuses" ? "Read unavailable" : null;
   assert.equal((await failed.status()).status, 503);assert.equal(failed.writes().length, 0);
+});
+
+test("manual status cannot downgrade signed, QA, or firm milestones for agents or owners", async () => {
+  for (const role of ["agent", "owner"]) for (const prior of ["signed_qa", "signed_wip", "signed_approved", "delivered", "retained", "qa", "wip", "approved", "external_signed_review"])
+    for (const status of ["new", "contacting", "dq"]) {
+      const h = harness(role); h.db.tables.claims[0].status = prior;
+      const r = await h.status({ status, dq_reason_key: "criteria" });
+      assert.equal(r.status, 409, `${role} ${prior} to ${status}`);
+      assert.equal(h.transitions.length, 0); assert.equal(h.writes().length, 0); assert.equal(h.db.tables.claims[0].status, prior);
+    }
+});
+
+test("manual status cannot erase provider or emergency signatures before status sync", async () => {
+  for (const emergency of [false, true]) {
+    const h = harness();
+    if (emergency) h.aggregateDb.tables.signable_documents.push({ id: "signed-emergency", lead_id: "lead", status: "signed", signed_at: "2026-09-29T11:00:00Z", audit: { emergency: { claim_id: "claim" } } });
+    else h.aggregateDb.tables.esign_submissions.push({ id: "signed-provider", lead_id: "lead", claim_id: "claim", status: "signed", signed_at: "2026-09-29T11:00:00Z" });
+    const r = await h.status({ status: "new" });
+    assert.equal(r.status, 409); assert.equal(h.transitions.length, 0); assert.equal(h.writes().length, 0);
+    assert.match(r.body.error, /signed agreement evidence/);
+  }
+});
+
+test("unsigned closed/Done mistakes can be reopened without touching other matters", async () => {
+  for (const prior of ["dq", "dead", "not_interested", "done"]) {
+    const h = harness(); h.db.tables.claims[0].status = prior;
+    if (prior === "done") h.db.tables.statuses.push({ ...DEFAULT_STATUSES[0], key: "done", phase: "terminal", is_final: true });
+    const r = await h.status({ status: "contacting" }); assert.equal(r.status, 200, prior);
+    assert.equal(h.db.tables.claims[0].status, "contacting");
+    assert.equal(h.transitions[0].expectedStatus, prior); assert.equal(h.transitions[0].expectedUpdatedAt, "2026-09-29T10:00:00Z");
+    const update = h.db.ops.find(op => op.table === "claims" && op.kind === "update")!;
+    assert.ok(update.filters.some(([op, column, value]) => op === "eq" && column === "updated_at" && value === "2026-09-29T10:00:00Z"));
+  }
+});
+
+test("foreign sibling signatures do not bind to this matter; unbound mixed-matter evidence holds", async () => {
+  for (const unbound of [false, true]) {
+    const h = harness(); h.hiddenClaims.push({ id: "hidden-matter", lead_id: "lead", status: "signed_qa" });
+    h.aggregateDb.tables.esign_submissions.push({ id: "signed", lead_id: "lead", claim_id: unbound ? null : "hidden-matter", campaign_id: null, status: "signed" });
+    const r = await h.status(); assert.equal(r.status, unbound ? 503 : 200);
+    assert.ok(!JSON.stringify(r.body).includes("hidden-matter"));
+    if (unbound) assert.equal(h.writes().length, 0);
+  }
+});
+
+test("signature-read failures and missing claim versions fail closed", async () => {
+  for (const table of ["esign_submissions", "signable_documents"]) {
+    const h = harness(); h.aggregateDb.failOn = op => op.table === table ? "Unavailable" : null;
+    assert.equal((await h.status()).status, 503); assert.equal(h.writes().length, 0); assert.equal(h.transitions.length, 0);
+  }
+  const missing = harness(); delete missing.db.tables.claims[0].updated_at;
+  assert.equal((await missing.status()).status, 503); assert.equal(missing.writes().length, 0); assert.equal(missing.aggregateDb.ops.length, 0);
+});
+
+test("hidden or unauthorized files never reach privileged evidence reads", async () => {
+  for (const change of [(h: any) => h.db.tables.leads = [], (h: any) => h.db.tables.firms[0].slug = "other"]) {
+    const h = harness(); change(h); const r = await h.status();
+    assert.ok([403, 404].includes(r.status)); assert.equal(h.aggregateDb.ops.length, 0); assert.equal(h.transitions.length, 0);
+  }
+});
+
+test("same-status newer evidence or concurrent signed status defeats the conditional write", async () => {
+  for (const changeStatus of [false, true]) {
+    const h = harness();
+    h.db.failOn = op => {
+      if (op.table === "claims" && op.kind === "update") {
+        h.db.tables.claims[0].updated_at = "2026-09-29T12:00:00Z";
+        if (changeStatus) h.db.tables.claims[0].status = "signed_qa";
+      }
+      return null;
+    };
+    const r = await h.status(); assert.equal(r.status, 409);
+    assert.equal(h.db.tables.claims[0].status, changeStatus ? "signed_qa" : "new");
+    assert.equal(h.audit.length, 0);
+  }
 });
 
 (async () => {

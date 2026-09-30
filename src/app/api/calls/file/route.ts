@@ -4,7 +4,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
 import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
 import { loadStatuses } from "@/lib/claim-status";
-import { resolveStatus } from "@/lib/statuses";
+import { resolveStatus, SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
 import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
 import { matterRowsFilter } from "@/lib/matter";
 import { loadLawRulerProvenance } from "@/lib/lawruler-recovery";
@@ -53,6 +53,13 @@ export async function GET(req: NextRequest) {
     return { id: d.id, name: d.file_name, type: d.doc_type, scope: d.claim_id ? "This matter" : "Shared file document", at: d.created_at, by: d.uploaded_by_name, url: signed?.signedUrl ?? null };
   }));
   const st = matter.claim.status;
+  const qaReturn = [SIGNED_QA_RETURN_STATUS, "signed_qa"].includes(st || "") ? await sb.from("qa_reviews").select("id, decision, agent_note, created_at")
+    .eq("lead_id", leadId).eq("claim_id", matter.claim.id).order("created_at", { ascending: false }).limit(1).maybeSingle() : null;
+  if (qaReturn?.error) return NextResponse.json({ error: "The QA feedback could not load. Refresh before resubmitting." }, { status: 503 });
+  const qaRetry = st === "signed_qa" && qaReturn?.data?.decision === "wip" ? await sb.from("audit_log").select("id, meta")
+    .eq("lead_id", leadId).eq("claim_id", matter.claim.id).eq("actor", me.id).eq("meta->>action", "qa_resubmit")
+    .eq("meta->>qa_review_id", qaReturn.data.id).eq("meta->>completed", "false").order("created_at", { ascending: false }).limit(1).maybeSingle() : null;
+  if (qaRetry?.error) return NextResponse.json({ error: "The QA resubmission history could not load. Refresh before continuing." }, { status: 503 });
   const imported = await loadLawRulerProvenance(sb, leadId, matter.claim.id);
 
   return NextResponse.json({
@@ -74,6 +81,8 @@ export async function GET(req: NextRequest) {
     },
     status: st ? { key: st, label: resolveStatus(st, statuses).label, tone: resolveStatus(st, statuses).tone } : null,
     claim_id: matter.claim.id,
+    qa_return: qaReturn?.data?.decision === "wip" ? { id: qaReturn.data.id, note: qaReturn.data.agent_note || "Review QA's requested corrections before resubmitting.", at: qaReturn.data.created_at } : null,
+    qa_resubmit_retry: qaRetry?.data ? { request_id: qaRetry.data.id, qa_review_id: qaReturn!.data!.id } : null,
     send_attempt: pendingSend.ok ? pendingSend.attempt : null,
     send_check_error: pendingSend.ok ? null : pendingSend.error,
     imported,

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { dripDispatchEnabled, dripOffResult } from "@/lib/drip-dispatch";
-import { mayDispatchMvaAcquisition } from "@/lib/lawruler-mva-status";
+import { loadDueDripPage, processDueDrips } from "@/lib/drip-scheduler";
 export const runtime = "edge";
 
 // Scheduled drip processor. Requires CRON_SECRET via x-cron-secret header.
-// Point a Cloudflare Cron Trigger / external scheduler at this daily.
+// The external heartbeat calls this. Generic rules are date-based reminders;
+// they do not implement INNO's minute-based call cadence or a live SMS sender.
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const provided = req.headers.get("x-cron-secret");
@@ -16,29 +17,11 @@ export async function GET(req: NextRequest) {
   if (!dripDispatchEnabled()) return NextResponse.json({ ...dripOffResult(), ran_at: new Date().toISOString() });
 
   const admin = supabaseAdmin();
-  const { data: due } = await admin.from("drips_due").select("*").limit(500);
-  let fired = 0;
-  const held: { lead_id: string; reason: string }[] = [];
-  for (const d of due ?? []) {
-    if (d.campaign === "motel6") continue;
-    const eligible = await mayDispatchMvaAcquisition(admin, { firmId: d.firm_id, leadId: d.lead_id, claimId: d.claim_id });
-    if (!eligible.allowed) { held.push({ lead_id: d.lead_id, reason: eligible.reason }); continue; }
-    // The internal JustCall route requires a user session. Cron has none.
-    // Until a service-authorized sender is wired, never claim a text/email
-    // went out or move its next_due date.
-    if (d.channel === "sms" || d.channel === "email") {
-      held.push({ lead_id: d.lead_id, reason: `${d.channel} delivery is not configured for scheduled drips.` });
-      continue;
-    }
-    await admin.from("notes").insert({
-      firm_id: d.firm_id, lead_id: d.lead_id, author_name: "Drip",
-      scope: "file", body: `Auto ${d.channel} drip "${d.name}" fired (scheduled).`,
-    });
-    await admin.from("drip_enrollments").update({
-      last_sent: new Date().toISOString(),
-      next_due: new Date(Date.now() + d.every_days * 86400000).toISOString().slice(0, 10),
-    }).eq("id", d.enrollment_id);
-    fired++;
+  try {
+    const page = await loadDueDripPage(admin, 500, new Date(), "call_reminder");
+    const result = await processDueDrips(admin, page.rows);
+    return NextResponse.json({ ...result, batch: { limit: page.limit, truncated: page.truncated }, ran_at: new Date().toISOString() }, { status: result.ok ? 200 : 503 });
+  } catch {
+    return NextResponse.json({ ok: false, fired: 0, error: "Could not load or verify due drips. No successful run was recorded." }, { status: 503 });
   }
-  return NextResponse.json({ ok: true, fired, held, ran_at: new Date().toISOString() });
 }

@@ -78,3 +78,11 @@ assert.match(saved,/Saved securely/); assert.match(saved,/Retry secure save/);
 assert.equal(ssnProps.onRetry,retry); assert.equal(ssnProps.savedMode,"full");
 assert.match(saved,/disabled=""[^>]*>Last 4 only<\/button>/);
 console.log(`${count+1} identity presentation checks passed`);
+for (const view of ["chore", "form", "guided", "full", "steps"]) {
+  const e = engine("signed"); e.setView(view);
+  const html = renderToStaticMarkup(jsx.jsx(View, { v: { ...e.renderVals(), canReplace: true, previewHref: "/synthetic-preview", replaceAgreement: () => { throw new Error("No send during render"); } } }));
+  const correction = html.match(/<details\b([^>]*)>[\s\S]*?Correct this agreement[\s\S]*?Report error and send corrected agreement[\s\S]*?<\/details>/);
+  assert.ok(correction, `${view}: correction remains reachable in a disclosure`);
+  assert.doesNotMatch(correction[1], /\bopen(?:=|\s|$)/, `${view}: correction form is closed until deliberately requested`);
+}
+console.log("ok all intake layouts keep correction controls available but closed by default");

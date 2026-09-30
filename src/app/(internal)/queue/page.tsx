@@ -5,6 +5,8 @@ import { authUser } from "@/lib/auth-user";
 import { STAGE_LABELS } from "@/lib/questionnaire";
 import { isAcquisitionEligible, loadMvaAcquisitionHolds, type MvaAcquisitionSignal } from "@/lib/lawruler-mva-status";
 import type { StatusDef } from "@/lib/statuses";
+import { resolveStatus, SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
+import { caseFileHref } from "@/lib/mva-call/links";
 
 export default async function QueuePage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const { view } = await searchParams;
@@ -18,19 +20,23 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     : { data: null };
   const matches = (pilotCampaigns ?? []).filter((c: any) => c.firms?.slug === "tmp");
   const pilotCampaignId = matches.length === 1 ? matches[0].id : "00000000-0000-0000-0000-000000000000";
-  const fileHref = (l: any) => `${pilot ? "/app" : "/leads"}/${l.id}${l.queueClaimId ? `?claim=${l.queueClaimId}` : ""}`;
+  const fileHref = (l: any) => caseFileHref(me?.role || "agent", l.id, l.queueClaimId);
 
   // "mine" = working stack. "dial" = next to call. "fix" = WIP files QA sent back.
   let leads: any[] = [];
   let loadError = "";
   if (mode === "fix") {
-    let q = sb.from("leads")
-      .select("id, firm_id, case_type, archived_at, lead_no, claimant_name, stage, updated_at, wip_pending, claims(id, lead_id, firm_id, claim_type, campaign_id, status)")
-      .is("archived_at", null)
-      .eq("wip_pending", true).order("updated_at", { ascending: false }).limit(100);
-    if (pilot) q = q.eq("campaign_id", pilotCampaignId);
+    let q = sb.from("claims")
+      .select("id, lead_id, firm_id, claim_type, campaign_id, status, updated_at, leads!inner(id, firm_id, campaign_id, case_type, archived_at, lead_no, claimant_name, stage, updated_at)")
+      .is("leads.archived_at", null)
+      .eq("status", SIGNED_QA_RETURN_STATUS).order("updated_at", { ascending: false }).limit(100);
+    if (pilot) q = q.eq("campaign_id", pilotCampaignId).eq("claim_type", "mva").eq("leads.campaign_id", pilotCampaignId);
     const { data, error } = await q;
-    leads = data ?? [];
+    leads = (data ?? []).flatMap((c: any) => {
+      const l = c.leads;
+      if (!l || l.archived_at || c.lead_id !== l.id || c.firm_id !== l.firm_id || (pilot && l.campaign_id !== pilotCampaignId)) return [];
+      return [{ ...l, updated_at: c.updated_at || l.updated_at, claims: [c], queueClaimId: c.id }];
+    });
     if (error) loadError = "The working queue did not load. Refresh before calling anyone from this list.";
   } else {
     let q = sb.from("leads").select("id, firm_id, case_type, archived_at, lead_no, claimant_name, stage, updated_at, claims(id, lead_id, firm_id, claim_type, campaign_id, status)").is("archived_at", null).limit(100);
@@ -72,8 +78,8 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
   });
 
   // Count for the fix-inbox tab badge.
-  let fixQuery = sb.from("leads").select("id", { count: "exact", head: true }).eq("wip_pending", true).is("archived_at", null);
-  if (pilot) fixQuery = fixQuery.eq("campaign_id", pilotCampaignId);
+  let fixQuery = sb.from("claims").select("id, leads!inner(archived_at, campaign_id)", { count: "exact", head: true }).eq("status", SIGNED_QA_RETURN_STATUS).is("leads.archived_at", null);
+  if (pilot) fixQuery = fixQuery.eq("campaign_id", pilotCampaignId).eq("claim_type", "mva").eq("leads.campaign_id", pilotCampaignId);
   const { count: fixCount } = await fixQuery;
 
   return (
@@ -95,13 +101,17 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
       </div>
       <div className="cl-tablewrap">
         <table className="cl-table">
-          <thead><tr><th>Lead</th><th>Claimant</th><th>Stage</th><th>Updated</th><th></th></tr></thead>
+          <thead><tr><th>Lead</th><th>Claimant</th><th>{pilot ? "Status" : "Stage"}</th><th>Updated</th><th></th></tr></thead>
           <tbody>
             {(leads ?? []).map((l) => (
               <tr key={l.queueClaimId || l.id}>
                 <td><Link className="cl-mono" href={fileHref(l)}>{l.lead_no}</Link></td>
                 <td className="cl-t1">{l.claimant_name ?? "—"}</td>
-                <td><span className="cl-status"><span className="cl-dot cl-info" />{STAGE_LABELS[l.stage] ?? l.stage}</span></td>
+                <td>{pilot ? (() => {
+                  const claim = (l.claims || []).find((c: any) => c.id === l.queueClaimId);
+                  const status = resolveStatus(claim?.status, statuses);
+                  return <span className="cl-status"><span className={`cl-dot cl-${status.tone}`} />{status.label}</span>;
+                })() : <span className="cl-status"><span className="cl-dot cl-info" />{STAGE_LABELS[l.stage] ?? l.stage}</span>}</td>
                 <td className="cl-t2">{new Date(l.updated_at).toLocaleString()}</td>
                 <td className="cl-c-act"><Link className="cl-link" href={fileHref(l)}>Open</Link></td>
               </tr>

@@ -100,6 +100,8 @@ export async function setClaimStatusForLeads(opts: {
   statuses?: StatusDef[];
   /** Single-target compare-and-set; a stale preview must never overwrite a newer decision. */
   expectedStatus?: string | null;
+  /** Optional optimistic lock for a workflow's evidence/QA decision snapshot. */
+  expectedUpdatedAt?: string;
   /** Historical reconciliation is not a new signing or a reason to contact anyone. */
   historical?: boolean;
 }, deps: StatusDeps = {}): Promise<SetStatusResult> {
@@ -159,6 +161,7 @@ export async function setClaimStatusForLeads(opts: {
   let cq = db.from("claims").update(patch);
   cq = targetIds ? cq.in("id", targetIds) : cq.in("lead_id", opts.leadIds);
   if (compareStatus) cq = opts.expectedStatus == null ? cq.is("status", null) : cq.eq("status", opts.expectedStatus);
+  if (opts.expectedUpdatedAt) cq = cq.eq("updated_at", opts.expectedUpdatedAt);
   const { data: changed, error } = await cq.select("id, lead_id");
   if (error) return { ok: false, error: error.message };
   if (!changed?.length) {

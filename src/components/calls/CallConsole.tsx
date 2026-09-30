@@ -17,6 +17,7 @@ import { callbackAt } from "@/lib/mva-call/dispo";
 import { applyAnswerDelta, isAnswerObject } from "@/lib/mva-call/answer-merge";
 import type { SendAttemptHold } from "@/lib/mva-call/replacement";
 import { savedCallView } from "@/lib/mva-call/step-layout";
+import { OPEN_DESK_FILE_EVENT } from "@/lib/mva-call/links";
 
 export interface ConsoleInit {
   leadId: string;
@@ -514,6 +515,13 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const deskOn = ws === "desk";
   const sideOn = !!ws;
   const panelVisible = sideOn ? !commandCollapsed : utilityOpen;
+  useEffect(() => {
+    const openFile = () => { setDeskTab("file"); setUtilityOpen(true); };
+    window.addEventListener(OPEN_DESK_FILE_EVENT, openFile);
+    return () => window.removeEventListener(OPEN_DESK_FILE_EVENT, openFile);
+    // The event reveals the already-pinned matter without navigation or a save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function loadComms() {
     try {
@@ -888,7 +896,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
 
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
   const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
-  const casePanel = <DeskPanel key="case-panel" v={{ ...v, reviewAgreement: view.reviewAgreement }} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
+  const casePanel = <DeskPanel key="case-panel" v={{ ...v, agentRole: init.props.agentRole, reviewAgreement: view.reviewAgreement, beforeQaResubmit: async () => (await saveIdentityNow()) && (await flushSave()) }} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
     onCollapse={sideOn ? collapseCommand : undefined} panelId={commandPanelId}
     summary={<WsHelper v={view} />}
     caseSummary={<CaseSummary answerSnapshot={snapshot} claimantName={engine.props.callerName || ""} saveBad={!!view.saveBad} />}

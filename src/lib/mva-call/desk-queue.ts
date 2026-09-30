@@ -1,5 +1,5 @@
 import { acquisitionClaimForRow, isAcquisitionEligible, type MvaAcquisitionSignal } from "../lawruler-mva-status";
-import { isSignedKey, resolveStatus, type StatusDef } from "../statuses";
+import { isSignedKey, resolveStatus, SIGNED_QA_RETURN_STATUS, type StatusDef } from "../statuses";
 import { agreementName } from "./agreement-names";
 import { paxParentId } from "../linked-files";
 import type { DeskTab, DeskRow, DeskQueues } from "./desk-types";
@@ -49,7 +49,7 @@ export function buildDeskQueues(opts: {
         sub: [lead.marketing_source, claim.campaign || lead.campaign].filter(Boolean).join(", "),
         at: claim.updated_at || lead.last_called_at || lead.created_at, href: `/app/${lead.id}?claim=${claim.id}` };
       let bucket: DeskTab;
-      if (claim.status === "signed_wip") {
+      if (claim.status === SIGNED_QA_RETURN_STATUS) {
         bucket = "wip"; row.tag = "QA returned"; row.sub = "Signed file returned by QA for corrections";
       } else if (active && ["signed", "completed"].includes(active.status)) {
         bucket = "signed"; row.at = active.signed_at || active.sent_at || row.at;

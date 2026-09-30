@@ -113,7 +113,7 @@ function Retainer({ v }: { v: any }) {
       </ul>
       {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
       {v.canVoid && <button type="button" className="ch-btn ch-line ch-void" style={{ marginTop: 10 }} onClick={v.voidAgreement}>{v.voidLabel}</button>}
-      {v.canReplace && <div className="ch-q"><div className="ch-note">The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</div><AgreementChoice v={v} />{!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="ch-btn ch-send" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></div>}
+      {v.canReplace && <details className="ch-q"><summary className="ch-btn ch-line">Correct this agreement</summary><div className="ch-note">The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</div><AgreementChoice v={v} />{!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="ch-btn ch-send" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
     </div>
     {v.notSigned && (<>
       <Say label={STAY.label} line={STAY.line} small />

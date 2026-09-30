@@ -75,6 +75,8 @@ export default function CallsHome({ data }: { data: HomeData }) {
   useEffect(() => {
     try {
       const p = new URLSearchParams(window.location.search);
+      const requestedTab = DESK_TABS.find(([key]) => key === p.get("tab"))?.[0];
+      if (requestedTab) setTab(requestedTab);
       if (p.get("phone")) setPhone(p.get("phone") || "");
       if (p.get("new") === "1" || p.get("phone")) { setSheet(true); window.history.replaceState(null, "", "/app"); }
     } catch { /* old browser: they tap New call */ }
