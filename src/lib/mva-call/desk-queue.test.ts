@@ -55,11 +55,11 @@ test("a client signature moves a stale pre-signing status into Signed E-Sign", (
   assert.match(queues.signed[0].href!, /review=webhook-agreement/);
 });
 test("an approved signature remains signed until delivery, even without a current envelope", () => {
-  assert.equal(classify([lead("approved", "signed_approved")]).signed.length, 1);
+  assert.equal(classify([{ ...lead("approved", "signed_approved"), signed_at: old }]).signed.length, 1);
 });
-test("imported signing stays visible but clearly requires packet verification", () => {
+test("unverified imported signing stays in QA, never Signed E-Sign", () => {
   const queues = classify([lead("imported", "external_signed_review")]);
-  assert.equal(queues.signed.length, 1); assert.equal(queues.signed[0].tag, "Verify imported packet");
+  assert.equal(Object.values(queues).flat().length, 0);
 });
 test("latest exact-matter callback wins without crossing a sibling", () => {
   const file = lead("siblings", "contacting");
@@ -94,7 +94,7 @@ test("archives, other campaigns and other case types cannot leak into pilot queu
   assert.equal(Object.values(classify([archived, other, motel])).flat().length, 0);
 });
 test("failed acquisition dependencies pause calling but preserve signed service work", () => {
-  const queues = classify([lead("new"), lead("calling", "contacting"), lead("signed", "signed_grievous"), lead("wip", "signed_wip")], [], [], { acquisitionReady: false });
+  const queues = classify([lead("new"), lead("calling", "contacting"), { ...lead("signed", "signed_grievous"), signed_at: old }, lead("wip", "signed_wip")], [], [], { acquisitionReady: false });
   assert.equal(queues.new.length + queues.calling.length + queues.callbacks.length, 0);
   assert.equal(queues.signed.length + queues.wip.length, 2);
 });
@@ -108,3 +108,4 @@ test("failed acquisition dependencies pause calling but preserve signed service 
   passed++; console.log("ok failed page is not silently presented as an empty queue");
   console.log(`${passed} Desk queue checks passed`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
