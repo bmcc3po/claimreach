@@ -538,6 +538,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     const baseView = JSON.parse(lastSaved.current);
     const baseAnswers = answerBase.current;
     const sentAnswers = applyAnswerDelta(baseView, sentView, baseAnswers);
+    let acknowledged = false;
     try {
       const d = await post("/api/calls/save", { lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, base_answers: baseAnswers, answers: sentAnswers, mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
       callId.current = d.call_id || callId.current;
@@ -564,6 +565,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       }
       setSavedAt(Date.now());
       if (engine.state.net?.saveError) engine.setState({ net: { saveError: "" } });
+      acknowledged = true;
       return true;
     } catch (err: any) {
       if (err?.callId) callId.current = err.callId;
@@ -581,18 +583,33 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       return false;
     } finally {
       saving.current = false;
+      // A newer debounce can fire while this request is in flight and return
+      // above. Its snapshot then stays unchanged, so the effect cannot wake it
+      // again. Drain the latest state after success; failures keep their own
+      // retry/backoff or conflict block instead of starting another write.
+      if (acknowledged && !saveBlocked.current && JSON.stringify(engine.persistable()) !== lastSaved.current) {
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => { void save(JSON.stringify(engine.persistable())); }, 0);
+      }
     }
   }
 
   async function flushSave(): Promise<boolean> {
-    if (saveBlocked.current) return false;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    // If an autosave is mid-flight, give it a moment instead of reporting a
-    // false failure (save() returns false while one is running).
-    for (let i = 0; i < 16 && saving.current; i++) await new Promise((r) => setTimeout(r, 250));
-    const snap = JSON.stringify(engine.persistable());
-    if (snap !== lastSaved.current || !callId.current) return save(snap);
-    return true;
+    // Finishing a call must wait for the newest edit, not just the request that
+    // was current when the button was pressed. A successful save can leave a
+    // newer snapshot queued; recheck it before allowing the call to close.
+    for (let i = 0; i < 16; i++) {
+      if (saveBlocked.current) return false;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (saving.current) {
+        await new Promise((r) => setTimeout(r, 250));
+        continue;
+      }
+      const snap = JSON.stringify(engine.persistable());
+      if (snap === lastSaved.current && callId.current) return true;
+      if (!(await save(snap))) return false;
+    }
+    return false;
   }
 
   // Clock.
