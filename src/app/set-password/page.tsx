@@ -30,7 +30,7 @@ export default function SetPassword() {
         <main className="cc-main" style={{ paddingTop: "calc(40px + env(safe-area-inset-top))" }}>
           <div>
             <div className="cc-home-hi">Pick your password</div>
-            <div className="cc-home-sub">Your starter password only works once. Make one that's yours, at least 10 characters.</div>
+            <div className="cc-home-sub">Replace your temporary password before opening files. Choose a personal password with at least 10 characters.</div>
           </div>
           <input className="cc-field" type="password" autoComplete="new-password" placeholder="New password" aria-label="New password" value={pw} onChange={(e) => setPw(e.target.value)} />
           <input className="cc-field" type="password" autoComplete="new-password" placeholder="Type it again" aria-label="Type it again" value={pw2} onChange={(e) => setPw2(e.target.value)} />
