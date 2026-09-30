@@ -28,4 +28,18 @@ assert.match(html, /No new files/);
 const signed = renderToStaticMarkup(jsx.jsx(component.default, { data: { ...data, queues: { ...queues, signed: [{ id: "signed", name: "Signed caller", tag: "Office step pending", href: "/app/signed?claim=exact" }] } } }));
 assert.match(signed, /Signed caller/); assert.match(signed, /Office step pending/);
 assert.match(signed, /Signed files stay here until delivered or closed/);
+// Render the New call sheet open, then verify its separate signed-transfer choice.
+let hook = 0;
+const openSheetReact = { ...React, useState: (initial: any) => {
+  hook++;
+  return [hook === 5 ? true : typeof initial === "function" ? initial() : initial, () => {}];
+} };
+const openSheetModule: any = {};
+new Function("require", "exports", code)((name: string) => name === "react" ? openSheetReact : modules[name], openSheetModule);
+const withNetfly = renderToStaticMarkup(jsx.jsx(openSheetModule.default, { data: { ...data, netflyAvailable: true } }));
+assert.match(withNetfly, /NETFLY ONTAKE/);
+assert.match(withNetfly, /Already signed/);
+hook = 0;
+const withoutNetfly = renderToStaticMarkup(jsx.jsx(openSheetModule.default, { data }));
+assert.doesNotMatch(withoutNetfly, /NETFLY ONTAKE/);
 console.log("ok Desk renders exactly six primary queues with Texts reachable separately and signed office work visible");

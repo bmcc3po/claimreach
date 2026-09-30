@@ -10,6 +10,7 @@ import { buildDeskQueues, readDeskRows } from "@/lib/mva-call/desk-queue";
 import type { StatusDef } from "@/lib/statuses";
 import Link from "next/link";
 import CallsHome, { type HomeData, type HomeRow } from "@/components/calls/CallsHome";
+import { netflyContext } from "@/lib/netfly-server";
 
 export default async function AppHomePage() {
   const sb = await supabaseServer();
@@ -23,6 +24,14 @@ export default async function AppHomePage() {
   ]);
   const me = meRes.data;
   if (!me) redirect("/firm-login");
+  // NETFLY is a separate signed-transfer console, so use its own exact gate.
+  let netflyAvailable = false;
+  try {
+    const netfly = await netflyContext();
+    netflyAvailable = !!netfly?.actor.can("leads.edit");
+  } catch {
+    // A NETFLY lookup failure must not take the INNO Desk offline.
+  }
   const notes: string[] = [];
   const pilot = me.role !== "owner";
   const firmById = new Map((firmRes.data ?? []).map((f: any) => [f.id, f]));
@@ -89,9 +98,9 @@ export default async function AppHomePage() {
     const have = (tplRes.data ?? []).filter((t: any) => t.campaign_id === campaign.id).length;
     if (have < need) setup.push({ campaignId: campaign.id, name: campaign.name, have, need, docuseal: docusealConfigured() });
   }
-  const data: HomeData = { me: { name: me.full_name || "", role: me.role },
+  const data: HomeData = { me: { name: me.full_name || "", role: me.role }, netflyAvailable,
     campaigns: campaigns.map((c: any) => ({ id: c.id, name: c.name, firm: (firmById.get(c.firm_id) as any)?.name || "", kind: c.case_type })),
     queues, texts, setup, notes };
-  return <><div style={{ maxWidth: 1120, margin: "14px auto 0", padding: "0 16px" }}><Link href="/app/netfly" style={{ display: "inline-flex", padding: "10px 14px", borderRadius: 10, background: "#173a71", color: "white", fontWeight: 700, textDecoration: "none" }}>NETFLY ONTAKE →</Link></div>{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`${pilot ? "/app" : "/leads"}/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || "Open matter"}</Link>: {r.source_status || "Status missing"} - {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
+  return <>{netflyAvailable && <div style={{ maxWidth: 1120, margin: "14px auto 0", padding: "0 16px" }}><Link href="/app/netfly" style={{ display: "inline-flex", padding: "10px 14px", borderRadius: 10, background: "#173a71", color: "white", fontWeight: 700, textDecoration: "none" }}>NETFLY ONTAKE →</Link></div>}{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`${pilot ? "/app" : "/leads"}/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || "Open matter"}</Link>: {r.source_status || "Status missing"} - {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
 }
 
