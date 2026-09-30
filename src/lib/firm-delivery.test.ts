@@ -241,6 +241,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     const cB = db.tables.claims.find((c: Row) => c.id === "bbb2");
     assert.equal(cA.firm_sent_at, "2026-09-28T12:00:00.000Z");
     assert.equal(cA.firm_send_result, "sent");
+    assert.equal(cA.status, "delivered", "successful MVA handoff advances the matter status");
     assert.equal(cB.firm_sent_at, null);
     assert.equal(db.tables.leads[0].firm_sent_at, "2026-09-28T12:00:00.000Z", "the file-level echo is still written");
 
@@ -249,6 +250,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.equal(d.sent[1].to[0], "intake-cb02@firm.test");
     assert.equal(retainerOf(d.sent[1]), b64(bytes("primary 5002")), "B's own agreement, not A's");
     assert.equal(cB.firm_sent_at, "2026-09-28T12:00:00.000Z");
+    assert.equal(cB.status, "delivered");
     assert.deepEqual(db.tables.firm_deliveries.map((x: Row) => [x.claim_id, x.campaign_id, x.ok]), [["aaa1", "ca01", true], ["bbb2", "cb02", true]]);
 
     const r3 = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "auto", actorName: "QA" }, d);
@@ -647,6 +649,16 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.equal(r.ok, false); assert.match(r.error!, /changed while preparing/); assert.equal(d.sent.length, 0);
   });
 
+  await t("a changed recipient after confirmation blocks a manual send", async () => {
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
+    const d = deps(db);
+    const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual", expectedTo: "other@firm.test", expectedCc: [] }, d);
+    assert.equal(r.ok, false);
+    assert.match(r.error || "", /recipient changed/);
+    assert.equal(d.sent.length, 0);
+    assert.equal(db.tables.claims[0].status, "signed_approved");
+  });
+
   await t("corrected PNC name cannot deliver old named primary evidence", async () => {
     const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1", injured_name: "Incorrect Name", signer_name: "Incorrect Name" })] });
     const d = deps(db), r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
@@ -714,3 +726,4 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
 
   console.log(`${pass} passed`);
 })().catch((e) => { console.error(e); process.exit(1); });
+
