@@ -3,6 +3,7 @@ import { netflyContext, netflyMatter } from "@/lib/netfly-server";
 import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, netflyFlags } from "@/lib/netfly-ontake";
 import { parseDob } from "@/lib/mva-call/server";
 import { mailColumnsFrom } from "@/lib/us-address";
+import { normPhone } from "@/lib/comms";
 export const runtime = "edge";
 
 const fail = (message: string, status: number) => NextResponse.json({ error: message }, { status });
@@ -41,12 +42,27 @@ export async function POST(req: NextRequest) {
   if (!ctx) return fail("NETFLY is unavailable to this account.", 403);
   let body: any;
   try { body = await req.json(); } catch { return fail("Invalid request.", 400); }
-  if (body?.op === "create") {
+  if (body?.op === "create" || body?.op === "start_call") {
     if (!ctx.actor.can("leads.edit")) return fail("This account cannot add files.", 403);
     const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 160);
     if (name.length < 2) return fail("Enter the client's name.", 400);
     const phone = String(body.phone || "").trim().slice(0, 40);
     const email = String(body.email || "").trim().slice(0, 254);
+    if (body.op === "start_call") {
+      const normalized = normPhone(phone);
+      if (normalized.length === 10) {
+        const { data: existing, error: existingError } = await ctx.db.from("leads").select("id, lead_no, claimant_name")
+          .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id)
+          .eq("phone_norm", normalized).is("archived_at", null)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (existingError) return fail("Could not check for an existing NETFLY file. Retry before creating another.", 503);
+        if (existing) {
+          if (String(existing.claimant_name || "").trim().toLowerCase() !== name.toLowerCase())
+            return fail("A NETFLY file already uses this phone with a different name. Review that file before starting another.", 409);
+          return NextResponse.json({ file: existing, existing: true });
+        }
+      }
+    }
     const parts = name.split(" ");
     const { data: number, error: numberError } = await ctx.db.rpc("mint_lead_no", { p_firm: ctx.campaign.firm_id });
     if (numberError || !number) return fail("Could not assign a lead number.", 503);
@@ -54,7 +70,7 @@ export async function POST(req: NextRequest) {
       firm_id: ctx.campaign.firm_id, campaign_id: ctx.campaign.id, campaign: NETFLY_CAMPAIGN,
       case_type: "mva", lead_no: number, claimant_name: name, first_name: parts[0], last_name: parts.slice(1).join(" "),
       phone: phone || null, email: email || null, marketing_source: "NETFLY", stage: "referral_received",
-      created_by: ctx.actor.id, assigned_agent: ctx.actor.id,
+      created_by: ctx.actor.id, assigned_agent: ctx.actor.id, intake_agent_id: ctx.actor.id,
       // Hold all automated acquisition outreach on a secondary intake.
       perm_call: false, perm_text: false, perm_email: false,
     }).select("id, lead_no").single();

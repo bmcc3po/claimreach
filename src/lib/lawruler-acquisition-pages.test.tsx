@@ -40,7 +40,7 @@ function page(file: string, db: FakeDb) {
     '@/lib/mva-call/esign': { packetsFor: () => null }, '@/lib/docuseal': { docusealConfigured: () => false }, '@/lib/mva-call/dispo': { DISPO_LABEL: { callback: 'Call back' } },
     '@/lib/mva-call/links': deskLinks, '@/lib/questionnaire': { STAGE_LABELS: { referral_received: 'Referral received' } },
     '@/lib/lawruler-mva-status': acquisition, '@/lib/mva-call/review-queue': signedReview, '@/lib/mva-call/desk-queue': deskQueue, '@/components/calls/CallsHome': { __esModule: true, default: 'calls-home' },
-    '@/lib/statuses': statusModel,
+    '@/lib/statuses': statusModel, '@/lib/netfly-server': { netflyContext: async () => null },
     '@/components/ui/StatusBadge': { __esModule: true, default: (props: any) => jsx.jsx('span', { children: props.status }) },
   };
   const exp: any = {}; new Function('require', 'exports', js)((name: string) => { assert.ok(name in mods, `Unexpected import ${name}`); return mods[name]; }, exp);
