@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { FIRM_WRITABLE_STAGES } from "@/lib/questionnaire";
 import { recordAudit } from "@/lib/audit";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { nullifyEmpty } from "@/lib/coerce";
 import { coercePropCol } from "@/lib/claim-properties";
+import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
+import { isInternalRole } from "@/lib/permissions";
+import { manualIntakeStatusAllowed } from "@/lib/statuses";
 
 export const runtime = "edge";
 
@@ -12,8 +15,8 @@ async function me(sb: Awaited<ReturnType<typeof supabaseServer>>) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return null;
   const { data } = await sb.from("app_users")
-    .select("id, role, firm_id, full_name").eq("id", auth.user.id).maybeSingle();
-  return data ? { ...data, uid: auth.user.id } : null;
+    .select("id, role, firm_id, full_name, active").eq("id", auth.user.id).maybeSingle();
+  return data?.active === true ? { ...data, uid: auth.user.id } : null;
 }
 
 // POST { op: 'create', firm_id, firm_ref_no?, lawruler_ref_no? }
@@ -230,14 +233,36 @@ export async function POST(req: NextRequest) {
   }
 
   if (op === "status") {
-    if (u.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    if (!isInternalRole(u.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const { lead_id, claim_id, status, dq_reason_key, dq_note } = payload;
     if (!lead_id || !status) return NextResponse.json({ error: "lead_id and status required" }, { status: 400 });
+    // Resolve both identities under the caller's RLS before invoking workflow
+    // side effects. A guessed hidden lead/claim must never reach an admin query.
+    const context = await resolveSigningMatter(sb, String(lead_id), { claimId: claim_id ? String(claim_id) : null });
+    if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+    if (u.role !== "owner") {
+      const { lead, matter } = context;
+      const [campaigns, firm] = await Promise.all([
+        sb.from("campaigns").select("id").eq("firm_id", lead.firm_id).eq("name", "INNO MVA").eq("case_type", "mva").eq("active", true),
+        sb.from("firms").select("id, slug").eq("id", lead.firm_id).maybeSingle(),
+      ]);
+      if (campaigns.error || firm.error) return NextResponse.json({ error: "Could not verify this file's pilot access. Refresh and try again." }, { status: 503 });
+      const pilot = campaigns.data?.length === 1 ? campaigns.data[0] : null;
+      if (!pilot || firm.data?.slug !== "tmp" || lead.case_type !== "mva" || matter.claim.claim_type !== "mva"
+        || lead.campaign_id !== pilot.id || matter.claim.campaign_id !== pilot.id || matter.claim.firm_id !== lead.firm_id) {
+        return NextResponse.json({ error: "Only active INNO MVA files are available during this pilot." }, { status: 403 });
+      }
+    }
+    const catalog = await sb.from("statuses").select("*");
+    if (catalog.error) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
+    const nextStatus = (catalog.data ?? []).find((item: any) => item.key === status);
+    if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
+    if (!manualIntakeStatusAllowed(nextStatus)) return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
     const res = await setClaimStatusForLeads({
-      leadIds: [lead_id], claimIds: claim_id ? [claim_id] : undefined,
+      leadIds: [context.lead.id], claimIds: [context.matter.claim.id],
       status, dqReasonKey: dq_reason_key ?? null, dqNote: dq_note ?? null,
-      actorId: u.uid, actorName: u.full_name ?? "User",
-    });
+      actorId: u.uid, actorName: u.full_name ?? "User", statuses: catalog.data,
+    }, { db: sb, queueReadDb: supabaseAdmin() });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
     return NextResponse.json({ ok: true });
   }

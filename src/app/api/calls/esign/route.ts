@@ -12,6 +12,7 @@ import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterE
 import { recordAudit } from "@/lib/audit";
 import { ensureClientSignedSnapshot } from "@/lib/mva-call/client-signed";
 import { readIdentityForSigning } from "@/lib/mva-call/identity";
+import { UNSIGNED_AGREEMENT_STATUSES, agreementSendStatus } from "@/lib/mva-call/replacement";
 
 export const runtime = "edge";
 
@@ -261,10 +262,10 @@ async function send(req: NextRequest) {
       }
       const clientSigned = Array.isArray((checked.data as any)?.submitters) && (checked.data as any).submitters.some((s: any) =>
         s.role === "Client" && (s.completed_at || s.status === "completed"));
-      if (clientSigned) return NextResponse.json({ error: "The client signed the old agreement while it was being replaced. It is preserved; refresh and use the signed-correction flow." }, { status: 409 });
+      if (clientSigned || checked.data?.status === "completed") return NextResponse.json({ error: "The client signed the old agreement while it was being replaced. It is preserved; refresh and use the signed-correction flow." }, { status: 409 });
       const { data: retired, error: retireError } = await admin.from("esign_submissions").update({
         status: "voided", voided_at: now, voided_by: me.id, void_reason: `Replaced with corrected agreement: ${replacementReason}`, updated_at: now,
-      }).eq("id", old.id).eq("status", old.status).is("voided_at", null).select("id").maybeSingle();
+      }).eq("id", old.id).in("status", UNSIGNED_AGREEMENT_STATUSES).is("signed_at", null).is("completed_at", null).is("voided_at", null).select("id").maybeSingle();
       if (retireError || !retired) {
         await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
           description: "DocuSeal confirmed the old link expired, but the local record did not retire. Replacement blocked for owner reconciliation.",
@@ -420,7 +421,7 @@ export async function GET(req: NextRequest) {
   // The console shows signed for anything signed or complete.
   const templates = context.campaignId ? await sb.from("esign_templates").select("key, name").eq("campaign_id", context.campaignId).eq("provider", "docuseal") : { data: [], error: null };
   if (templates.error) return NextResponse.json({ error: "Could not read this campaign's agreement setup." }, { status: 503 });
-  return NextResponse.json({ status: status === "completed" ? "signed" : status, complete: status === "completed", pax,
+  return NextResponse.json({ status: status === "completed" ? "signed" : agreementSendStatus(status), complete: status === "completed", pax,
     claim_id: context.matter.claim.id, agreement_id: main?.id ?? null, templates: templates.data ?? [], case_type: context.matter.claim.claim_type, read_only: !!context.lead.archived_at,
     emergency: emergency.row ? { group: emergency.row.packet_group, status: emergency.row.status, needs_resign: emergencySupersedes(main, emergency.row) } : null,
     agreement: main ? { id: main.id, status: main.status, via: main.via, template_key: main.template_key, sent_at: main.created_at, signed_at: main.signed_at, voided_at: main.voided_at, void_reason: main.void_reason } : null });

@@ -43,28 +43,47 @@ const COLS = "id, lead_id, firm_id, campaign_id, campaign, claim_type, status, a
 export async function resolveMatter(
   db: any,
   leadId: string,
-  opts: { claimId?: string | null; campaignId?: string | null } = {},
+  opts: { claimId?: string | null; campaignId?: string | null; authoritativeDb?: any } = {},
 ): Promise<MatterResult> {
   if (!leadId) return { ok: false, status: 400, error: "No file named." };
+  // A caller's RLS session chooses which claim may be seen. A trusted DB is
+  // used only for cardinality: a hidden sibling must never make the visible
+  // claim look like the file's sole matter and inherit claim-null evidence.
+  // Do not return rows or identifiers from this unrestricted count.
+  const countAll = async (campaignId?: string | null): Promise<number | null> => {
+    let q = (opts.authoritativeDb ?? db).from("claims").select("id", { count: "exact", head: true }).eq("lead_id", leadId);
+    if (campaignId) q = q.eq("campaign_id", campaignId);
+    const { count, error } = await q;
+    return error || typeof count !== "number" ? null : count;
+  };
   if (opts.claimId) {
     const { data, error } = await db.from("claims").select(COLS).eq("id", opts.claimId).maybeSingle();
     if (error) return { ok: false, status: 500, error: `Could not read the claim: ${error.message}` };
     if (!data) return { ok: false, status: 404, error: "That claim no longer exists. Refresh the file and try again." };
     if (data.lead_id !== leadId) return { ok: false, status: 400, error: "That claim does not belong to this file. Refresh and try again." };
-    const { count, error: cErr } = await db.from("claims").select("id", { count: "exact", head: true }).eq("lead_id", leadId);
-    if (cErr) return { ok: false, status: 500, error: `Could not read this file's claims: ${cErr.message}` };
+    const count = await countAll();
+    if (count === null || count < 1) return { ok: false, status: 500, error: "Could not verify this file's matter count. Refresh before working its documents." };
     return { ok: true, claim: data as MatterClaim, via: "named", sole: count === 1 };
   }
   const { data, error } = await db.from("claims").select(COLS).eq("lead_id", leadId).order("created_at", { ascending: true });
   if (error) return { ok: false, status: 500, error: `Could not read this file's claims: ${error.message}` };
   const all = (data ?? []) as MatterClaim[];
-  if (!all.length) return { ok: false, status: 409, error: "This file has no claim yet. Open the file and add its claim first." };
-  if (all.length === 1) return { ok: true, claim: all[0], via: "only", sole: true };
+  const count = await countAll();
+  if (count === null || count < all.length) return { ok: false, status: 500, error: "Could not verify this file's matter count. Refresh before working its documents." };
+  if (!all.length) {
+    // The call page may create a first claim only when the file truly has
+    // none. Hidden claims are not permission to create a duplicate matter.
+    if (count > 0) return { ok: false, status: 409, ambiguous: true, error: "This file's existing matter is not available in your current access. Ask the owner to review its campaign before continuing." };
+    return { ok: false, status: 409, error: "This file has no claim yet. Open the file and add its claim first." };
+  }
+  if (all.length === 1 && count === 1) return { ok: true, claim: all[0], via: "only", sole: true };
   const hit = opts.campaignId ? all.filter((c) => c.campaign_id === opts.campaignId) : [];
-  if (hit.length === 1) return { ok: true, claim: hit[0], via: "campaign", sole: false };
+  const campaignCount = hit.length === 1 && opts.campaignId ? await countAll(opts.campaignId) : null;
+  if (hit.length === 1 && campaignCount === 1) return { ok: true, claim: hit[0], via: "campaign", sole: false };
+  if (hit.length === 1 && campaignCount === null) return { ok: false, status: 500, error: "Could not verify this campaign's matter count. Refresh before working its documents." };
   return {
     ok: false, status: 409, ambiguous: true,
-    error: hit.length > 1
+    error: hit.length > 1 || (campaignCount !== null && campaignCount > 1)
       ? "This file has more than one matter on the same campaign. Pick which one this is for."
       : "This file has more than one matter and none matches this campaign. Pick which one this is for.",
     candidates: all.map((c) => ({ id: c.id, campaign: c.campaign, claim_type: c.claim_type, status: c.status })),

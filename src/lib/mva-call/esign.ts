@@ -28,7 +28,7 @@ export async function recoverSignedTransition(admin: any, row: any, deps: {
 } = {}): Promise<boolean> {
   const pending = String(row.error || "").includes(TRANSITION_PENDING);
   if (!pending || !["signed", "completed"].includes(row.status) || row.voided_at) return true;
-  const context = await resolveSigningMatter(admin, row.lead_id, { claimId: row.claim_id });
+  const context = await resolveSigningMatter(admin, row.lead_id, { claimId: row.claim_id, authoritativeDb: admin });
   if (!context.ok) return false;
   const current = await getMatterAgreement(admin, context.lead, context.matter, row.id);
   if (!current.ok || !current.row || current.row.voided_at || current.row.status === "voided") return false;

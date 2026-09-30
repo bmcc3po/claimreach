@@ -181,7 +181,7 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
     if (!claimed?.length) return "claimed_elsewhere";
     claimedAt = stamp;
 
-    const context = await resolveSigningMatter(admin, row.lead_id, { claimId: row.claim_id });
+    const context = await resolveSigningMatter(admin, row.lead_id, { claimId: row.claim_id, authoritativeDb: admin });
     if (!context.ok) {
       await settle({ notify_state: "failed", notify_error: context.error });
       return "failed";

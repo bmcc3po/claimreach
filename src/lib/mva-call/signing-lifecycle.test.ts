@@ -1,13 +1,17 @@
 // Offline source tests. Never calls a database, DocuSeal, or an email provider.
 import assert from "node:assert/strict";
 import { FakeDb } from "../test-fake-db";
-import { resolveSigningMatter, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "./signing-matter";
+import { resolveSigningMatter as resolveSigningMatterImpl, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "./signing-matter";
 import { recoverSignedTransition, syncSubmission } from "./esign";
 
 const L = "10000000-0000-4000-8000-000000000001", C = "20000000-0000-4000-8000-000000000001", B = "20000000-0000-4000-8000-000000000002";
 const F = "30000000-0000-4000-8000-000000000001", CAMP = "40000000-0000-4000-8000-000000000001";
 const tests: [string, () => any][] = [];
 const t = (name: string, fn: () => any) => tests.push([name, fn]);
+// The offline fixture stands in for both the session view and trusted
+// cardinality source; production supplies the service-role count after RLS.
+const resolveSigningMatter = (db: any, leadId: string, opts: Record<string, any> = {}) =>
+  resolveSigningMatterImpl(db, leadId, { ...opts, authoritativeDb: db });
 function world() {
   return new FakeDb({
     leads: [{ id: L, firm_id: F, campaign_id: CAMP, archived_at: null }],

@@ -138,8 +138,11 @@ function fakeFetch(answer: { status: number; body: any }, seen: any[]) {
     assert.equal(templateProblem("Template does not contain fields", 422), true);
     assert.equal(templateProblem("DocuSeal said 404.", 404), true);
     assert.equal(templateProblem("Phone is invalid", 422), false);
-    assert.match(plainDocuSeal("Could not reach DocuSeal.", undefined, "send"), /did not answer.*press Send again/);
-    assert.match(plainDocuSeal("DocuSeal said 502.", 502, "send"), /did not answer/);
+    for (const status of [undefined, 500, 502, 504]) {
+      const message = plainDocuSeal("Could not reach DocuSeal.", status, "send");
+      assert.match(message, /did not confirm.*Do not send another agreement/);
+      assert.doesNotMatch(message, /Nothing was sent|press Send again/);
+    }
     assert.match(plainDocuSeal("Phone is invalid", 422, "send"), /cell number is not valid/);
     assert.match(plainDocuSeal("Email is invalid", 422, "send"), /email is not valid/);
     assert.match(plainDocuSeal("Too many requests", 429, "send"), /busy/);
@@ -152,6 +155,9 @@ function fakeFetch(answer: { status: number; body: any }, seen: any[]) {
   await t("status reads DocuSeal's answer after she signs and after we complete", () => {
     assert.equal(statusFrom({ status: "pending", submitters: [{ id: 2, role: "Intake", status: "awaiting" }, { id: 1, role: "Client", status: "completed", completed_at: "2026-09-27T22:51:32Z" }] }), "signed");
     assert.equal(statusFrom({ status: "completed", submitters: [] }), "completed");
+    assert.equal(statusFrom({ status: "expired", submitters: [{ id: 1, role: "Client", completed_at: "2026-09-29T12:00:00Z", status: "completed" }] }), "signed");
+    assert.equal(statusFrom({ status: "expired", submitters: [{ id: 1, role: "Client", completed_at: "2026-09-29T12:00:00Z", status: "declined" }] }), "signed");
+    assert.equal(statusFrom({ status: "expired", submitters: [{ id: 1, role: "Client", status: "awaiting" }] }), "expired");
     assert.equal(statusFrom({ status: "pending", submitters: [{ id: 1, role: "Client", status: "awaiting" }] }), "sent");
   });
 

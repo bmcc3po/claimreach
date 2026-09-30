@@ -10,6 +10,7 @@ import { resolveSigningMatter, getMatterAgreement, agreementIsVoided } from "@/l
 import { matterRowsFilter } from "@/lib/matter";
 import { paxParentId } from "@/lib/linked-files";
 import { ensureClientSignedSnapshot } from "@/lib/mva-call/client-signed";
+import { UNSIGNED_AGREEMENT_STATUSES } from "@/lib/mva-call/replacement";
 
 export const runtime = "edge";
 
@@ -26,7 +27,6 @@ export const runtime = "edge";
 //                     kept as evidence, marked voided with who, when and why.
 // Either way the matter goes back to Contacting when this was its only live
 // agreement, and the send opens again on every screen.
-const UNSIGNED = ["sent", "opened", "sending", "failed", "declined", "expired"];
 const SIGNED = ["signed", "completed"];
 
 export async function POST(req: NextRequest) {
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   if (agreementIsVoided(row)) return NextResponse.json({ ok: true, already: true });
 
   const signed = SIGNED.includes(row.status);
-  if (!signed && !UNSIGNED.includes(row.status)) return NextResponse.json({ error: `This agreement is ${row.status}; it cannot be voided.` }, { status: 409 });
+  if (!signed && (!UNSIGNED_AGREEMENT_STATUSES.includes(row.status) || row.signed_at || row.completed_at)) return NextResponse.json({ error: "The agreement's signing state changed. Refresh and review the signed copy before voiding it." }, { status: 409 });
   if (row.status === "signed") {
     const snapshot = await ensureClientSignedSnapshot(admin, row);
     if (!snapshot.ok) return NextResponse.json({ error: `Could not preserve the client-signed original (${snapshot.error}). Nothing was voided.` }, { status: 503 });
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       }
       const clientSigned = Array.isArray(checked.data?.submitters) && checked.data.submitters.some((s: any) =>
         s.role === "Client" && (s.completed_at || s.status === "completed"));
-      if (clientSigned) return NextResponse.json({ error: "The client signed this agreement while it was being cancelled. Refresh and review the signed copy before voiding it." }, { status: 409 });
+      if (clientSigned || checked.data?.status === "completed") return NextResponse.json({ error: "The client signed this agreement while it was being cancelled. Refresh and review the signed copy before voiding it." }, { status: 409 });
     } else {
       const a = await archiveSubmission(row.submission_id);
       if (!a.ok && a.status !== 404) dsNote = ` DocuSeal did not archive it (${a.error}); the signed copy stays on the file either way.`;
@@ -91,9 +91,17 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date().toISOString();
-  const { data: moved, error } = await admin.from("esign_submissions").update({
+  let retire = admin.from("esign_submissions").update({
     status: "voided", voided_at: now, voided_by: me.id, void_reason: reason, updated_at: now,
-  }).eq("id", row.id).eq("status", row.status).select("id").maybeSingle();
+  }).eq("id", row.id).is("voided_at", null);
+  // DocuSeal's expiry callback can win the race to mark an unsigned row
+  // expired. Accept that progress, but never overwrite a landed signature.
+  retire = signed ? retire.eq("status", row.status) : retire.in("status", UNSIGNED_AGREEMENT_STATUSES).is("signed_at", null).is("completed_at", null);
+  const { data: moved, error } = await retire.select("id").maybeSingle();
+  if (!moved && !error) {
+    const { data: latest, error: latestError } = await admin.from("esign_submissions").select("status, voided_at").eq("id", row.id).maybeSingle();
+    if (!latestError && agreementIsVoided(latest)) return NextResponse.json({ ok: true, already: true });
+  }
   if (error || !moved) {
     const message = `DocuSeal cancellation was attempted, but the local void did not save${error ? ` (${error.message})` : " because the agreement changed"}. Refresh and have an owner or admin reconcile this agreement before sending a replacement.`;
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",

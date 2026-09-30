@@ -28,6 +28,14 @@ function Chips({ opts, multi }: { opts: any[]; multi?: boolean }) {
   );
 }
 
+function IdentityRows({ v }: { v: any }) {
+  return (<>
+    {v.sendReady && <div className="sf-row"><span className="sf-l">Identity details</span><div className="sf-c sf-mini">DOB and SSN are optional before sending. Enter them now or after the client signs.</div></div>}
+    <div className={`sf-row${!v.sendReady && !v.f.dob.value ? " sf-need" : ""}`}><label className="sf-l">Date of birth</label><div className="sf-c"><DobField cls="ch" value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} /></div></div>
+    <div className="sf-row"><label className="sf-l">Social Security number</label><div className="sf-c"><SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /></div></div>
+  </>);
+}
+
 /** The retainer block, form-plain: signer, injured, how it sends, send. */
 function SendBlock({ v, where }: { v: any; where: any }) {
   return (
@@ -49,6 +57,7 @@ function SendBlock({ v, where }: { v: any; where: any }) {
         <Chips opts={(v.via || []).map((c: any) => ({ label: c.label, on: / on/.test(c.cls), pick: c.pick }))} />
         <AgreementRecipient v={v} presentation="form" />
       </div></div>
+      <IdentityRows v={v} />
       <div className="sf-row sf-send"><label className="sf-l" aria-hidden="true"></label><div className="sf-c">
         {!!v.previewHref && <a className="sf-link" href={v.previewHref} target="_blank" rel="noopener">Preview the agreement</a>}
         {v.hasSendError && <div className="sf-bad">{v.sendError}</div>}
@@ -87,8 +96,7 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
       </div>
     )}
     <div className="sf-rows">
-      {row("Date of birth", <DobField cls="ch" value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} />, !v.f.dob.value)}
-      {row("Social Security number", <SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} />)}
+      {!v.sendReady && <IdentityRows v={v} />}
       {row("Finish the agreement", (<>
         {v.agreementOpen && (
           <div className="sf-addrow">

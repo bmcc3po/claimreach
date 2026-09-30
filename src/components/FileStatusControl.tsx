@@ -1,11 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import StatusBadge from "./ui/StatusBadge";
-import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, type StatusDef, type DqReason } from "@/lib/statuses";
+import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, manualIntakeStatusAllowed, type StatusDef, type DqReason } from "@/lib/statuses";
 
-// Clickable status badge on the file. Opens a picker of live statuses; choosing
-// a disqualify status forces a non-dismissable DQ-reason selection before it commits.
-export default function FileStatusControl({ leadId, current, role, claimId }: { leadId: string; current: string; role?: string; claimId?: string | null }) {
+export default function FileStatusControl({ leadId, current, role, claimId, onChanged }: { leadId: string; current: string; role?: string; claimId?: string | null; onChanged?: (status: string) => void }) {
   const [status, setStatus] = useState(current);
   const [open, setOpen] = useState(false);
   const [statuses, setStatuses] = useState<StatusDef[]>(DEFAULT_STATUSES);
@@ -40,14 +38,20 @@ export default function FileStatusControl({ leadId, current, role, claimId }: { 
 
   async function commit(statusKey: string, dqReasonKey?: string) {
     setBusy(true); setMsg("");
-    const r = await fetch("/api/leads", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "status", lead_id: leadId, claim_id: claimId ?? null, status: statusKey, dq_reason_key: dqReasonKey ?? null }),
-    });
-    const d = await r.json();
-    setBusy(false);
-    if (!r.ok) { setMsg(d.error || "Could not update status"); return; }
-    setStatus(statusKey); setOpen(false); setPicking(null);
+    try {
+      const r = await fetch("/api/leads", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "status", lead_id: leadId, claim_id: claimId ?? null, status: statusKey, dq_reason_key: dqReasonKey ?? null }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) { setMsg(d.error || "Could not update status"); return; }
+      setStatus(statusKey); setOpen(false); setPicking(null); setConfirming(null);
+      onChanged?.(statusKey);
+    } catch {
+      setMsg("Could not reach ClaimReach. The status was not changed; try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function choose(s: StatusDef) {
@@ -56,64 +60,41 @@ export default function FileStatusControl({ leadId, current, role, claimId }: { 
     setConfirming(s);                                           // everything else confirms
   }
 
-  // Statuses the QA pipeline owns. Setting one by hand leaves the QA queue, the
-  // fix inbox and the file disagreeing about where the file actually is.
-  const isPipeline = (s: StatusDef) => s.phase === "in_qa";
-
   return (
-    <div style={{ position: "relative" }}>
-      <button
-        onClick={() => canEdit && setOpen((v) => !v)}
-        style={{ background: "none", border: "none", padding: 0, cursor: canEdit ? "pointer" : "default" }}
-        title={canEdit ? "Change status" : undefined}
-      >
-        <StatusBadge status={status} live={statuses} />
-        {canEdit && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.6 }}>▾</span>}
-      </button>
+    <div className="file-status-control">
+      <span className="file-status-label">Current status</span>
+      <StatusBadge status={status} live={statuses} />
+      {canEdit && <button type="button" className="file-status-change" onClick={() => { setMsg(""); setOpen(true); }}>Change status</button>}
 
-      {open && canEdit && !picking && (
-        <div className="status-menu" onMouseLeave={() => setOpen(false)}>
-          <div className="status-menu-h">Set status</div>
+      {open && canEdit && !picking && !confirming && (
+        <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}>
+          <div className="modal status-dialog" role="dialog" aria-modal="true" aria-label="Change status">
+          <div className="status-dialog-head"><strong>Change status</strong><button type="button" className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>Close</button></div>
+          <p className="muted status-dialog-note">Choose the next call status. Signed, QA, and delivery statuses update through their own workflows.</p>
           <div className="status-menu-list">
-            {statuses.filter((s) => !isPipeline(s)).map((s) => (
-              <button key={s.key} className={`status-opt ${s.key === status ? "on" : ""}`} onClick={() => choose(s)}>
+            {statuses.filter(manualIntakeStatusAllowed).map((s) => (
+              <button type="button" key={s.key} className={`status-opt ${s.key === status ? "on" : ""}`} disabled={busy} onClick={() => choose(s)}>
                 <span className={`sb-dot ${s.tone}`} />
                 <span>{s.label}</span>
                 {s.qualify === "disqualify" && <span className="status-opt-tag">reason</span>}
               </button>
             ))}
-            {statuses.some(isPipeline) && (
-              <>
-                <div className="status-menu-h" style={{ marginTop: 8 }}>Set by QA, not by hand</div>
-                {statuses.filter(isPipeline).map((s) => (
-                  <button key={s.key} className={`status-opt locked ${s.key === status ? "on" : ""}`}
-                          onClick={() => choose(s)} title="The QA pipeline normally sets this. Changing it here is an override.">
-                    <span className={`sb-dot ${s.tone}`} />
-                    <span>{s.label}</span>
-                    <span className="status-opt-tag">override</span>
-                  </button>
-                ))}
-              </>
-            )}
           </div>
           {msg && <div className="status-menu-msg">{msg}</div>}
+          </div>
         </div>
       )}
 
       {confirming && (
-        <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) setConfirming(null); }}>
+        <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) setConfirming(null); }}>
           <div className="modal" style={{ maxWidth: 400, padding: "18px 20px" }}>
             <h3 style={{ marginTop: 0 }}>Change status to {confirming.label}?</h3>
-            <p className="muted" style={{ marginTop: 0 }}>
-              {isPipeline(confirming)
-                ? "The QA pipeline normally sets this one. Setting it by hand is an override, and it is recorded on the file."
-                : "This is recorded on the file and on the activity log."}
-            </p>
+            <p className="muted" style={{ marginTop: 0 }}>This is recorded on the file and on the activity log.</p>
             {msg && <div className="status-menu-msg">{msg}</div>}
             <div className="row" style={{ justifyContent: "flex-end", marginTop: 14, gap: 8 }}>
               <button className="btn ghost" disabled={busy} onClick={() => setConfirming(null)}>Cancel</button>
               <button className="btn" disabled={busy}
-                onClick={() => { const k = confirming.key; setConfirming(null); commit(k); }}>
+                onClick={() => { void commit(confirming.key); }}>
                 {busy ? "Saving" : `Set ${confirming.label}`}
               </button>
             </div>

@@ -24,3 +24,12 @@ export function signingReleaseGate(rows: any[]): string | null {
 export function canDirectVoid(role: string | null | undefined): boolean {
   return role === "owner" || role === "admin";
 }
+
+/** These states contain no completed client signature. A verified provider
+ * expiry may advance the local row to a terminal state before our CAS runs. */
+export const UNSIGNED_AGREEMENT_STATUSES = ["sent", "opened", "sending", "failed", "declined", "expired"];
+
+/** A dead link opens contract selection; it is never a pending send. */
+export function agreementSendStatus(status: string | null | undefined): string {
+  return !status || ["voided", "expired", "declined", "failed"].includes(status) ? "ready" : status;
+}

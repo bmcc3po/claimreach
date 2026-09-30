@@ -16,7 +16,7 @@
 import { SOL, stateCodeOf, injuryYears as injuryYearsFor } from './state';
 import { agreementChoice, agreementKey } from './agreement-choice';
 import { agreementName } from './agreement-names';
-import { canDirectVoid } from './replacement';
+import { canDirectVoid, agreementSendStatus } from './replacement';
 import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './intake';
 import { QUESTION_ORDER, QUESTION_PATHS, questionPhase } from './question-spine';
 export { SOL };
@@ -267,6 +267,7 @@ export class CallEngine {
   }
 
   setState(patch: any) {
+    if (patch.send) patch = { ...patch, send: { ...patch.send, status: agreementSendStatus(patch.send.status) } };
     this.state = Object.assign({}, this.state, patch);
     this.onChange(this.state);
   }
@@ -313,7 +314,7 @@ export class CallEngine {
       storyOpen: null, leadOpen: false,
       body: { pain: [], painNote: '', seen: [], providers: [], done: {}, last: null, firstAt: null, lastAt: null, stretch: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
       car: { justMe: false, people: [] },
-      send: { via: 'Text', status: this.props.esign.status || 'ready', client: this.props.callerName || '', phone: this.props.callerPhone || '', email: this.props.callerEmail || '', error: '', who: 'Same as signer', injured: '', nvVariant: 'tiered', nvReason: '' },
+      send: { via: 'Text', status: agreementSendStatus(this.props.esign.status), client: this.props.callerName || '', phone: this.props.callerPhone || '', email: this.props.callerEmail || '', error: '', who: 'Same as signer', injured: '', nvVariant: 'tiered', nvReason: '' },
       file: { step: 'agreement', dob: '', ssn: '', ssnMode: null, agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
     };
     if (saved && typeof saved === 'object') {
@@ -334,7 +335,7 @@ export class CallEngine {
         if (['open', 'story', 'body', 'car'].includes(s.phase)) s.phase = questionPhase(saved.atQuestion);
         s.fi = Object.assign({}, s.fi, { cq: saved.atQuestion, target: saved.atQuestion, edit: saved.atQuestion, restoredAt: s.phase });
       }
-      s.send.status = this.props.esign.status || 'ready';
+      s.send.status = agreementSendStatus(this.props.esign.status);
       s.file.pax = Object.assign({}, this.props.esign.pax);
       s.file.ssn = '';
     }

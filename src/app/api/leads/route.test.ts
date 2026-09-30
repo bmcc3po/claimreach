@@ -6,21 +6,51 @@ import path from "node:path";
 import ts from "typescript";
 import { FakeDb } from "../../../lib/test-fake-db";
 import { nullifyEmpty } from "../../../lib/coerce";
+import { resolveSigningMatter } from "../../../lib/mva-call/signing-matter";
+import { isInternalRole } from "../../../lib/permissions";
+import { setClaimStatusForLeads } from "../../../lib/claim-status";
+import { DEFAULT_STATUSES, manualIntakeStatusAllowed } from "../../../lib/statuses";
 
 function harness(role = "agent") {
   const db = new FakeDb({
-    app_users: [{ id: "operator", role, firm_id: "firm", full_name: "Offline Tester" }],
-    leads: [{ id: "lead", first_name: "Old", last_name: "Tester", claimant_name: "Old Tester", phone: "2025550110", stage: "referral_received" }],
+    app_users: [{ id: "operator", role, active: true, firm_id: "firm", full_name: "Offline Tester" }],
+    leads: [{ id: "lead", firm_id: "firm", campaign_id: "campaign", case_type: "mva", archived_at: null, first_name: "Old", last_name: "Tester", claimant_name: "Old Tester", phone: "2025550110", stage: "referral_received" }],
+    claims: [{ id: "claim", lead_id: "lead", firm_id: "firm", campaign_id: "campaign", claim_type: "mva", status: "new" }],
+    campaigns: [{ id: "campaign", firm_id: "firm", name: "INNO MVA", case_type: "mva", active: true }],
+    firms: [{ id: "firm", slug: "tmp" }],
+    statuses: DEFAULT_STATUSES.map((item) => ({ ...item })),
+    dq_reasons: [{ key: "criteria", label: "Outside criteria" }],
   });
   const audit: any[] = [];
+  const transitions: any[] = [];
+  const hiddenClaims: any[] = [];
+  const cardinalityDb = new FakeDb({});
+  Object.defineProperty(cardinalityDb.tables, "claims", { get: () => [...db.tables.claims, ...hiddenClaims] });
+  cardinalityDb.failOn = (op) => { assert.equal(op.table, "claims");assert.equal(op.kind, "select");return null; };
+  const aggregateDb = new FakeDb({});
+  Object.defineProperty(aggregateDb.tables, "claims", { get: () => [...db.tables.claims, ...hiddenClaims] });
+  aggregateDb.failOn = (op) => {
+    assert.equal(op.table, "claims", "privileged queue read must stay on claims");
+    assert.equal(op.kind, "select", "privileged queue DB must never mutate");
+    assert.ok(db.ops.some((write) => write.table === "claims" && write.kind === "update"), "queue aggregate is read only after the session target mutation");
+    return null;
+  };
   const session = Object.assign(db, { auth: { getUser: async () => ({ data: { user: { id: "operator" } } }) } });
   const modules: Record<string, any> = {
     "next/server": { NextResponse: { json: (body: any, opts: any = {}) => ({ body, status: opts.status || 200 }) } },
-    "@/lib/supabase-server": { supabaseServer: async () => session },
+    "@/lib/supabase-server": { supabaseServer: async () => session, supabaseAdmin: () => aggregateDb },
     "@/lib/questionnaire": { FIRM_WRITABLE_STAGES: [] },
     "@/lib/audit": { recordAudit: async (entry: any) => { audit.push(entry); } },
-    "@/lib/claim-status": { setClaimStatusForLeads: () => { throw new Error("Unexpected workflow side effect"); } },
+    "@/lib/claim-status": { setClaimStatusForLeads: async (options: any, deps: any) => {
+      assert.equal(deps?.db, session, "status mutations must keep the user's RLS session");
+      assert.equal(deps?.queueReadDb, aggregateDb);
+      transitions.push(options);
+      return setClaimStatusForLeads(options, { ...deps, audit: async (entry: any) => { audit.push(entry); }, automation: async () => {}, webhook: async () => {}, deliver: async () => {} });
+    } },
     "@/lib/coerce": { nullifyEmpty },
+    "@/lib/mva-call/signing-matter": { resolveSigningMatter: (sessionDb: any, leadId: string, opts: any) => resolveSigningMatter(sessionDb, leadId, { ...opts, authoritativeDb: cardinalityDb }) },
+    "@/lib/statuses": { manualIntakeStatusAllowed },
+    "@/lib/permissions": { isInternalRole },
     "@/lib/claim-properties": { coercePropCol: () => { throw new Error("Unexpected property write"); } },
   };
   const source = fs.readFileSync(path.resolve(__dirname, "route.ts"), "utf8");
@@ -31,7 +61,8 @@ function harness(role = "agent") {
     return modules[id];
   }, exp);
   const save = (lead: any, lead_id = "lead") => exp.POST({ json: async () => ({ op: "save", lead_id, lead }) });
-  return { db, audit, save, row: () => db.tables.leads[0], writes: () => db.ops.filter((o) => o.kind !== "select") };
+  const status = (extra: any = {}) => exp.POST({ json: async () => ({ op: "status", lead_id: "lead", claim_id: "claim", status: "contacting", ...extra }) });
+  return { db, aggregateDb, hiddenClaims, audit, save, status, transitions, row: () => db.tables.leads[0], writes: () => db.ops.filter((o) => o.kind !== "select") };
 }
 
 const tests: [string, () => Promise<void>][] = [];
@@ -119,6 +150,89 @@ test("database update failure is not acknowledged or audited as a saved name", a
 test("firm role still cannot rename contacts through the staff save route", async () => {
   const h = harness("firm"); const r = await h.save({ first_name: "New" });
   assert.equal(r.status, 403); assert.equal(h.writes().length, 0);
+});
+
+test("hidden lead and mismatched claim never reach the status writer", async () => {
+  const hidden = harness(); hidden.db.tables.leads=[];
+  assert.equal((await hidden.status()).status,404);assert.equal(hidden.transitions.length,0);assert.equal(hidden.writes().length,0);
+  const mismatch=harness();mismatch.db.tables.claims[0].lead_id="another-lead";
+  assert.equal((await mismatch.status()).status,400);assert.equal(mismatch.transitions.length,0);assert.equal(mismatch.writes().length,0);
+});
+
+test("non-owner status rejects non-INNO, ambiguous campaign, and wrong matter scope even before RLS rollout", async () => {
+  for(const mutate of [
+    (h:any)=>h.db.tables.campaigns[0].name="Motel 6",
+    (h:any)=>h.db.tables.campaigns[0].active=false,
+    (h:any)=>h.db.tables.firms[0].slug="tmt",
+    (h:any)=>h.db.tables.claims[0].campaign_id="foreign-campaign",
+    (h:any)=>h.row().case_type="motel_trafficking",
+    (h:any)=>h.db.tables.campaigns.push({...h.db.tables.campaigns[0],id:"duplicate-campaign"}),
+  ]){
+    const h=harness();mutate(h);const r=await h.status();
+    assert.equal(r.status,403);assert.equal(h.transitions.length,0);assert.equal(h.writes().length,0);
+  }
+});
+
+test("active INNO agent changes only resolved claim using the session database and preserves DQ validation", async () => {
+  const h=harness();h.db.tables.claims.push({...h.db.tables.claims[0],id:"sibling",status:"new"});
+  assert.equal((await h.status()).status,200);assert.equal(h.db.tables.claims[0].status,"contacting");
+  assert.equal(h.db.tables.claims[1].status,"new");assert.deepEqual(h.transitions[0].claimIds,["claim"]);
+  assert.equal((await h.status({status:"dq"})).status,400);assert.equal(h.db.tables.claims[0].status,"contacting");
+  assert.equal((await h.status({status:"dq",dq_reason_key:"criteria"})).status,200);assert.equal(h.db.tables.claims[0].status,"dq");
+});
+
+test("status keeps owner access and denies inactive staff or external roles", async () => {
+  const owner=harness("owner");owner.db.tables.campaigns[0].name="Other campaign";
+  assert.equal((await owner.status()).status,200);
+  for(const role of ["firm","partner"]){const h=harness(role);assert.equal((await h.status()).status,403);assert.equal(h.transitions.length,0);}
+  const inactive=harness();inactive.db.tables.app_users[0].active=false;
+  assert.equal((await inactive.status()).status,401);assert.equal(inactive.transitions.length,0);
+});
+
+test("status retains hidden sibling QA and WIP without returning or mutating that matter", async () => {
+  for (const siblingStatus of ["signed_grievous", "signed_wip"]) {
+    const h = harness();
+    h.hiddenClaims.push({ id: "hidden-matter", lead_id: "lead", campaign_id: "other-campaign", status: siblingStatus });
+    const r = await h.status({ status: "dq", dq_reason_key: "criteria" });
+    assert.equal(r.status, 200);
+    assert.equal(h.row().qa_pending, siblingStatus === "signed_grievous");
+    assert.equal(h.row().wip_pending, siblingStatus === "signed_wip");
+    assert.equal(h.db.tables.claims[0].status, "dq");
+    assert.equal(h.hiddenClaims[0].status, siblingStatus);
+    assert.deepEqual(r.body, { ok: true });
+    assert.ok(!JSON.stringify(h.audit).includes("hidden-matter"));
+    assert.equal(h.aggregateDb.ops.length, 1);
+    assert.deepEqual(h.aggregateDb.ops[0].filters, [["eq", "lead_id", "lead"]]);
+  }
+});
+
+test("failed sibling aggregate preserves prior queue flags and reports an incomplete update", async () => {
+  const h = harness();Object.assign(h.row(), { qa_pending: true, wip_pending: true });
+  h.aggregateDb.failOn = () => "Queue read unavailable";
+  const r = await h.status();
+  assert.equal(r.status, 400);
+  assert.equal(h.db.tables.claims[0].status, "contacting");
+  assert.equal(h.row().qa_pending, true);assert.equal(h.row().wip_pending, true);
+});
+
+test("manual status cannot fabricate signatures, QA, WIP, approval, or delivery even for the owner", async () => {
+  for (const role of ["agent", "owner"]) for (const status of ["esign_sent", "signed_grievous", "signed_qa", "signed_wip", "signed_approved", "signed_dropped", "grievous", "qa", "wip", "approved", "delivered", "retained"]) {
+    const h = harness(role);const r = await h.status({ status, dq_reason_key: "criteria" });
+    assert.equal(r.status, 409, `${role} ${status}`);assert.equal(h.transitions.length, 0);assert.equal(h.writes().length, 0);
+  }
+  const custom = harness();custom.db.tables.statuses.push({ ...DEFAULT_STATUSES[0], key: "custom_complete", requires_esign: true });
+  assert.equal((await custom.status({ status: "custom_complete" })).status, 409);
+});
+
+test("manual contact and callback changes work; unknown, inactive, or unreadable catalog fails closed", async () => {
+  const callback = harness();callback.db.tables.statuses.push({ ...DEFAULT_STATUSES[0], key: "callback", label: "Call back" });
+  assert.equal((await callback.status({ status: "callback" })).status, 200);
+  assert.equal((await callback.status({ status: "new" })).status, 200);
+  const unknown = harness();assert.equal((await unknown.status({ status: "invented" })).status, 400);assert.equal(unknown.writes().length, 0);
+  const inactive = harness();inactive.db.tables.statuses.find((item) => item.key === "contacting")!.active = false;
+  assert.equal((await inactive.status()).status, 400);assert.equal(inactive.writes().length, 0);
+  const failed = harness();failed.db.failOn = (op) => op.table === "statuses" ? "Read unavailable" : null;
+  assert.equal((await failed.status()).status, 503);assert.equal(failed.writes().length, 0);
 });
 
 (async () => {

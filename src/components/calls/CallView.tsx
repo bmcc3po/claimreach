@@ -45,6 +45,14 @@ function GapCard({ g, alone }: { g: any; alone?: boolean }) {
   return alone ? <div className="cc-flist">{row}</div> : row;
 }
 
+function IdentityFields({ v }: { v: any }) {
+  return (<>
+    {v.sendReady && <div className="cc-cue">DOB and SSN are optional before sending. Enter them now or after the client signs.</div>}
+    <div><div className="cc-lab">DATE OF BIRTH</div><DobField value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} /></div>
+    <div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /></div>
+  </>);
+}
+
 export default function CallView({ v }: { v: any }) {
   // One frame for Guided, Collapsible and All questions (IntakeWorkspace.tsx):
   // the same header, progress bar, view switch, side columns and bottom bar.
@@ -342,6 +350,7 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-cue">{v.viaNote}</div>
 <AgreementRecipient v={v} presentation="guided" />
 </div>
+{!(v.showFile && v.fsAgreement) && <div className="cc-card"><span className="cc-card-h">Identity details</span><IdentityFields v={v} /></div>}
 {!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener" onClick={v.onPreview}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>Preview the agreement before you send it</a>}
 {!!v.hasSendError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.sendError}</div></div>}
 {!!(v.sendWarn) && (<><div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.sendWarnText}</div></div></>)}
@@ -388,8 +397,7 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-card">
 <span className="cc-card-h">Finish the agreement</span>
 <div className="cc-cue" style={{marginTop: "0"}}>These print on the HIPAA pages as the patient's. For a child, it's the child's.</div>
-<div><div className="cc-lab">DATE OF BIRTH</div><DobField value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} /></div>
-<div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /></div>
+<IdentityFields v={v} />
 {!!(v.agreementOpen) && (<>
 {v.signed && v.openFile && <button type="button" className="cc-btn cc-soft" onClick={v.openFile}>Review client-signed PDF in File</button>}
 <button className="cc-btn cc-full" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
