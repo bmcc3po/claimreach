@@ -16,11 +16,12 @@ const now = new Date().toISOString();
 const lead = (id: string, statuses: string[], kind = 'mva') => ({
   id, firm_id: 'firm', campaign_id: 'campaign', case_type: kind, campaign: 'INNO MVA', archived_at: null, wip_pending: false, assigned_agent: 'operator',
   claimant_name: `Synthetic ${id}`, lead_no: `TEST-${id}`, phone: '2025550100', stage: 'referral_received', created_at: now, updated_at: now,
+  signed_at: statuses.some(status => status.startsWith('signed_')) ? now : null,
   claims: statuses.map((status, i) => ({ id: `${id}-claim${i}`, lead_id: id, firm_id: 'firm', campaign_id: 'campaign', campaign: 'INNO MVA', claim_type: kind, status, created_at: now })),
 });
 function fixture(leads: any[]) {
   const db = new FakeDb({ leads, claims: leads.flatMap(l => l.claims.map((c: any) => ({ ...c, leads: l, 'leads.campaign_id': l.campaign_id, 'leads.archived_at': l.archived_at }))), statuses: DEFAULT_STATUSES, campaigns: [{ id: 'campaign', name: 'INNO MVA', firm_id: 'firm', firms: { slug: 'tmp' }, case_type: 'mva', active: true }],
-    firms: [{ id: 'firm', slug: 'tmp', name: 'Synthetic firm' }], app_users: [{ id: 'operator', role: 'agent', full_name: 'Synthetic operator' }], intake_calls: [], lead_activity: [], communications: [], esign_submissions: [], esign_templates: [] });
+    firms: [{ id: 'firm', slug: 'tmp', name: 'Synthetic firm' }], app_users: [{ id: 'operator', role: 'agent', firm_id: 'firm', active: true, full_name: 'Synthetic operator' }], intake_calls: [], lead_activity: [], communications: [], esign_submissions: [], esign_templates: [] });
   const from = db.from.bind(db);
   db.from = ((table: string) => { const query: any = from(table); query.not = (column: string, op: string, value: any) => { assert.equal(op, 'is'); assert.equal(value, null); return query.neq(column, value); }; return query; }) as any;
   return db;
@@ -145,3 +146,4 @@ let count = 0; const test = async (name: string, fn: () => any) => { await fn();
   });
   console.log(`${count} actual acquisition queue page tests passed`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
+

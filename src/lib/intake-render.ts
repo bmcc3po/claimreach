@@ -145,7 +145,34 @@ export async function buildIntakePdf(b: IntakeBundle): Promise<Uint8Array> {
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  const M = 54; const W = 612; const H = 792; const wrapW = W - M * 2;
+  const W = 612; const H = 792;
+  const sections = intakeSections(b);
+  // Keep a complete intake readable. If every question and answer can fit on
+  // one letter page with the compact layout, use it; otherwise paginate with
+  // the regular type size instead of clipping or omitting answers.
+  function lineCount(text: string, f: any, size: number, width: number): number {
+    const words = String(text).split(/\s+/); let lines = 1; let cur = "";
+    for (const word of words) {
+      const next = cur ? `${cur} ${word}` : word;
+      if (cur && f.widthOfTextAtSize(next, size) > width) { lines++; cur = word; }
+      else cur = next;
+    }
+    return lines;
+  }
+  const compactHeight = (() => {
+    const width = W - 64;
+    let height = 19 + lineCount(lead.claimant_name || "Unnamed claimant", bold, 11, width) * 13
+      + lineCount(`${lead.lead_no || ""}   ·   ${claim?.campaign || lead.campaign || ""}   ·   ${caseType}`, font, 8, width) * 10
+      + 10 + 3 + 10;
+    for (const section of sections) {
+      height += 3 + lineCount(section.title.toUpperCase(), bold, 9, width) * 11 + 1;
+      for (const row of section.rows) height += lineCount(row.q, bold, 8.5, width) * 10.5
+        + lineCount(row.a, font, 8.5, width - 8) * 10.5 + 2;
+    }
+    return height;
+  })();
+  const compact = compactHeight <= H - 64 - 20;
+  const M = compact ? 32 : 54; const wrapW = W - M * 2;
   let page = pdf.addPage([W, H]);
   let y = H - M;
   const ink = rgb(0.07, 0.1, 0.16); const soft = rgb(0.4, 0.45, 0.53); const accent = rgb(0.85, 0.6, 0.16);
@@ -163,23 +190,23 @@ export async function buildIntakePdf(b: IntakeBundle): Promise<Uint8Array> {
     for (const ln of wrap(text, f, size, wrapW - indent)) {
       if (y < M + 20) { page = pdf.addPage([W, H]); y = H - M; }
       page.drawText(ln, { x: M + indent, y, size, font: f, color });
-      y -= size + 4;
+      y -= size + (compact ? 2 : 4);
     }
   }
 
-  page.drawText("CLAIM INTAKE", { x: M, y, size: 20, font: bold, color: ink }); y -= 26;
-  draw(lead.claimant_name || "Unnamed claimant", bold, 14, ink);
-  draw(`${lead.lead_no || ""}   ·   ${claim?.campaign || lead.campaign || ""}   ·   ${caseType}`, font, 10, soft);
-  draw(`Exported ${new Date().toLocaleString()}`, font, 9, soft);
-  y -= 6;
-  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 1, color: rgb(0.9, 0.92, 0.95) }); y -= 18;
+  page.drawText("CLAIM INTAKE", { x: M, y, size: compact ? 16 : 20, font: bold, color: ink }); y -= compact ? 19 : 26;
+  draw(lead.claimant_name || "Unnamed claimant", bold, compact ? 11 : 14, ink);
+  draw(`${lead.lead_no || ""}   ·   ${claim?.campaign || lead.campaign || ""}   ·   ${caseType}`, font, compact ? 8 : 10, soft);
+  draw(`Exported ${new Date().toLocaleString()}`, font, compact ? 8 : 9, soft);
+  y -= compact ? 3 : 6;
+  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 1, color: rgb(0.9, 0.92, 0.95) }); y -= compact ? 10 : 18;
 
-  for (const section of intakeSections(b)) {
-    y -= 6; draw(section.title.toUpperCase(), bold, 11, accent); y -= 2;
+  for (const section of sections) {
+    y -= compact ? 3 : 6; draw(section.title.toUpperCase(), bold, compact ? 9 : 11, accent); y -= compact ? 1 : 2;
     for (const row of section.rows) {
-      draw(row.q, bold, 10.5, ink);
-      draw(row.a, font, 10.5, rgb(0.15, 0.18, 0.24), 10);
-      y -= 6;
+      draw(row.q, bold, compact ? 8.5 : 10.5, ink);
+      draw(row.a, font, compact ? 8.5 : 10.5, rgb(0.15, 0.18, 0.24), compact ? 8 : 10);
+      y -= compact ? 2 : 6;
     }
   }
   return await pdf.save();
@@ -200,3 +227,4 @@ export function buildIntakeCsvSingle(b: IntakeBundle): string {
   ];
   return [header.map(esc).join(","), row.map(esc).join(",")].join("\n");
 }
+

@@ -7,6 +7,7 @@
 //     automation-exec.ts so the cron stays thin.
 // ============================================================================
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { normalizeTimeZone } from "@/lib/mail-time-zone";
 
 export type TriggerType =
   | "status_changed" | "lead_created" | "no_contact_timer"
@@ -62,7 +63,7 @@ export function clampToWindow(desired: Date, window: any, leadState?: string | n
   const start = clock(window.start), end = clock(window.end);
   if (start >= end) throw new Error("Automation windows must start before they end.");
   if (window.mode !== "fixed" && window.mode !== "lead_tz") throw new Error("Invalid automation time-zone mode.");
-  const tz = window.mode === "fixed" ? window.tz : (clientTimeZone || tzForState(leadState));
+  const tz = window.mode === "fixed" ? window.tz : (normalizeTimeZone(clientTimeZone) || tzForState(leadState));
   if (typeof tz !== "string" || !tz) throw new Error("An automation time zone is required.");
   const days = window.days === undefined ? DAY_KEYS.slice(1, 6) : window.days;
   if (!Array.isArray(days) || !days.length || days.some(d => !DAY_KEYS.includes(d))) throw new Error("Invalid automation calling days.");
@@ -232,3 +233,4 @@ export async function matchAndStart(ev: {
   }
   return { started };
 }
+

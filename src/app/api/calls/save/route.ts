@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, leadPatchSince, LEAD_CALL_COLS } from "@/lib/mva-call/server";
+import { inferMailTimeZone } from "@/lib/mail-time-zone";
 import { resolveMatter } from "@/lib/matter";
 import { isAnswerObject, mergeAnswerDelta } from "@/lib/mva-call/answer-merge";
 
@@ -128,7 +129,13 @@ export async function POST(req: NextRequest) {
     return String(cur ?? "").trim() === String(v ?? "").trim();
   };
   for (const k of Object.keys(since)) if (same(k, since[k])) delete since[k];
-  const patch = { ...since, last_called_at: now };
+  const inferredZone = !lead.client_time_zone
+    ? inferMailTimeZone(since.mail_state ?? lead.mail_state, since.mail_zip ?? lead.mail_zip)
+    : null;
+  const patch = { ...since, last_called_at: now,
+    ...(!lead.intake_agent_id ? { intake_agent_id: me.id } : {}),
+    ...(inferredZone ? { client_time_zone: inferredZone } : {}),
+  };
   const { error: lpErr } = await sb.from("leads").update(patch).eq("id", lead.id);
   if (lpErr) return NextResponse.json({ error: `Answers saved, the lead record did not: ${lpErr.message}`, call_id: callId }, { status: 500 });
 
@@ -138,3 +145,4 @@ export async function POST(req: NextRequest) {
   for (const k of ["phone", "email", "mail_addr1", "mail_city", "mail_state", "mail_zip"]) if (k in since) contact[k] = String((since as any)[k] ?? "");
   return NextResponse.json({ ok: true, call_id: callId, claim_id: claim.id, answers, contact });
 }
+

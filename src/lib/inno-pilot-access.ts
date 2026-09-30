@@ -9,8 +9,10 @@ export function pilotStaffPageAllowed(path: string): boolean {
 
 export function pilotStaffApiAllowed(path: string, method = "GET"): boolean {
   if (path === "/api/me/password") return method === "POST";
+  if (path === "/api/case/details") return method === "POST";
   if (path === "/api/calls/esign-setup") return false;
   if (path === "/api/statuses" || path === "/api/dq-reasons") return method === "GET" || method === "HEAD";
   return path === "/api/leads" || path === "/api/notes" || path === "/api/places"
     || path === "/api/firm-delivery" || path.startsWith("/api/calls/");
 }
+

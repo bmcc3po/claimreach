@@ -75,6 +75,15 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>)
     for (const value of ["State Farm", "TEST-REPORT", "2022", "Toyota", "Camry"]) assert.ok(text.includes(value), value);
     assert.ok(!text.includes("000001234"));
   });
+  await t("a moderately sized intake stays on one PDF page without losing answers", async () => {
+    const fields = Array.from({ length: 16 }, (_, i) => ({ id: `q${i}`, kind: "text", label: `Question ${i + 1}` }));
+    const answers = Object.fromEntries(fields.map((f, i) => [f.id, `Synthetic answer ${i + 1}`]));
+    const bytes = await buildIntakePdf({ ...bundle, caseType: "other", fields, answers });
+    assert.equal((await PDFDocument.load(bytes)).getPageCount(), 1);
+    const text = await pdfText(bytes);
+    assert.match(text, /Synthetic answer 1/);
+    assert.match(text, /Synthetic answer 16/);
+  });
   await t("email body uses the same MVA answers and escapes claimant text", () => {
     const html = buildIntakeEmailHtml({ ...bundle, answers: { mva_call: { ...call, story: { ...call.story, text: "Crash <script>alert(1)</script>" } } } });
     assert.match(html, /Crash &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
@@ -99,3 +108,4 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>)
   });
   console.log(`${count} passed`);
 })().catch((e) => { console.error(e); process.exitCode = 1; });
+

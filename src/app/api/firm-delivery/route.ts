@@ -101,7 +101,10 @@ export async function POST(req: NextRequest) {
     triggeredBy: "manual",
     actorName: g.name || "User",
     force: !!b?.force,
+    expectedTo: typeof b?.expected_to === "string" ? b.expected_to : undefined,
+    expectedCc: Array.isArray(b?.expected_cc) ? b.expected_cc : undefined,
   });
   if (!res.ok && !res.skipped) return NextResponse.json(res, { status: res.ambiguous ? 409 : 400 });
   return NextResponse.json(res);
 }
+

@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { FakeDb, type Op } from './test-fake-db';
 import { DEFAULT_STATUSES, manualIntakeStatusAllowed, isSignedKey } from './statuses';
 import * as transitionGuard from './intake-status-guard';
+import * as mailTimeZone from './mail-time-zone';
 
 const NOW = '2026-09-29T18:00:00.000Z';
 class ClockDate extends Date { constructor(value?: any) { super(value === undefined ? NOW : value); } static now() { return Date.parse(NOW); } }
@@ -33,6 +34,7 @@ function load(db: Db) {
     '@/lib/firm-delivery': { deliverLeadToFirm: async (arg: any) => { effects.push({ kind: 'delivery', ...arg }); return { ok: true }; } },
     '@/lib/statuses': { manualIntakeStatusAllowed, isSignedKey },
     '@/lib/intake-status-guard': transitionGuard,
+    '@/lib/mail-time-zone': mailTimeZone,
   };
   const requireStub = (name: string) => { assert.ok(name in mods, `Unexpected module: ${name}`); return mods[name]; };
   new Function('require', 'exports', 'Date', 'crypto', engineCode)(requireStub, engine, ClockDate, webcrypto);
@@ -280,3 +282,4 @@ async function main() {
   console.log(`${checks} automation safety checks passed`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
+

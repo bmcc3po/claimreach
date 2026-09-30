@@ -21,7 +21,7 @@ export function canHearRecordings(role: string | null | undefined): boolean {
 }
 
 export const LEAD_CALL_COLS =
-  "id, firm_id, lead_no, campaign_id, campaign, case_type, claimant_name, first_name, last_name, phone, phone_norm, email, dob, ssn_last4, mail_addr1, mail_city, mail_state, mail_zip, perm_call, perm_text, perm_email, comms_monitored, comms_safe_channels, archived_at, created_at, external_id";
+  "id, firm_id, lead_no, campaign_id, campaign, case_type, claimant_name, first_name, last_name, phone, phone_norm, email, dob, ssn_last4, mail_addr1, mail_city, mail_state, mail_zip, client_time_zone, intake_agent_id, perm_call, perm_text, perm_email, comms_monitored, comms_safe_channels, archived_at, created_at, external_id";
 
 /** "Turnbull Moak & Pendergrass" -> "Turnbull Moak and Pendergrass", said the way an agent says it. */
 export function firmSpoken(name: string | null | undefined): string {
@@ -212,3 +212,4 @@ export async function findByLawRulerId(sb: any, raw: string): Promise<{ id: stri
   const best = rows.find((r: any) => r.case_type === "mva") || rows[0];
   return best ? { id: best.id, key: leadKeyOf(best) } : null;
 }
+

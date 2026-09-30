@@ -183,6 +183,8 @@ export async function deliverLeadToFirm(opts: {
   triggeredBy: "auto" | "manual" | "automation";
   actorName?: string | null;
   force?: boolean;
+  expectedTo?: string;
+  expectedCc?: string[];
 }, deps: DeliverDeps = {}): Promise<DeliverResult> {
   const db = deps.db ?? supabaseAdmin();
   const audit = deps.audit ?? (async (row: any) => { await recordAudit(row); });
@@ -228,7 +230,9 @@ export async function deliverLeadToFirm(opts: {
     } catch (e) { problems.push(`the delivery log did not save (${errText(e)})`); }
     try {
       const { data: hit, error: e } = await db.from("claims")
-        .update(ok ? { firm_sent_at: stamp, firm_send_result: "sent" } : { firm_send_result: `error: ${error}` })
+        .update(ok ? { firm_sent_at: stamp, firm_send_result: "sent",
+          ...(claim.claim_type === "mva" && claim.status === "signed_approved" ? { status: "delivered" } : {})
+        } : { firm_send_result: `error: ${error}` })
         .eq("id", claim.id).select("id");
       if (e) problems.push(`this matter's delivery record did not save (${e.message})`);
       else if (!hit?.length) problems.push("this matter's delivery record did not save (the matter was not found)");
@@ -298,6 +302,13 @@ export async function deliverLeadToFirm(opts: {
 
   to = String(cfg.firm_email || "").trim();
   cc = String(cfg.firm_cc || "").split(/[,;]/).map((s: string) => s.trim()).filter(Boolean);
+  if (opts.triggeredBy === "manual" && opts.expectedTo !== undefined) {
+    const expectedCc = (opts.expectedCc || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean).sort();
+    if (opts.expectedTo.trim().toLowerCase() !== to.toLowerCase()
+      || expectedCc.join(",") !== cc.map((s) => s.toLowerCase()).sort().join(",")) {
+      return refuse("The firm's recipient changed after this screen loaded. Refresh and confirm the current address before sending.");
+    }
+  }
   const replyTo = String(cfg.firm_reply_to || "").trim() || undefined;
   if (!to) return refuse("This campaign has no firm email set.");
 
@@ -583,3 +594,4 @@ export async function deliverLeadToFirm(opts: {
   if (problems.length) out.warning = `Sent, but ${problems.join("; ")}. Check delivery history before an intentional resend; automatic retries are blocked.`;
   return out;
 }
+

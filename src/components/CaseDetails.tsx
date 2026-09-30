@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { fileMaySeeMoney, type FileFence } from "@/lib/file-fence";
 import { useFieldAutosave } from "./useFieldAutosave";
+import { DISPO_LABEL } from "@/lib/mva-call/dispo";
 
 const KEYS = ["marketing_source", "referring_attorney", "handling_attorney", "intake_agent_id",
   "qa_agent_id", "case_manager_id", "office_location", "case_rating", "call_outcome", "esign_date",
@@ -25,13 +26,13 @@ function toPayload(patch: Record<string, any>): Record<string, any> {
 
 // Case-management layer: routing/people, content, dates, tags, events. Separate
 // from the intake questionnaire. Saves to the leads row + case_events.
-type CaseDetailsProps = { lead: any; staff?: { id: string; full_name: string }[]; editMode?: boolean; onRequestEdit?: () => void; fence?: FileFence; onSaved?: (patch: Record<string, any>) => void };
+type CaseDetailsProps = { lead: any; staff?: { id: string; full_name: string }[]; callAgent?: string | null; callDisposition?: string | null; editMode?: boolean; onRequestEdit?: () => void; fence?: FileFence; onSaved?: (patch: Record<string, any>) => void };
 
 export default function CaseDetails(props: CaseDetailsProps) {
   return <CaseDetailsRecord key={props.lead.id} {...props} />;
 }
 
-function CaseDetailsRecord({ lead, staff = [], editMode = true, onRequestEdit, fence, onSaved }: CaseDetailsProps) {
+function CaseDetailsRecord({ lead, staff = [], callAgent, callDisposition, editMode = true, onRequestEdit, fence, onSaved }: CaseDetailsProps) {
   // The record's values as this tab last saw them in its props.
   const seen = useRef<Record<string, any> | null>(null);
   // Autosave a second after the last edit, no manual Save needed. Only the
@@ -118,7 +119,7 @@ function CaseDetailsRecord({ lead, staff = [], editMode = true, onRequestEdit, f
           <V label="Referring attorney" value={f.referring_attorney} />
           <V label="Handling attorney" value={f.handling_attorney} />
           <V label="Office location" value={f.office_location} />
-          <V label="Intake agent" value={staffName(f.intake_agent_id)} />
+          <V label="Intake agent" value={staffName(f.intake_agent_id) || (callAgent ? `${callAgent} (recorded call)` : "")} />
           <V label="QA agent" value={staffName(f.qa_agent_id)} />
           <V label="Case manager" value={staffName(f.case_manager_id)} />
         </div>
@@ -126,8 +127,9 @@ function CaseDetailsRecord({ lead, staff = [], editMode = true, onRequestEdit, f
         <div className="ro-section">Status & Dates</div>
         <div className="ro-grid">
           {fileMaySeeMoney(fence) && <V label="Case tier" value={f.case_rating} />}
-          <V label="Call outcome" value={f.call_outcome} />
-          <V label="eSign date" value={f.esign_date} />
+          <V label="Call outcome" value={callDisposition ? (DISPO_LABEL as Record<string, string>)[callDisposition] || callDisposition : f.call_outcome} />
+          <V label="eSign sent" value={lead.esign_sent_at ? new Date(lead.esign_sent_at).toLocaleString() : ""} />
+          <V label="eSign signed date" value={f.esign_date} />
           <V label="Last called" value={lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : ""} />
         </div>
         {tags.length > 0 && (
@@ -172,7 +174,8 @@ function CaseDetailsRecord({ lead, staff = [], editMode = true, onRequestEdit, f
           <div className="section-title">Status & Dates</div>
           {fileMaySeeMoney(fence) && <L label="Case tier / rating"><Sel value={f.case_rating} onChange={(v) => set("case_rating", v)} options={dd("tier")} allowFree /></L>}
           <L label="Call outcome"><Sel value={f.call_outcome} onChange={(v) => set("call_outcome", v)} options={dd("call_outcome")} allowFree /></L>
-          <L label="eSign date"><input type="date" value={f.esign_date ?? ""} onChange={(e) => set("esign_date", e.target.value)} /></L>
+          <L label="eSign sent"><span className="muted">{lead.esign_sent_at ? new Date(lead.esign_sent_at).toLocaleString() : "Not sent"}</span></L>
+          <L label="eSign signed date"><span className="muted">{f.esign_date || "Awaiting signature"}</span></L>
           <L label="Last called"><span className="muted">{lead.last_called_at ? new Date(lead.last_called_at).toLocaleString() : "—"}</span></L>
           <L label="Case tags (comma-separated, searchable)"><input value={f.case_tags} onChange={(e) => set("case_tags", e.target.value)} placeholder="urgent, spanish, callback" /></L>
         </div>
@@ -219,3 +222,4 @@ function Sel({ value, onChange, options, allowFree }: { value: string; onChange:
 function StaffSel({ value, onChange, staff }: { value: string; onChange: (v: string) => void; staff: { id: string; full_name: string }[] }) {
   return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">—</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}</select>;
 }
+

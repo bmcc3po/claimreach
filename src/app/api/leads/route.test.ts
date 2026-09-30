@@ -5,12 +5,14 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { FakeDb } from "../../../lib/test-fake-db";
+import { INTAKE, STAGES } from "../../../lib/questionnaire";
 import { nullifyEmpty } from "../../../lib/coerce";
 import { resolveSigningMatter } from "../../../lib/mva-call/signing-matter";
-import { isInternalRole } from "../../../lib/permissions";
+import { can, isInternalRole } from "../../../lib/permissions";
 import { setClaimStatusForLeads } from "../../../lib/claim-status";
 import { DEFAULT_STATUSES, manualIntakeStatusAllowed } from "../../../lib/statuses";
 import { intakeStatusTransitionBlock } from "../../../lib/intake-status-guard";
+import * as mailTimeZone from "../../../lib/mail-time-zone";
 
 function harness(role = "agent") {
   const db = new FakeDb({
@@ -45,7 +47,7 @@ function harness(role = "agent") {
   const modules: Record<string, any> = {
     "next/server": { NextResponse: { json: (body: any, opts: any = {}) => ({ body, status: opts.status || 200 }) } },
     "@/lib/supabase-server": { supabaseServer: async () => session, supabaseAdmin: () => aggregateDb },
-    "@/lib/questionnaire": { FIRM_WRITABLE_STAGES: [] },
+    "@/lib/questionnaire": { FIRM_WRITABLE_STAGES: [], INTAKE, STAGES },
     "@/lib/audit": { recordAudit: async (entry: any) => { audit.push(entry); } },
     "@/lib/claim-status": { setClaimStatusForLeads: async (options: any, deps: any) => {
       assert.equal(deps?.db, session, "status mutations must keep the user's RLS session");
@@ -57,7 +59,8 @@ function harness(role = "agent") {
     "@/lib/mva-call/signing-matter": { resolveSigningMatter: (sessionDb: any, leadId: string, opts: any) => resolveSigningMatter(sessionDb, leadId, { ...opts, authoritativeDb: cardinalityDb }) },
     "@/lib/statuses": { manualIntakeStatusAllowed },
     "@/lib/intake-status-guard": { intakeStatusTransitionBlock },
-    "@/lib/permissions": { isInternalRole },
+    "@/lib/permissions": { can, isInternalRole },
+    "@/lib/mail-time-zone": mailTimeZone,
     "@/lib/claim-properties": { coercePropCol: () => { throw new Error("Unexpected property write"); } },
   };
   const source = fs.readFileSync(path.resolve(__dirname, "route.ts"), "utf8");
@@ -68,12 +71,32 @@ function harness(role = "agent") {
     return modules[id];
   }, exp);
   const save = (lead: any, lead_id = "lead") => exp.POST({ json: async () => ({ op: "save", lead_id, lead }) });
+  const stage = (next: string) => exp.POST({ json: async () => ({ op: "stage", lead_id: "lead", stage: next }) });
+  const create = (firm_id: string) => exp.POST({ json: async () => ({ op: "create", firm_id, campaign_id: "campaign", case_type: "mva" }) });
   const status = (extra: any = {}) => exp.POST({ json: async () => ({ op: "status", lead_id: "lead", claim_id: "claim", status: "contacting", ...extra }) });
-  return { db, aggregateDb, hiddenClaims, audit, save, status, transitions, row: () => db.tables.leads[0], writes: () => db.ops.filter((o) => o.kind !== "select") };
+  return { db, aggregateDb, hiddenClaims, audit, save, stage, create, status, transitions, row: () => db.tables.leads[0], writes: () => db.ops.filter((o) => o.kind !== "select") };
 }
 
 const tests: [string, () => Promise<void>][] = [];
 const test = (name: string, fn: () => Promise<void>) => tests.push([name, fn]);
+
+test("contact and stage mutations reject another firm and another campaign before writing", async () => {
+  for (const mutate of [(h: any) => { h.row().firm_id = "other"; }, (h: any) => {
+    h.row().campaign_id = "other";
+    h.db.tables.campaigns.push({ id: "other", firm_id: "firm", name: "Motel 6", case_type: "mva", active: true });
+  }]) {
+    const h = harness(); mutate(h);
+    assert.equal((await h.save({ phone: "2025550101" })).status, 403);
+    assert.equal((await h.stage(STAGES[0])).status, 403);
+    assert.equal(h.writes().length, 0);
+  }
+});
+
+test("staff cannot create a file in another firm", async () => {
+  const h = harness();
+  assert.equal((await h.create("other")).status, 403);
+  assert.equal(h.writes().length, 0);
+});
 
 test("first-name-only correction derives canonical name and preserves other contact fields", async () => {
   const h = harness(); const r = await h.save({ first_name: "  New  " });
@@ -125,7 +148,7 @@ test("read failure and missing lead never proceed to a rename update", async () 
   const missing = harness(); assert.equal((await missing.save({ first_name: "New" }, "missing")).status, 404);
   assert.equal(missing.writes().length, 0);
   const failed = harness(); failed.db.failOn = (o) => o.table === "leads" && o.kind === "select" ? "Read unavailable" : null;
-  assert.equal((await failed.save({ first_name: "New" })).status, 500); assert.equal(failed.writes().length, 0);
+  assert.equal((await failed.save({ first_name: "New" })).status, 503); assert.equal(failed.writes().length, 0);
 });
 
 test("another screen changing either split name rejects the whole stale update", async () => {
@@ -321,3 +344,4 @@ test("same-status newer evidence or concurrent signed status defeats the conditi
   for (const [name, fn] of tests) { await fn(); console.log("ok", name); }
   console.log(`${tests.length} lead name route scenarios passed`);
 })().catch((e) => { console.error(e); process.exitCode = 1; });
+
