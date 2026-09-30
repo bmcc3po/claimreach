@@ -1921,6 +1921,15 @@ div.ws-row{cursor:default}
 .cc-app.ix.ch-mode .ch-grid>.ch-q:not(.ch-wide){padding:12px;border:1px solid #E6EBF2;border-radius:9px;background:#FCFDFE}
 /* Insurance has six short questions; keep all six as equal cells. */
 .cc-app.ix.ch-mode #ch-sec-insurance .ch-grid>.ch-q.ch-wide{grid-column:auto;padding:12px;border:1px solid #E6EBF2;border-radius:9px;background:#FCFDFE}
+/* On phones, each question needs a distinct boundary as the grid stacks. */
+@media(max-width:600px){
+  .cc-app.ix.ix-narrow.ch-mode .ch-grid{gap:14px}
+  .cc-app.ix.ix-narrow.ch-mode .ch-grid>.ch-q,
+  .cc-app.ix.ix-narrow.ch-mode #ch-sec-insurance .ch-grid>.ch-q.ch-wide{
+    padding:14px;border:1px solid #9AAFCC;border-radius:10px;background:#FFFFFF;
+    box-shadow:0 1px 3px rgba(18,41,79,.06)
+  }
+}
 .cc-page .sf-sec{margin:0 0 22px}
 .cc-page .sf-h{font-size:16px;font-weight:700;color:#FFFFFF;margin:0 0 8px;padding:11px 14px;border-radius:8px;background:#315DA4;border-bottom:2px solid #244A83}
 .cc-page .sf-rows{background:#FFFFFF;border:1px solid #D1D1D6;border-radius:10px;overflow:hidden}
