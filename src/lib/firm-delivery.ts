@@ -26,7 +26,7 @@
 // ============================================================================
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { retainerTokens, fillTemplate } from "@/lib/retainer-tokens";
-import { loadIntakeBundle, buildIntakePdf, buildIntakeCsvSingle, buildIntakeEmailHtml, hasIntakeQuestions, type IntakeBundle } from "@/lib/intake-render";
+import { loadIntakeBundle, buildIntakePdfAttachment, buildIntakeCsvSingle, buildIntakeEmailHtml, hasIntakeQuestions, type IntakeBundle } from "@/lib/intake-render";
 import { buildCertificatePdf } from "@/lib/certificate";
 import { recordAudit } from "@/lib/audit";
 import { downloadSignedDoc, listSubmissionDocs, signedDocPath } from "@/lib/signed-docs";
@@ -339,8 +339,7 @@ export async function deliverLeadToFirm(opts: {
     bodyHtml += buildIntakeEmailHtml(bundle);
     if (wantPdf) {
       try {
-        const bytes = await buildIntakePdf(bundle);
-        attachments.push({ filename: `${nameBase}_intake.pdf`, content: toB64(bytes), kind: "intake_pdf" });
+        attachments.push({ ...await buildIntakePdfAttachment(bundle), kind: "intake_pdf" });
       } catch (e) { intakeFailed = `the intake PDF could not be built (${errText(e)})`; }
     }
     if (!intakeFailed && wantCsv) {

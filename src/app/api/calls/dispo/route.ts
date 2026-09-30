@@ -4,6 +4,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, LEAD_CALL_COLS } from "@/lib/mva-call/server";
 import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/report";
 import { signedPdfAttachment } from "@/lib/signed-docs";
+import { loadIntakeBundle, hasIntakeQuestions, buildIntakePdfAttachment } from "@/lib/intake-render";
 import { validateDispo, DISPO_STATUS, DISPO_FIXED_DQ_KEY, DISPO_LABEL, DEFAULT_CALL_REASONS } from "@/lib/mva-call/dispo";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
@@ -17,7 +18,7 @@ export const runtime = "edge";
 //   { lead_id, call_id?, dispo, reasons[], callback_at?, note?, notify[] }
 // Closes the call: writes the dispo on the call session, moves the claim to the
 // matching status through the one status setter, fires call.dispositioned, and
-// for a signed file emails the case (no SSN, no PDF, a link to the file).
+// for a signed file emails the case and its intake PDF to selected owners.
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const me = await requireStaff(sb);
@@ -166,12 +167,19 @@ export async function POST(req: NextRequest) {
     const report = caseReport({ ...lead, campaign: matter.claim.campaign, case_type: matter.claim.claim_type }, matter.claim.answers?.mva_call || call?.answers || {}, sub);
     const link = `${origin}/leads/${leadKeyOf(lead)}?claim=${claimId}`;
     const pdf = sub?.completed_pdf_path ? await signedPdfAttachment(admin, sub.completed_pdf_path, `${report.name} agreement`) : { file: null };
-    const attachments = pdf.file ? [pdf.file] : [];
-    const html = caseReportHtml(report, { link, note: `${me.name || "An agent"} signed this file${matter.claim.campaign ? ` on ${matter.claim.campaign}` : ""}.`, attached: attachments.length > 0 });
-    const text = caseReportText(report, link);
-    for (const to of d.notify) {
-      const r = await sendEmail({ to, subject: `Signed: ${report.name}${lead.lead_no ? `, ${lead.lead_no}` : ""}`, html, text, attachments });
-      if (r.ok) emailed.push(to); else emailError = r.error || "email failed";
+    try {
+      const bundle = await loadIntakeBundle(sb, lead.id, claimId);
+      if (!bundle || !hasIntakeQuestions(bundle)) throw new Error("this matter's intake questions are unavailable");
+      const intake = await buildIntakePdfAttachment(bundle);
+      const attachments = [intake, ...(pdf.file ? [pdf.file] : [])];
+      const html = caseReportHtml(report, { link, note: `${me.name || "An agent"} signed this file${matter.claim.campaign ? ` on ${matter.claim.campaign}` : ""}. The intake PDF is attached.`, attached: !!pdf.file });
+      const text = `${caseReportText(report, link)}\n\nThe intake PDF is attached.`;
+      for (const to of d.notify) {
+        const r = await sendEmail({ to, subject: `Signed: ${report.name}${lead.lead_no ? `, ${lead.lead_no}` : ""}`, html, text, attachments });
+        if (r.ok) emailed.push(to); else emailError = r.error || "email failed";
+      }
+    } catch (e: any) {
+      emailError = `The intake PDF could not be attached (${e?.message || "unknown error"}). No signed-call notice was emailed.`;
     }
   }
 

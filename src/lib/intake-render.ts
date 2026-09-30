@@ -212,6 +212,18 @@ export async function buildIntakePdf(b: IntakeBundle): Promise<Uint8Array> {
   return await pdf.save();
 }
 
+/** The same PDF attachment shape for signed notices, case email and firm delivery. */
+export async function buildIntakePdfAttachment(b: IntakeBundle): Promise<{ filename: string; content: string }> {
+  const bytes = await buildIntakePdf(b);
+  const name = String(b.lead.claimant_name || b.lead.lead_no || "claimant")
+    .replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "") || "claimant";
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return { filename: `${name}_intake.pdf`, content: btoa(binary) };
+}
+
 // Build a one-row CSV (header + this claimant's answers) for one claimant.
 export function buildIntakeCsvSingle(b: IntakeBundle): string {
   const esc = (v: any): string => {
