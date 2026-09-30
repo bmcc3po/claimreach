@@ -3,6 +3,7 @@ import { netflyContext, netflyMatter } from "@/lib/netfly-server";
 import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, netflyFlags, validateNetflyCallClose, type NetflyCallClose } from "@/lib/netfly-ontake";
 import { parseDob } from "@/lib/mva-call/server";
 import { mailColumnsFrom } from "@/lib/us-address";
+import { packetShort } from "@/lib/mva-call/esign";
 export const runtime = "edge";
 
 const fail = (message: string, status: number) => NextResponse.json({ error: message }, { status });
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
     const { data } = await ctx.db.storage.from("case-docs").createSignedUrl(doc.storage_path, 300);
     return { id: doc.id, file_name: doc.file_name, created_at: doc.created_at, uploaded_by_name: doc.uploaded_by_name, url: data?.signedUrl ?? null };
   }));
-  return NextResponse.json({ file: matter.lead, canReview: ctx.actor.can("intake.qa"), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
+  return NextResponse.json({ file: matter.lead, canReview: ctx.actor.can("intake.fill"), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
     answers: (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] ?? {}, retainer: safeDocs });
 }
 
@@ -235,12 +236,27 @@ export async function POST(req: NextRequest) {
   if (body?.op === "review") {
     const status = String(body.status || "");
     if (!["ready_for_review", "needs_supervisor", "retainer_reviewed", "correction_needed"].includes(status)) return fail("Invalid review action.", 400);
-    if (!ctx.actor.can(status === "retainer_reviewed" ? "intake.qa" : "intake.fill")) return fail("This account cannot record that review action.", 403);
+    // The agent who speaks with the client must be able to inspect and mark
+    // the signed PDF reviewed. Formal QA remains a separate downstream step.
+    if (!ctx.actor.can("intake.fill")) return fail("This account cannot record that review action.", 403);
     const matter = await netflyMatter(ctx, String(body.file || ""));
     if (!matter) return fail("NETFLY file not found.", 404);
+    if (status === "retainer_reviewed" && (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.review?.status === "correction_needed")
+      return fail("The original is flagged for correction. Review and complete the corrected agreement instead.", 409);
+    let corrected: boolean | null = null;
+    if (["ready_for_review", "retainer_reviewed"].includes(status)) {
+      const result = await ctx.db.from("esign_submissions").select("id,status,agent_reviewed_at,completed_pdf_path,cert_pdf_path,doc_count,submission_id,firm_id")
+        .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id)
+        .eq("lead_id", matter.lead.id).eq("claim_id", matter.claim.id)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (result.error) return fail("Could not check the corrected agreement. Refresh and retry.", 503);
+      if (status === "retainer_reviewed" && result.data) return fail("A corrected agreement is already on this file. Review that signed packet instead.", 409);
+      if (result.data) corrected = result.data.status === "completed" && !!result.data.agent_reviewed_at && !(await packetShort(ctx.db, result.data));
+    }
     if (status === "ready_for_review") {
       const saved = (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] || {};
-      if (saved.review?.status === "correction_needed") return fail("The signed retainer is marked for correction. Keep it visible until the correction is resolved.", 409);
+      if ((saved.review?.status === "correction_needed" || corrected !== null) && !corrected)
+        return fail("The corrected agreement must be client-signed, agent-reviewed, office-completed, and stored before QA.", 409);
       const handoffs = Array.isArray(saved.handoffs) ? saved.handoffs : [];
       if (!handoffs.length || saved.handoff_verification?.source_revision !== handoffs.length)
         return fail("Check the latest NETFLY handoff with the client before sending this file to review.", 400);
@@ -250,7 +266,7 @@ export async function POST(req: NextRequest) {
         .eq("firm_id", ctx.campaign.firm_id).eq("lead_id", matter.lead.id).eq("claim_id", matter.claim.id)
         .eq("doc_type", "netfly_signed_retainer").order("created_at", { ascending: false }).limit(1);
       if (docsError || !docs?.length) return fail("Upload the original signed PDF before sending this file to review.", 400);
-      if (saved.review?.retainer_reviewed_document_id !== docs[0].id)
+      if (!corrected && saved.review?.retainer_reviewed_document_id !== docs[0].id)
         return fail("Review the latest uploaded signed PDF before sending this file to review.", 400);
     }
     const documentId = String(body.document_id || "");
@@ -263,6 +279,8 @@ export async function POST(req: NextRequest) {
     if (status === "correction_needed" && note.length < 5) return fail("Record what is wrong with the original retainer.", 400);
     const all = matter.claim.answers && typeof matter.claim.answers === "object" ? matter.claim.answers as Record<string, any> : {};
     const old = all[NETFLY_ANSWER_KEY] || {};
+    if (status === "correction_needed" && old.review?.retainer_reviewed_document_id !== documentId)
+      return fail("Open and mark the signed PDF reviewed before flagging a correction.", 409);
     const review = { ...(old.review || {}), status, note, document_id: documentId || old.review?.document_id || null,
       retainer_reviewed_document_id: status === "retainer_reviewed" ? documentId : status === "correction_needed" ? null : old.review?.retainer_reviewed_document_id || null,
       at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
