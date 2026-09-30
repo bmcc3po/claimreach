@@ -72,7 +72,7 @@ export default function AddLead() {
             <p className="muted" style={{ fontSize: 13 }}>No campaigns yet. <a href="/settings/campaigns">Create one in Settings → Campaigns</a> first.</p>
           ) : (
             <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
-              {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}{c.firms?.name ? ` · ${c.firms.name}` : ""}</option>)}
+              {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
           {campaign && <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>Firm: {campaign.firms?.name || "—"} · Type: {campaign.case_type}{campaign.tier ? ` · Tier ${campaign.tier}` : ""}</p>}
