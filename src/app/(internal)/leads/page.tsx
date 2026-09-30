@@ -1,5 +1,5 @@
 export const runtime = "edge";
-import { isSignedKey } from "@/lib/statuses";
+import { isSignedClient, signedSubmissionIdsForLeads } from "@/lib/signed-list";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import { isInternalRole } from "@/lib/permissions";
@@ -43,6 +43,7 @@ export default async function LeadsPage() {
     for (const c of claims ?? []) (claimsByLead[c.lead_id] ||= []).push(c);
   }
   const withClaims = (leads ?? []).map((l) => ({ ...l, claims: claimsByLead[l.id] ?? [] }));
+  const signedSubmissionIds = await signedSubmissionIdsForLeads(sb, ids);
 
   // Who am I + the option lists for bulk actions.
   const { data: { user } } = await authUser();
@@ -57,15 +58,11 @@ export default async function LeadsPage() {
   const { data: catalog } = await sb.from("statuses").select("*").order("sort");
   const statuses = (catalog ?? []).filter((s: any) => s.active === true);
   const { data: dqReasons } = await sb.from("dq_reasons").select("*").eq("active", true).order("sort");
-  // One signed definition (isSignedKey), the same call Reports makes: the
-  // lists split exactly the way the report counts, including retired and
-  // unlisted signed_* keys and a missing catalog (Astra rounds 5-7b).
-
-  // Signed files are clients, not leads. They live on /signed so this list stays
-  // a work queue.
+  // Delivered files without a signed retainer stay visible here.
   const openOnly = (withClaims as any[]).filter(
-    (l) => !isSignedKey(l.claims?.[0]?.status ?? l.status, catalog)
+    (l) => !isSignedClient(l, catalog, signedSubmissionIds)
   );
 
   return <LeadsView leads={openOnly} basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} statuses={statuses} dqReasons={dqReasons ?? []} />;
 }
+
