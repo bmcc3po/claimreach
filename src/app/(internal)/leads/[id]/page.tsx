@@ -120,8 +120,15 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   for (const claim of (claims ?? []).filter((c: any) => APP_CASE_TYPES.includes(String(c.claim_type || "")))) {
     const { data: firmRow } = await sb.from("firms").select("name").eq("id", lead.firm_id).maybeSingle();
     (lead as any).firm_name = firmRow?.name ?? null;
+    const callScope = matterRowsFilter({ claim, sole: claims?.length === 1 });
     const { data: lastCall } = await sb.from("intake_calls").select("answers, agent_name, updated_at, disposition")
-      .eq("lead_id", id).or(matterRowsFilter({ claim, sole: claims?.length === 1 })).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      .eq("lead_id", id).or(callScope).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    // A later intake edit can create a new, still-open call row. Keep its
+    // answers/agent, but show the latest completed call outcome until the
+    // agent actually closes another call. Do not infer one from e-sign status.
+    const { data: lastDisposition } = await sb.from("intake_calls").select("disposition")
+      .eq("lead_id", id).or(callScope).not("disposition", "is", null)
+      .order("ended_at", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
     const a = claim?.answers?.mva_call || lastCall?.answers || {};
     const contact = new Set(["Name", "Lead", "Phone", "Email", "Date of birth"]);
     const report = caseReport({ ...lead, campaign: claim.campaign, case_type: claim.claim_type }, a);
@@ -131,7 +138,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
     appCalls[claim.id] = {
       rows, answered: reportRows.filter((r) => !r.missing && !!r.a && r.a !== "—").length,
       href: `/app/${leadKeyOf(lead)}?claim=${claim.id}`, hasOld: oldKeys.length > 0,
-      when: lastCall?.updated_at ?? null, agent: lastCall?.agent_name ?? null, dispo: lastCall?.disposition ?? null,
+      when: lastCall?.updated_at ?? null, agent: lastCall?.agent_name ?? null, dispo: lastDisposition?.disposition ?? lastCall?.disposition ?? null,
     };
   }
 
@@ -163,3 +170,4 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
     </>
   );
 }
+
