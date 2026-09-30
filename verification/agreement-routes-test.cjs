@@ -6,20 +6,48 @@ base=base.slice(0,base.indexOf("const send=route("));
 const review=String.raw`
 const choice=load(path.join(app,'src/lib/mva-call/agreement-choice.ts'));
 stubs['@/lib/docuseal'].agreementKey=choice.agreementKey;
-let previewCalls=[],templateCalls=[],assetFetches=[];
-const packetMap=Object.fromEntries(['TX','FL','NV','NV_FLAT','OTHER'].map(key=>[key,{name:key,path:'/synthetic/'+key+'.pdf',fields:[]}]));
-stubs['@/lib/mva-call/esign'].packetsFor=(slug,type)=>slug==='tmp'&&type==='mva'?packetMap:null;
-stubs['@/lib/mva-call/esign'].templateFor=async(_db,opts)=>{templateCalls.push(opts);return{ok:true,templateId:'tpl-'+opts.key};};
-stubs['@/lib/mva-call/preview']={stampPreview:async(_bytes,_packet,key,values)=>{previewCalls.push({key,values});return new Uint8Array([1,2,3]);}};
-globalThis.fetch=async url=>{const target=new URL(String(url));assert.equal(target.origin,'https://offline.invalid');assert.match(target.pathname,/^\/synthetic\/[A-Z_]+\.pdf$/);assetFetches.push(String(url));return{ok:true,status:200,arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer};};
+let previewCalls=[],templateCalls=[],templateCreates=[],assetFetches=[];
+const packetMap=load(path.join(app,'src/lib/esign-packets/tmp-mva.ts')).TMP_MVA_PACKETS;
+// Exercise the actual packet resolver and template helper, with only their
+// network boundary mocked. AST selection avoids unrelated signing side effects.
+const esignSource=ts.createSourceFile('esign.ts',fs.readFileSync(path.join(app,'src/lib/mva-call/esign.ts'),'utf8'),ts.ScriptTarget.Latest,true);
+const helperSource=esignSource.statements.filter(n=>ts.isFunctionDeclaration(n)&&['packetsFor','templateFor'].includes(n.name?.text)).map(n=>n.getText(esignSource)).join('\n');
+assert.equal(esignSource.statements.filter(n=>ts.isFunctionDeclaration(n)&&['packetsFor','templateFor'].includes(n.name?.text)).length,2);
+const helperJs=ts.transpileModule(helperSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+const realHelpers={exports:{}};
+vm.runInThisContext('(function(exports,TMP_MVA_PACKETS,createTemplate,plainDocuSeal,recordAudit){'+helperJs+'\n})')(
+ realHelpers.exports,packetMap,async(packet,url)=>{templateCreates.push({packet,url});return{ok:true,data:{id:'created-'+packet.external_id,fields:packet.fields}};},x=>x,async x=>audit.push(x));
+stubs['@/lib/mva-call/esign'].packetsFor=realHelpers.exports.packetsFor;
+stubs['@/lib/mva-call/esign'].templateFor=async(_db,opts)=>{templateCalls.push(opts);return realHelpers.exports.templateFor(_db,opts);};
+stubs['@/lib/mva-call/preview']={stampPreview:async(bytes,packet,key,values)=>{
+ assert.equal(packet,packetMap[key]);assert.deepEqual(Buffer.from(bytes),fs.readFileSync(path.join(app,'public',packet.path)));
+ previewCalls.push({key,packet,values});return new Uint8Array([1,2,3]);
+}};
+globalThis.fetch=async url=>{const target=new URL(String(url));assert.equal(target.origin,'https://offline.invalid');assert.ok(Object.values(packetMap).some(p=>p.path===target.pathname));
+ const bytes=fs.readFileSync(path.join(app,'public',target.pathname));assert.equal(bytes.subarray(0,5).toString(),'%PDF-');assetFetches.push(String(url));return{ok:true,status:200,arrayBuffer:async()=>Uint8Array.from(bytes).buffer};};
 const send=route('calls/esign'),preview=route('calls/esign/preview');
 function setup(keys=['TX','FL','NV','NV_FLAT','OTHER']){
- world();previewCalls=[];templateCalls=[];assetFetches=[];db.tables.firms[0].slug='tmp';
- db.tables.esign_templates=keys.map(key=>({campaign_id:CA,firm_id:F,provider:'docuseal',key,template_id:'tpl-'+key}));
+ world();previewCalls=[];templateCalls=[];templateCreates=[];assetFetches=[];db.tables.firms[0].slug='tmp';
+ db.tables.esign_templates=keys.map(key=>({campaign_id:CA,firm_id:F,provider:'docuseal',key,template_id:'tpl-'+key,name:packetMap[key]?.name}));
 }
 const body=(extras={})=>({lead_id:L,claim_id:C,call_id:'call',signer_name:'CHAT TESTER',injured_name:'CHAT TESTER',today:'09/28/2026',doi:'09/01/2026',city:'Dallas, TX',via:'Email',email:'tester@example.invalid',...extras});
 const previewRequest=extras=>{const b=body(extras);return{url:'https://offline.invalid/api/calls/esign/preview?'+new URLSearchParams({...b,signer:b.signer_name,injured:b.injured_name})};};
 const cases=[];function test(name,fn){cases.push([name,fn]);}
+const states=[['AL','Alabama'],['AK','Alaska'],['AZ','Arizona'],['AR','Arkansas'],['CA','California'],['CO','Colorado'],['CT','Connecticut'],['DE','Delaware'],['FL','Florida'],['GA','Georgia'],['HI','Hawaii'],['ID','Idaho'],['IL','Illinois'],['IN','Indiana'],['IA','Iowa'],['KS','Kansas'],['KY','Kentucky'],['LA','Louisiana'],['ME','Maine'],['MD','Maryland'],['MA','Massachusetts'],['MI','Michigan'],['MN','Minnesota'],['MS','Mississippi'],['MO','Missouri'],['MT','Montana'],['NE','Nebraska'],['NV','Nevada'],['NH','New Hampshire'],['NJ','New Jersey'],['NM','New Mexico'],['NY','New York'],['NC','North Carolina'],['ND','North Dakota'],['OH','Ohio'],['OK','Oklahoma'],['OR','Oregon'],['PA','Pennsylvania'],['RI','Rhode Island'],['SC','South Carolina'],['SD','South Dakota'],['TN','Tennessee'],['TX','Texas'],['UT','Utah'],['VT','Vermont'],['VA','Virginia'],['WA','Washington'],['WV','West Virginia'],['WI','Wisconsin'],['WY','Wyoming']];
+assert.equal(states.length,50);assert.equal(new Set(states.map(([code])=>code)).size,50);
+for(const [code,name]of states){
+ test(code+' abbreviation and full name use the same approved packet in resolver, preview and send',async()=>{
+  const key=['TX','FL','NV'].includes(code)?code:'OTHER';
+  for(const city of ['Synthetic City, '+code,'Synthetic City, '+name,'  Synthetic City, '+name.toLowerCase()+'  ']){
+   setup();const selected=choice.agreementChoice(city,undefined,Object.keys(packetMap));assert.equal(selected.state,code);assert.equal(selected.key,key);assert.equal(selected.available,true);
+   const p=await preview.GET(previewRequest({city}));assert.equal(p.status,200,city);assert.equal(previewCalls[0].key,key);
+   assert.equal(p.headers.get('cache-control'),'no-store');assert.equal(assetFetches[0],'https://offline.invalid'+packetMap[key].path);
+   const s=await send.POST(request(body({city})));assert.equal(s.status,200,JSON.stringify(s));assert.equal(db.tables.esign_submissions[0].template_key,key);
+   assert.equal(templateCalls[0].packet,previewCalls[0].packet);assert.equal(templateCalls[0].campaignId,CA);assert.equal(templateCalls[0].firmId,F);
+   assert.equal(provider.find(x=>x[0]==='send')[1].templateId,'tpl-'+key);assert.equal(templateCreates.length,0);
+  }
+ });
+}
 for(const [city,variant,key]of[['Dallas, TX','tiered','TX'],['Miami, FL','tiered','FL'],['Atlanta, GA','tiered','OTHER'],['Las Vegas, NV','tiered','NV'],['Las Vegas, NV','flat','NV_FLAT']]){
  test('real send and preview agree for '+key,async()=>{
   setup();const b={city,nv_variant:variant,nv_reason:variant==='flat'?'Approved by synthetic reviewer':''};
@@ -32,6 +60,31 @@ test('NV_FLAT unavailable never falls back to NV and never creates provider/temp
  setup(['NV']);const b={city:'Las Vegas, NV',nv_variant:'flat',nv_reason:'Approved'};
  const p=await preview.GET(previewRequest(b));assert.ok(p.status>=400,JSON.stringify(p));
  const s=await send.POST(request(body(b)));assert.ok(s.status>=400,JSON.stringify(s));assert.equal(provider.length,0);assert.equal(templateCalls.length,0);assert.equal(assetFetches.length,0);
+});
+for(const [city,variant,key]of [['Dallas, Texas','tiered','TX'],['Miami, Florida','tiered','FL'],['Las Vegas, Nevada','tiered','NV'],['Las Vegas, Nevada','flat','NV_FLAT'],['Jackson, Mississippi','tiered','OTHER']]){
+ test('missing designated '+key+' never substitutes another campaign packet',async()=>{
+  setup(Object.keys(packetMap).filter(k=>k!==key));const b={city,nv_variant:variant,nv_reason:'Approved by synthetic reviewer'};
+  assert.equal((await preview.GET(previewRequest(b))).status,409);assert.equal((await send.POST(request(body(b)))).status,409);
+  assert.equal(provider.length,0);assert.equal(templateCalls.length,0);assert.equal(templateCreates.length,0);assert.equal(assetFetches.length,0);
+ });
+ test('outdated '+key+' template rebuild uses the exact preview PDF and retains selected campaign',async()=>{
+  setup();db.tables.esign_templates.find(t=>t.key===key).name='Superseded synthetic template';
+  db.tables.esign_templates.push({campaign_id:'unrelated-campaign',firm_id:'unrelated-firm',provider:'docuseal',key,name:packetMap[key].name,template_id:'do-not-use'});
+  const b={city,nv_variant:variant,nv_reason:'Approved by synthetic reviewer'};
+  assert.equal((await preview.GET(previewRequest(b))).status,200);assert.equal((await send.POST(request(body(b)))).status,200);
+  assert.equal(templateCreates.length,1);assert.equal(templateCreates[0].packet,previewCalls[0].packet);assert.equal(templateCreates[0].url,assetFetches[0]);
+  assert.equal(provider.find(x=>x[0]==='send')[1].templateId,'created-'+packetMap[key].external_id);
+  assert.equal(db.tables.esign_templates.find(t=>t.campaign_id==='unrelated-campaign').template_id,'do-not-use');
+ });
+}
+test('Nevada full name preserves explicit tiered and non-tiered selection with distinct source PDFs',async()=>{
+ const paths=[];
+ for(const [variant,key]of [['tiered','NV'],['flat','NV_FLAT']]){
+  setup();const b={city:'Las Vegas, Nevada',nv_variant:variant,nv_reason:'Approved by synthetic reviewer'};
+  assert.equal((await preview.GET(previewRequest(b))).status,200);assert.equal(previewCalls[0].key,key);paths.push(previewCalls[0].packet.path);
+  assert.equal((await send.POST(request(body(b)))).status,200);assert.equal(db.tables.esign_submissions[0].template_key,key);
+ }
+ assert.notEqual(paths[0],paths[1]);assert.notDeepEqual(fs.readFileSync(path.join(app,'public',paths[0])),fs.readFileSync(path.join(app,'public',paths[1])));
 });
 test('missing crash state never accepts an arbitrary template_key',async()=>{
  setup();const b={city:'',template_key:'TX'};

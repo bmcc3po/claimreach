@@ -2,10 +2,49 @@
 const { PGlite } = require('@electric-sql/pglite');
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const migration = fs.readFileSync(path.join(__dirname,'../supabase/migrations/0121_pilot_database_boundary.sql'),'utf8');
+const passwordDocumentMigration = fs.readFileSync(path.join(__dirname,'../supabase/migrations/0123_pilot_password_document_boundary.sql'),'utf8');
+const documentGuardSource = fs.readFileSync(path.join(__dirname,'../supabase/migrations/0103_round3_hardening.sql'),'utf8');
+const documentGuard = documentGuardSource.slice(documentGuardSource.indexOf('create or replace function public.guard_case_documents()')).split('end $$;')[0]+'end $$;';
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const owner=id(1), agent=id(2), admin=id(3), disabled=id(4), firm=id(5), partner=id(6), newcomer=id(7), badNewcomer=id(8);
 const tmp=id(10), tmt=id(11), inno=id(20), other=id(21), live=id(30), archive=id(31), foreign=id(32), mixed=id(33), claim=id(40), foreignClaim=id(41), wrongType=id(42);
 let checks=0;
+// Execute the real file handler. Its document query is backed by this isolated
+// PostgreSQL session; only auth, unrelated helpers, and Storage URL issuance
+// are stubbed. Record exactly which object paths reach privileged signing.
+async function fileDocumentPaths(db) {
+  const ts=require('typescript');
+  const source=fs.readFileSync(path.join(__dirname,'../src/app/api/calls/file/route.ts'),'utf8');
+  const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+  const signedPaths=[];
+  const sb={from(table){
+    const filters=[];
+    const q={select(){return q;},eq(col,value){filters.push([col,value]);return q;},or(){return q;},order(){return q;},limit(){return q;},
+      async run(){
+        if(table==='case_documents') return {data:(await db.query('select * from case_documents where lead_id=$1 and (claim_id=$2 or claim_id is null)',[live,claim])).rows,error:null};
+        if(table==='leads') return {data:(await db.query('select * from leads where id=$1',[filters.find(([c])=>c==='id')[1]])).rows,error:null};
+        if(table==='app_users') return {data:(await db.query('select * from app_users')).rows,error:null};
+        return {data:[],error:null};
+      },async maybeSingle(){const result=await q.run();return {...result,data:result.data[0]||null};},then(resolve,reject){return q.run().then(resolve,reject);}};
+    return q;
+  }};
+  const modules={
+    'next/server':{NextResponse:{json:payload=>({payload})}},
+    '@/lib/supabase-server':{supabaseServer:async()=>sb,supabaseAdmin:()=>({storage:{from:()=>({createSignedUrl:async key=>{signedPaths.push(key);return {data:{signedUrl:'synthetic://'+key}};}})}})},
+    '@/lib/mva-call/server':{requireStaff:async()=>({role:'agent'})},
+    '@/lib/mva-call/signing-matter':{resolveSigningMatter:async()=>({ok:true,lead:{},matter:{claim:{id:claim,campaign:'INNO MVA'}}})},
+    '@/lib/file-notes':{loadFileNotes:async()=>({notes:[],deskNotes:[]}),mergeFileNotes:()=>[]},
+    '@/lib/claim-status':{loadStatuses:async()=>[]},'@/lib/statuses':{resolveStatus:()=>null},
+    '@/lib/matter':{matterRowsFilter:()=>`claim_id.eq.${claim}`},
+    '@/lib/lawruler-recovery':{loadLawRulerProvenance:async()=>null},
+    '@/lib/mva-call/send-attempt':{readPendingSendAttempt:async()=>({ok:true,attempt:null})},
+    '@/lib/mva-call/agreement-names':{agreementName:key=>key},
+  };
+  const exports={};new Function('require','exports',code)(name=>{assert.ok(name in modules,name);return modules[name];},exports);
+  const response=await exports.GET({url:`https://synthetic.invalid/api/calls/file?lead_id=${live}&claim_id=${claim}`});
+  assert.ok(Array.isArray(response.payload.docs));
+  return signedPaths;
+}
 async function main() {
   const db=new PGlite();
   try {
@@ -14,7 +53,7 @@ async function main() {
       create schema auth; create schema storage;
       create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
       create function auth.role() returns text language sql stable as $$select current_setting('request.jwt.claim.role',true)$$;
-      create table auth.users(id uuid primary key,email text,raw_app_meta_data jsonb default '{}');
+      create table auth.users(id uuid primary key,email text,raw_app_meta_data jsonb default '{}',raw_user_meta_data jsonb default '{}');
       create table public.firms(id uuid primary key,slug text,lead_prefix text);
       create table public.app_users(id uuid primary key,firm_id uuid,role text,active boolean default true,email text,full_name text,perm_overrides jsonb default '{}');
       create table public.campaigns(id uuid primary key,firm_id uuid,name text,case_type text,active boolean);
@@ -24,6 +63,7 @@ async function main() {
       create table public.intake_calls(id uuid primary key,lead_id uuid,claim_id uuid,firm_id uuid,body text);
       create table public.esign_submissions(id uuid primary key,lead_id uuid,claim_id uuid,firm_id uuid,campaign_id uuid,status text,completed_pdf_path text);
       create table public.signable_documents(id uuid primary key,lead_id uuid,firm_id uuid,audit jsonb);
+      create table public.case_documents(id uuid primary key,lead_id uuid,claim_id uuid,firm_id uuid,storage_path text,file_name text,doc_type text,created_at timestamptz default now(),uploaded_by_name text);
       create table public.esign_templates(id uuid primary key,firm_id uuid,campaign_id uuid,name text);
       create table public.intake_forms(id uuid primary key,firm_id uuid,campaign_id uuid,claim_type text,status text,fields jsonb);
       create table public.statuses(id uuid primary key,label text);
@@ -31,6 +71,8 @@ async function main() {
       create table public.retention_alert_recipients(email text,campaign text,active boolean);
       create table public.unclassified_private(id uuid primary key,body text);
       create table public.write_only_private(id uuid primary key,body text);
+      create table public.drip_rules(id uuid primary key,firm_id uuid,campaign text,active boolean,every_days integer);
+      create table public.drip_enrollments(firm_id uuid,lead_id uuid,rule_id uuid,next_due timestamptz,active boolean);
       create table storage.buckets(id text primary key,public boolean);
       create table storage.objects(id uuid primary key,bucket_id text,name text);
       create view public.safe_leads with (security_invoker=true) as select * from public.leads;
@@ -51,12 +93,19 @@ async function main() {
       grant execute on all functions in schema public,auth to authenticated,service_role;
       alter table storage.objects enable row level security;
     `);
+    // Use the actual canonical path/lead/claim trigger, not a weakened model.
+    await db.exec(documentGuard + `create trigger guard_case_docs before insert or update on public.case_documents for each row execute function public.guard_case_documents();`);
+    const dripSource=fs.readFileSync(path.join(__dirname,'../supabase/migrations/0092_m6_cadence.sql'),'utf8');
+    const dripFunction=dripSource.slice(dripSource.indexOf('create or replace function enroll_drips_for_lead')).split('$$;')[0]+'$$;';
+    await db.exec(dripFunction+`revoke execute on function public.enroll_drips_for_lead(uuid,uuid) from anon,authenticated;`);
     const tables=(await db.query(`select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and relkind='r'`)).rows.map(r=>r.relname);
     for (const table of tables) {
       await db.exec(`alter table public.${table} enable row level security;
         create policy existing_internal on public.${table} for all to authenticated using(is_internal()) with check(is_internal());`);
     }
     await db.exec(`create policy firm_leads on leads for select to authenticated using(role_is_firm() and firm_id=my_firm_id());
+      create policy firm_claims on claims for select to authenticated using(role_is_firm() and firm_id=my_firm_id());
+      create policy firm_documents on case_documents for all to authenticated using(role_is_firm() and firm_id=my_firm_id()) with check(role_is_firm() and firm_id=my_firm_id());
       create policy partner_leads on leads for select to authenticated using(auth.uid()='${partner}' and id='${live}');
       create policy own_profile on app_users for all to authenticated using(id=auth.uid()) with check(id=auth.uid());
       -- Deliberately permissive policy models a firm account's users.manage override.
@@ -69,10 +118,15 @@ async function main() {
        ('${disabled}','${tmp}','agent',false,'disabled@example.invalid','Disabled'),
        ('${firm}','${tmt}','firm',true,'firm@example.invalid','Firm');
       insert into auth.users(id,email,raw_app_meta_data) select id,email,'{}' from app_users;
-      insert into auth.users values('${partner}','partner@example.invalid','{"account_type":"partner"}'),('${newcomer}','new@example.invalid','{}'),('${badNewcomer}','bad@example.invalid','{}');
+      insert into auth.users(id,email,raw_app_meta_data) values('${partner}','partner@example.invalid','{"account_type":"partner"}'),('${newcomer}','new@example.invalid','{}'),('${badNewcomer}','bad@example.invalid','{}');
       insert into campaigns values('${inno}','${tmp}','INNO MVA','mva',true),('${other}','${tmt}','Other MVA','mva',true);
       insert into leads values('${live}','${tmp}','${inno}','mva',null,'Live'),('${archive}','${tmp}','${inno}','mva',now(),'Archived'),('${foreign}','${tmt}','${other}','mva',null,'Other'),('${mixed}','${tmp}','${inno}','motel_trafficking',null,'Wrong type');
       insert into claims values('${claim}','${live}','${tmp}','${inno}','mva','{}'),('${foreignClaim}','${foreign}','${tmt}','${other}','mva','{}'),('${wrongType}','${live}','${tmp}','${inno}','motel_trafficking','{}');
+      insert into case_documents(id,lead_id,claim_id,firm_id,storage_path,file_name) values
+        ('${id(110)}','${live}','${claim}','${tmp}','${tmp}/${live}/visible.pdf','visible.pdf'),
+        ('${id(111)}','${live}','${wrongType}','${tmp}','${tmp}/${live}/hidden-sibling.pdf','hidden-sibling.pdf'),
+        ('${id(112)}','${foreign}','${foreignClaim}','${tmt}','${tmt}/${foreign}/foreign.pdf','foreign.pdf');
+      insert into drip_rules values('${id(120)}','${tmt}',null,true,1);
       insert into notes values('${id(50)}','${live}','${claim}','${tmp}',null,'Legacy valid'),('${id(51)}','${live}','${foreignClaim}','${tmp}',null,'Wrong claim'),('${id(52)}','${live}','${claim}','${tmp}','${other}','Wrong campaign'),('${id(53)}','${live}','${claim}','${tmt}',null,'Wrong firm');
       insert into intake_forms values('${id(60)}',null,null,'mva','published','[]'),('${id(61)}',null,null,'motel_trafficking','published','[]'),('${id(62)}','${tmt}',null,'mva','published','[]'),('${id(63)}','${tmp}','${inno}','mva','draft','[]');
       insert into esign_submissions values('${id(70)}','${live}','${claim}','${tmp}',null,'signed','pilot/file.pdf'),('${id(71)}','${foreign}','${foreignClaim}','${tmt}','${other}','signed','other/file.pdf');
@@ -94,6 +148,88 @@ async function main() {
     await check('all exposed tables, including write-only tables, have restrictive guards',async()=>{
       assert.equal((await db.query(`select count(*)::int n from pg_policies where policyname='cr_inno_mva_staff_wall' and permissive='RESTRICTIVE'`)).rows[0].n,tables.length);
       assert.equal((await db.query(`select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and relkind='r' and has_table_privilege('authenticated',c.oid,'TRUNCATE')`)).rows[0].n,0);
+    });
+    await check('reproduces old same-lead hidden-claim path forgery through actual file GET before 0123',()=>as(agent,async()=>{
+      assert.deepEqual((await rows('case_documents')).rows.map(r=>r.id),[id(110)]);
+      assert.deepEqual(await fileDocumentPaths(db),[`${tmp}/${live}/visible.pdf`]);
+      await db.query('update case_documents set storage_path=$1 where id=$2',[`${tmp}/${live}/hidden-sibling.pdf`,id(110)]);
+      assert.deepEqual(await fileDocumentPaths(db),[`${tmp}/${live}/hidden-sibling.pdf`]);
+      await db.query(`insert into case_documents(id,lead_id,claim_id,firm_id,storage_path) values($1,$2,$3,$4,$5)`,[id(113),live,claim,tmp,`${tmp}/${live}/hidden-sibling.pdf`]);
+      assert.equal((await fileDocumentPaths(db)).filter(p=>p.endsWith('hidden-sibling.pdf')).length,2);
+    }));
+    await db.query('delete from case_documents where id=$1',[id(113)]);
+    await db.query('update case_documents set storage_path=$1 where id=$2',[`${tmp}/${live}/visible.pdf`,id(110)]);
+    await check('historical named-role-only RPC revoke leaves PUBLIC execute in isolated reconstruction',async()=>{
+      assert.equal((await db.query(`select has_function_privilege('authenticated','public.enroll_drips_for_lead(uuid,uuid)','EXECUTE') ok`)).rows[0].ok,true);
+      await as(agent,async()=>db.query('select enroll_drips_for_lead($1,$2)',[foreign,tmt]));
+      assert.equal((await rows('drip_enrollments')).rows.length,1);
+      await db.exec('delete from drip_enrollments');
+    });
+    await db.exec(passwordDocumentMigration);
+    await check('0123 adds password guards to every exposed table with restricted helper ACL and empty search path',async()=>{
+      assert.equal((await db.query(`select count(*)::int n from pg_policies where policyname='cr_pilot_password_wall' and permissive='RESTRICTIVE'`)).rows[0].n,tables.length);
+      const fn=(await db.query(`select prosecdef,proconfig from pg_proc where oid='public.cr_pilot_password_required()'::regprocedure`)).rows[0];
+      assert.equal(fn.prosecdef,true);assert.ok(fn.proconfig.includes('search_path=""'));
+      for(const role of ['anon','authenticated','service_role']) assert.equal((await db.query(`select has_function_privilege($1,'public.cr_pilot_password_required()','EXECUTE') ok`,[role])).rows[0].ok,role!=='anon');
+      assert.equal((await db.query(`select count(*)::int n from pg_proc p cross join lateral aclexplode(p.proacl) a where p.oid='public.cr_pilot_password_required()'::regprocedure and a.grantee=0`)).rows[0].n,0);
+    });
+    for(const who of [agent,admin]) await check('staff document reads remain scoped; forged index insert/update/delete cannot reach URL signer '+who,()=>as(who,async()=>{
+      assert.deepEqual((await rows('case_documents')).rows.map(r=>r.id),[id(110)]);
+      for(const path of [`${tmp}/${live}/hidden-sibling.pdf`,`${tmt}/${foreign}/foreign.pdf`]) {
+        assert.equal((await db.query('update case_documents set storage_path=$1 where id=$2 returning id',[path,id(110)])).rows.length,0);
+        await assert.rejects(db.query(`insert into case_documents(id,lead_id,claim_id,firm_id,storage_path) values($1,$2,$3,$4,$5)`,[id(113),live,claim,tmp,path]));
+      }
+      assert.equal((await db.query('delete from case_documents where id=$1 returning id',[id(110)])).rows.length,0);
+      assert.deepEqual(await fileDocumentPaths(db),[`${tmp}/${live}/visible.pdf`]);
+    }));
+    await check('owner, firm, and service retain their original document-index writes',async()=>{
+      for(const [who,doc,key,role] of [[owner,id(110),`${tmp}/${live}/visible.pdf`,'authenticated'],[firm,id(112),`${tmt}/${foreign}/foreign.pdf`,'authenticated'],['',id(110),`${tmp}/${live}/visible.pdf`,'service_role']]) {
+        await as(who,async()=>assert.equal((await db.query('update case_documents set storage_path=$1 where id=$2 returning id',[key,doc])).rows.length,1),role);
+      }
+    });
+    await check('first-password gate uses current trusted Auth row, denies data and mutations despite permissive grants, keeps own profile',async()=>{
+      for(const who of [agent,admin]) {
+        await db.query(`update auth.users set raw_app_meta_data='{"must_change_password":true}',raw_user_meta_data='{"must_change_password":false}' where id=$1`,[who]);
+        await db.exec(`select set_config('request.jwt.claims','{"app_metadata":{"must_change_password":false},"user_metadata":{"must_change_password":false}}',false)`);
+        await as(who,async()=>{
+          assert.equal((await db.query('select cr_pilot_password_required() required')).rows[0].required,true);
+          for(const table of ['leads','safe_leads','claims','case_documents','esign_submissions','notes','intake_calls','statuses','campaigns','firms']) assert.equal((await rows(table)).rows.length,0,table);
+          assert.deepEqual((await rows('app_users')).rows.map(r=>r.id),[who]);
+          assert.equal((await db.query(`update claims set answers='{"tampered":true}' where id=$1 returning id`,[claim])).rows.length,0);
+          await assert.rejects(db.query(`insert into notes values($1,$2,$3,$4,null,'blocked')`,[id(114),live,claim,tmp]));
+          assert.equal((await db.query(`update app_users set role='owner' where id=$1 returning id`,[who])).rows.length,0);
+          assert.equal((await db.query(`update app_users set full_name='Changed' where id=$1 returning id`,[who])).rows.length,0);
+          await assert.rejects(db.query('select mint_lead_no($1)',[tmp]),/temporary password/);
+          assert.equal((await db.query('select provision_self_from_firm_access() ok')).rows[0].ok,false);
+        });
+        await db.query(`update auth.users set raw_app_meta_data='{"must_change_password":false}',raw_user_meta_data='{"must_change_password":true}' where id=$1`,[who]);
+        await db.exec(`select set_config('request.jwt.claims','{"app_metadata":{"must_change_password":true}}',false)`);
+        await as(who,async()=>{
+          assert.equal((await db.query('select cr_pilot_password_required() required')).rows[0].required,false);
+          assert.deepEqual((await rows('leads')).rows.map(r=>r.id),[live]);
+          assert.deepEqual((await rows('claims')).rows.map(r=>r.id),[claim]);
+          assert.deepEqual(await fileDocumentPaths(db),[`${tmp}/${live}/visible.pdf`]);
+        });
+      }
+      await as('',async()=>{
+        assert.equal((await db.query('select cr_pilot_password_required() required')).rows[0].required,false);
+        assert.equal((await rows('leads')).rows.length,0);
+      });
+    });
+    await check('owner, firm and partner scopes are unchanged even with first-password metadata',async()=>{
+      for(const [who,expected] of [[owner,4],[firm,1],[partner,1]]) {
+        await db.query(`update auth.users set raw_app_meta_data=raw_app_meta_data||'{"must_change_password":true}'::jsonb where id=$1`,[who]);
+        await as(who,async()=>{
+          assert.equal((await db.query('select cr_pilot_password_required() required')).rows[0].required,false);
+          assert.equal((await rows('leads')).rows.length,expected);
+        });
+      }
+    });
+    await check('server-only enrollment ACL denies PUBLIC, anon, authenticated and preserves service',async()=>{
+      for(const role of ['anon','authenticated','service_role']) assert.equal((await db.query(`select has_function_privilege($1,'public.enroll_drips_for_lead(uuid,uuid)','EXECUTE') ok`,[role])).rows[0].ok,role==='service_role');
+      await as(agent,async()=>assert.rejects(db.query('select enroll_drips_for_lead($1,$2)',[foreign,tmt]),/permission denied/));
+      await as('',async()=>db.query('select enroll_drips_for_lead($1,$2)',[foreign,tmt]),'service_role');
+      assert.equal((await rows('drip_enrollments')).rows.length,1);
     });
     for(const user of [agent,admin]) await check('staff read only live INNO matter, matching legacy child, and published MVA master '+user,()=>as(user,async()=>{
       assert.deepEqual((await rows('leads')).rows.map(r=>r.id),[live]);
@@ -207,7 +343,7 @@ async function main() {
         assert.equal((await rows('storage.objects')).rows.length,1);
       },'service_role');
     });
-    await check('migration may be reapplied without duplicating guards',async()=>{await db.exec(migration);});
+    await check('migrations may be reapplied without duplicating guards',async()=>{await db.exec(migration);await db.exec(passwordDocumentMigration);await db.exec(passwordDocumentMigration);});
     await check('ambiguous campaign and public document bucket fail atomically',async()=>{
       await db.query(`insert into campaigns values($1,$2,'INNO MVA','mva',true)`,[id(98),tmp]);
       await assert.rejects(db.exec(migration),/exactly one/);

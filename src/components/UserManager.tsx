@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { PERMISSIONS, PERM_GROUPS, ROLES, ROLE_DEFAULTS, type PermKey, type Role } from "@/lib/permissions";
+import { PERMISSIONS, PERM_GROUPS, ROLES, ROLE_DEFAULTS, isInternalRole, type PermKey, type Role } from "@/lib/permissions";
 
 export default function UserManager({ firms }: { firms: { id: string; name: string; slug: string }[] }) {
   const [users, setUsers] = useState<any[]>([]);
@@ -9,6 +9,7 @@ export default function UserManager({ firms }: { firms: { id: string; name: stri
   const [editing, setEditing] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState("");
+  const [emailAccount, setEmailAccount] = useState<any | null>(null);
 
   async function load() {
     setLoading(true);
@@ -26,6 +27,9 @@ export default function UserManager({ firms }: { firms: { id: string; name: stri
   }
   useEffect(() => { load(); }, []);
 
+  if (emailAccount) {
+    return <LoginEmailEditor user={emailAccount} onClose={() => setEmailAccount(null)} onSaved={(m) => { setMsg(m); setEmailAccount(null); load(); }} />;
+  }
   if (editing || creating) {
     return <UserEditor user={editing} firms={firms} onClose={() => { setEditing(null); setCreating(false); }} onSaved={(m) => { setMsg(m); setEditing(null); setCreating(false); load(); }} />;
   }
@@ -55,7 +59,7 @@ export default function UserManager({ firms }: { firms: { id: string; name: stri
                   <td><span className="badge stage">{u.role}</span>{u.perm_overrides && Object.keys(u.perm_overrides).length > 0 && <span className="badge gold" style={{ marginLeft: 4, fontSize: 9 }}>custom</span>}</td>
                   <td className="muted">{u.title || "—"}</td>
                   <td>{u.active === false ? <span className="badge dq">Inactive</span> : <span className="badge signed">Active</span>}</td>
-                  <td><button className="btn ghost sm" onClick={() => setEditing(u)}>Edit</button></td>
+                  <td><button className="btn ghost sm" onClick={() => setEditing(u)}>Edit</button>{u.active === true && u.role !== "owner" && isInternalRole(u.role) && <button className="btn ghost sm" onClick={() => setEmailAccount(u)}>Login email</button>}</td>
                 </tr>
               ))}
               {users.length === 0 && <tr><td colSpan={6} className="muted">No users yet.</td></tr>}
@@ -65,6 +69,39 @@ export default function UserManager({ firms }: { firms: { id: string; name: stri
       )}
     </div>
   );
+}
+
+function LoginEmailEditor({ user, onClose, onSaved }: { user: any; onClose: () => void; onSaved: (message: string) => void }) {
+  const [email, setEmail] = useState(user.email || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function save() {
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "update_email", id: user.id, expected_email: user.email, email }) });
+      const result = await response.json();
+      if (!response.ok || result.ok !== true || result.id !== user.id || result.email !== email.trim().toLowerCase()) {
+        setError(result.error || "The login email change was not confirmed. Retry this same change to finish it."); return;
+      }
+      onSaved(`Login email updated for ${user.full_name}.`);
+    } catch {
+      setError("The login email change was not confirmed. Retry this same change to finish it; do not create another account.");
+    } finally { setBusy(false); }
+  }
+  return <div style={{ maxWidth: 600 }}>
+    <button className="btn ghost sm" onClick={onClose} disabled={busy}>← All users</button>
+    <h1>Login email for {user.full_name}</h1>
+    <p className="muted">Current email: {user.email}</p>
+    <p>This changes the login address on the existing account. Its password, role, permissions and assigned files stay the same.</p>
+    <label className="fld-label" htmlFor="staff-login-email">New login email</label>
+    <input id="staff-login-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} disabled={busy} />
+    {error && <p role="alert" style={{ color: "var(--danger)" }}>{error}</p>}
+    <div className="row" style={{ gap: 8, marginTop: 16 }}>
+      <button className="btn" onClick={save} disabled={busy || !email.trim()}>{busy ? "Saving…" : "Change login email"}</button>
+      <button className="btn ghost" onClick={onClose} disabled={busy}>Cancel</button>
+    </div>
+  </div>;
 }
 
 function UserEditor({ user, firms, onClose, onSaved }: { user: any; firms: any[]; onClose: () => void; onSaved: (m: string) => void }) {

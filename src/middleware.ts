@@ -8,7 +8,7 @@ import { isPartnerIdentity, partnerMayUsePath } from "@/lib/partner-access";
 import { pilotStaffApiAllowed, pilotStaffPageAllowed } from "@/lib/inno-pilot-access";
 
 function isAuthPage(path: string) {
-  return path === "/login" || path === "/firm-login" || path === "/partner-login" || path.startsWith("/auth");
+  return path === "/login" || path === "/firm-login" || path === "/partner-login" || path === "/auth" || path.startsWith("/auth/");
 }
 
 function isPublicAsset(path: string) {
@@ -18,8 +18,8 @@ function isPublicAsset(path: string) {
 
 function isPublicPath(path: string) {
   if (isAuthPage(path)) return true;
-  if (path.startsWith("/sign")) return true; // claimant e-sign stays public
-  if (path.startsWith("/tools")) return true; // LawRuler property tool; page fail-closes on ?k=
+  if (path === "/sign" || path.startsWith("/sign/")) return true; // claimant e-sign stays public, not the staff /signed page
+  if (path === "/tools" || path.startsWith("/tools/")) return true; // LawRuler property tool; page fail-closes on ?k=
   // Blank retainer PDFs DocuSeal fetches once during e-sign setup. Unguessable
   // folder, no client data. See src/lib/esign-packets.
   if (path.startsWith("/esign-src/") && path.endsWith(".pdf")) return true;
@@ -70,6 +70,10 @@ export async function middleware(req: NextRequest) {
     const { data: me, error } = await supabase.from("app_users")
       .select("id, active, role").eq("id", user.id).maybeSingle();
     if (error || !me || me.active === false) return new NextResponse("forbidden", { status: 403 });
+    if (isInternalRole(me.role) && me.role !== "owner" && user.app_metadata?.must_change_password === true
+      && !(path === "/api/me/password" && req.method === "POST")) {
+      return new NextResponse("Change your temporary password before opening files.", { status: 403 });
+    }
     if (isInternalRole(me.role) && me.role !== "owner" && !pilotStaffApiAllowed(path, req.method)) {
       return new NextResponse("forbidden", { status: 403 });
     }
@@ -109,6 +113,11 @@ export async function middleware(req: NextRequest) {
       const url = req.nextUrl.clone(); url.pathname = "/login"; url.search = "";
       return NextResponse.redirect(url);
     }
+    if (me && isInternalRole(me.role) && me.role !== "owner" && user.app_metadata?.must_change_password === true
+      && path !== "/set-password") {
+      const url = req.nextUrl.clone(); url.pathname = "/set-password"; url.search = "";
+      return NextResponse.redirect(url);
+    }
     if (me && isInternalRole(me.role) && me.role !== "owner" && !pilotStaffPageAllowed(path)) {
       const url = req.nextUrl.clone(); url.pathname = "/app"; url.search = "";
       return NextResponse.redirect(url);
@@ -120,6 +129,10 @@ export async function middleware(req: NextRequest) {
     const onWrongHub = path === "/dashboard" || path === "/";
     if (onLogin || onWrongHub) {
       const { data: me } = await supabase.from("app_users").select("role").eq("id", user.id).maybeSingle();
+      if (onLogin && me && isInternalRole(me.role) && me.role !== "owner" && user.app_metadata?.must_change_password === true) {
+        const url = req.nextUrl.clone(); url.pathname = "/set-password"; url.search = "";
+        return NextResponse.redirect(url);
+      }
       const home = await resolveFirmHome(supabase, {
         role: me?.role,
         email: user.email,

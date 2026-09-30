@@ -84,11 +84,14 @@ function renderedFileText(data: any) {
   let hook = 0;
   const useState = (initial: any) => [hook++ === 0 ? data : initial, () => {}];
   const exp: any = {};
-  new Function("require", "exports", "useState", "useEffect", "fmtWhen", "ContactCard", "LeadCard", "LawRulerSyncSummary", "FileStatusControl", code)(
+  new Function("require", "exports", "useState", "useEffect", "useRef", "fmtWhen", "ContactCard", "LeadCard", "LawRulerSyncSummary", "FileStatusControl", code)(
     (id: string) => { assert.equal(id, "react/jsx-runtime"); return jsxRuntime; },
-    exp, useState, () => {}, () => "", () => null, () => null, LawRulerSyncSummary, () => null,
+    exp, useState, () => {}, (initial: any) => ({ current: initial }), () => "", () => null, () => null, LawRulerSyncSummary, () => null,
   );
-  return renderToStaticMarkup(exp.render({ leadId: L, claimId: B, lead: null }));
+  return renderToStaticMarkup(exp.render({ leadId: L, claimId: B, lead: null,
+    noteDraft: { body: "", scope: "call", saving: false, error: "" }, updateNoteDraft: () => {},
+    sendHoldNotice: "", reconcileActions: [], reconcileBusy: false, reconcileMessage: "", onCorrect: () => {},
+  }));
 }
 let count = 0;
 async function check(name: string, fn: () => Promise<void>) { await fn(); count++; console.log("ok", name); }
