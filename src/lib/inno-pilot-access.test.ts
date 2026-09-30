@@ -28,4 +28,9 @@ for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE"]) assert.equal(pil
 for (const path of ["/api/me/password/other", "/api/me/profile", "/api/me/password-reset"]) assert.equal(pilotStaffApiAllowed(path, "POST"), false);
 assert.equal(pilotStaffPageAllowed("/set-password/other"), false);
 console.log("pilot password change exception is exact and POST-only");
+assert.equal(pilotStaffApiAllowed("/api/netfly", "GET"), true);
+assert.equal(pilotStaffApiAllowed("/api/netfly", "POST"), true);
+assert.equal(pilotStaffApiAllowed("/api/netfly/retainer", "POST"), true);
+assert.equal(pilotStaffApiAllowed("/api/netfly/retainer", "GET"), false);
+assert.equal(pilotStaffApiAllowed("/api/netfly/other", "POST"), false);
 
