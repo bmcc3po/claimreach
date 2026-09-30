@@ -102,7 +102,8 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     const note = 'Client/Driver: Synthetic Person\nAccident Date: 09/04/2026\nAccident Summary: Rear ended while stopped.';
     const send = () => { const form = new FormData();
       form.set('LeadID', '264972'); form.set('CaseType', 'NETFLY ONTAKE'); form.set('NetflyHandoffNote', note);
-      form.set('retainer', new Blob([`%PDF-1.4\n${'synthetic evidence '.repeat(8)}\n%%EOF`], { type: 'application/pdf' }), 'signed-original.pdf');
+      // DocuSeal's number in the filename is a submission ID, not LawRuler's LeadID.
+      form.set('retainer', new Blob([`%PDF-1.4\n${'synthetic evidence '.repeat(8)}\n%%EOF`], { type: 'application/pdf' }), 'signed-11738202.pdf');
       return new Request('https://synthetic.invalid/api/webhooks/lawruler', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form }); };
     const first = await h.POST(send());
     assert.equal(first.status, 200, JSON.stringify(first.body));

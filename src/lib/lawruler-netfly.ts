@@ -15,6 +15,7 @@ export function validateNetflyLawRulerPayload(fields: Record<string, unknown>, f
   if (files.length > 1) return 'Send only the signed-retainer PDF in the NETFLY webhook document category.';
   if (firstArrival && files.length !== 1) return 'Attach the existing signed-retainer PDF to this NETFLY webhook.';
   for (const file of files) {
+    if (!file.name || file.name.length > 240 || /[/\\]/.test(file.name)) return 'The signed-retainer filename is invalid.';
     if (!/\.pdf$/i.test(file.name) || file.bytes.byteLength < 100 || file.bytes.byteLength > 8 * 1024 * 1024) return 'The NETFLY original must be one PDF between 100 bytes and 8 MiB.';
     const bytes = new Uint8Array(file.bytes);
     if (!new TextDecoder().decode(bytes.slice(0, 8)).startsWith('%PDF-') || !new TextDecoder().decode(bytes.slice(-2048)).includes('%%EOF'))

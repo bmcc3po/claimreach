@@ -39,7 +39,10 @@ export function validateLawRulerOriginal(file: LrOriginal, scope: LrDocumentScop
   const entries = Array.isArray(manifest) ? manifest.filter((m: any) => m?.name === name) : [];
   if (entries.length > 1) throw new Error('The attachment manifest repeats this filename.');
   const entry = entries[0];
-  if (vendor && vendor !== scope.vendorId) throw new Error('The filename names a different LawRuler lead.');
+  // NETFLY's uploaded DocuSeal filename often contains a submission number,
+  // not a LawRuler lead ID. The authenticated, single-document NETFLY event
+  // binds it through the server-created manifest and still requires review.
+  if (scope.caseType !== 'netfly_signed_retainer' && vendor && vendor !== scope.vendorId) throw new Error('The filename names a different LawRuler lead.');
   if (!vendor && (!entry || String(entry.lead_id) !== scope.vendorId)) throw new Error('An unnumbered attachment needs a matching attachment_manifest lead_id.');
   if (entry && (String(entry.lead_id) !== scope.vendorId || (entry.claim_id && entry.claim_id !== scope.claimId))) throw new Error('The attachment manifest names a different lead or matter.');
   const bytes = new Uint8Array(file.bytes);
