@@ -5,6 +5,7 @@ import { fieldVisible, contactFieldsForType, US_STATES } from "@/lib/questionnai
 import FieldRenderer from "./FieldRenderer";
 import PhoneInput, { formatUsPhone } from "./PhoneInput";
 import { useFieldAutosave } from "./useFieldAutosave";
+import { inferMailTimeZone, timeZoneLabel } from "@/lib/mail-time-zone";
 
 // The structured contact columns this tab always shows (names split,
 // preferences, emergency contact), next to the form's own contact fields.
@@ -79,7 +80,10 @@ function ContactInfoRecord({ lead, claimType, editMode = true, onRequestEdit, po
       // failed write looked identical to a successful one. Never again: if it
       // did not save, the screen says so.
       if (!r.ok || d.error) throw new Error(d.error || "Could not save. Nothing was written.");
-      acknowledgedName.current = d.contact?.claimant_name ? { claimant_name: d.contact.claimant_name } : {};
+      acknowledgedName.current = {
+        ...(d.contact?.claimant_name ? { claimant_name: d.contact.claimant_name } : {}),
+        ...(d.contact?.client_time_zone ? { client_time_zone: d.contact.client_time_zone } : {}),
+      };
     },
     onSaved: (patch) => {
       // This save coming back through the parent's copy is not a refresh.
@@ -203,7 +207,7 @@ function ContactInfoRecord({ lead, claimType, editMode = true, onRequestEdit, po
       <div className="ro-wrap">
         <div className="ro-namecard">
           <div className="ro-name">{fullName || "Unnamed client"}</div>
-          <div className="ro-sub">{lead.phone ? formatUsPhone(lead.phone) : "no phone"}{lead.email ? ` · ${lead.email}` : ""}</div>
+          <div className="ro-sub">Contact details for this file</div>
         </div>
 
         <div className="ro-section">Mailing Address</div>
@@ -214,10 +218,14 @@ function ContactInfoRecord({ lead, claimType, editMode = true, onRequestEdit, po
 
         <div className="ro-section">Contact Preferences</div>
         <div className="ro-grid">
+          <V label="Cell phone" value={vals.phone ? formatUsPhone(vals.phone) : ""} />
+          <V label="Email" value={vals.email} />
           <V label="Preferred language" value={vals.preferred_language} />
           <V label="Preferred time" value={vals.preferred_time} />
           <V label="Preferred method" value={vals.preferred_contact_method} />
-          <V label="Time zone" value={vals.client_time_zone} />
+          <V label="Time zone" value={vals.client_time_zone
+            ? timeZoneLabel(vals.client_time_zone)
+            : (() => { const inferred = inferMailTimeZone(vals.mail_state, vals.mail_zip); return inferred ? `${timeZoneLabel(inferred)} (from mailing address)` : ""; })()} />
         </div>
 
         <div className="ro-section">Emergency Contact</div>
@@ -270,7 +278,13 @@ function ContactInfoRecord({ lead, claimType, editMode = true, onRequestEdit, po
         <div className="field"><label style={{ fontSize: 13 }}>Preferred language</label><PickOrKeep value={vals.preferred_language} onChange={(v) => set("preferred_language", v)} options={["English", "Spanish", "Other"]} /></div>
         <div className="field"><label style={{ fontSize: 13 }}>Preferred time</label><PickOrKeep value={vals.preferred_time} onChange={(v) => set("preferred_time", v)} options={["Morning", "Afternoon", "Evening", "Any time"]} /></div>
         <div className="field"><label style={{ fontSize: 13 }}>Preferred contact method</label><PickOrKeep value={vals.preferred_contact_method} onChange={(v) => set("preferred_contact_method", v)} options={["Phone", "Text", "Email"]} /></div>
-        <div className="field"><label style={{ fontSize: 13 }}>Client time zone</label><PickOrKeep value={vals.client_time_zone} onChange={(v) => set("client_time_zone", v)} options={["Eastern", "Central", "Mountain", "Pacific", "Alaska", "Hawaii"]} /></div>
+        <div className="field"><label style={{ fontSize: 13 }}>Client time zone</label>
+          <select value={vals.client_time_zone || ""} onChange={(e) => set("client_time_zone", e.target.value)}>
+            <option value="">Confirm time zone</option>
+            {vals.client_time_zone && !["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu"].includes(vals.client_time_zone) && <option value={vals.client_time_zone}>{vals.client_time_zone}</option>}
+            {["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu"].map((zone) => <option key={zone} value={zone}>{timeZoneLabel(zone)}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Emergency Contact</div>
@@ -367,3 +381,4 @@ function ContactPointsList({ points }: { points: { id: string; kind: string; val
     </>
   );
 }
+
