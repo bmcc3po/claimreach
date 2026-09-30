@@ -26,8 +26,8 @@ export default async function AppHomePage() {
   const notes: string[] = [];
   const pilot = me.role !== "owner";
   const firmById = new Map((firmRes.data ?? []).map((f: any) => [f.id, f]));
-  const campaigns = (campRes.data ?? []).filter((c: any) => !pilot ||
-    (c.name === "INNO MVA" && c.case_type === "mva" && (firmById.get(c.firm_id) as any)?.slug === "tmp"));
+  const campaigns = (campRes.data ?? []).filter((c: any) => c.name !== "NETFLY ONTAKE" && (!pilot ||
+    (c.name === "INNO MVA" && c.case_type === "mva" && (firmById.get(c.firm_id) as any)?.slug === "tmp")));
   const campIds = campaigns.map((c: any) => c.id);
   const setupCamps = me.role === "owner"
     ? campaigns.filter((c: any) => packetsFor((firmById.get(c.firm_id) as any)?.slug, c.case_type)) : [];
