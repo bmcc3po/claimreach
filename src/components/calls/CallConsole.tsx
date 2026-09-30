@@ -66,6 +66,13 @@ function todayMDY(): string {
 }
 
 export default function CallConsole({ init }: { init: ConsoleInit }) {
+  // The call renders local calendar labels and a second-by-second clock. The
+  // server's timezone/time cannot produce the browser's initial text reliably.
+  // Keep SSR and the first browser pass identical; initialize the engine and
+  // its save/signing effects only after hydration, using the agent's local day.
+  const [ready, setReady] = useState(false);
+  useEffect(() => { setReady(true); }, []);
+  if (!ready) return <div className="cc-desk" aria-busy="true"><div className="cc-card" role="status" style={{ margin: 24 }}>Loading intake…</div></div>;
   return <MatterCallConsole key={`${init.leadId}:${init.claimId}`} init={init} />;
 }
 
