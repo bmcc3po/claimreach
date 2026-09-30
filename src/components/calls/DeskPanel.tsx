@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Icon from "@/components/ui/Icon";
 import AgreementChoice from "./AgreementChoice";
 import LawRulerSyncSummary from "@/components/LawRulerSyncSummary";
+import FileStatusControl from "@/components/FileStatusControl";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
@@ -512,6 +513,9 @@ function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId
   const [scope, setScope] = useState("call");
   const [saving, setSaving] = useState(false);
   const [openedSignedPreview, setOpenedSignedPreview] = useState<string | null>(null);
+  const [voidTarget, setVoidTarget] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidBusy, setVoidBusy] = useState(false);
   const load = async () => {
     try {
       const r = await fetch(`/api/calls/file?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`);
@@ -532,21 +536,19 @@ function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId
       setNote(""); await load();
     } catch (e: any) { setErr(e.message); } finally { setSaving(false); }
   };
-  // Void one agreement (Brett, Sep 28). The console's send block opens again
-  // on the next refresh; the voided row stays in the list, marked.
+  // Owner/admin-only server action. The reason is collected inline because
+  // browser-embedded desks may suppress native prompt dialogs.
   const voidOne = async (a: any) => {
-    const signed = a.status === "completed" || a.status === "signed";
-    const why = window.prompt(signed
-      ? "The PNC already signed this one. Why are you voiding it? The signed copy stays in the file history, marked Voided."
-      : "Why are you voiding this agreement? (For example: wrong agreement, wrong number.)");
-    if (!why || !why.trim()) return;
+    const why = voidReason.trim();
+    if (why.length < 3 || voidBusy) return;
+    setVoidBusy(true);
     try {
       const r = await fetch("/api/calls/esign/void", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, id: a.id, reason: why.trim() }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) throw new Error(j.error || "The agreement did not void.");
-      await load();
+      setVoidTarget(null); setVoidReason(""); await load();
       try { window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, claimId, pax: a.pax } })); } catch { /* no console on this page */ }
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { setErr(e.message); } finally { setVoidBusy(false); }
   };
   const reviewOne = async (a: any) => {
     if (openedSignedPreview !== a.id) return;
@@ -567,7 +569,9 @@ function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId
       <ContactCard leadId={leadId} initial={d.contact || {}} />
       <LawRulerSyncSummary imported={d.imported} />
       <div className="cc-grp">
-        {d.status && <div className="cc-chk"><span className="cc-chk-k">Status</span><span className="cc-chk-v"><span className={`cc-dot cc-${d.status.tone || "info"}`} />{d.status.label}</span></div>}
+        <div className="cc-chk cc-file-status">
+          <FileStatusControl leadId={leadId} claimId={claimId} current={d.status?.key || "new"} onChanged={() => { void load(); }} />
+        </div>
         {row("Lead number", L.lead_no)}
         {row("Case", L.campaign)}
         {row("Attorney", L.attorney)}
@@ -595,7 +599,14 @@ function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId
               {a.error && a.status !== "voided" && <div className="cc-cue cc-red">{a.error}</div>}
               {a.replacement_requested_at && !a.voided && <div className="cc-cue cc-red" role="status">Supervisor review required since {fmtWhen(a.replacement_requested_at)}. {a.replacement_requested_by || "An agent"} reported: {a.replacement_reason}. The original signed evidence stays on file; firm delivery is held.</div>}
               {a.client_signed_url && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><a className="cc-chip cc-sm" href={a.client_signed_url} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedSignedPreview(a.id)}>{a.status === "voided" ? "Original client-signed preview (voided)" : "View client-signed preview"}</a><span className="cc-cue">{a.status === "voided" ? "Historical signed evidence is preserved." : "Client signed; office signer and final certificate are pending. Inspect this preview before finishing or correcting."}</span>{a.status === "signed" && !a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" disabled={openedSignedPreview !== a.id} onClick={() => reviewOne(a)}>I reviewed this signed copy</button>}{a.agent_reviewed_at && <span className="cc-cue">Reviewed {fmtWhen(a.agent_reviewed_at)} by {a.agent_reviewed_by || "staff"}</span>}{a.status === "signed" && a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" onClick={onCorrect}>Report error / send corrected agreement</button>}</div>}
-              {a.can_void && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button type="button" className="cc-chip cc-sm" onClick={() => voidOne(a)}>{a.replacement_requested_at && !a.voided ? "Owner/admin: resolve review by voiding original" : a.status === "completed" || a.status === "signed" ? "Void the signed agreement" : "Void"}</button></div>}
+              {a.can_void && <div style={{ marginTop: 8 }}>
+                {voidTarget === a.id ? <div className="cc-card">
+                  <label htmlFor={`void-reason-${a.id}`} className="cc-cue">Reason to void this agreement</label>
+                  {(a.status === "completed" || a.status === "signed") && <div className="cc-cue cc-red">The original signed evidence stays in the file history.</div>}
+                  <textarea id={`void-reason-${a.id}`} className="cc-area" rows={2} value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="Describe the error and why this agreement must be voided" />
+                  <div className="cc-chips cc-list"><button type="button" className="cc-chip cc-sm" disabled={voidBusy} onClick={() => { setVoidTarget(null); setVoidReason(""); }}>Cancel</button><button type="button" className="cc-chip cc-sm" disabled={voidBusy || voidReason.trim().length < 3} onClick={() => void voidOne(a)}>{voidBusy ? "Voiding" : "Confirm void"}</button></div>
+                </div> : <div className="cc-chips cc-list"><button type="button" className="cc-chip cc-sm" onClick={() => { setVoidTarget(a.id); setVoidReason(""); }}>{a.replacement_requested_at && !a.voided ? "Owner/admin: resolve review by voiding original" : a.status === "completed" || a.status === "signed" ? "Void the signed agreement" : "Void"}</button></div>}
+              </div>}
             </div>
           ))}
         </div>

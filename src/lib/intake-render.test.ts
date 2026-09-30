@@ -23,9 +23,14 @@ const bundle: IntakeBundle = { lead, claim, answers: claim.answers, caseType: "m
 function db(rows: Record<string, any[]>) {
   return { from(table: string) {
     let filters: ((r: any) => boolean)[] = [];
-    const q: any = { select: () => q, eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; }, order: () => q,
+    let selection: { count?: string; head?: boolean } = {};
+    const result = () => {
+      const matches = (rows[table] ?? []).filter((r) => filters.every((f) => f(r)));
+      return { data: selection.head ? null : matches, error: null, count: selection.count === "exact" ? matches.length : null };
+    };
+    const q: any = { select: (_columns?: string, options?: typeof selection) => { selection = options ?? {}; return q; }, eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; }, order: () => q,
       maybeSingle: async () => ({ data: (rows[table] ?? []).find((r) => filters.every((f) => f(r))) ?? null, error: null }),
-      then: (a: any, b: any) => Promise.resolve({ data: (rows[table] ?? []).filter((r) => filters.every((f) => f(r))), error: null }).then(a, b) };
+      then: (a: any, b: any) => Promise.resolve(result()).then(a, b) };
     return q;
   } };
 }

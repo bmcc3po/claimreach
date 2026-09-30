@@ -883,4 +883,17 @@ t("agent view picker offers only All questions and Simple form without changing 
   assert.equal(e.state.story.city, before);
 });
 
+t("terminal agreement states reopen selection on reload and polling without sending", () => {
+  for (const status of ["expired", "declined", "voided", "failed"]) {
+    const before = calls.length;
+    const e = mk({ esign: { status, configured: true, pax: {} } });
+    assert.equal(e.state.send.status, "ready");assert.equal(e.renderVals().sendReady, true);
+    e.setState({ send: { ...e.state.send, status: "opened" } });
+    e.setState({ send: { ...e.state.send, status, error: "Cancellation failed to save; review history." } });
+    assert.equal(e.state.send.status, "ready");assert.equal(e.renderVals().sendReady, true);
+    assert.equal(e.state.send.error, "Cancellation failed to save; review history.");
+    assert.equal(calls.length, before);
+  }
+});
+
 console.log(passed, "passed");

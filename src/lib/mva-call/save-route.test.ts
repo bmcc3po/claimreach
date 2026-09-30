@@ -15,10 +15,10 @@ function world(extra: any = {}) { return new FakeDb({
   claims: [{ id: C, lead_id: L, firm_id: "firm", campaign_id: "campaign", claim_type: "mva", updated_at: "2026-09-28T00:00:00Z", answers: { mva_call: { story: { text: "Before" } }, another_form: "Keep", ...extra } }],
   intake_calls: [{ id: "call", lead_id: L, claim_id: C, status: "live", answers: { story: { text: "Stale session" } } }],
 }); }
-function route(db: FakeDb) {
+function route(db: FakeDb, trustedDb: FakeDb = db) {
   const mods: Record<string, any> = {
     "next/server": { NextResponse: { json: (body: any, o: any = {}) => ({ body, status: o.status ?? 200 }) } },
-    "@/lib/supabase-server": { supabaseServer: async () => db },
+    "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => trustedDb },
     "@/lib/matter": matter, "@/lib/mva-call/answer-merge": merge,
     "@/lib/mva-call/server": { ...server, requireStaff: async () => ({ id: "agent", name: "Synthetic Agent" }) },
   };
@@ -54,6 +54,18 @@ async function main() {
     assert.deepEqual(r.body.answers.story, { text: "Agent edit", city: "Austin, TX" });
     assert.equal(db.tables.claims[0].answers.another_form, "Keep");
     assert.deepEqual(db.tables.intake_calls[0].answers, r.body.answers);
+  });
+  await check("a hidden sibling prevents adopting an old unbound call", async () => {
+    const db = world();
+    db.tables.intake_calls[0].claim_id = null;
+    const trusted = new FakeDb({ claims: [
+      { ...db.tables.claims[0] },
+      { ...db.tables.claims[0], id: "20000000-0000-4000-8000-000000000002", campaign_id: "other-campaign" },
+    ] });
+    const r = await route(db, trusted)();
+    assert.equal(r.status, 409);
+    assert.match(r.body.error, /multi-matter/);
+    assert.ok(db.ops.every(o => o.kind === "select"));
   });
   await check("import racing the claim CAS is reread and merged without losing its metadata", async () => {
     const db = world(); let raced = false;

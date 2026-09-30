@@ -76,6 +76,10 @@ export function statusEventFor(def: StatusDef, priorStatus: string | null | unde
 
 export interface StatusDeps {
   db?: any;
+  /** Trusted read of sibling statuses only, after an authorized target write.
+   * A session restricted to one campaign cannot see every sibling that keeps
+   * this lead in QA/WIP. Target lookup and all writes still use db. */
+  queueReadDb?: any;
   audit?: (row: any) => Promise<void>;
   automation?: (evt: any) => Promise<void>;
   webhook?: (firmId: string, evt: string, payload: any, opts: any) => Promise<void>;
@@ -170,7 +174,7 @@ export async function setClaimStatusForLeads(opts: {
   // error, never a silent "no siblings" (Astra round 6).
   const flagErrors: string[] = [];
   for (const leadId of touchedLeadIds) {
-    const { data: sibs, error: sErr } = await db.from("claims").select("id, status").eq("lead_id", leadId);
+    const { data: sibs, error: sErr } = await (deps.queueReadDb ?? db).from("claims").select("status").eq("lead_id", leadId);
     if (sErr) { flagErrors.push(sErr.message); continue; }
     const flags: any = queueFlagsFor((sibs ?? []).map((c: any) => c.status), list);
     if (!opts.historical && def.phase === "in_qa" && def.key !== "wip" && def.key !== "signed_wip") flags.qa_entered_at = new Date().toISOString();

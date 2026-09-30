@@ -54,6 +54,20 @@ function Say({ label, line, cue, small }: { label: string; line: string; cue?: s
   );
 }
 
+function IdentityFields({ v }: { v: any }) {
+  return (<>
+    {v.sendReady && <div className="ch-note ch-wide">DOB and SSN are optional before sending. Enter them now or after the client signs.</div>}
+    <div className="ch-q">
+      <div className="ch-q-h"><span className="ch-q-l">Date of birth</span></div>
+      <DobField cls="ch" value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} />
+    </div>
+    <div className="ch-q">
+      <div className="ch-q-h"><span className="ch-q-l">Social Security number</span></div>
+      <SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} />
+    </div>
+  </>);
+}
+
 /** Section 7: send the agreement, walk the PNC through it, finish it. */
 function Retainer({ v }: { v: any }) {
   if (v.sendReady) {
@@ -80,6 +94,7 @@ function Retainer({ v }: { v: any }) {
         <div className="ch-note">{v.viaNote}</div>
       </div>
       <div className="ch-q"><AgreementRecipient v={v} presentation="chore" /></div>
+      <IdentityFields v={v} />
       <div className="ch-wide ch-sendbox">
         {!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener">Preview the agreement before you send it</a>}
         {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
@@ -113,18 +128,10 @@ function Retainer({ v }: { v: any }) {
       {v.canResend && <div className="ch-wide"><button type="button" className="ch-btn ch-line" onClick={v.resendLink}>Send the link again</button></div>}
     </>)}
     {v.signed && <Say label={SIGNED.label} line={SIGNED.line} cue={SIGNED.cue} />}
-    {/* The File is always here once the agreement is out: DOB and SSN can go
-        in the moment the PNC gives them (Brett, Sep 28: "I can't find where
-        to put her DOB and SSN"). Completing still waits for the signature. */}
+    {/* Identity stays editable after sending; completion still uses the
+        signature/review lock supplied by the shared engine. */}
     <>
-      <div className="ch-q">
-        <div className="ch-q-h"><span className="ch-q-l">Date of birth</span></div>
-        <DobField cls="ch" value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} />
-      </div>
-      <div className="ch-q">
-        <div className="ch-q-h"><span className="ch-q-l">Social Security number</span></div>
-        <SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} />
-      </div>
+      <IdentityFields v={v} />
       <div className="ch-q ch-wide">
         {v.agreementOpen && (
           <div className="ch-row">

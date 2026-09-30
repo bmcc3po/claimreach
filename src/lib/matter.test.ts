@@ -40,6 +40,40 @@ const C = (id: string, lead: string, camp: string | null) => ({ id, lead_id: lea
     const m = await resolveMatter(fakeDb([C("a", "L", "mva"), C("b", "L", "motel")]), "L", { campaignId: "mva" });
     assert.ok(m.ok && m.via === "campaign" && m.sole === false);
   });
+  await t("a hidden sibling cannot make the visible pilot claim sole or inherit unbound evidence", async () => {
+    const visible = fakeDb([C("a", "L", "mva")]);
+    const trusted = fakeDb([C("a", "L", "mva"), C("b", "L", "motel")]);
+    const m = await resolveMatter(visible, "L", { campaignId: "mva", authoritativeDb: trusted });
+    assert.ok(m.ok && m.claim.id === "a" && m.via === "campaign" && m.sole === false);
+    assert.equal(matterRowsFilter(m), "claim_id.eq.a");
+    assert.equal(rowBelongsToMatter({ claim_id: null, campaign_id: null }, m), false);
+    const named = await resolveMatter(visible, "L", { claimId: "a", authoritativeDb: trusted });
+    assert.ok(named.ok && named.sole === false);
+    const hidden = await resolveMatter(visible, "L", { claimId: "b", authoritativeDb: trusted });
+    assert.ok(!hidden.ok && hidden.status === 404);
+  });
+  await t("a hidden same-campaign claim prevents an unqualified selection without leaking its id", async () => {
+    const m = await resolveMatter(fakeDb([C("a", "L", "mva")]), "L", {
+      campaignId: "mva", authoritativeDb: fakeDb([C("a", "L", "mva"), C("b", "L", "mva")]),
+    });
+    assert.ok(!m.ok && m.ambiguous);
+    assert.deepEqual(m.candidates?.map((c) => c.id), ["a"]);
+  });
+  await t("a failed trusted count stops before treating visible claims as sole", async () => {
+    const m = await resolveMatter(fakeDb([C("a", "L", "mva")]), "L", {
+      claimId: "a", authoritativeDb: fakeDb([C("a", "L", "mva")], { fail: true }),
+    });
+    assert.ok(!m.ok && m.status === 500);
+  });
+  await t("hidden-only claims are not a missing matter and cannot trigger automatic creation", async () => {
+    const hidden = await resolveMatter(fakeDb([]), "L", { campaignId: "mva", authoritativeDb: fakeDb([C("private-id", "L", "motel")]) });
+    assert.ok(!hidden.ok && hidden.status === 409 && hidden.ambiguous === true);
+    assert.equal(hidden.candidates, undefined);assert.ok(!JSON.stringify(hidden).includes("private-id"));
+    const empty = await resolveMatter(fakeDb([]), "L", { authoritativeDb: fakeDb([]) });
+    assert.ok(!empty.ok && empty.status === 409 && !empty.ambiguous);
+    const failed = await resolveMatter(fakeDb([]), "L", { authoritativeDb: fakeDb([], { fail: true }) });
+    assert.ok(!failed.ok && failed.status === 500);
+  });
   await t("ambiguous and failed lookups stop", async () => {
     const m1 = await resolveMatter(fakeDb([C("a", "L", "mva"), C("b", "L", "mva")]), "L", { campaignId: "mva" });
     assert.ok(!m1.ok && m1.ambiguous);

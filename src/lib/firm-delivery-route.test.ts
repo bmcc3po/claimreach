@@ -21,7 +21,11 @@ function harness(role = "agent", visible = true, capable = true, dispatchError: 
       then: (a: any, b: any) => Promise.resolve({ data: results(), error: null }).then(a, b) };
     return q;
   } };
-  const admin = { from: () => { const q: any = { select: () => q, eq: () => q, or: () => q, order: () => q, then: (a: any, b: any) => Promise.resolve({ data: [], error: null }).then(a, b) }; return q; },
+  const admin = { from: (table: string) => { let head = false; const filters: ((r: any) => boolean)[] = [];
+    const matches = () => (table === "claims" ? [claim] : []).filter((r) => filters.every((f) => f(r)));
+    const q: any = { select: (_cols: string, opts?: any) => { head = !!opts?.head; return q; },
+      eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; }, or: () => q, order: () => q,
+      then: (a: any, b: any) => Promise.resolve({ data: head ? null : matches(), count: head ? matches().length : null, error: null }).then(a, b) }; return q; },
     rpc: async (name: string, args: any) => { rpcs.push({ name, args }); return { data: true, error: null }; } };
   const user = { id: "actual-user", role, name: "Synthetic agent", can: (key: string) => capable && key === "claims.status" };
   const mods: Record<string, any> = {

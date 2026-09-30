@@ -171,7 +171,9 @@ export function plainDocuSeal(error: string, status: number | undefined, stage: 
   if (status === 429 || /too many|rate limit/.test(low))
     return "DocuSeal is busy right now. Nothing was sent. Wait one minute and press Send again.";
   if (!status || (status >= 500 && status < 600) || /could not reach|fetch failed|network|timed? ?out/.test(low))
-    return "DocuSeal did not answer. Nothing was sent. Wait a few seconds and press Send again.";
+    return stage === "send"
+      ? "DocuSeal did not confirm whether the agreement was created. Do not send another agreement until an owner checks DocuSeal and the file history."
+      : "DocuSeal did not confirm the template setup. Ask an owner to check it before trying again.";
   if (/phone/.test(low)) return `DocuSeal says her cell number is not valid (${e}). Check the number, fix it, and send again.`;
   if (/email/.test(low)) return `DocuSeal says the email is not valid (${e}). Check the email, fix it, and send again.`;
   if (stage === "template" && /file|pdf|download|document/.test(low))
@@ -190,11 +192,13 @@ export function templateProblem(error: string, status: number | undefined): bool
 /** Where our status sits given DocuSeal's view of the client and the whole packet. */
 export function statusFrom(sub: { status?: string; submitters?: DsSubmitter[] }): "sent" | "opened" | "signed" | "completed" | "declined" | "expired" {
   if (sub.status === "completed") return "completed";
-  if (sub.status === "expired") return "expired";
   const c = (sub.submitters || []).find((s) => s.role === "Client");
+  // Expiring a link does not erase a signature that landed concurrently.
+  // Preserve client-signed evidence even if the office step was still open.
+  if (c?.completed_at || c?.status === "completed") return "signed";
+  if (sub.status === "expired") return "expired";
   if (!c) return "sent";
   if (c.declined_at || c.status === "declined") return "declined";
-  if (c.completed_at || c.status === "completed") return "signed";
   if (c.opened_at || c.status === "opened") return "opened";
   return "sent";
 }

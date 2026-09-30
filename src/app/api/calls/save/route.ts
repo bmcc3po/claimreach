@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, leadPatchSince, LEAD_CALL_COLS } from "@/lib/mva-call/server";
 import { resolveMatter } from "@/lib/matter";
 import { isAnswerObject, mergeAnswerDelta } from "@/lib/mva-call/answer-merge";
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   // The call's ONE matter: the claim the console pinned when the call opened
   // (round 7). Answers are filed on it and nowhere else — never the oldest
   // sibling (Astra round 6: an MVA call landed in the older Motel matter).
-  const matter = await resolveMatter(sb, lead.id, { claimId: b?.claim_id ? String(b.claim_id) : null, campaignId: lead.campaign_id ?? null });
+  const matter = await resolveMatter(sb, lead.id, { claimId: b?.claim_id ? String(b.claim_id) : null, campaignId: lead.campaign_id ?? null, authoritativeDb: supabaseAdmin() });
   if (!matter.ok) return NextResponse.json({ error: matter.error, ambiguous: !!matter.ambiguous }, { status: matter.status });
   const claim = matter.claim;
 
@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (was && (was.lead_id !== leadId || (was.claim_id && was.claim_id !== claim.id))) {
       return NextResponse.json({ error: "This call belongs to a different matter on this file. Refresh the page.", ended: true }, { status: 409 });
+    }
+    if (was && !was.claim_id && !matter.sole) {
+      return NextResponse.json({ error: "This older call is not tied to a matter on a multi-matter file. Start a new call on the selected matter before saving.", ended: true }, { status: 409 });
     }
     if (was && was.status !== "live") return NextResponse.json({ error: "This call was already closed (maybe on another screen). Open the file again to start a new call.", ended: true }, { status: 409 });
     if (!was) callId = null;

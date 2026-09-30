@@ -134,7 +134,7 @@ export async function finishEmergencyPacket(db: any, docs: any[], input: any, me
     if (JSON.stringify([...doc.audit.emergency.packet_manifest].sort()) !== JSON.stringify(ids)) throw new Error("The packet membership changed. Ask the agent for a new link.");
   }
   const identity = docs[0].audit.emergency;
-  const context = await resolveSigningMatter(db, docs[0].lead_id, { claimId: identity.claim_id });
+  const context = await resolveSigningMatter(db, docs[0].lead_id, { claimId: identity.claim_id, authoritativeDb: db });
   if (!context.ok) throw new Error(context.error);
   if (context.campaignId !== identity.campaign_id || docs.some((d) => d.lead_id !== context.lead.id || d.firm_id !== context.lead.firm_id || d.audit.emergency.claim_id !== identity.claim_id || d.audit.emergency.campaign_id !== identity.campaign_id)) throw new Error("This agreement's matter association changed. Ask the agent for a new link.");
   const type = ["type", "typed"].includes(input.signature_type) ? "typed" : "drawn";

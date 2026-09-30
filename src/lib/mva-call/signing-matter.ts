@@ -1,6 +1,7 @@
 import { resolveMatter, matterRowsFilter, rowBelongsToMatter, type MatterResult } from "@/lib/matter";
 import { paxParentId } from "@/lib/linked-files";
 import { LEAD_CALL_COLS } from "./server";
+import { supabaseAdmin } from "@/lib/supabase-server";
 
 export type SigningMatter = Extract<MatterResult, { ok: true }>;
 type Failure = { ok: false; status: number; error: string; ambiguous?: boolean };
@@ -10,7 +11,7 @@ export type SigningContext = { ok: true; lead: any; matter: SigningMatter; campa
  * A passenger's originating call is on the parent; its own signing actions
  * resolve its own lead/claim and do not require that old call to stay open. */
 export async function resolveSigningMatter(db: any, leadId: string, opts: {
-  claimId?: string | null; callId?: string | null; allowArchived?: boolean;
+  claimId?: string | null; callId?: string | null; allowArchived?: boolean; authoritativeDb?: any;
 } = {}): Promise<SigningContext | Failure> {
   if (!leadId) return { ok: false, status: 400, error: "Name the file first." };
   const { data: lead, error } = await db.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
@@ -26,7 +27,13 @@ export async function resolveSigningMatter(db: any, leadId: string, opts: {
       return { ok: false, status: 409, error: "This call does not belong to the selected file. Refresh and try again." };
     }
   }
-  const matter = await resolveMatter(db, leadId, { claimId: opts.claimId || call?.claim_id, campaignId: call?.campaign_id ?? lead.campaign_id ?? null });
+  const matter = await resolveMatter(db, leadId, {
+    claimId: opts.claimId || call?.claim_id,
+    campaignId: call?.campaign_id ?? lead.campaign_id ?? null,
+    // Only count through the service role after the session has proved it can
+    // read this lead. The trusted count never selects a hidden claim for it.
+    authoritativeDb: opts.authoritativeDb ?? supabaseAdmin(),
+  });
   if (!matter.ok) return matter;
   if (matter.claim.firm_id && matter.claim.firm_id !== lead.firm_id) {
     return { ok: false, status: 409, error: "This matter and file belong to different firms. Correct their association first." };

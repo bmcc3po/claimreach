@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const { data: lead, error: leadErr } = await sb.from("leads").select("id, firm_id, campaign_id, firm_sent_at, firm_send_result").eq("id", leadId).maybeSingle();
   if (leadErr) return NextResponse.json({ error: `Could not read the file: ${leadErr.message}` }, { status: 500 });
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  const m = await resolveMatter(sb, leadId, { claimId, campaignId: lead.campaign_id ?? null });
+  const m = await resolveMatter(sb, leadId, { claimId, campaignId: lead.campaign_id ?? null, authoritativeDb: admin });
   if (!m.ok) return NextResponse.json({ error: m.error, ambiguous: !!m.ambiguous, candidates: m.candidates }, { status: m.status });
   if (m.claim.firm_id && m.claim.firm_id !== lead.firm_id) return NextResponse.json({ error: "This matter and file belong to different firms." }, { status: 409 });
   const matter = { claim: m.claim, sole: m.sole };
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
   const { data: leadRow, error: leadErr } = await sb.from("leads").select("id, firm_id, campaign_id").eq("id", leadId).maybeSingle();
   if (leadErr) return NextResponse.json({ error: `Could not read the file: ${leadErr.message}` }, { status: 500 });
   if (!leadRow) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  const matter = await resolveMatter(sb, leadId, { claimId: uuid(b?.claim_id) || null, campaignId: leadRow.campaign_id ?? null });
+  const matter = await resolveMatter(sb, leadId, { claimId: uuid(b?.claim_id) || null, campaignId: leadRow.campaign_id ?? null, authoritativeDb: supabaseAdmin() });
   if (!matter.ok) return NextResponse.json({ error: matter.error }, { status: matter.status });
   if (matter.claim.firm_id && matter.claim.firm_id !== leadRow.firm_id) return NextResponse.json({ error: "This matter and file belong to different firms." }, { status: 409 });
 

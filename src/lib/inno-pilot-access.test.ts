@@ -14,3 +14,8 @@ for (const path of ["/api/calls/esign-setup", "/api/export", "/api/console", "/a
   assert.equal(pilotStaffApiAllowed(path), false, path);
 }
 console.log("pilot route fence passed");
+for (const path of ["/api/statuses", "/api/dq-reasons"]) {
+  for (const method of ["GET", "HEAD"]) assert.equal(pilotStaffApiAllowed(path, method), true);
+  for (const method of ["POST", "PUT", "PATCH", "DELETE"]) assert.equal(pilotStaffApiAllowed(path, method), false);
+}
+console.log("pilot status and DQ catalogs allow reads only");

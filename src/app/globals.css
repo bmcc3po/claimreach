@@ -1292,6 +1292,14 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 @media (max-width: 640px) { .esign-method { grid-template-columns: 1fr; } }
 
 /* ---- Per-file status control ---- */
+.file-status-control { display:flex; align-items:center; flex-wrap:wrap; gap:7px; min-width:0; }
+.file-status-label { color:var(--ink-soft); font-size:12px; font-weight:600; white-space:nowrap; }
+.file-status-change { border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); padding:6px 9px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
+.file-status-change:hover, .file-status-change:focus-visible { border-color:var(--accent); color:var(--accent); }
+.status-dialog { max-width:420px; padding:12px; }
+.status-dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:2px 4px 0; }
+.status-dialog-note { margin:5px 4px 8px; font-size:12px; line-height:1.35; }
+.status-dialog .status-menu-list { max-height:min(55vh,400px); }
 .status-menu { position:absolute; top:100%; right:0; margin-top:6px; z-index:40;
   background:var(--surface); border:1px solid var(--line); border-radius:12px;
   box-shadow:var(--sh-3); width:240px; overflow:hidden; }

@@ -51,10 +51,11 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   // signing and delivery all carry this claim id (Astra round 6). A file with
   // several matters and no single match asks which one; a legacy file with
   // no claim gets its MVA claim now, the way the case page does.
-  let matter = await resolveMatter(sb, lead.id, { claimId: claimParam || null, campaignId: lead.campaign_id ?? null });
+  const authoritativeDb = supabaseAdmin();
+  let matter = await resolveMatter(sb, lead.id, { claimId: claimParam || null, campaignId: lead.campaign_id ?? null, authoritativeDb });
   if (!matter.ok && !matter.ambiguous && matter.status === 409 && !claimParam && lead.case_type === "mva") {
     await sb.from("claims").insert({ firm_id: lead.firm_id, lead_id: lead.id, claim_type: "mva", campaign: lead.campaign, campaign_id: lead.campaign_id, status: "new", is_this_file: true, created_by: me.id });
-    matter = await resolveMatter(sb, lead.id, { campaignId: lead.campaign_id ?? null });
+    matter = await resolveMatter(sb, lead.id, { campaignId: lead.campaign_id ?? null, authoritativeDb });
   }
   if (!matter.ok) {
     if (matter.ambiguous) {
@@ -78,7 +79,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   if (lead.archived_at) redirect(`/leads/${leadKeyOf(lead)}?claim=${claim.id}`);
   const singleMatter = matter.sole;
   const campaignId = claim.campaign_id ?? (singleMatter ? lead.campaign_id : null);
-  try { await supabaseAdmin().from("leads").update({ first_opened_at: new Date().toISOString(), first_opened_by: user.id }).eq("id", lead.id).is("first_opened_at", null); } catch {}
+  try { await authoritativeDb.from("leads").update({ first_opened_at: new Date().toISOString(), first_opened_by: user.id }).eq("id", lead.id).is("first_opened_at", null); } catch {}
 
   const [{ data: firm }, liveRes, mainRes, reasonsRes, dqRes, ownersRes, tplRes, campRes, extraRes, lastRes, routeRes] = await Promise.all([
     sb.from("firms").select("name, slug").eq("id", lead.firm_id).maybeSingle(),

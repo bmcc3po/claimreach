@@ -70,7 +70,7 @@ export async function middleware(req: NextRequest) {
     const { data: me, error } = await supabase.from("app_users")
       .select("id, active, role").eq("id", user.id).maybeSingle();
     if (error || !me || me.active === false) return new NextResponse("forbidden", { status: 403 });
-    if (isInternalRole(me.role) && me.role !== "owner" && !pilotStaffApiAllowed(path)) {
+    if (isInternalRole(me.role) && me.role !== "owner" && !pilotStaffApiAllowed(path, req.method)) {
       return new NextResponse("forbidden", { status: 403 });
     }
     return res;

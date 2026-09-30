@@ -35,7 +35,7 @@ function route(file: string, db: any) {
     "next/server": { NextResponse: { json: (body: any, o: any = {}) => ({ body, status: o.status ?? 200 }) } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => db },
     "@/lib/mva-call/server": { requireStaff: async () => ({ id: "agent", role: "agent" }) },
-    "@/lib/mva-call/signing-matter": signing, "@/lib/matter": matter, "@/lib/file-notes": notes,
+    "@/lib/mva-call/signing-matter": { ...signing, resolveSigningMatter: (session: any, leadId: string, opts: any) => signing.resolveSigningMatter(session, leadId, { ...opts, authoritativeDb: db }) }, "@/lib/matter": matter, "@/lib/file-notes": notes,
     "@/lib/mva-call/agreement-names": { agreementName: () => "Synthetic agreement" },
     "@/lib/claim-status": { loadStatuses: async () => [] },
     "@/lib/statuses": { resolveStatus: (status: string) => ({ label: status, tone: "neutral" }) },
@@ -81,9 +81,9 @@ function renderedFileText(data: any) {
   let hook = 0;
   const useState = (initial: any) => [hook++ === 0 ? data : initial, () => {}];
   const exp: any = {};
-  new Function("require", "exports", "useState", "useEffect", "fmtWhen", "ContactCard", "LeadCard", "LawRulerSyncSummary", code)(
+  new Function("require", "exports", "useState", "useEffect", "fmtWhen", "ContactCard", "LeadCard", "LawRulerSyncSummary", "FileStatusControl", code)(
     (id: string) => { assert.equal(id, "react/jsx-runtime"); return jsxRuntime; },
-    exp, useState, () => {}, () => "", () => null, () => null, LawRulerSyncSummary,
+    exp, useState, () => {}, () => "", () => null, () => null, LawRulerSyncSummary, () => null,
   );
   return renderToStaticMarkup(exp.render({ leadId: L, claimId: B, lead: null }));
 }

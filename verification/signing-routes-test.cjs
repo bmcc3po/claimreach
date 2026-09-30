@@ -33,7 +33,7 @@ const {FakeDb}=load(path.join(app,'src/lib/test-fake-db.ts'));
 stubs['@/lib/mva-call/identity'].normalizeIdentityValue=load(path.join(app,'src/lib/mva-call/identity.ts')).normalizeIdentityValue;
 function world(){provider=[];sent=[];attachments=[];transitions=[];audit=[];archiveResult={ok:true};expireResult={ok:true};expiryVerified=true;syncStatus='completed';role='owner';identityResult={ok:true,identity:null};identityReads=[];identitySaves=[];identitySaveFailure=null;db=new FakeDb({leads:[{id:L,firm_id:F,campaign_id:CA,case_type:'mva',campaign:'A',claimant_name:'CHAT TESTER',phone:'2025550110',email:'caller@example.invalid',archived_at:null}],claims:[{id:C,lead_id:L,firm_id:F,campaign_id:CA,claim_type:'mva',status:'esign_sent'}],campaigns:[{id:CA,firm_id:F,ssn_require_full:false}],firms:[{id:F,name:'Offline firm',slug:'test'}],esign_templates:[{campaign_id:CA,provider:'docuseal',key:'TX',template_id:'1'}],intake_calls:[{id:'call',lead_id:L,firm_id:F,claim_id:C,campaign_id:CA,answers:{story:{text:'OWN'}}}],esign_submissions:[],signable_documents:[]});db.auth={getUser:async()=>({data:{user:{id:'agent',email:'agent@example.invalid'}}})};db.rpc=async()=>({data:'TMP-TEST'});return db;}
 const request=body=>({json:async()=>body,url:'https://offline.invalid/api',headers:new Headers()});
-const row=(extras={})=>({id:'agreement',lead_id:L,firm_id:F,claim_id:C,campaign_id:CA,status:'signed',pax_index:null,submission_id:'sub',intake_submitter_id:'intake',created_at:'2026-09-28T10:00:00Z',voided_at:null,signed_at:'2026-09-28T10:02:00Z',agent_reviewed_at:'2026-09-28T10:03:00Z',agent_reviewed_by:'agent',...extras});
+const row=(extras={})=>({id:'agreement',lead_id:L,firm_id:F,claim_id:C,campaign_id:CA,status:'signed',pax_index:null,submission_id:'sub',intake_submitter_id:'intake',created_at:'2026-09-28T10:00:00Z',voided_at:null,signed_at:['signed','completed'].includes(extras.status||'signed')?'2026-09-28T10:02:00Z':null,completed_at:null,agent_reviewed_at:'2026-09-28T10:03:00Z',agent_reviewed_by:'agent',...extras});
 const route=p=>load(path.join(app,'src/app/api',p,'route.ts'));
 const send=route('calls/esign'),complete=route('calls/esign/complete'),cancel=route('calls/esign/void'),email=route('calls/email');
 const tests=[];const test=(name,fn)=>tests.push([name,fn]);
@@ -163,5 +163,38 @@ test('office completion refuses a primary superseded by a newer signed emergency
 test('unsigned active emergency also prevents completing the old primary',async()=>{emergencyWorld();db.tables.esign_submissions[0].status='signed';db.tables.signable_documents[0].status='sent';const r=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement'}));assert.equal(r.status,409);assert.equal(provider.length,0)});
 test('cancelled emergency or primary newer than emergency permits normal office completion',async()=>{for(const mutate of [()=>db.tables.signable_documents[0].status='cancelled',()=>db.tables.esign_submissions[0].created_at='2026-09-28T12:00:00Z']){emergencyWorld();db.tables.esign_submissions[0].status='signed';mutate();const r=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement'}));assert.equal(r.status,200,JSON.stringify(r));assert.equal(provider[0][0],'complete')}});
 test('unreadable emergency state blocks office completion before contacting provider',async()=>{emergencyWorld();db.tables.esign_submissions[0].status='signed';db.failOn=o=>o.table==='signable_documents'&&o.kind==='select'?'Read unavailable':null;const r=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement'}));assert.equal(r.status,503);assert.equal(provider.length,0)});
+for(const action of ['void','replace']) {
+  const run=()=>action==='void'?cancel.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement',reason:'Intentional synthetic cancellation'})):send.POST(request(correctedSend()));
+  test(action+' accepts verified expiry callback racing local unsigned retirement',async()=>{
+    world();syncStatus='sent';db.tables.esign_submissions=[row({status:'opened'})];
+    let raced=false;db.failOn=op=>{if(!raced&&op.table==='esign_submissions'&&op.kind==='update'&&op.patch.status==='voided'){raced=true;db.tables.esign_submissions[0].status='expired'}return null};
+    const r=await run();assert.equal(r.status,200,JSON.stringify(r));assert.equal(raced,true);assert.equal(db.tables.esign_submissions[0].status,'voided');assert.ok(db.tables.esign_submissions[0].voided_at);
+    assert.equal(provider.filter(x=>x[0]==='send').length,action==='replace'?1:0);
+    assert.ok(audit.some(x=>x.category==='retainer'&&!x.meta?.needs_reconciliation));
+  });
+  test(action+' refuses concurrent client signature or completion after provider expiry verification',async()=>{
+    for(const update of [{status:'signed',signed_at:'2026-09-29T12:00:00Z'},{status:'completed',completed_at:'2026-09-29T12:00:00Z'},{status:'expired',signed_at:'2026-09-29T12:00:00Z'}]){
+      world();syncStatus='sent';db.tables.esign_submissions=[row({status:'sent'})];
+      db.failOn=op=>{if(op.table==='esign_submissions'&&op.kind==='update'&&op.patch.status==='voided')Object.assign(db.tables.esign_submissions[0],update);return null};
+      const r=await run();assert.equal(r.status,409,JSON.stringify(r));assert.equal(db.tables.esign_submissions[0].status,update.status);assert.equal(db.tables.esign_submissions[0].voided_at,null);assert.equal(provider.some(x=>x[0]==='send'),false);assert.ok(audit.some(x=>x.meta?.needs_reconciliation));
+    }
+  });
+  test(action+' surfaces failed local retirement and sends no replacement',async()=>{
+    world();syncStatus='sent';db.tables.esign_submissions=[row({status:'sent'})];
+    db.failOn=op=>op.table==='esign_submissions'&&op.kind==='update'&&op.patch.status==='voided'?'Write unavailable':null;
+    const r=await run();assert.equal(r.status,action==='void'?500:409);assert.equal(db.tables.esign_submissions[0].status,'sent');assert.equal(provider.some(x=>x[0]==='send'),false);assert.ok(audit.some(x=>x.meta?.needs_reconciliation));
+  });
+  test(action+' does not duplicate a send when another request already retired the row',async()=>{
+    world();syncStatus='sent';db.tables.esign_submissions=[row({status:'sent'})];
+    db.failOn=op=>{if(op.table==='esign_submissions'&&op.kind==='update'&&op.patch.status==='voided')Object.assign(db.tables.esign_submissions[0],{status:'voided',voided_at:'2026-09-29T12:00:00Z'});return null};
+    const r=await run();assert.equal(r.status,action==='void'?200:409);if(action==='void')assert.equal(r.body.already,true);assert.equal(provider.some(x=>x[0]==='send'),false);
+  });
+}
+test('poll immediately returns contract selection after provider sync becomes terminal',async()=>{
+  for(const terminal of ['expired','declined','failed','voided']){
+    world();syncStatus=terminal;db.tables.esign_submissions=[row({status:'sent'})];
+    const r=await send.GET({url:`https://offline.invalid/api?lead_id=${L}&claim_id=${C}`});assert.equal(r.status,200);assert.equal(r.body.status,'ready');assert.equal(r.body.complete,false);assert.equal(provider.some(x=>x[0]==='send'),false);
+  }
+});
 test('archived agreement GET is read-only and never syncs the provider',async()=>{world();db.tables.leads[0].archived_at='2026-09-28';db.tables.esign_submissions=[row()];let syncs=0;stubs['@/lib/mva-call/esign'].syncSubmission=async()=>{syncs++;return'completed'};const r=await send.GET({url:`https://offline.invalid/api?lead_id=${L}&claim_id=${C}`});assert.equal(r.status,200);assert.equal(r.body.read_only,true);assert.equal(syncs,0)});
 (async()=>{for(const [name,fn]of tests){await fn();console.log('ok',name)}console.log(tests.length+' route scenarios passed')})().catch(e=>{console.error(e);process.exit(1)});

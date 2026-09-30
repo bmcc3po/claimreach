@@ -136,6 +136,15 @@ export function isSignedStatus(key: string | null | undefined): boolean {
   return k === "signed" || k === "delivered" || k === "retained";
 }
 
+/** The manual intake picker records contact outcomes. Signature, QA and firm
+ * milestones belong to their evidence-checked workflows, never this picker. */
+export function manualIntakeStatusAllowed(def: StatusDef): boolean {
+  return def.active !== false && def.side === "agent"
+    && (def.phase === "pre_qa" || def.phase === "terminal")
+    && !def.requires_esign && !def.unlocks_firm && !def.billable
+    && !["esign", "nosig", "firm"].includes(def.track) && !isSignedStatus(def.key);
+}
+
 /** The status-table fields the signed rule reads. */
 export interface SignedCatalogRow { key: string; phase?: string | null; requires_esign?: boolean | null }
 
