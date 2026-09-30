@@ -8,6 +8,7 @@ import { resolveStatus } from "@/lib/statuses";
 import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
 import { matterRowsFilter } from "@/lib/matter";
 import { loadLawRulerProvenance } from "@/lib/lawruler-recovery";
+import { readPendingSendAttempt } from "@/lib/mva-call/send-attempt";
 
 export const runtime = "edge";
 
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
 
   const nameOf = new Map((staffRes.data ?? []).map((u: any) => [u.id, u.full_name || ""]));
   const admin = supabaseAdmin();
+  const pendingSend = await readPendingSendAttempt(admin, matter.claim.id);
   const docs = await Promise.all((docsRes.data ?? []).map(async (d: any) => {
     const { data: signed } = await admin.storage.from("case-docs").createSignedUrl(d.storage_path, 600);
     return { id: d.id, name: d.file_name, type: d.doc_type, scope: d.claim_id ? "This matter" : "Shared file document", at: d.created_at, by: d.uploaded_by_name, url: signed?.signedUrl ?? null };
@@ -72,6 +74,8 @@ export async function GET(req: NextRequest) {
     },
     status: st ? { key: st, label: resolveStatus(st, statuses).label, tone: resolveStatus(st, statuses).tone } : null,
     claim_id: matter.claim.id,
+    send_attempt: pendingSend.ok ? pendingSend.attempt : null,
+    send_check_error: pendingSend.ok ? null : pendingSend.error,
     imported,
     agreements: (esignRes.data ?? []).map((a: any) => ({
       id: a.id, name: agreementName(a.template_key), signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status, pax: a.pax_index,

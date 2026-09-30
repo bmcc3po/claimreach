@@ -22,7 +22,7 @@ export function docusealConfigured(): boolean {
   return !!key();
 }
 
-type DsResult<T> = { ok: true; data: T } | { ok: false; error: string; status?: number };
+type DsResult<T> = { ok: true; data: T } | { ok: false; error: string; status?: number; definitiveRejection?: boolean };
 
 async function ds<T>(path: string, init: RequestInit = {}, fetchImpl: typeof fetch = fetch): Promise<DsResult<T>> {
   const k = key();
@@ -37,7 +37,9 @@ async function ds<T>(path: string, init: RequestInit = {}, fetchImpl: typeof fet
     try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text.slice(0, 300) }; }
     if (!r.ok) {
       const msg = (data && (data.error || data.message)) || `DocuSeal said ${r.status}.`;
-      return { ok: false, error: String(msg), status: r.status };
+      const definitiveRejection = [400, 401, 403, 404, 422].includes(r.status) && !!data &&
+        (typeof data.error === "string" || typeof data.message === "string") && !data.id && !data.submission_id && !data.submitters && !data.data;
+      return { ok: false, error: String(msg), status: r.status, definitiveRejection };
     }
     return { ok: true, data: data as T };
   } catch (e: any) {
@@ -75,6 +77,7 @@ export interface DsSubmitter {
   opened_at?: string | null;
   completed_at?: string | null;
   declined_at?: string | null;
+  external_id?: string | null;
 }
 
 export interface SubmissionOpts {
@@ -118,11 +121,19 @@ export async function createSubmission(opts: SubmissionOpts, fetchImpl?: typeof 
 
 export async function getSubmission(id: string | number, fetchImpl?: typeof fetch) {
   return ds<{
-    id: number; status: string; completed_at?: string | null; expire_at?: string | null;
+    id: number; status: string; completed_at?: string | null; expire_at?: string | null; template?: { id: number };
     submitters: DsSubmitter[];
     documents?: { name: string; url: string }[];
     audit_log_url?: string | null;
   }>(`/submissions/${encodeURIComponent(String(id))}`, {}, fetchImpl);
+}
+
+/** Read-only recovery correlation. A missing result does not prove a timed-out
+ * create failed. Never create another agreement from this lookup alone. */
+export async function getSubmittersByExternalId(externalId: string, fetchImpl?: typeof fetch) {
+  return ds<{ data: (DsSubmitter & { external_id?: string; template_id?: number })[]; pagination?: unknown }>(
+    `/submitters?external_id=${encodeURIComponent(externalId)}`, {}, fetchImpl,
+  );
 }
 
 /** DocuSeal returns partially signed PDFs before the office signer finishes.

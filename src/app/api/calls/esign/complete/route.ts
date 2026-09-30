@@ -7,6 +7,7 @@ import { recordAudit } from "@/lib/audit";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { sameName } from "@/lib/linked-files";
 import { readIdentityForSigning, saveIdentity, normalizeIdentityValue } from "@/lib/mva-call/identity";
+import { readPendingSendAttempt, SEND_HELD_MESSAGE } from "@/lib/mva-call/send-attempt";
 
 export const runtime = "edge";
 
@@ -24,6 +25,9 @@ export async function POST(req: NextRequest) {
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
   const context = await resolveSigningMatter(sb, leadId, { claimId: b?.claim_id });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  const pending = await readPendingSendAttempt(supabaseAdmin(), context.matter.claim.id);
+  if (!pending.ok) return NextResponse.json({ error: pending.error }, { status: pending.status });
+  if (pending.attempt) return NextResponse.json({ error: SEND_HELD_MESSAGE, send_attempt: pending.attempt }, { status: 409 });
   const dob = parseDob(b?.dob || context.lead.dob);
   let rawSsn = b?.ssn;
   const identityScope = { leadId: context.lead.id, claimId: context.matter.claim.id, firmId: context.lead.firm_id };

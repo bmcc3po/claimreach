@@ -7,6 +7,7 @@ import { FakeDb } from "./test-fake-db";
 import * as signing from "./mva-call/signing-matter";
 import * as matter from "./matter";
 import * as notes from "./file-notes";
+import * as sendAttempt from "./mva-call/send-attempt";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as jsxRuntime from "react/jsx-runtime";
@@ -28,6 +29,7 @@ function world() {
   });
   db.auth = { getUser: async () => ({ data: { user: { id: "agent" } } }) };
   db.storage = { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: "/synthetic-url" } }) }) };
+  db.rpc = async () => ({ data: null, error: null });
   return db;
 }
 function route(file: string, db: any) {
@@ -37,6 +39,7 @@ function route(file: string, db: any) {
     "@/lib/mva-call/server": { requireStaff: async () => ({ id: "agent", role: "agent" }) },
     "@/lib/mva-call/signing-matter": { ...signing, resolveSigningMatter: (session: any, leadId: string, opts: any) => signing.resolveSigningMatter(session, leadId, { ...opts, authoritativeDb: db }) }, "@/lib/matter": matter, "@/lib/file-notes": notes,
     "@/lib/mva-call/agreement-names": { agreementName: () => "Synthetic agreement" },
+    "@/lib/mva-call/send-attempt": sendAttempt,
     "@/lib/claim-status": { loadStatuses: async () => [] },
     "@/lib/statuses": { resolveStatus: (status: string) => ({ label: status, tone: "neutral" }) },
     "@/lib/lawruler-recovery": { loadLawRulerProvenance: async () => null },
@@ -100,6 +103,18 @@ async function main() {
   });
   await check("File API foreign named matter refuses before document signing", async () => {
     assert.equal((await route("calls/file", world()).GET(req("90000000-0000-4000-8000-000000000001"))).status, 404);
+  });
+  await check("File review remains readable during a send hold or unavailable send check without exposing saved context", async () => {
+    for (const unavailable of [false, true]) {
+      const db = world();
+      db.rpc = async () => unavailable ? { data: null, error: { code: "08006" } } : { data: {
+        id: "attempt", state: "uncertain", created_at: "2026-09-29T19:00:00Z", send_context: { secret: "never in API" },
+      }, error: null };
+      const r = await route("calls/file", db).GET(req()); assert.equal(r.status, 200);
+      assert.equal(r.body.agreements[0].id, "sign-b"); assert.equal(r.body.docs.length, 2);
+      assert.equal(!!r.body.send_check_error, unavailable); assert.equal(r.body.send_attempt?.id ?? null, unavailable ? null : "attempt");
+      assert.ok(!JSON.stringify(r.body).includes("never in API"));
+    }
   });
   await check("File API exposes the resolved archived state without mutating the file", async () => {
     for (const archived_at of [null, "2026-09-28T12:00:00Z"]) {

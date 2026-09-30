@@ -8,6 +8,7 @@ import WhereField from "./WhereField";
 import { FiBody } from "./FullIntake";
 import { WsLeft, WsHelper, IxTop, IxFoot } from "./IntakeWorkspace";
 import ChoreList from "./ChoreList";
+import StepByStep from "./StepByStep";
 import FormView from "./FormView";
 import { GuidedIntake } from "./OneQuestion";
 import IntakeQuestion, { AgreementRecipient, QuestionControl } from "./IntakeQuestion";
@@ -58,20 +59,22 @@ export default function CallView({ v }: { v: any }) {
   // the same header, progress bar, view switch, side columns and bottom bar.
   // Only the middle changes with the view.
   const wide = !!v.ws;
-  const view = v.formView ? "form" : v.choreView ? "chore" : v.fullView ? "full" : "guided";
-  const cls = ["cc-app", "ix", `ix-${view}`, `ix-v-${v.view}`, wide ? `ws ws-${v.ws}` : "ix-narrow", v.choreView ? "ch-mode" : "", v.formView ? "sf-mode" : "", v.fullView ? "fi-mode" : ""].filter(Boolean).join(" ");
+  const view = v.stepView ? "steps" : v.formView ? "form" : v.choreView ? "chore" : v.fullView ? "full" : "guided";
+  const cls = ["cc-app", "ix", `ix-${view}`, `ix-v-${v.view}`, wide ? `ws ws-${v.ws}` : "ix-narrow", v.choreView || v.stepView ? "ch-mode" : "", v.formView ? "sf-mode" : "", v.fullView ? "fi-mode" : ""].filter(Boolean).join(" ");
   return (
 <div className={cls}>
 {wide && <WsLeft v={v} />}
 <IxTop v={v} />
-<main className={`cc-main ix-main${v.fullView ? " fi-main" : ""}${v.choreView ? " ch-main" : ""}`}>
+<main className={`cc-main ix-main${v.fullView ? " fi-main" : ""}${v.choreView || v.stepView ? " ch-main" : ""}`}>
+{!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>{v.sendHoldNotice.startsWith("Send outcome unconfirmed") ? "Send outcome unconfirmed" : "Signing actions paused"}</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
 {!!v.nameReview && <div className="cc-stop" role="status"><p>{v.nameReview}</p>{v.canUseRecordName && <button type="button" className="cc-btn" onClick={v.useRecordName}>{v.canReplace ? "Use corrected PNC name" : "Use PNC name"}</button>}{v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>Void incorrect agreement</button>}{v.canReplace && <button type="button" className="cc-btn" onClick={() => v.jumpTo("send")}>Review corrected agreement below</button>}</div>}
 {!!v.emergencyNotice && <div className="cc-stop" role="status"><p>{v.emergencyNotice}</p>{v.prepareResign && <button type="button" className="cc-btn" onClick={v.prepareResign}>Prepare DocuSeal re-sign</button>}</div>}
 {!!(v.choreView) && <ChoreList v={v} />}
+{!!v.stepView && <StepByStep v={v} />}
 {!!(v.formView) && <FormView v={v} />}
 {!!(v.fullView) && <FiBody v={v} />}
 {!!v.guidedQuestions && <GuidedIntake v={v} />}
-{!v.choreView && !v.formView && (<>
+{!v.choreView && !v.formView && !v.stepView && (<>
 {!!(v.bare) && (<>
 {(v.bareRows || []).map((r: any, i6: number) => (<Fragment key={i6}>
 {!!(r.isGroup) && (<><div id={r.id} className="cc-q-g">{r.label}</div></>)}

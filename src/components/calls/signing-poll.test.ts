@@ -1,4 +1,5 @@
-// Actual poll callback extracted from CallConsole. No timers, network or provider.
+// Actual status refresh used on mount and by the signing poll. No timers,
+// network or provider: deferred responses exercise late signature races.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,13 +7,18 @@ import ts from "typescript";
 
 const file = path.resolve(__dirname, "CallConsole.tsx");
 const source = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-let callback: ts.Node | undefined;
+let refresh: ts.FunctionDeclaration | undefined;
 const visit = (node: ts.Node) => {
-  if (ts.isCallExpression(node) && node.expression.getText() === "setInterval" && node.arguments[0]?.getText().includes("/api/calls/esign?")) callback = node.arguments[0];
+  if (ts.isFunctionDeclaration(node) && node.name?.text === "refreshSigningStatus") refresh = node;
   ts.forEachChild(node, visit);
 };
-visit(source); assert.ok(callback, "The signing poll exists");
-const code = ts.transpileModule(`exports.make = (fetch, engine, agreementId, emergencyResign, init, callId, setNeedsResign, setEmergencyStatus) => (${callback.getText()});`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+visit(source); assert.ok(refresh, "The signing refresh exists");
+const code = ts.transpileModule(`exports.make = (fetch, engine, agreementId, emergencyResign, init, callId, setNeedsResign, setEmergencyStatus) => {
+  const sendStatusGeneration = { current: 0 }, sendInFlight = { current: false }, eng = { current: engine };
+  const isHold = value => !!value && value.needs_reconciliation === true;
+  const updateSendGate = (gate, hold = null, pax = {}) => { engine.props.esign.sendGate = gate; engine.props.esign.sendAttempt = hold; engine.props.esign.paxSendAttempts = pax; };
+  return async () => ${refresh!.body!.getText()};
+};`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exp: any = {}; new Function("exports", code)(exp);
 function harness() {
   const engine = { props: { esign: { templateKey: "NV", templateKeys: ["NV", "NV_FLAT"] } }, state: { send: { status: "sent" }, file: { agreement: "open", pax: { "0": "sent" } } } as any,
@@ -22,7 +28,7 @@ function harness() {
   const fetch = () => new Promise((resolve) => responses.push(resolve));
   const emergency = { needsResign: false, status: "" };
   const poll = exp.make(fetch, engine, agreementId, emergencyResign, { leadId: "lead", claimId: "matter" }, { current: "call" }, (value: boolean) => { emergency.needsResign = value; }, (value: string) => { emergency.status = value; });
-  const reply = (body: any) => responses.shift()!({ ok: true, json: async () => body });
+  const reply = (body: any) => responses.shift()!({ ok: true, json: async () => ({ send_attempt: null, pax_send_attempts: {}, ...body }) });
   return { engine, agreementId, emergencyResign, emergency, poll, reply };
 }
 let count = 0;

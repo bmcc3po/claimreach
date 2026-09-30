@@ -191,20 +191,23 @@ function Retainer({ v }: { v: any }) {
   </>);
 }
 
-export default function ChoreList({ v }: { v: any }) {
+export default function ChoreList({ v, sectionActions = true, scrollSections = true }: { v: any; sectionActions?: boolean; scrollSections?: boolean }) {
   const fi = v.fi;
   const ch = fi.chore;
   const first = useRef(true);
 
   // Next, a section jump, or arriving from another view puts that spot at the top.
   useEffect(() => {
-    const target = fi.target ? document.getElementById(`ch-q-${fi.target}`) : null;
-    const el = target || document.getElementById(`ch-sec-${fi.openSec}`);
     const arriving = first.current;
     first.current = false;
+    // Step by step owns its screen heading. Only a deliberate question jump
+    // after arrival should scroll past that heading into the shared controls.
+    if (!scrollSections && (arriving || !fi.target)) return;
+    const target = fi.target ? document.getElementById(`ch-q-${fi.target}`) : null;
+    const el = target || (scrollSections ? document.getElementById(`ch-sec-${fi.openSec}`) : null);
     if (!el || (arriving && !target && fi.openSec === "incident")) return;
     requestAnimationFrame(() => el.scrollIntoView({ behavior: arriving ? "auto" : "smooth", block: target ? "center" : "start" }));
-  }, [fi.jump]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fi.jump, scrollSections]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const secQs = (id: string) => (fi.sections.find((s: any) => s.id === id) || { questions: [] }).questions;
   const gap = fi.sections.find((s: any) => s.id === "treatment")?.gap;
@@ -239,15 +242,15 @@ export default function ChoreList({ v }: { v: any }) {
             {r.id === "retainer" ? <Retainer v={v} /> : secQs(r.id).map((q: any) => <IntakeQuestion key={q.id} q={q} v={v} presentation="chore" />)}
           </div>
 
-          <div className="ch-actions">
+          {sectionActions && <div className="ch-actions">
             {r.status === "now" && <span className={`ch-saved${v.saveBad ? " ch-note-bad" : ""}`} role="status">{v.saveBad ? v.saveError : v.saveText || "Saves as you go"}</span>}
             {r.next
               ? <button type="button" className="ch-next" onClick={r.next}>Next section: {r.nextLabel}
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                 </button>
               : <button type="button" className="ch-btn ch-finish" onClick={ch.finish.go}>Finish the call</button>}
-          </div>
-          {!r.next && ch.finish.ask && <div className="ch-note ch-note-bad ch-finish-ask" role="alert">{ch.finish.askText}</div>}
+          </div>}
+          {sectionActions && !r.next && ch.finish.ask && <div className="ch-note ch-note-bad ch-finish-ask" role="alert">{ch.finish.askText}</div>}
         </section>
       ))}
     </div>

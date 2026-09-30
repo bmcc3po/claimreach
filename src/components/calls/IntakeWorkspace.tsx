@@ -30,13 +30,13 @@ const PHASES_FOR: Record<string, string[]> = {
 };
 
 /** The view the agent is looking at, in one word. */
-export function viewOf(v: any): "guided" | "full" | "chore" | "form" {
-  return v.formView ? "form" : v.choreView ? "chore" : v.view === "full" ? "full" : "guided";
+export function viewOf(v: any): "guided" | "full" | "chore" | "form" | "steps" {
+  return v.stepView ? "steps" : v.formView ? "form" : v.choreView ? "chore" : v.view === "full" ? "full" : "guided";
 }
 
 function ViewIcon({ k }: { k: string }) {
   const p = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true as const };
-  if (k === "guided") return <svg {...p}><circle cx="12" cy="12" r="8.5" /><path d="M10 8.5l5 3.5-5 3.5z" fill="currentColor" stroke="none" /></svg>;
+  if (k === "guided" || k === "steps") return <svg {...p}><circle cx="12" cy="12" r="8.5" /><path d="M10 8.5l5 3.5-5 3.5z" fill="currentColor" stroke="none" /></svg>;
   if (k === "full") return <svg {...p}><rect x="4" y="4" width="16" height="5" rx="1.6" /><rect x="4" y="11" width="16" height="9" rx="1.6" /><path d="M8 14.5h8" /></svg>;
   return <svg {...p}><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></svg>;
 }
@@ -134,7 +134,7 @@ export function IxHead({ v }: { v: any }) {
 export function IxBar({ v }: { v: any }) {
   const fi = v.fi;
   const wide = !!v.ws;
-  const steps = !v.choreView && !v.fullView && !v.formView;
+  const steps = !v.choreView && !v.fullView && !v.formView && !v.stepView;
   const lights = fi.lights;
   const [viewsOpen, setViewsOpen] = useState(false);
   const viewsId = useId();
@@ -204,6 +204,7 @@ export function IxBar({ v }: { v: any }) {
 /** The one next step, for whichever view is showing. */
 function nextStep(v: any): { label: string; go: () => void; disabled?: boolean; muted?: boolean; finish?: boolean } | null {
   const fi = v.fi;
+  if (v.stepView) return fi.step.next;
   if (v.choreView || v.formView) {
     const ch = fi.chore;
     if (fi.next) return { label: fi.next.label, go: fi.next.go };
@@ -279,6 +280,7 @@ export function IxFoot({ v }: { v: any }) {
         <span>{expanded ? "Hide tools" : "Tools"}</span><Chevron />
       </button>
     </>)}
+    {v.stepView && fi.step.back && <button type="button" className="step-intake-back" onClick={fi.step.back.go}>Back</button>}
     {!!n && (
       <button type="button" className={`ix-next${n.muted ? " ix-muted" : ""}${n.finish ? " ix-finish" : ""}`} disabled={!!n.disabled} onClick={n.go}>
         <span>{n.label}</span><Chevron />
@@ -289,23 +291,20 @@ export function IxFoot({ v }: { v: any }) {
 
 export function WsLeft({ v }: { v: any }) {
   const fi = v.fi;
-  const lead = fi.lead;
-  const notes = String(v.f?.text?.value || "").split("\n").map((t) => t.trim()).filter(Boolean).reverse().slice(0, 8);
   const missing = fi.missing || [];
-  const missingItem = (m: any) => (v.fullView || v.choreView || v.formView || v.guidedQuestions)
+  const missingItem = (m: any) => (v.fullView || v.choreView || v.formView || v.stepView || v.guidedQuestions)
     ? <button key={m.id} type="button" className="ws-miss-b" onClick={m.go}>{m.label}</button>
     : <span key={m.id} className="ws-miss-b ws-miss-t">{m.label}</span>;
   return (
     <aside className="ws-left" aria-label="Intake review">
       <div className="ws-review-heading"><Icon name="shield" size={22} /><div><strong>Intake review</strong><span>Checks &amp; missing answers</span></div></div>
-      <section className="ws-caller">
+      <section className="ws-caller ws-review-identity">
         <a className="ws-back" href="/app">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>All calls
         </a>
         <div className="ws-name">{v.callerName}</div>
         {(!!v.leadNo || !!v.campaignName) && <div className="ws-sub">{[v.leadNo, v.campaignName].filter(Boolean).join(", ")}</div>}
         {!!v.callerPhone && <div className="ws-contact">{v.callerPhone}</div>}
-        {!!v.callerEmail && <div className="ws-contact ws-email">{v.callerEmail}</div>}
         {(v.onCall || v.ringing) && (
           <div className="ws-status">
             <span className="ws-live" aria-hidden="true" />
@@ -316,7 +315,6 @@ export function WsLeft({ v }: { v: any }) {
           <div className={`ws-pace${v.clockOver ? " ws-pace-over" : ""}`}>
             <span className="ws-pace-k">Intake time</span>
             <span className="ws-clock">{v.clockText}</span>
-            {!!v.targetText && <span className="ws-pace-g">Goal: {v.targetText}</span>}
           </div>
         )}
         <div className={`ws-save${v.saveBad ? " ws-save-bad" : ""}`} role="status">{v.saveBad ? v.saveError : v.saveText || "Saves as you go"}</div>
@@ -326,11 +324,6 @@ export function WsLeft({ v }: { v: any }) {
             Text{!!v.textBadge && <span className="ws-badge">{v.textUnread}</span>}
           </button>
           <button type="button" className="ws-btn ws-end" onClick={v.openDispo}>End call</button>
-        </div>
-        <div className="ws-ctl ws-ctl2">
-          <button type="button" className="ws-btn ws-quiet" onClick={v.openRetainer}>Agreement</button>
-          <button type="button" className="ws-btn ws-quiet" onClick={v.openFile}>File</button>
-          <a className="ws-btn ws-quiet" href={`/app/${v.leadId}/print?claim=${encodeURIComponent(v.claimId || "")}`}>Print or email</a>
         </div>
       </section>
 
@@ -352,20 +345,6 @@ export function WsLeft({ v }: { v: any }) {
         {missing.length > 3 && <details className="ws-review-more"><summary>{missing.length - 3} more unanswered</summary><div className="ws-miss-items">{missing.slice(3).map(missingItem)}</div></details>}
       </section>
 
-      {!!lead && (
-        <section className="ws-block">
-          <div className="ws-h">Campaign and source</div>
-          {!!lead.from && <div className="ws-src">{lead.from}</div>}
-          {!!lead.tags && <div className="ws-tags">From the lead: {lead.tags}</div>}
-          {!!lead.said && (
-            <button type="button" className="ws-link" onClick={lead.toggle} aria-expanded={!!lead.open}>
-              {lead.open ? "Hide what the PNC told the marketer" : "What the PNC told the marketer"}
-            </button>
-          )}
-          {!!lead.open && !!lead.said && <div className="ws-said">{lead.said}</div>}
-        </section>
-      )}
-
       {!!(v.linked || []).length && (
         <section className="ws-block">
           <div className="ws-h">Same wreck</div>
@@ -379,18 +358,6 @@ export function WsLeft({ v }: { v: any }) {
         </section>
       )}
 
-      <section className="ws-block ws-notes">
-        <div className="ws-h">Quick notes</div>
-        <textarea className="fi-in fi-area ws-note-in" rows={2} placeholder="Jot it down now, sort it out later" aria-label="Quick note"
-          value={fi.quick.draft.value} onChange={fi.quick.draft.set}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fi.quick.save(); } }} />
-        <button type="button" className="ws-btn ws-save-note" onClick={fi.quick.save}>Save note</button>
-        {notes.length > 0 && (
-          <ul className="ws-note-list">
-            {notes.map((t, i) => <li key={i}>{t}</li>)}
-          </ul>
-        )}
-      </section>
     </aside>
   );
 }
@@ -400,12 +367,23 @@ function sayNow(v: any): { k: string; lines: string[]; cue?: string } {
   const fi = v.fi;
   const first = v.callerFirst;
   const open = { k: OPEN_TONE, lines: [openGreeting(first), openLine(first, v.agentFirst, v.firmSpoken)], cue: OPEN_CUE };
+  if (v.stepView) {
+    if (fi.step.id === "intro") return open;
+    if (fi.step.id === "retainer") {
+      if (v.sendReady) return { k: MONEY.label, lines: [MONEY.line, SEND_LINE], cue: MONEY.cue };
+      return v.signed ? { k: SIGNED.label, lines: [SIGNED.line], cue: SIGNED.cue }
+        : { k: STAY.label, lines: [STAY.line] };
+    }
+    const questions = fi.sections.flatMap((section: any) => section.questions).filter((q: any) => fi.step.questions.includes(q.id));
+    const next = questions.find((q: any) => !q.answered && !q.optional) || questions[0];
+    return { k: "Ask", lines: [next?.ask || next?.label || fi.step.label], cue: next?.cue };
+  }
   if (v.isMoney) return { k: MONEY.label, lines: [MONEY.line], cue: MONEY.cue };
   if (v.isSend && v.sendReady) return { k: "Say", lines: [SEND_LINE] };
   if (v.isSend && v.notSigned) return { k: STAY.label, lines: [STAY.line] };
   if ((v.isSend || v.isFile) && v.signed) return { k: SIGNED.label, lines: [SIGNED.line], cue: SIGNED.cue };
   if (v.isClose) return { k: "Say, then hang up", lines: closeLines(first, v.firmSpoken).slice(0, 2), cue: CLOSE_CUE };
-  const onePage = v.fullView || v.choreView || v.formView;
+  const onePage = v.fullView || v.choreView || v.formView || v.stepView;
   if (!onePage && v.isOpen) return open;
   if (v.guidedQuestions && fi.guided?.q) return { k: "Ask", lines: [fi.guided.q.ask || fi.guided.q.label], cue: fi.guided.q.cue };
   if (!onePage && v.isStory) return v.hasGap
@@ -431,8 +409,9 @@ function reminders(v: any): { t: string; bad?: boolean }[] {
   if (v.faultCaller) out.push({ t: "The PNC says they were at fault. Do not go hunting.", bad: true });
   if (v.repYes) out.push({ t: `${v.rep.head}. Do not go looking for it. The PNC has to be the one who says they're unhappy.` });
   if (v.sayingFine || v.sayingFineFree) out.push({ t: "The PNC is downplaying. Do not move past it. Use the soreness line." });
-  if (v.sendWarn && (v.isSend || v.choreView)) out.push({ t: v.sendWarnText, bad: true });
-  if (v.isMoney || v.isSend) out.push({ t: MONEY.cue });
+  const atRetainer = v.stepView ? fi.step.id === "retainer" : v.isSend || v.choreView;
+  if (v.sendWarn && atRetainer) out.push({ t: v.sendWarnText, bad: true });
+  if (v.stepView ? atRetainer : v.isMoney || v.isSend) out.push({ t: MONEY.cue });
   return out;
 }
 
@@ -442,7 +421,7 @@ export function WsHelper({ v, inSheet }: { v: any; inSheet?: boolean }) {
   const [openReb, setOpenReb] = useState<string | null>(null);
   const now = sayNow(v);
   const rem = reminders(v);
-  const onePage = v.fullView || v.choreView || v.formView;
+  const onePage = v.fullView || v.choreView || v.formView || v.stepView;
   const phase = v.isOpen ? "open" : v.isStory ? "story" : v.isBody ? "body" : v.isCar ? "car" : v.isMoney ? "money" : v.isSend ? "send" : "close";
   const phases = onePage ? PHASES_FOR[fi.openSec || "incident"] || ["story"] : [phase];
   const lines = REBS.filter((r: any) => phases.includes(r.phase)).slice(0, 4);

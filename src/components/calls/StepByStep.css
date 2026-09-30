@@ -1,0 +1,22 @@
+/* Step by step shares the All Questions controls and responsive card grid. */
+.cc-app.ix .step-intake{width:100%;min-width:0;max-width:1120px;margin:0 auto;box-sizing:border-box}
+.cc-command-collapsed .cc-app.ix .step-intake{max-width:none}
+.cc-app.ix .step-intake-heading{padding:2px 0 18px;scroll-margin-top:12px}
+.cc-app.ix .step-intake-count{display:block;color:#52627a;font-size:12px;font-weight:650;letter-spacing:.03em}
+.cc-app.ix .step-intake-heading h1{margin:4px 0 14px;font-size:23px;line-height:1.3;color:#132b49;outline:none}
+.cc-app.ix .step-intake-nav{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 6px;scrollbar-width:thin}
+.cc-app.ix .step-intake-nav button{display:flex;align-items:center;gap:7px;flex:1 0 auto;min-height:42px;padding:8px 10px;border:1px solid #dce4ef;border-radius:8px;background:#fff;color:#52627a;text-align:left;font:inherit;font-size:12px;cursor:pointer}
+.cc-app.ix .step-intake-nav b{display:grid;place-items:center;width:21px;height:21px;border-radius:50%;background:#edf2f8;font-size:11px}
+.cc-app.ix .step-intake-nav .step-intake-current{border-color:#16345c;background:#16345c;color:#fff}
+.cc-app.ix .step-intake-current b{background:#fff;color:#16345c}
+.cc-app.ix .step-intake-nav button:focus-visible,.cc-app.ix .step-intake-back:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.cc-app.ix .step-intake .ch-page{padding:0 0 20px}
+.cc-app.ix .step-intake .ch-n{display:none}
+.cc-app.ix .step-intake-note{margin:0 0 14px;padding:12px 14px;border:1px solid #dbe5f0;border-radius:9px;background:#fff;color:#42546a;font-size:13px;line-height:1.5}
+.cc-app.ix .step-intake-back{flex:0 0 auto;min-height:44px;padding:0 18px;border:1px solid #d5dfeb;border-radius:9px;background:#fff;color:#16345c;font:inherit;font-weight:600;cursor:pointer}
+@media(max-width:600px){
+  .cc-app.ix .step-intake-heading h1{font-size:20px;margin-bottom:10px}
+  .cc-app.ix .step-intake-nav button{justify-content:center;flex:1 0 38px;padding:7px;min-width:38px}
+  .cc-app.ix .step-intake-nav button span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .cc-app.ix .step-intake-back{padding:0 12px}
+}

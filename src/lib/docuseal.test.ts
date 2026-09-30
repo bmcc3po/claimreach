@@ -2,7 +2,7 @@
 // The DocuSeal requests, checked against what DocuSeal actually answered in a
 // test-mode run (templates 6079413/6079423/6079424, submission 11623733).
 import assert from "node:assert/strict";
-import { templateBody, submissionBody, createSubmission, createTemplate, getSubmissionDocuments, expireSubmission, plainDocuSeal, templateProblem, statusFrom } from "./docuseal";
+import { templateBody, submissionBody, createSubmission, createTemplate, getSubmissionDocuments, getSubmittersByExternalId, expireSubmission, plainDocuSeal, templateProblem, statusFrom } from "./docuseal";
 import { TMP_MVA_PACKETS } from "./esign-packets/tmp-mva";
 import { templateFor } from "./mva-call/esign";
 
@@ -115,6 +115,28 @@ function fakeFetch(answer: { status: number; body: any }, seen: any[]) {
     await createTemplate(p, "https://x/y.pdf", fakeFetch({ status: 200, body: { id: 1, fields: p.fields } }, seen));
     assert.equal(seen[0].url, "https://api.docuseal.com/templates/pdf");
     assert.deepEqual(seen[0].body, templateBody(p, "https://x/y.pdf"));
+  });
+
+  await t("only structured definite provider refusals permit releasing a send reservation", async () => {
+    const opts = { templateId: "1", client: { name: "Synthetic", values }, intake: { email: "agent@example.invalid" }, emailClient: false };
+    for (const [status, body, expected] of [
+      [422, { error: "Template has no fields" }, true], [401, { message: "Unauthorized" }, true],
+      [429, { error: "Rate limit" }, false], [500, { error: "Provider failed" }, false],
+      [404, "Proxy error", false], [422, { error: "Partial failure", submission_id: 123 }, false],
+    ] as const) {
+      const result = await createSubmission(opts, fakeFetch({ status, body }, []));
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.definitiveRejection, expected);
+    }
+    const timeout = await createSubmission(opts, (async () => { throw new TypeError("fetch failed"); }) as typeof fetch);
+    assert.equal(timeout.ok, false); if (!timeout.ok) assert.notEqual(timeout.definitiveRejection, true);
+  });
+
+  await t("reconciliation looks up the exact opaque attempt without creating or resending", async () => {
+    const seen: any[] = [];
+    const result = await getSubmittersByExternalId("attempt/test", fakeFetch({ status: 200, body: { data: [] } }, seen));
+    assert.equal(result.ok, true); assert.equal(seen.length, 1); assert.equal(seen[0].method, "GET");
+    assert.equal(seen[0].url, "https://api.docuseal.com/submitters?external_id=attempt%2Ftest");
   });
 
   await t("client-signed preview asks DocuSeal for a fresh merged partial PDF", async () => {

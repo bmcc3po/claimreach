@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CallView from "./CallView";
 import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
+import CaseSummary from "./CaseSummary";
 import { WsHelper } from "./IntakeWorkspace";
 import { popOutDialer } from "./JustCallDialer";
 import { stateCodeOf } from "@/lib/mva-call/state";
@@ -14,6 +15,8 @@ import { agreementChoice } from "@/lib/mva-call/agreement-choice";
 import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
 import { callbackAt } from "@/lib/mva-call/dispo";
 import { applyAnswerDelta, isAnswerObject } from "@/lib/mva-call/answer-merge";
+import type { SendAttemptHold } from "@/lib/mva-call/replacement";
+import { savedCallView } from "@/lib/mva-call/step-layout";
 
 export interface ConsoleInit {
   leadId: string;
@@ -50,6 +53,7 @@ async function post(url: string, body: unknown): Promise<any> {
       ? `The server could not confirm the result (${r.status}). Check the file before trying again.`
       : `That did not go through (${r.status}).`));
     err.status = r.status; err.ended = !!d?.ended; err.conflict = !!d?.conflict; err.callId = d?.call_id;
+    err.sendAttempt = d?.send_attempt ?? null;
     throw err;
   }
   return d;
@@ -70,6 +74,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [now, setNow] = useState(() => Date.now());
   const callId = useRef<string | null>(init.callId);
   const agreementId = useRef<string | null>(init.agreementId ?? null);
+  const sendStatusGeneration = useRef(0);
+  const sendInFlight = useRef(false);
   const emergencyResign = useRef(false);
   const [needsResign, setNeedsResign] = useState(!!init.emergency?.needsResign);
   const [emergencyStatus, setEmergencyStatus] = useState(init.emergency?.status || "");
@@ -101,12 +107,95 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [identityBusy, setIdentityBusy] = useState(false);
   const [identityError, setIdentityError] = useState("");
   const [, setIdentityRevision] = useState(0);
+  const [reconcileBusy, setReconcileBusy] = useState(false);
+  const [reconcileMessage, setReconcileMessage] = useState("");
   const [deskTab, setDeskTabState] = useState<DeskTab>(init.openReview ? "file" : init.openText ? "texts" : "file");
   const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
   // Only the JustCall dialer on this screen can say a call is live. Nothing else claims it.
   const [dialState, setDialState] = useState<string>("");
   const deskTextsOpen = useRef(false);
   const setDeskTab = (t: DeskTab) => { setCommandCollapsed(false); deskTextsOpen.current = t === "texts"; setDeskTabState(t); if (t === "texts") eng.current?.setState({ textUnread: 0 }); };
+
+  function isHold(value: any): value is SendAttemptHold {
+    return !!value && typeof value.id === "string" && ["reserved", "provider_pending", "uncertain"].includes(value.state)
+      && typeof value.created_at === "string" && value.needs_reconciliation === true;
+  }
+
+  function updateSendGate(gate: "checking" | "clear" | "held" | "error", hold: SendAttemptHold | null = null, pax: Record<string, SendAttemptHold> = {}) {
+    const engine = eng.current;
+    if (!engine) return;
+    engine.props.esign.sendGate = gate;
+    engine.props.esign.sendAttempt = hold;
+    engine.props.esign.paxSendAttempts = pax;
+    engine.setState({});
+  }
+
+  async function refreshSigningStatus() {
+    const generation = ++sendStatusGeneration.current;
+    const requestedAgreement = agreementId.current;
+    try {
+      const q = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current || "" });
+      const response = await fetch(`/api/calls/esign?${q}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) throw new Error(data.error || "Could not verify agreement sends.");
+      if (!("send_attempt" in data) || !("pax_send_attempts" in data)
+        || (data.send_attempt !== null && !isHold(data.send_attempt))
+        || !data.pax_send_attempts || typeof data.pax_send_attempts !== "object" || Array.isArray(data.pax_send_attempts)
+        || !Object.values(data.pax_send_attempts).every(isHold)) throw new Error("Agreement send status could not be verified.");
+      if (generation !== sendStatusGeneration.current || sendInFlight.current) return;
+      const hold = data.send_attempt as SendAttemptHold | null;
+      const pax = data.pax_send_attempts as Record<string, SendAttemptHold>;
+      updateSendGate(hold || Object.keys(pax).length ? "held" : "clear", hold, pax);
+      const engine = eng.current;
+      if (!engine) return;
+      if (!emergencyResign.current) {
+        setNeedsResign(!!data.emergency?.needs_resign);
+        setEmergencyStatus(data.emergency?.status || "");
+      }
+      if (!emergencyResign.current && agreementId.current === requestedAgreement) {
+        agreementId.current = data.agreement_id || data.id || agreementId.current;
+        if (data.agreement) engine.props.esign.templateKey = data.agreement.template_key || null;
+        if (Array.isArray(data.templates)) engine.props.esign.templateKeys = data.templates.map((template: any) => String(template.key));
+        if (data.status && data.status !== engine.state.send.status) engine.setState({ send: { ...engine.state.send, status: data.status } });
+        if (data.complete && engine.state.file.agreement !== "done") engine.setState({ file: { ...engine.state.file, agreement: "done" } });
+      }
+      if (data.pax && Object.keys(data.pax).length) engine.setState({ file: { ...engine.state.file, pax: { ...engine.state.file.pax, ...data.pax } } });
+    } catch {
+      if (generation === sendStatusGeneration.current) updateSendGate("error");
+    }
+  }
+
+  function startSendOperation() {
+    // Discard any status GET that started before this provider request.
+    sendStatusGeneration.current++;
+    sendInFlight.current = true;
+    updateSendGate("checking");
+  }
+
+  function handleSendFailure(error: any, paxIndex?: number, paxKey?: string) {
+    if (isHold(error?.sendAttempt)) {
+      if (paxIndex == null) updateSendGate("held", error.sendAttempt);
+      else updateSendGate("held", null, { [String(paxIndex)]: { ...error.sendAttempt, pax_key: error.sendAttempt.pax_key || paxKey || String(paxIndex) } });
+    }
+    else { updateSendGate("checking"); void refreshSigningStatus(); }
+  }
+
+  async function checkSendOutcome(attempt: SendAttemptHold, paxKey?: string) {
+    if (init.props.agentRole !== "owner" || reconcileBusy) return;
+    setReconcileBusy(true); setReconcileMessage("");
+    try {
+      const result = await post("/api/calls/esign/reconcile", {
+        lead_id: init.leadId, claim_id: init.claimId, attempt_id: attempt.id,
+        ...(paxKey ? { pax_key: paxKey } : {}),
+      });
+      setReconcileMessage(result.message || "Existing agreement recovered. No new link was sent.");
+      await refreshSigningStatus();
+      try { window.dispatchEvent(new CustomEvent("cr:esign-reconciled", { detail: { leadId: init.leadId, claimId: init.claimId } })); } catch { /* file panel may be closed */ }
+    } catch (error: any) {
+      setReconcileMessage(error?.message || "Could not verify the send. The hold remains; ask the owner to investigate.");
+      await refreshSigningStatus();
+    } finally { setReconcileBusy(false); }
+  }
 
   async function loadIdentity(): Promise<IdentityMeta> {
     if (identityMeta.current) return identityMeta.current;
@@ -184,6 +273,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     const leadId = init.leadId;
     const api: CallApi = {
       async sendAgreement(replacementReason?: string) {
+        const hold = e().agreementHoldNotice();
+        if (hold) { e().setState({ send: { ...e().state.send, error: hold } }); return; }
         if (replacementReason && !agreementId.current) {
           e().setState({ send: { ...e().state.send, error: "The current agreement ID is missing. Refresh the file before sending a correction." } });
           return;
@@ -194,6 +285,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         }
         const s = e().state;
         const choice = e().renderVals().contractChoice;
+        startSendOperation();
         e().setState({ send: { ...s.send, status: "sending", error: "" } });
         post("/api/calls/esign", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current,
@@ -203,18 +295,24 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story), dob: s.file.dob,
           nv_variant: choice.key === "NV_FLAT" ? "flat" : "tiered", nv_reason: choice.requiresReason ? s.send.nvReason : undefined,
         }).then((d) => {
+          sendInFlight.current = false;
           const priorAgreementId = agreementId.current;
           const newAgreementId = d.agreement_id || d.id || null;
           if (replacementReason && (!newAgreementId || newAgreementId === priorAgreementId)) throw new Error("The corrected agreement was not confirmed. Refresh the file before another send.");
+          updateSendGate("clear");
           agreementId.current = newAgreementId || priorAgreementId;
           e().props.esign.templateKey = d.template_key || choice.key || null;
           emergencyResign.current = false; setNeedsResign(false);
           e().setState({ send: { ...e().state.send, status: d.status || "sent", sentNameReview: newAgreementId && newAgreementId !== priorAgreementId ? "" : e().state.send.sentNameReview, error: d.warning || (d.owner_review_required ? "Correction sent. The original signed agreement is held for supervisor review before firm delivery." : "") } });
         }).catch((err) => {
+          sendInFlight.current = false;
+          handleSendFailure(err);
           e().setState({ send: { ...e().state.send, status: replacementReason ? s.send.status : "ready", error: err.message } });
         });
       },
       sendPax(i: number) {
+        const hold = e().agreementHoldNotice();
+        if (hold) { e().setState({ file: { ...e().state.file, error: hold } }); return; }
         const s = e().state;
         const choice = e().renderVals().contractChoice;
         const p = s.car.people[i] || {};
@@ -222,6 +320,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         const name = String(p.name || "").trim();
         if (!name) { e().setState({ file: { ...s.file, error: "Add the passenger's name on the Car step first." } }); return; }
         const mark = (v: string) => e().setState({ file: { ...e().state.file, pax: { ...e().state.file.pax, [i]: v } } });
+        startSendOperation();
         mark("sending");
         post("/api/calls/esign", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current, pax_index: i,
@@ -235,12 +334,16 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           pax_key: p.pid || String(i), pax_minor: minor, pax_recipient_confirmed: !!p.shareOk,
           pax_same_addr: p.sameAddr === "Same address",
           nv_variant: choice.key === "NV_FLAT" ? "flat" : "tiered", nv_reason: choice.requiresReason ? s.send.nvReason : undefined,
-        }).then(() => mark("sent")).catch((err) => {
+        }).then(() => { sendInFlight.current = false; updateSendGate("clear"); mark("sent"); }).catch((err) => {
+          sendInFlight.current = false;
+          handleSendFailure(err, i, p.pid || String(i));
           const pax = { ...e().state.file.pax }; delete pax[i];
           e().setState({ file: { ...e().state.file, pax, error: err.message } });
         });
       },
       async completeAgreement() {
+        const hold = e().agreementHoldNotice();
+        if (hold) { e().setState({ file: { ...e().state.file, error: hold } }); return; }
         const f = e().state.file;
         e().setState({ file: { ...f, error: "" } });
         if (!(await saveIdentityNow())) {
@@ -252,6 +355,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           .catch((err) => e().setState({ file: { ...e().state.file, error: err.message } }));
       },
       voidAgreement() {
+        const hold = e().agreementHoldNotice();
+        if (hold) { e().setState({ send: { ...e().state.send, error: hold } }); return; }
         const signed = e().state.send.status === "signed";
         const why = typeof window !== "undefined" ? window.prompt(signed
           ? "The PNC already signed this one. Why are you voiding it? (Owner or admin only. The signed copy stays in the file history.)"
@@ -265,6 +370,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           .catch((err) => e().setState({ send: { ...e().state.send, error: err.message } }));
       },
       resendLink() {
+        const hold = e().agreementHoldNotice();
+        if (hold) { e().setState({ text: { ...e().state.text, error: hold } }); return; }
         const t = e().state.text;
         post("/api/calls/esign/resend", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current })
           .then(() => { e().setState({ text: { ...e().state.text, error: "" } }); loadComms(); })
@@ -312,7 +419,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           .catch((err) => e().setState({ askOut: { error: err.message } }));
       },
     };
-    eng.current = new CallEngine({ ...init.props, esign: { ...init.props.esign }, startedAt: init.startedAt }, api);
+    eng.current = new CallEngine({ ...init.props, esign: { ...init.props.esign, sendGate: "checking", sendAttempt: null, paxSendAttempts: {} }, startedAt: init.startedAt }, api);
     // The call opens in All questions on the first render. Retired layout
     // preferences are mapped there below; the engine still understands their
     // historical states so saved answers never need migration.
@@ -324,6 +431,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   engine.props.now = now;
   engine.props.agreementSuperseded = needsResign;
 
+  useEffect(() => { void refreshSigningStatus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void loadIdentity().catch((err) => setIdentityError(err?.message || "Could not check the saved SSN.")); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const identityInputSnapshot = `${engine.state.file.ssnMode || ""}:${engine.state.file.ssn || ""}`;
   useEffect(() => {
@@ -379,7 +487,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   useEffect(() => {
     try {
       const pref = localStorage.getItem(viewKey);
-      const chosen = pref === "form" ? "form" : "chore";
+      const chosen = savedCallView(pref);
       if (chosen !== engine.state.view) engine.setView(chosen);
     } catch { /* private mode */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -392,6 +500,16 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   // gets the caller on the left and the tools panel on the right, an iPad
   // sideways gets the caller and the helper, a phone gets one column.
   const v = engine.renderVals();
+  const mainHold = engine.props.esign.sendAttempt;
+  const paxHolds = engine.props.esign.paxSendAttempts || {};
+  v.reconcileActions = init.props.agentRole === "owner" && v.sendHold ? [
+    ...(mainHold ? [{ label: "Check send outcome", go: () => void checkSendOutcome(mainHold) }] : []),
+    ...Object.entries(paxHolds).filter(([, hold]) => !!hold.pax_key).map(([index, hold]) => ({
+      label: `Check passenger ${Number(index) + 1} send outcome`, go: () => void checkSendOutcome(hold, hold.pax_key),
+    })),
+  ] : [];
+  v.reconcileBusy = reconcileBusy;
+  v.reconcileMessage = reconcileMessage;
   const ws: "desk" | "ipad" | null = isDesk && !touch ? "desk" : wide ? "ipad" : null;
   const deskOn = ws === "desk";
   const sideOn = !!ws;
@@ -534,39 +652,13 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const s = engine.state;
   const paxKey = JSON.stringify(s.file.pax || {});
   useEffect(() => {
-    const waiting = ["sent", "opened"].includes(s.send.status) || Object.values(s.file.pax || {}).some((v: any) => v === "sent" || v === "opened");
+    const waiting = engine.props.esign.sendGate !== "clear" || ["sent", "opened"].includes(s.send.status)
+      || Object.values(s.file.pax || {}).some((v: any) => v === "sent" || v === "opened");
     if (!waiting) return;
-    const t = setInterval(async () => {
-      try {
-        const requestedAgreement = agreementId.current;
-        const q = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current || "" });
-        const r = await fetch(`/api/calls/esign?${q}`);
-        const d = await r.json();
-        if (!r.ok || d.error) return;
-        const cur = engine.state;
-        // Passenger polling can continue while an emergency re-sign is being
-        // prepared. Its old primary must not lock the draft again. A response
-        // started before a successful replacement send must not replace its ID.
-        if (!emergencyResign.current && agreementId.current === requestedAgreement) {
-          setNeedsResign(!!d.emergency?.needs_resign);
-          setEmergencyStatus(d.emergency?.status || "");
-          agreementId.current = d.agreement_id || d.id || agreementId.current;
-          if (d.agreement) engine.props.esign.templateKey = d.agreement.template_key || null;
-          if (Array.isArray(d.templates)) engine.props.esign.templateKeys = d.templates.map((t: any) => String(t.key));
-          if (d.agreement || Array.isArray(d.templates)) engine.setState({});
-          if (d.status && d.status !== "ready" && d.status !== cur.send.status) engine.setState({ send: { ...cur.send, status: d.status } });
-          // Voided or expired somewhere else: the send opens again here.
-          if (d.status === "ready" && (cur.send.status === "sent" || cur.send.status === "opened")) {
-            engine.setState({ send: { ...cur.send, status: "ready", error: "That agreement is no longer live (voided or expired). Pick the right one and send it." } });
-          }
-          if (d.complete && cur.file.agreement !== "done") engine.setState({ file: { ...engine.state.file, agreement: "done" } });
-        }
-        if (d.pax && Object.keys(d.pax).length) engine.setState({ file: { ...engine.state.file, pax: { ...engine.state.file.pax, ...d.pax } } });
-      } catch { /* next tick */ }
-    }, 3000);
+    const t = setInterval(() => { void refreshSigningStatus(); }, 3000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.send.status, paxKey]);
+  }, [s.send.status, paxKey, engine.props.esign.sendGate]);
 
   // Texts: load once, then every 5 seconds while the sheet is open.
   useEffect(() => {
@@ -782,6 +874,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const casePanel = <DeskPanel key="case-panel" v={{ ...v, reviewAgreement: view.reviewAgreement }} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
     onCollapse={sideOn ? collapseCommand : undefined} panelId={commandPanelId}
     summary={<WsHelper v={view} />}
+    caseSummary={<CaseSummary answerSnapshot={snapshot} claimantName={engine.props.callerName || ""} saveBad={!!view.saveBad} />}
     preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
     focusLines={focusLines} phones={phones} leadId={init.leadId} claimId={init.claimId} onDialState={setDialState}
     story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />;
