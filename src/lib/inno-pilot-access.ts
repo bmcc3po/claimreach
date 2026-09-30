@@ -8,6 +8,8 @@ export function pilotStaffPageAllowed(path: string): boolean {
 }
 
 export function pilotStaffApiAllowed(path: string, method = "GET"): boolean {
+  if (path === "/api/netfly") return method === "GET" || method === "POST";
+  if (path === "/api/netfly/retainer") return method === "POST";
   if (path === "/api/me/password") return method === "POST";
   if (path === "/api/case/details") return method === "POST";
   if (path === "/api/calls/esign-setup") return false;

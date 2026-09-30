@@ -1,0 +1,101 @@
+// NETFLY's signed-retainer secondary intake. This is deliberately separate
+// from the INNO acquisition script and its mva_call answer namespace.
+export const NETFLY_CAMPAIGN = "NETFLY ONTAKE";
+export const NETFLY_ANSWER_KEY = "netfly_secondary";
+export const NETFLY_RETAINER_TYPE = "netfly_signed_retainer";
+
+export type NetflyField = {
+  id: string;
+  label: string;
+  kind?: "text" | "date" | "tel" | "email" | "long" | "choice";
+  choices?: string[];
+  when?: { id: string; is: string };
+  hint?: string;
+};
+export type NetflySection = { id: string; title: string; script?: string; fields: NetflyField[] };
+const yesNo = ["Yes", "No", "Not sure"];
+const yn = (id: string, label: string, extra: Partial<NetflyField> = {}): NetflyField => ({ id, label, kind: "choice", choices: yesNo, ...extra });
+const txt = (id: string, label: string, extra: Partial<NetflyField> = {}): NetflyField => ({ id, label, kind: "text", ...extra });
+
+export const NETFLY_SECTIONS: NetflySection[] = [
+  { id: "care", title: "1. Welcome & medical care", script: "Hi, my name is [your name] from Turnbull, Moak & Pendergrass. It's great to meet you. Let me be the first to welcome you to the firm. I'd like to gather a few more details about your case and answer any questions. Most importantly, have you seen a doctor yet to get checked out?", fields: [
+    yn("seen_doctor", "Have you seen a doctor yet?"),
+    txt("first_provider", "Where did you go?", { when: { id: "seen_doctor", is: "Yes" } }),
+    txt("first_provider_address", "First provider address", { when: { id: "seen_doctor", is: "Yes" } }),
+    txt("first_provider_phone", "First provider phone", { kind: "tel", when: { id: "seen_doctor", is: "Yes" } }),
+    txt("first_visit", "When was your first visit?", { kind: "date", when: { id: "seen_doctor", is: "Yes" } }),
+    yn("ambulance", "Did an ambulance take you from the scene?", { when: { id: "seen_doctor", is: "Yes" } }),
+    txt("treated_injuries", "What injuries are they treating you for?", { kind: "long", when: { id: "seen_doctor", is: "Yes" } }),
+    txt("other_pain", "Anywhere else you're still feeling it?", { kind: "long" }),
+    yn("still_treating", "Are you still going to the doctor?", { when: { id: "seen_doctor", is: "Yes" } }),
+    txt("current_provider", "Who are you seeing now?", { when: { id: "still_treating", is: "Yes" } }),
+    txt("current_provider_address", "Current provider address", { when: { id: "still_treating", is: "Yes" } }),
+    txt("current_provider_phone", "Current provider phone", { kind: "tel", when: { id: "still_treating", is: "Yes" } }),
+    txt("last_appointment", "When was your last appointment?", { kind: "date", when: { id: "still_treating", is: "Yes" } }),
+    txt("next_appointment", "When's your next appointment?", { kind: "date", when: { id: "still_treating", is: "Yes" } }),
+  ] },
+  { id: "contact", title: "2. Confirm their information", script: "Let me make sure we have everything right on our end. I'll read back your name and spell it. Is that right?", fields: [
+    txt("confirmed_name", "Client's correct full name"), yn("name_confirmed", "Is the name on the signed retainer correct?"),
+    txt("dob", "Date of birth", { kind: "date" }), txt("mailing_address", "Mailing address"),
+    txt("confirmed_email", "Best email", { kind: "email" }), txt("confirmed_phone", "Best number", { kind: "tel" }),
+  ] },
+  { id: "accident", title: "3. The accident & passengers", script: "I have the city, state and rough month and year from NETFLY. Let me confirm the exact details with you.", fields: [
+    txt("accident_city", "What city did this happen in?"), txt("accident_state", "What state?"),
+    txt("accident_month_year", "Rough month and year from NETFLY"), txt("accident_date", "Exact accident date, if known", { kind: "date" }),
+    txt("road", "What road or intersection was it on?"),
+    { id: "position", label: "Were you the driver, passenger, or pedestrian?", kind: "choice", choices: ["Driver", "Passenger", "Pedestrian", "Other", "Not sure"] },
+    txt("incident_story", "Walk me through what happened", { kind: "long" }),
+    yn("passengers", "Was anyone else in the vehicle with you?"),
+    txt("passenger_details", "For each person: name, best number, injuries, and whether they want a call", { kind: "long", when: { id: "passengers", is: "Yes" } }),
+    yn("death", "Was there a death?"), txt("hospital_days", "Was anyone admitted to a hospital? How many days?"),
+    yn("commercial_truck", "Was an 18-wheeler or commercial truck involved?"), yn("serious_injury", "Were there serious injuries?"),
+  ] },
+  { id: "police", title: "4. Police & the other driver", fields: [
+    { id: "fault", label: "Who was at fault, as the client understands it?", kind: "choice", choices: ["Other driver", "Client", "Unclear", "Not sure"] },
+    yn("police_came", "Did the police come out?"), txt("police_department", "Which department?"), txt("police_report", "Report or case number"),
+    yn("ticket", "Did anyone get a ticket?"), txt("ticket_details", "Who got it, and what for?", { when: { id: "ticket", is: "Yes" } }),
+    txt("other_driver", "Other driver's name"), txt("other_vehicle", "Their vehicle: year, make, model"),
+    yn("company_vehicle", "Was it a work truck or company vehicle?"),
+    yn("alcohol_drugs", "Did you see signs of drinking or drug use?"), yn("on_phone", "Did you see them on their phone?"),
+    txt("other_insurer", "Other driver's insurer"), txt("other_policy", "Policy number"), txt("other_claim", "Claim number"),
+  ] },
+  { id: "vehicle", title: "5. Vehicle, pictures & witnesses", fields: [
+    txt("own_vehicle", "Your vehicle: year, make, model"), txt("damage", "What would I have seen standing five feet from it?", { kind: "long" }),
+    yn("drivable", "Was it drivable?"), yn("totaled", "Was it totaled?"), txt("estimate", "Repair estimate, if any"),
+    yn("photos", "Do you have pictures or video?"), yn("witnesses", "Were there witnesses?"),
+    txt("witness_details", "Witness names and numbers", { kind: "long", when: { id: "witnesses", is: "Yes" } }),
+  ] },
+  { id: "insurance", title: "6. Insurance", fields: [
+    yn("auto_insured", "Do you have your own auto insurance?"), txt("auto_carrier", "Auto insurance company"), txt("auto_policy", "Auto policy number"),
+    yn("um_uim", "Do you know if you have UM/UIM coverage?"), yn("health_insured", "Do you have health insurance?"),
+    txt("health_carrier", "Health insurance company"), txt("health_group", "Health group number"),
+    yn("insurer_contact", "Has any insurance company reached out?"), yn("recorded_statement", "Did you give a recorded statement?"),
+    yn("money_offer", "Has anyone offered you money?"), yn("insurance_papers", "Has an insurer sent anything to sign?"),
+    yn("insurance_signed", "Did you sign any insurance papers?"), txt("insurance_notes", "Insurance contact details", { kind: "long" }),
+  ] },
+  { id: "work", title: "7. Work & final details", fields: [
+    yn("working", "Are you working right now?"), txt("employer", "Who for?", { when: { id: "working", is: "Yes" } }),
+    txt("days_missed", "Days of work missed because of the accident"), txt("lost_pay", "Estimated pay lost"),
+    txt("emergency_contact", "Emergency contact: name, number, relationship", { kind: "long" }),
+    yn("other_lawyer_talk", "Have you talked to another attorney about this accident?"),
+    yn("other_lawyer_signed", "Have you signed with another attorney?"),
+    txt("other_lawyer_details", "Other attorney details", { kind: "long", when: { id: "other_lawyer_signed", is: "Yes" } }),
+  ] },
+  { id: "close", title: "8. Protect & close", script: "If the other driver's insurance company calls, give them the firm's number, (205) 831-5040, and let the firm handle it. Take care of yourself and make every appointment. What questions can I answer for you?", fields: [
+    yn("refer_insurer", "Will the client refer the insurer to the firm?"), txt("client_questions", "Client questions and answers given", { kind: "long" }),
+    yn("wants_cancel", "Does the client want to cancel with the firm?"), txt("final_notes", "Final notes and any requested follow-up", { kind: "long" }),
+  ] },
+];
+
+export const NETFLY_FIELDS = NETFLY_SECTIONS.flatMap((s) => s.fields);
+export const NETFLY_FIELD_IDS = new Set(NETFLY_FIELDS.map((f) => f.id));
+export function netflyFlags(a: Record<string, string>): string[] {
+  const out: string[] = [];
+  if (a.death === "Yes" || Number.parseInt(a.hospital_days || "", 10) >= 3 || (a.commercial_truck === "Yes" && a.serious_injury === "Yes")) out.push("Get a supervisor on the call now");
+  if (a.seen_doctor === "No") out.push("No treatment yet — supervisor review");
+  if (a.fault === "Client" || a.ticket === "Yes") out.push("Fault or ticket — supervisor review");
+  if (a.other_lawyer_talk === "Yes" || a.other_lawyer_signed === "Yes") out.push("Other attorney — supervisor review");
+  if (a.recorded_statement === "Yes" || a.insurance_signed === "Yes") out.push("Insurer statement or signed papers — supervisor review");
+  if (a.wants_cancel === "Yes") out.push("Cancellation requested — bring in supervisor");
+  return out;
+}
