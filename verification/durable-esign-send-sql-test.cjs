@@ -226,6 +226,27 @@ async function main(){
    await emergency(s,324,'signed','2031-01-01T00:00:00Z');await denied(()=>finish(a),/emergency agreement changed/);
    assert.equal((await rpc('cr_pending_esign_send',[s.claim,null])).state,'provider_pending');
   });
+  await t('NETFLY amendment permits internal INNO agent only on exact TMP secondary campaign',async()=>{
+   await db.exec(`alter table firms add column slug text;
+     alter table app_users add column firm_id uuid;
+     alter table campaigns add column name text;
+     alter table campaigns add column path text;
+     alter table campaigns add column esign_required boolean;
+     update firms set slug='inno' where id='${firm}';
+     update firms set slug='tmp' where id='${otherFirm}';
+     update app_users set firm_id='${firm}' where id='${agent}';
+     update campaigns set name='NETFLY ONTAKE',path='secondary',esign_required=false where id='${otherCampaign}';`);
+   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/0127_netfly_emergency_esign_scope.sql'),'utf8'));
+   const netfly=await seed(350,{firm:otherFirm,campaign:otherCampaign});
+   assert.ok((await reserve(netfly)).id);
+   const foreignFirm=id(360),foreignCampaign=id(361);
+   await query('insert into firms(id,slug) values($1,$2)',[foreignFirm,'foreign']);
+   await query("insert into campaigns(id,firm_id,active,name,path,esign_required) values($1,$2,true,'NETFLY ONTAKE','secondary',false)",[foreignCampaign,foreignFirm]);
+   const foreign=await seed(362,{firm:foreignFirm,campaign:foreignCampaign});
+   await denied(()=>reserve(foreign),/outside the intake pilot/);
+   await denied(()=>reserve(netfly,null,null,disabled),/active intake user/);
+   await denied(()=>reserve(netfly,null,null,id(4)),/active intake user/);
+  });
   console.log(`${checks} passed`);
  }finally{await db.close();}
 }

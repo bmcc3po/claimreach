@@ -8,8 +8,8 @@ export async function netflyContext() {
   if (!actor || !["owner", "admin", "manager", "agent", "qa"].includes(actor.role)) return null;
   const db = supabaseAdmin();
   const { data: rows, error } = await db.from("campaigns")
-    .select("id, firm_id, name, case_type, active, esign_required, firms(slug)")
-    .eq("name", NETFLY_CAMPAIGN).eq("case_type", "mva").eq("active", true).limit(2);
+    .select("id, firm_id, name, case_type, path, active, esign_required, ssn_require_full, firms(slug)")
+    .eq("name", NETFLY_CAMPAIGN).eq("case_type", "mva").eq("path", "secondary").eq("active", true).limit(2);
   if (error || rows?.length !== 1 || (rows[0].firms as any)?.slug !== "tmp" || rows[0].esign_required !== false) return null;
   const campaign = rows[0];
   if (actor.role !== "owner") {

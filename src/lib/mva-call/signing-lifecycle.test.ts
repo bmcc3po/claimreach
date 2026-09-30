@@ -15,6 +15,7 @@ const resolveSigningMatter = (db: any, leadId: string, opts: Record<string, any>
 function world() {
   return new FakeDb({
     leads: [{ id: L, firm_id: F, campaign_id: CAMP, archived_at: null }],
+    campaigns: [{ id: CAMP, firm_id: F, name: "INNO MVA" }],
     claims: [{ id: C, lead_id: L, firm_id: F, campaign_id: CAMP, status: "esign_sent", claim_type: "mva" }],
     intake_calls: [{ id: "call-a", lead_id: L, firm_id: F, claim_id: C, campaign_id: CAMP }],
     esign_submissions: [{ id: "agreement-a", lead_id: L, firm_id: F, claim_id: C, campaign_id: CAMP, pax_index: null, status: "signed", created_at: "2026-09-28T10:00:00Z", submission_id: "offline-1", error: "[claim-transition-pending] Artifact warning", voided_at: null }],
@@ -124,6 +125,28 @@ t("strict webhook sync rejects an unsaved signature transition", async () => {
   try {
     await assert.rejects(syncSubmission(db, db.tables.esign_submissions[0], { strict: true }), /persist the DocuSeal status transition/);
     assert.equal(db.tables.esign_submissions[0].status, "sent");
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (priorKey === undefined) delete process.env.DOCUSEAL_API_KEY; else process.env.DOCUSEAL_API_KEY = priorKey;
+  }
+});
+t("NETFLY correction sync never moves an acquisition claim", async () => {
+  const db = world();
+  db.tables.campaigns[0].name = "NETFLY ONTAKE";
+  db.tables.campaigns[0].path = "secondary";
+  db.tables.campaigns[0].esign_required = false;
+  db.tables.campaigns[0].firms = { slug: "tmp" };
+  db.tables.esign_submissions[0].status = "signed";
+  db.tables.esign_submissions[0].signed_at = null;
+  db.tables.esign_submissions[0].error = "[claim-transition-pending]";
+  const before = db.tables.claims[0].status;
+  const priorFetch = globalThis.fetch, priorKey = process.env.DOCUSEAL_API_KEY;
+  process.env.DOCUSEAL_API_KEY = "offline-test-key";
+  globalThis.fetch = async () => new Response(JSON.stringify({ id: 123, status: "pending", submitters: [{ role: "Client", status: "completed" }] }), { status: 200 });
+  try {
+    assert.equal(await syncSubmission(db, db.tables.esign_submissions[0]), "signed");
+    assert.equal(db.tables.claims[0].status, before);
+    assert.ok(!db.ops.some((op) => op.table === "claims" && op.kind === "update"));
   } finally {
     globalThis.fetch = priorFetch;
     if (priorKey === undefined) delete process.env.DOCUSEAL_API_KEY; else process.env.DOCUSEAL_API_KEY = priorKey;

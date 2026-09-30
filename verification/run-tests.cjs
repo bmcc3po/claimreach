@@ -3,7 +3,7 @@ const app = path.resolve(__dirname, '..');
 const tsx = require.resolve('tsx/cli');
 function scan(dir) { return fs.readdirSync(dir,{withFileTypes:true}).flatMap(d=>d.isDirectory()?scan(path.join(dir,d.name)):/\.test\.tsx?$/.test(d.name)?[path.join(dir,d.name)]:[]); }
 const files = [...scan(path.join(app,'src')), ...fs.readdirSync(app).filter(n=>/\.test\.tsx?$/.test(n)).map(n=>path.join(app,n))].sort();
-const extra = ['signing-routes-test.cjs','agreement-routes-test.cjs','emergency-sql-test.cjs','dispatch-sql-checks.cjs','pilot-sql-test.cjs','pilot-boundary-sql-test.cjs','durable-esign-send-sql-test.cjs','send-reconcile-routes-test.cjs','dq-terminal-sql-test.cjs','identity-sql-test.cjs','users-routes-test.cjs','drip-scheduler-sql-test.cjs','drip-manager-test.cjs'].map(n=>path.resolve(__dirname,n));
+const extra = ['signing-routes-test.cjs','agreement-routes-test.cjs','emergency-sql-test.cjs','dispatch-sql-checks.cjs','pilot-sql-test.cjs','pilot-boundary-sql-test.cjs','durable-esign-send-sql-test.cjs','send-reconcile-routes-test.cjs','dq-terminal-sql-test.cjs','identity-sql-test.cjs','users-routes-test.cjs','drip-scheduler-sql-test.cjs','drip-manager-test.cjs','netfly-esign-route-test.cjs'].map(n=>path.resolve(__dirname,n));
 const outputDir=process.env.CLAIMREACH_TEST_OUTPUT || fs.mkdtempSync(path.join(require('node:os').tmpdir(),'claimreach-v9-tests-'));
 fs.mkdirSync(path.join(outputDir,'test-logs'),{recursive:true});
 const results=[];

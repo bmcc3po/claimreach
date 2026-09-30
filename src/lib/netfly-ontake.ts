@@ -3,6 +3,58 @@
 export const NETFLY_CAMPAIGN = "NETFLY ONTAKE";
 export const NETFLY_ANSWER_KEY = "netfly_secondary";
 export const NETFLY_RETAINER_TYPE = "netfly_signed_retainer";
+export const NETFLY_ASSESSMENTS = ["likely_case", "needs_review", "unlikely_case"] as const;
+export const NETFLY_TRANSFER_OUTCOMES = ["connected", "attempted_no_answer", "client_declined", "not_attempted"] as const;
+export type NetflyCallClose = {
+  assessment: (typeof NETFLY_ASSESSMENTS)[number];
+  assessment_reason: string;
+  transfer_destination: string;
+  transfer_outcome: (typeof NETFLY_TRANSFER_OUTCOMES)[number];
+  transfer_note: string;
+  client_notified_48_business_hours: boolean;
+};
+export function validateNetflyCallClose(value: NetflyCallClose): string | null {
+  if (!NETFLY_ASSESSMENTS.includes(value.assessment)) return "Record your best assessment of the case.";
+  if (value.assessment_reason.trim().length < 5) return "Briefly explain your case assessment.";
+  if (!NETFLY_TRANSFER_OUTCOMES.includes(value.transfer_outcome)) return "Record what happened with the case-manager introduction.";
+  if (["connected", "attempted_no_answer"].includes(value.transfer_outcome) && !value.transfer_destination.trim())
+    return "Record the case-manager number or queue you actually called.";
+  if (value.transfer_outcome === "not_attempted" && value.transfer_note.trim().length < 5)
+    return "Explain why the transfer was not attempted.";
+  if (value.transfer_outcome === "client_declined" && !value.client_notified_48_business_hours)
+    return "Tell the client their case manager will call within 48 business hours, then confirm it here.";
+  return null;
+}
+
+// NETFLY's original handoff is evidence, not an agent-confirmed answer. Keep
+// this extraction display-only; the agent explicitly records any confirmed
+// or corrected value in the separate fields below.
+export const NETFLY_HANDOFF_LABELS = [
+  "Client/Driver", "Accident Date", "Location", "Case #", "Passengers",
+  "Airbags", "Accident Summary", "Insurance", "Injuries & Treatment",
+  "Representation", "Next Steps",
+] as const;
+
+export function parseNetflyHandoff(note: string): { label: string; value: string }[] {
+  const headings = new Map(NETFLY_HANDOFF_LABELS.map((label) => [label.toLowerCase(), label]));
+  const values = new Map<string, string>();
+  let current: string | null = null;
+  for (const raw of note.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const match = /^([^:]{2,40}):\s*(.*)$/.exec(line);
+    const heading = match ? headings.get(match[1].trim().toLowerCase()) : undefined;
+    if (heading) {
+      current = heading;
+      values.set(heading, match![2].trim());
+    } else if (match) {
+      current = null;
+    } else if (current) {
+      values.set(current, `${values.get(current) || ""} ${line}`.trim());
+    }
+  }
+  return NETFLY_HANDOFF_LABELS.filter((label) => values.has(label)).map((label) => ({ label, value: values.get(label)! }));
+}
 
 export type NetflyField = {
   id: string;
