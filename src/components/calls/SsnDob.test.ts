@@ -1,6 +1,8 @@
 // Run: npx tsx src/components/calls/SsnDob.test.ts
 import assert from "node:assert/strict";
-import { fmtDobDigits, dobProblem, dobSpoken, fmtSsnDigits } from "./SsnDob";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { fmtDobDigits, dobProblem, dobSpoken, fmtSsnDigits, SsnField } from "./SsnDob";
 
 let passed = 0;
 function t(name: string, fn: () => void) { fn(); passed++; console.log("ok", name); }
@@ -28,6 +30,17 @@ t("SSN formats as it types", () => {
   assert.equal(fmtSsnDigits("12345"), "123-45");
   assert.equal(fmtSsnDigits("123456789"), "123-45-6789");
   assert.equal(fmtSsnDigits("123-45-6789"), "123-45-6789");
+});
+
+t("full SSN draft and securely saved full mode cannot be downgraded to last four", () => {
+  const draft = renderToStaticMarkup(createElement(SsnField, { value: "123456789", onChange: () => {}, storedMode: "full" }));
+  assert.match(draft, /Last 4 only<\/button>/);
+  assert.match(draft, /disabled=""[^>]*>Last 4 only/);
+  const partial = renderToStaticMarkup(createElement(SsnField, { value: "12345", onChange: () => {}, storedMode: "full" }));
+  assert.match(partial, /disabled=""[^>]*>Last 4 only/);
+  const stored = renderToStaticMarkup(createElement(SsnField, { value: "", onChange: () => {}, storedMode: "last4", savedMode: "full" }));
+  assert.match(stored, /disabled=""[^>]*>Last 4 only/);
+  assert.match(stored, /aria-label="Social Security number"/);
 });
 
 console.log(`\n${passed} passed`);

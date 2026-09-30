@@ -4,12 +4,14 @@ import { authUser } from "@/lib/auth-user";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { needsQaReview } from "@/lib/statuses";
 
 export default async function QaQueuePage() {
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role").eq("id", user!.id).maybeSingle();
   if (!me || !["owner", "admin", "manager", "qa"].includes(me.role)) redirect("/dashboard");
+  const { data: statuses } = await sb.from("statuses").select("*");
 
   // Read by STATUS (the source of truth), not just the qa_pending flag, so a
   // file in a QA-phase status can never be missing from the queue if the flag
@@ -26,15 +28,16 @@ export default async function QaQueuePage() {
     map.set(l.id, { id: l.id, lead_no: l.lead_no, claimant_name: l.claimant_name, phone: l.phone, case_type: l.case_type, updated_at: c.updated_at, claims: [{ status: c.status, grievous_verdict: c.grievous_verdict }] });
   }
 
-  // Safety net: leads flagged qa_pending whose claim status may not have caught
-  // up (status landed on the lead but not the claim row). Surfaces them anyway.
+  // A stale lead flag never puts a closed/DQ matter back in QA. Resolve the
+  // actual reviewable claim, including when a closed sibling comes first.
   const { data: flagged } = await sb.from("leads")
     .select("id, lead_no, claimant_name, phone, case_type, updated_at, qa_pending, claims(status, grievous_verdict)")
     .eq("qa_pending", true).limit(300);
   for (const l of flagged ?? []) {
     if (map.has(l.id)) continue;
-    const st = (l as any).claims?.[0]?.status ?? "qa";
-    map.set(l.id, { id: l.id, lead_no: l.lead_no, claimant_name: l.claimant_name, phone: l.phone, case_type: l.case_type, updated_at: l.updated_at, claims: [{ status: st, grievous_verdict: (l as any).claims?.[0]?.grievous_verdict }] });
+    const review = (l as any).claims?.find((c: any) => needsQaReview(c.status, statuses ?? undefined));
+    if (!review) continue;
+    map.set(l.id, { id: l.id, lead_no: l.lead_no, claimant_name: l.claimant_name, phone: l.phone, case_type: l.case_type, updated_at: l.updated_at, claims: [{ status: review.status, grievous_verdict: review.grievous_verdict }] });
   }
 
   const queue = Array.from(map.values()).sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));

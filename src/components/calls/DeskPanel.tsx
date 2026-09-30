@@ -697,7 +697,7 @@ function FirmHandoff({ leadId, claimId, hasSignedPacket, awaitingOfficeSigner }:
         {sent ? <div className="cc-cue">Sent {fmtWhen(state.firm_sent_at)}. The App will not resend this matter.</div>
           : dispatchPending ? <div className="cc-cue cc-red">The last delivery outcome needs owner review. Do not resend.</div>
           : !hasSignedPacket ? <div className="cc-cue">{awaitingOfficeSigner
-            ? "The client signed, but Intake has not finished the second signer. On the File step, enter the client's real DOB and SSN and complete the agreement. Wait for the signed PDF and audit trail to store before delivery."
+            ? "The client signed, but Intake has not finished the second signer. Check the DOB and securely saved SSN on the File step; enter any missing information and complete the agreement. Wait for the signed PDF and audit trail to store before delivery."
             : "A completed signed agreement and audit trail are required before handoff."}</div>
           : <><div className="cc-cue">Review the signed agreement and audit trail above, then send this matter once.</div>
             <button type="button" className="cc-btn cc-full" disabled={busy || !state.delivery?.to || !state.delivery?.firm} onClick={() => void send()}>{busy ? "Sending…" : "Send signed packet to firm"}</button></>}

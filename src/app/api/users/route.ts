@@ -2,30 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 export const runtime = "edge";
 
-async function requireManager(sb: any) {
+async function requireOwner(sb: any) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return { error: "unauthorized", status: 401 };
-  const { data: me } = await sb.from("app_users").select("role, perm_overrides, firm_id, active").eq("id", auth.user.id).maybeSingle();
-  // A deactivated account manages nobody, even with a still-valid session
-  // (Astra round 3: this route had its own gate that ignored active).
-  const canManage = me && me.active !== false && (["owner", "admin"].includes(me.role) || me.perm_overrides?.["users.manage"]);
+  const { data: me } = await sb.from("app_users").select("role, firm_id, active").eq("id", auth.user.id).maybeSingle();
+  // The INNO MVA pilot reserves user management for the active owner. This
+  // route writes through the service role, so it must enforce that boundary
+  // itself even when a non-owner has a legacy users.manage override.
+  const canManage = me?.active === true && me.role === "owner";
   if (!canManage) return { error: "forbidden", status: 403 };
   return { me, uid: auth.user.id };
 }
 
 export async function GET(req: NextRequest) {
-  const sb = await supabaseServer();
-  const gate = await requireManager(sb);
-  if ("error" in gate) return NextResponse.json({ error: gate.error }, { status: gate.status });
-  const { data } = await sb.from("app_users")
-    .select("id, full_name, email, role, title, phone, active, perm_overrides, firm_id, created_at")
-    .order("created_at", { ascending: false });
-  return NextResponse.json({ users: data ?? [] });
+  try {
+    const sb = await supabaseServer();
+    const gate = await requireOwner(sb);
+    if ("error" in gate) return NextResponse.json({ error: gate.error }, { status: gate.status });
+    const { data, error } = await sb.from("app_users")
+      .select("id, full_name, email, role, title, phone, active, perm_overrides, firm_id, created_at")
+      .order("created_at", { ascending: false });
+    if (error || !Array.isArray(data)) {
+      return NextResponse.json({ error: "Could not load staff accounts. Please retry." }, { status: 500 });
+    }
+    return NextResponse.json({ users: data }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "Could not load staff accounts. Please retry." }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
-  const gate = await requireManager(sb);
+  const gate = await requireOwner(sb);
   if ("error" in gate) return NextResponse.json({ error: gate.error }, { status: gate.status });
   const me = (gate as any).me;
   const b = await req.json();
@@ -46,6 +54,17 @@ export async function POST(req: NextRequest) {
       firm_id: b.firm_id ?? me.firm_id, perm_overrides: b.perm_overrides ?? {}, active: true,
     });
     if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
+    // Do not announce a new staff account until its saved profile is readable.
+    // If verification fails, preserve the login and profile for recovery.
+    try {
+      const { data: profile, error: verifyError } = await admin.from("app_users")
+        .select("id, email").eq("id", created.user.id).maybeSingle();
+      if (verifyError || !profile || profile.id !== created.user.id || profile.email !== email) {
+        return NextResponse.json({ error: "The login was created, but ClaimReach could not verify its staff profile. Refresh Users before trying again." }, { status: 502 });
+      }
+    } catch {
+      return NextResponse.json({ error: "The login was created, but ClaimReach could not verify its staff profile. Refresh Users before trying again." }, { status: 502 });
+    }
     return NextResponse.json({ ok: true, id: created.user.id });
   }
 

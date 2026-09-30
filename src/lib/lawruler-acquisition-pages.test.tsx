@@ -6,8 +6,10 @@ import * as jsx from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FakeDb } from './test-fake-db';
 import { DEFAULT_STATUSES } from './statuses';
+import * as statusModel from './statuses';
 import * as acquisition from './lawruler-mva-status';
 import * as signedReview from './mva-call/review-queue';
+import * as deskQueue from './mva-call/desk-queue';
 
 const now = new Date().toISOString();
 const lead = (id: string, statuses: string[], kind = 'mva') => ({
@@ -35,7 +37,9 @@ function page(file: string, db: FakeDb) {
     '@/lib/supabase-server': { supabaseServer: async () => db }, '@/lib/auth-user': { authUser: async () => ({ data: { user: { id: 'operator' } } }) },
     '@/lib/mva-call/esign': { packetsFor: () => null }, '@/lib/docuseal': { docusealConfigured: () => false }, '@/lib/mva-call/dispo': { DISPO_LABEL: { callback: 'Call back' } },
     '@/lib/mva-call/links': { APP_CASE_TYPES: ['mva'] }, '@/lib/questionnaire': { STAGE_LABELS: { referral_received: 'Referral received' } },
-    '@/lib/lawruler-mva-status': acquisition, '@/lib/mva-call/review-queue': signedReview, '@/components/calls/CallsHome': { __esModule: true, default: 'calls-home' },
+    '@/lib/lawruler-mva-status': acquisition, '@/lib/mva-call/review-queue': signedReview, '@/lib/mva-call/desk-queue': deskQueue, '@/components/calls/CallsHome': { __esModule: true, default: 'calls-home' },
+    '@/lib/statuses': statusModel,
+    '@/components/ui/StatusBadge': { __esModule: true, default: (props: any) => jsx.jsx('span', { children: props.status }) },
   };
   const exp: any = {}; new Function('require', 'exports', js)((name: string) => { assert.ok(name in mods, `Unexpected import ${name}`); return mods[name]; }, exp);
   return exp.default;
@@ -48,31 +52,53 @@ function findHome(node: any): any {
 }
 let count = 0; const test = async (name: string, fn: () => any) => { await fn(); count++; console.log('ok', name); };
 (async () => {
-  await test('actual App page excludes signed/DQ callbacks but leaves completion history', async () => {
+  await test('actual QA queue omits DQ with stale qa_pending but preserves a genuine QA sibling', async () => {
+    const dq = lead('dq-stale-flag', ['external_dq_review']), closed = lead('closed-stale-flag', ['dq']), mixed = lead('mixed-review', ['external_dq_review', 'signed_qa']);
+    for (const file of [dq, closed, mixed]) Object.assign(file, { qa_pending: true });
+    const db = fixture([dq, closed, mixed]); db.tables.app_users[0].role = 'owner';
+    db.tables.statuses = DEFAULT_STATUSES.map(s => s.key === 'external_dq_review' ? { ...s, phase: 'in_qa', qualify: 'undetermined', track: 'intake' } : s);
+    const html = renderToStaticMarkup(await page('(internal)/qa', db)());
+    assert.doesNotMatch(html, /TEST-dq-stale-flag/);
+    assert.doesNotMatch(html, /TEST-closed-stale-flag/);
+    assert.match(html, /TEST-mixed-review/);
+    assert.match(html, /signed_qa/);
+    assert.doesNotMatch(html, /external_dq_review/);
+  });
+  await test('actual App page keeps signed work separate and excludes DQ from every active queue', async () => {
     const signed = lead('signed', ['signed_grievous']), dq = lead('dq', ['dq']), open = lead('open', ['new']), db = fixture([signed, dq, open]);
     for (const file of [signed, dq, open]) callback(db, file, file.claims[0]);
     const data = findHome(await page('(calls)/app', db)());
-    assert.deepEqual(data.callbacks.map((r: any) => r.id), ['open']); assert.deepEqual(data.open.map((r: any) => r.id), ['open']); assert.equal(data.done.length, 3);
+    assert.deepEqual(data.queues.callbacks.map((r: any) => r.id), ['open']); assert.equal(data.queues.new.length, 0);
+    assert.deepEqual(data.queues.signed.map((r: any) => r.id), ['signed']); assert.equal(Object.values(data.queues).flat().length, 2);
   });
   await test('actual App page retains exact eligible sibling callback despite later closed sibling call', async () => {
     const file = lead('siblings', ['dq', 'contacting']), db = fixture([file]);
     callback(db, file, file.claims[1], new Date(Date.now() - 1000).toISOString()); callback(db, file, file.claims[0]);
     const data = findHome(await page('(calls)/app', db)());
-    assert.equal(data.callbacks.length, 1); assert.equal(data.callbacks[0].href, '/app/siblings?claim=siblings-claim1'); assert.equal(data.open[0].href, '/app/siblings?claim=siblings-claim1');
+    assert.equal(data.queues.callbacks.length, 1); assert.equal(data.queues.callbacks[0].href, '/app/siblings?claim=siblings-claim1'); assert.equal(data.queues.calling.length, 0);
   });
   await test('actual App page exposes pending hold reason while omitting held and ambiguous callback work', async () => {
     const held = lead('held', ['new']), ambiguous = lead('ambiguous', ['new', 'new']), db = fixture([held, ambiguous]);
     hold(db, held, held.claims[0]); callback(db, held, held.claims[0]); callback(db, ambiguous, null);
     const tree = await page('(calls)/app', db)(), data = findHome(tree), html = renderToStaticMarkup(tree);
-    assert.equal(data.callbacks.length, 0); assert.ok(data.open.every((r: any) => r.id !== 'held'));
+    assert.equal(data.queues.callbacks.length, 0); assert.ok(Object.values(data.queues).flat().every((r: any) => r.id !== 'held'));
     assert.match(html, /LawRuler status needs review/); assert.match(html, /standardized DQ reason/); assert.match(html, /\/app\/held\?claim=held-claim0/);
   });
   await test('actual App page pauses acquisition lists on failed hold lookup or current call read', async () => {
     const file = lead('open', ['new']);
-    for (const table of ['lead_activity', 'statuses']) {
+    for (const table of ['lead_activity', 'statuses', 'intake_calls', 'esign_submissions']) {
       const db = fixture([file]); callback(db, file, file.claims[0]); db.failOn = op => op.table === table ? 'offline' : null;
-      const data = findHome(await page('(calls)/app', db)()); assert.equal(data.open.length, 0); assert.equal(data.callbacks.length, 0); assert.ok(data.notes.length > 0);
+      const data = findHome(await page('(calls)/app', db)()); assert.equal(data.queues.new.length, 0); assert.equal(data.queues.calling.length, 0); assert.equal(data.queues.callbacks.length, 0); assert.ok(data.notes.length > 0);
     }
+  });
+  await test('actual App page keeps an old reviewed client signature through office completion', async () => {
+    const file = lead('old-signature', ['esign_sent']), db = fixture([file]);
+    db.tables.esign_submissions.push({ id: 'signed-agreement', lead_id: file.id, claim_id: file.claims[0].id, firm_id: 'firm', campaign_id: 'campaign', status: 'signed',
+      created_at: '2026-01-01T10:00:00Z', sent_at: '2026-01-01T10:00:00Z', signed_at: '2026-01-01T11:00:00Z', agent_reviewed_at: '2026-01-01T12:00:00Z', template_key: 'NV_FLAT' });
+    const data = findHome(await page('(calls)/app', db)());
+    assert.equal(data.queues.sent.length, 0); assert.equal(data.queues.signed.length, 1);
+    assert.equal(data.queues.signed[0].tag, 'Office step pending');
+    assert.equal(data.queues.signed[0].href, '/app/old-signature?claim=old-signature-claim0&review=signed-agreement');
   });
   await test('actual agent Dial Queue removes closed MVA, holds, and non-MVA siblings', async () => {
     const signed = lead('signed', ['signed_grievous']), mixed = lead('mixed', ['dq', 'new']), held = lead('held', ['new']), motel = lead('motel', ['retained'], 'motel_trafficking');

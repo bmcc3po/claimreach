@@ -1783,7 +1783,7 @@ export class CallEngine {
       modeLabel: ({ qa: 'Q&A', full: 'Collapsible', chore: 'All questions', form: 'Simple form', convo: 'Conversation', quick: 'Quick Capture' } as any)[s.view] || 'Guided',
       modeMenuOpen: !!s.modeMenu,
       toggleModeMenu: () => this.setState({ modeMenu: !this.state.modeMenu }),
-      modes: [['Guided', 'guided'], ['Collapsible', 'full'], ['All questions', 'chore'], ['Simple form', 'form']].map((m) => ({
+      modes: [['All questions', 'chore'], ['Simple form', 'form']].map((m) => ({
         key: m[1],
         label: m[0],
         on: s.view === m[1],

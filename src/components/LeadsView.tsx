@@ -46,7 +46,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const [fSignedFrom, setFSignedFrom] = useState("");
   const [fSignedTo, setFSignedTo] = useState("");
 
-  const phaseOf = (statusKey: string) => (statusList.find((s) => s.key === statusKey)?.phase) ?? "pre_qa";
+  const phaseOf = (statusKey: string) => resolveStatus(statusKey, statusList).phase;
 
   // Every filter except the tabs. The tab counts come from this, so a count
   // always says what clicking that tab will show.

@@ -3,7 +3,7 @@
 // page and Reports all call. Astra 7b: a retired or unlisted signed_* key
 // fell out of the Signed page while Reports still counted it.
 import assert from "node:assert/strict";
-import { isSignedKey, isSignedStatus, DEFAULT_STATUSES, type SignedCatalogRow } from "./statuses";
+import { isSignedKey, isSignedStatus, inQaPhase, isDisqualify, needsQaReview, resolveStatus, DEFAULT_STATUSES, type SignedCatalogRow } from "./statuses";
 
 let passed = 0;
 const t = (name: string, fn: () => void) => { fn(); passed++; console.log("ok", name); };
@@ -16,6 +16,26 @@ const catalog: SignedCatalogRow[] = [
   { key: "chasing_docs", phase: "pre_qa", requires_esign: true },    // e-sign track, not yet signed
   { key: "esign_sent", phase: "in_qa", requires_esign: true },       // a mis-flagged row must not flip it
 ];
+
+t("imported DQ with missing reason stays Closed even with the old live QA catalog", () => {
+  const stale = DEFAULT_STATUSES.map(s => s.key === "external_dq_review"
+    ? { ...s, label: "LawRuler DQ: reason needed", track: "intake" as const, phase: "in_qa" as const, qualify: "undetermined" as const }
+    : s);
+  assert.equal(resolveStatus("external_dq_review", stale).phase, "terminal");
+  assert.equal(resolveStatus("external_dq_review", stale).label, "DQ: reason missing");
+  assert.equal(isDisqualify("external_dq_review", stale), true);
+  assert.equal(inQaPhase("external_dq_review", stale), false);
+  assert.equal(needsQaReview("external_dq_review", stale), false);
+});
+
+t("DQ never enters QA, including stale custom catalog flags; a genuine sibling remains reviewable", () => {
+  const stale = [{ ...DEFAULT_STATUSES.find(s => s.key === "dq")!, key: "custom_dq", phase: "in_qa" as const }];
+  for (const key of ["dq", "dq_billable", "signed_dropped", "external_dq_review", "custom_dq"]) {
+    assert.equal(needsQaReview(key, stale), false, key);
+  }
+  assert.equal(needsQaReview("signed_qa", stale), true);
+  assert.equal(needsQaReview("signed_wip", stale), false);
+});
 
 t("the signed_* family and signed/delivered/retained always count, with or without a catalog", () => {
   for (const k of ["signed", "delivered", "retained", "signed_grievous", "signed_qa", "signed_wip", "signed_flag", "signed_approved", "signed_dropped"]) {

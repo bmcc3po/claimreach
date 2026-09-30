@@ -69,6 +69,19 @@ function fakeFetch(answer: { status: number; body: any }, seen: any[]) {
     }
   });
 
+  await t("early identity fills Intake fields without completing either signer or requesting an office signature", () => {
+    const intakeValues = { "Patient DOB": "01/01/1990", "Patient SSN": "000-00-0000" };
+    const b: any = submissionBody({ templateId: 1, client: { name: "Synthetic Tester", values }, intake: { email: "test@example.com", values: intakeValues }, emailClient: false });
+    assert.deepEqual(b.submitters[1].values, intakeValues);
+    assert.equal(b.submitters[0].values["Patient SSN"], undefined);
+    assert.equal(b.submitters[1].send_email, false);
+    assert.equal(b.submitters[1].send_sms, false);
+    assert.equal(b.submitters.some((s: any) => s.completed === true), false);
+    assert.equal(b.order, "preserved");
+    const without: any = submissionBody({ templateId: 1, client: { name: "Synthetic Tester", values }, intake: { email: "test@example.com" }, emailClient: false });
+    assert.equal(without.submitters[1].values, undefined, "collecting identity later remains supported");
+  });
+
   await t("an email send lets DocuSeal email her", () => {
     const b: any = submissionBody({ templateId: 1, client: { name: "Q", email: "q@example.com", phone: null, values }, intake: { email: "a@b.com" }, emailClient: true });
     assert.equal(b.send_email, true);

@@ -40,6 +40,8 @@ export interface ConsoleInit {
   props: Omit<CallProps, "startedAt" | "now">;
 }
 
+type IdentityMeta = { saved: boolean; mode: "full" | "last4" | null; version: number; saved_at: string | null };
+
 async function post(url: string, body: unknown): Promise<any> {
   const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
@@ -91,6 +93,14 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const utilityRef = useRef<HTMLDivElement | null>(null);
   // When the last autosave landed, for "Saved at 2:14 PM" (never shown after a failed write).
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const identityMeta = useRef<IdentityMeta | null>(null);
+  const identityLoad = useRef<Promise<IdentityMeta> | null>(null);
+  const identityWrite = useRef<Promise<boolean> | null>(null);
+  // Plain digits stay in the mounted call only; never in answers or localStorage.
+  const identitySavedDigits = useRef("");
+  const [identityBusy, setIdentityBusy] = useState(false);
+  const [identityError, setIdentityError] = useState("");
+  const [, setIdentityRevision] = useState(0);
   const [deskTab, setDeskTabState] = useState<DeskTab>(init.openReview ? "file" : init.openText ? "texts" : "file");
   const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
   // Only the JustCall dialer on this screen can say a call is live. Nothing else claims it.
@@ -98,24 +108,99 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const deskTextsOpen = useRef(false);
   const setDeskTab = (t: DeskTab) => { setCommandCollapsed(false); deskTextsOpen.current = t === "texts"; setDeskTabState(t); if (t === "texts") eng.current?.setState({ textUnread: 0 }); };
 
+  async function loadIdentity(): Promise<IdentityMeta> {
+    if (identityMeta.current) return identityMeta.current;
+    if (!identityLoad.current) identityLoad.current = (async () => {
+      const q = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId });
+      const response = await fetch(`/api/calls/identity?${q}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not check the saved SSN.");
+      if (typeof data.saved !== "boolean" || !Number.isSafeInteger(data.version) || data.version < 0
+        || (data.saved && (!(["full", "last4"].includes(data.mode)) || data.version < 1 || typeof data.saved_at !== "string"))
+        || (!data.saved && (data.mode !== null || data.version !== 0 || data.saved_at !== null))) {
+        throw new Error("Secure SSN status could not be verified.");
+      }
+      const meta: IdentityMeta = { saved: data.saved, mode: data.mode, version: data.version, saved_at: data.saved_at };
+      identityMeta.current = meta;
+      setIdentityRevision((n) => n + 1);
+      return meta;
+    })().finally(() => { identityLoad.current = null; });
+    return identityLoad.current;
+  }
+
+  function identityInput() {
+    const file = eng.current?.state.file || {};
+    const ssn = String(file.ssn || "").replace(/\D/g, "");
+    const mode: "full" | "last4" = init.ssnRequireFull || file.ssnMode !== "last4" ? "full" : "last4";
+    return { ssn, mode, valid: mode === "full" ? ssn.length === 9 : ssn.length === 4 };
+  }
+
+  async function saveIdentityNow(): Promise<boolean> {
+    // Serialize writes; a later edit may arrive while the first is in flight.
+    if (identityWrite.current) await identityWrite.current;
+    const input = identityInput();
+    if (!input.ssn) { setIdentityError(""); return true; } // early SSN is optional
+    if (!input.valid) { setIdentityError(input.mode === "full" ? "Enter all 9 digits before saving the SSN." : "Enter exactly 4 digits before saving the SSN."); return false; }
+    if (identitySavedDigits.current === input.ssn && identityMeta.current?.mode === input.mode) return true;
+    const work = (async () => {
+      setIdentityBusy(true);
+      try {
+        const meta = await loadIdentity();
+        const response = await fetch("/api/calls/identity", {
+          method: "POST", headers: { "content-type": "application/json" }, cache: "no-store",
+          body: JSON.stringify({ lead_id: init.leadId, claim_id: init.claimId, ssn: input.ssn, mode: input.mode, expected_version: meta.version }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (response.status === 409) {
+            identityMeta.current = null;
+            try { await loadIdentity(); } catch { /* keep the server error */ }
+          }
+          throw new Error(data.error || "SSN was not saved securely. Try again.");
+        }
+        if (data.ok !== true || data.saved !== true || data.mode !== input.mode || !Number.isSafeInteger(data.version)
+          || data.version <= meta.version || typeof data.saved_at !== "string") throw new Error("Secure SSN storage did not confirm the save. Try again.");
+        identityMeta.current = { saved: true, mode: data.mode, version: data.version, saved_at: data.saved_at };
+        identitySavedDigits.current = input.ssn;
+        setIdentityError("");
+        setIdentityRevision((n) => n + 1);
+        return true;
+      } catch (err: any) {
+        setIdentityError(err?.message || "SSN was not saved securely. Try again.");
+        return false;
+      } finally { setIdentityBusy(false); }
+    })();
+    identityWrite.current = work;
+    const ok = await work;
+    identityWrite.current = null;
+    if (!ok) return false;
+    const latest = identityInput();
+    if (latest.ssn && (latest.ssn !== input.ssn || latest.mode !== input.mode)) return saveIdentityNow();
+    return true;
+  }
+
   if (!eng.current) {
     const e = (): CallEngine => eng.current!;
     const leadId = init.leadId;
     const api: CallApi = {
-      sendAgreement(replacementReason?: string) {
-        const s = e().state;
-        const choice = e().renderVals().contractChoice;
+      async sendAgreement(replacementReason?: string) {
         if (replacementReason && !agreementId.current) {
-          e().setState({ send: { ...s.send, error: "The current agreement ID is missing. Refresh the file before sending a correction." } });
+          e().setState({ send: { ...e().state.send, error: "The current agreement ID is missing. Refresh the file before sending a correction." } });
           return;
         }
+        if (!(await saveIdentityNow())) {
+          e().setState({ send: { ...e().state.send, error: "The SSN entered on this screen did not save securely. Correct it or clear it before sending." } });
+          return;
+        }
+        const s = e().state;
+        const choice = e().renderVals().contractChoice;
         e().setState({ send: { ...s.send, status: "sending", error: "" } });
         post("/api/calls/esign", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current,
           ...(replacementReason ? { replacement_agreement_id: agreementId.current, replacement_reason: replacementReason } : {}),
           emergency_resign: emergencyResign.current,
           signer_name: s.send.client, injured_name: s.send.who === "Someone else" ? s.send.injured : s.send.client,
-          via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
+          via: s.send.via, phone: s.send.phone, email: s.send.email, city: s.story.city, today: todayMDY(), doi: doiOf(s.story), dob: s.file.dob,
           nv_variant: choice.key === "NV_FLAT" ? "flat" : "tiered", nv_reason: choice.requiresReason ? s.send.nvReason : undefined,
         }).then((d) => {
           const priorAgreementId = agreementId.current;
@@ -155,11 +240,15 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           e().setState({ file: { ...e().state.file, pax, error: err.message } });
         });
       },
-      completeAgreement() {
+      async completeAgreement() {
         const f = e().state.file;
         e().setState({ file: { ...f, error: "" } });
-        post("/api/calls/esign/complete", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current, dob: f.dob, ssn: f.ssn })
-          .then(() => e().setState({ file: { ...e().state.file, agreement: "done", ssn: "", error: "" } }))
+        if (!(await saveIdentityNow())) {
+          e().setState({ file: { ...e().state.file, error: "The SSN entered on this screen did not save securely. Correct it before completing." } });
+          return;
+        }
+        post("/api/calls/esign/complete", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current, dob: e().state.file.dob, use_saved_identity: true })
+          .then(() => { identitySavedDigits.current = ""; e().setState({ file: { ...e().state.file, agreement: "done", ssn: "", error: "" } }); })
           .catch((err) => e().setState({ file: { ...e().state.file, error: err.message } }));
       },
       voidAgreement() {
@@ -213,7 +302,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           e().setState({ saved: true, dispo: { ...e().state.dispo, saving: false, saved: true, error: "", serverNote: note } });
         }).catch((err) => e().setState({ dispo: { ...e().state.dispo, saving: false, error: err.message } }));
       },
-      home() { void flushSave().then((ok) => { if (ok) router.push("/dashboard"); }); },
+      home() { void saveIdentityNow().then((secure) => secure && flushSave()).then((ok) => { if (ok) router.push("/dashboard"); }); },
       ask(text: string) {
         const q = String(text || "").trim();
         if (!q) return;
@@ -224,12 +313,63 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       },
     };
     eng.current = new CallEngine({ ...init.props, esign: { ...init.props.esign }, startedAt: init.startedAt }, api);
+    // The call opens in All questions on the first render. Retired layout
+    // preferences are mapped there below; the engine still understands their
+    // historical states so saved answers never need migration.
+    eng.current.setView("chore");
     lastSaved.current = JSON.stringify(eng.current.persistable());
   }
   const engine = eng.current;
   engine.onChange = () => bump((x) => x + 1);
   engine.props.now = now;
   engine.props.agreementSuperseded = needsResign;
+
+  useEffect(() => { void loadIdentity().catch((err) => setIdentityError(err?.message || "Could not check the saved SSN.")); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const identityInputSnapshot = `${engine.state.file.ssnMode || ""}:${engine.state.file.ssn || ""}`;
+  useEffect(() => {
+    const input = identityInput();
+    if (!input.ssn) { setIdentityError(""); return; }
+    if (!input.valid || (identitySavedDigits.current === input.ssn && identityMeta.current?.mode === input.mode)) return;
+    setIdentityError("");
+    const timer = setTimeout(() => { void saveIdentityNow(); }, 650);
+    return () => clearTimeout(timer);
+  }, [identityInputSnapshot]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      const input = identityInput();
+      if (!input.ssn || (identitySavedDigits.current === input.ssn && identityMeta.current?.mode === input.mode)) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const follow = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const input = identityInput();
+      if (!input.ssn || (identitySavedDigits.current === input.ssn && identityMeta.current?.mode === input.mode)) return;
+      const destination = anchor.href;
+      if (!destination || destination === window.location.href) return;
+      // Intercept Next's client-side links too: beforeunload does not fire for
+      // App Router navigation. Never lose a typed full SSN during review.
+      event.preventDefault();
+      event.stopPropagation();
+      if (!input.valid) {
+        setIdentityError("Finish the SSN entry or clear it before leaving this file.");
+        window.alert("The SSN entry is incomplete and has not saved. Finish it or clear it before leaving this file.");
+        return;
+      }
+      void saveIdentityNow().then((secure) => secure && flushSave()).then((saved) => {
+        if (saved) window.location.assign(destination);
+        else window.alert("The SSN or intake has not saved. Stay on this file and retry before leaving.");
+      });
+    };
+    document.addEventListener("click", follow, true);
+    return () => document.removeEventListener("click", follow, true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each agent's view (Guided, Full Intake, Q&A) is remembered on their device
   // and used on the next call. Applied after the first paint so the server
@@ -239,7 +379,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   useEffect(() => {
     try {
       const pref = localStorage.getItem(viewKey);
-      if (pref && ["guided", "full", "chore", "form"].includes(pref) && pref !== engine.state.view) engine.setView(pref);
+      const chosen = pref === "form" ? "form" : "chore";
+      if (chosen !== engine.state.view) engine.setView(chosen);
     } catch { /* private mode */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -506,6 +647,20 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
 
   const preview = previewInfo(engine.state, init, engine.props.esign.templateKeys ?? []);
   const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
+  const identity = identityInput();
+  const identitySaved = !!identity.ssn && identitySavedDigits.current === identity.ssn && identityMeta.current?.mode === identity.mode;
+  view.identityStatus = identityError
+    ? `Secure SSN status: ${identityError}`
+    : identityBusy || (identity.ssn && identity.valid && !identitySaved)
+      ? "Saving SSN securely…"
+      : identity.ssn && !identity.valid
+        ? identity.mode === "full" ? "Enter all 9 digits to save securely." : "Enter all 4 digits to save securely."
+        : identitySaved || (!identity.ssn && identityMeta.current?.saved)
+          ? `${identityMeta.current?.mode === "full" ? "All 9 digits" : "Last 4"} securely saved. You can replace them by typing again.`
+          : "SSN can be added before or after sending. It saves separately from intake answers.";
+  view.identitySaveError = !!identityError;
+  view.identityRetry = identity.ssn && identity.valid ? () => { void saveIdentityNow(); } : undefined;
+  view.identitySavedMode = identityMeta.current?.saved ? identityMeta.current.mode : null;
   view.emergencyNotice = needsResign ? "An emergency packet is on this matter. A DocuSeal re-sign is still required; the original remains in history." : "";
   view.reviewAgreement = () => { setUtilityOpen(false); engine.jumpTo("signer"); };
   view.prepareResign = needsResign && emergencyStatus === "signed" ? () => {
@@ -669,7 +824,7 @@ function previewInfo(s: any, init: ConsoleInit, templateKeys: string[]): Preview
     { label: "Date of the wreck", value: doi || "Add it on Story", ok: !!doi, spot: "when" },
     { label: "Signing date", value: today, ok: true },
     { label: viaText ? "Text to" : "Email to", value: to ? (viaText ? prettyPhone(to) : to) : (viaText ? "Add the PNC's cell" : "Add the PNC's email"), ok: viaText ? to.replace(/\D/g, "").length >= 10 : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to), spot: "contact" },
-    { label: "DOB and SSN", value: "Intake adds these after the PNC signs", ok: false, later: true, spot: "file" },
+    { label: "DOB and SSN", value: "Add before or after sending; the SSN saves securely", ok: false, later: true, spot: "file" },
   ];
   if (!choice.available || !signer) return { href: null, checks };
   const q = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId, signer, injured: injured || signer, city, today, doi });

@@ -5,14 +5,24 @@ import { PERMISSIONS, PERM_GROUPS, ROLES, ROLE_DEFAULTS, type PermKey, type Role
 export default function UserManager({ firms }: { firms: { id: string; name: string; slug: string }[] }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [editing, setEditing] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState("");
 
   async function load() {
     setLoading(true);
-    try { const r = await fetch("/api/users"); const d = await r.json(); setUsers(d.users ?? []); } catch {}
-    setLoading(false);
+    setLoadError("");
+    try {
+      const r = await fetch("/api/users");
+      const d = await r.json();
+      if (!r.ok || !Array.isArray(d.users)) throw new Error(d.error || "Could not load staff accounts. Please retry.");
+      setUsers(d.users);
+    } catch (error: any) {
+      setLoadError(error?.message || "Could not load staff accounts. Please retry.");
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => { load(); }, []);
 
@@ -29,7 +39,11 @@ export default function UserManager({ firms }: { firms: { id: string; name: stri
       </div>
       {msg && <p className="muted">{msg}</p>}
       {loading && <p className="muted">Loading…</p>}
-      {!loading && (
+      {!loading && loadError && <div role="alert" style={{ marginBottom: 12 }}>
+        <p style={{ color: "var(--danger)" }}>{loadError}</p>
+        <button className="btn ghost sm" onClick={load}>Retry loading users</button>
+      </div>}
+      {!loading && !loadError && (
         <div className="table-scroll">
           <table className="docket">
             <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Title</th><th>Status</th><th></th></tr></thead>
@@ -82,22 +96,31 @@ function UserEditor({ user, firms, onClose, onSaved }: { user: any; firms: any[]
 
   async function save() {
     setBusy(true); setErr("");
-    if (isNew) {
-      if (!email || !password) { setErr("Email and a temporary password are required."); setBusy(false); return; }
-      const r = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "create", email, password, full_name: fullName, role, title, phone, firm_id: firmId, perm_overrides: overrides }) });
-      const d = await r.json();
-      if (!r.ok) { setErr(d.error || "Create failed"); setBusy(false); return; }
-      onSaved(`Created ${email}.`);
-    } else {
-      const r = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "update", id: user.id, full_name: fullName, role, title, phone, firm_id: firmId, perm_overrides: overrides }) });
-      const d = await r.json();
-      if (!r.ok) { setErr(d.error || "Update failed"); setBusy(false); return; }
-      if (password) await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "set_password", id: user.id, password }) });
-      onSaved(`Updated ${fullName}.`);
+    try {
+      if (isNew) {
+        if (!email || !password) { setErr("Email and a temporary password are required."); return; }
+        const r = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "create", email, password, full_name: fullName, role, title, phone, firm_id: firmId, perm_overrides: overrides }) });
+        const d = await r.json();
+        if (!r.ok || !d.ok || !d.id) { setErr(d.error || "Could not confirm the new staff account. Refresh Users before trying again."); return; }
+        onSaved(`Created ${email}.`);
+      } else {
+        const r = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "update", id: user.id, full_name: fullName, role, title, phone, firm_id: firmId, perm_overrides: overrides }) });
+        const d = await r.json();
+        if (!r.ok) { setErr(d.error || "Update failed"); return; }
+        if (password) {
+          const reset = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "set_password", id: user.id, password }) });
+          const resetResult = await reset.json();
+          if (!reset.ok || !resetResult.ok) { setErr(resetResult.error || "The profile saved, but the password change was not confirmed."); return; }
+        }
+        onSaved(`Updated ${fullName}.`);
+      }
+    } catch {
+      setErr("Could not confirm the save. Your entries are still here. Refresh Users to check whether the account was saved before trying again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function setActive(active: boolean) {

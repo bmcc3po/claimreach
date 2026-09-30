@@ -5,7 +5,7 @@ const EVENT = 'mva_status_reconciliation';
 export const EXTERNAL_SIGNED_REVIEW = 'external_signed_review';
 export const EXTERNAL_DQ_REVIEW = 'external_dq_review';
 const SIGNED_REVIEW_REASON = 'LawRuler reports a signature or delivery. Verify the signed original and certificate before counting or delivering this matter in ClaimReach.';
-const DQ_REVIEW_REASON = 'LawRuler reports a closed/disqualified matter. Review and select its standardized DQ reason before final DQ.';
+const DQ_REVIEW_REASON = 'Closed/disqualified in LawRuler; the standardized DQ reason is missing. Keep this matter closed and out of QA and follow-up while an owner fills in the reason.';
 const labelKey = (value: unknown) => String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase().replace(/\s*\(default\)$/, '').trim();
 // These source statuses state an unambiguous reason; generic "Disqualified"
 // does not. The target still has to exist and be active in the DQ catalog.

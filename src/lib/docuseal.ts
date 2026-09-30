@@ -80,7 +80,7 @@ export interface DsSubmitter {
 export interface SubmissionOpts {
   templateId: string | number;
   client: { name: string; email?: string | null; phone?: string | null; values: Record<string, string> };
-  intake: { email: string; name?: string };
+  intake: { email: string; name?: string; values?: Record<string, string> };
   emailClient: boolean;
   externalId?: string;
 }
@@ -103,7 +103,8 @@ export function submissionBody(opts: SubmissionOpts) {
     order: "preserved",
     send_email: opts.emailClient,
     send_sms: false,
-    submitters: [client, { role: "Intake", email: opts.intake.email, name: opts.intake.name || "Intake", send_email: false, send_sms: false }],
+    // Optional early DOB/SSN prefill does not complete the office signer.
+    submitters: [client, { role: "Intake", email: opts.intake.email, name: opts.intake.name || "Intake", ...(opts.intake.values ? { values: opts.intake.values } : {}), send_email: false, send_sms: false }],
   };
 }
 
