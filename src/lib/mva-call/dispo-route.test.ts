@@ -18,7 +18,7 @@ function world() { return new FakeDb({
   esign_submissions: [{ id: "primary", lead_id: L, claim_id: C, firm_id: "firm", pax_index: null, status: "completed", created_at: "2026-09-01T12:00:00Z" }],
   signable_documents: [],
 }); }
-function route(db: FakeDb) {
+function route(db: FakeDb, intakeAvailable = true) {
   const emails: any[] = [], statuses: any[] = [];
   const mods: Record<string, any> = {
     "next/server": { NextResponse: { json: (body: any, o: any = {}) => ({ body, status: o.status ?? 200 }) } },
@@ -27,6 +27,15 @@ function route(db: FakeDb) {
     "@/lib/mva-call/server": { requireStaff: async () => ({ id: "agent", name: "Synthetic Agent", role: "agent" }) },
     "@/lib/mva-call/report": report,
     "@/lib/signed-docs": { signedPdfAttachment: async () => ({ file: null }) },
+    "@/lib/intake-render": {
+      loadIntakeBundle: async (_sb: any, leadId: string, claimId: string) => {
+        assert.equal(leadId, L); assert.equal(claimId, C);
+        if (!intakeAvailable) throw Error("synthetic PDF failure");
+        return { lead: db.tables.leads[0], claim: db.tables.claims[0] };
+      },
+      hasIntakeQuestions: () => true,
+      buildIntakePdfAttachment: async () => ({ filename: "Synthetic_PNC_intake.pdf", content: "JVBERi0=" }),
+    },
     "@/lib/mva-call/dispo": dispo,
     "@/lib/claim-status": { setClaimStatusForLeads: async (p: any) => { statuses.push(p); return { ok: true }; } },
     "@/lib/mva-call/signing-matter": { ...signing,
@@ -77,6 +86,13 @@ async function main() {
     const db = world(), r = route(db); const result = await r.post({ notify: ["synthetic@example.invalid"] });
     assert.equal(result.status, 200); assert.equal(db.tables.intake_calls[0].status, "ended");
     assert.equal(r.emails.length, 1); assert.match(r.emails[0].text, /Selected claim/); assert.match(r.emails[0].text, new RegExp(C));
+    assert.deepEqual(r.emails[0].attachments, [{ filename: "Synthetic_PNC_intake.pdf", content: "JVBERi0=" }]);
+    assert.match(r.emails[0].html, /intake PDF is attached/);
+  });
+  await check("PDF failure is reported and no incomplete signed-call notice goes out", async () => {
+    const db = world(), r = route(db, false); const result = await r.post({ notify: ["synthetic@example.invalid"] });
+    assert.equal(result.status, 200); assert.equal(r.emails.length, 0);
+    assert.match(result.body.email_error, /No signed-call notice was emailed/);
   });
   await check("unreadable signature evidence refuses signed disposition before writes", async () => {
     const db = world(); db.failOn = (op) => op.table === "esign_submissions" ? "synthetic failure" : null;

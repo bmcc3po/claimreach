@@ -4,6 +4,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
 import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/report";
 import { signedPdfAttachment } from "@/lib/signed-docs";
+import { loadIntakeBundle, hasIntakeQuestions, buildIntakePdfAttachment } from "@/lib/intake-render";
 import { sendEmail } from "@/lib/email";
 import { recordAudit } from "@/lib/audit";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
@@ -50,6 +51,13 @@ export async function POST(req: NextRequest) {
   const report = caseReport(lead, call?.answers || context.matter.claim.answers?.mva_call || {}, sub);
   const link = `${new URL(req.url).origin}/app/${leadKeyOf(lead)}?claim=${encodeURIComponent(context.matter.claim.id)}`;
   const attachments: { filename: string; content: string }[] = [];
+  try {
+    const bundle = await loadIntakeBundle(sb, leadId, context.matter.claim.id);
+    if (!bundle || !hasIntakeQuestions(bundle)) throw new Error("this matter's intake questions are unavailable");
+    attachments.push(await buildIntakePdfAttachment(bundle));
+  } catch (e: any) {
+    return NextResponse.json({ error: `The intake PDF could not be attached (${e?.message || "unknown error"}). Nothing was emailed.` }, { status: 503 });
+  }
   let attachError = "";
   if (attach && sub?.status === "completed" && sub?.completed_pdf_path) {
     const a = await signedPdfAttachment(supabaseAdmin(), sub.completed_pdf_path, `${report.name} agreement`);
@@ -59,20 +67,21 @@ export async function POST(req: NextRequest) {
   // agreement when attached. It is NOT the verified full packet — that goes
   // through firm delivery, which checks every packet PDF and the certificate.
   // The email says which one it is so nobody mistakes it (Astra round 5).
-  const scopeNote = attachments.length > 0
-    ? "This email carries the case summary and the primary signed agreement only. The firm's complete verified packet (all packet PDFs and the signing certificate) goes out through firm delivery."
-    : "This email carries the case summary only, no signed documents.";
+  const hasSignedPdf = attachments.length > 1;
+  const scopeNote = hasSignedPdf
+    ? "The intake is in the email body and attached as a PDF, along with the primary signed agreement. The firm's complete verified packet and signing certificate go through firm delivery."
+    : "The intake is in the email body and attached as a PDF. This email does not include signed documents; the firm's verified packet goes through firm delivery.";
   const r = await sendEmail({
     to,
     subject: `Case summary: ${report.name}${lead.lead_no ? `, ${lead.lead_no}` : ""}`,
-    html: caseReportHtml(report, { link, note: `Sent by ${me.name || "ClaimReach"}. ${scopeNote}`, attached: attachments.length > 0 }),
+    html: caseReportHtml(report, { link, note: `Sent by ${me.name || "ClaimReach"}. ${scopeNote}`, attached: hasSignedPdf }),
     text: `${scopeNote}\n\n` + caseReportText(report, link),
     attachments,
   });
   if (!r.ok) return NextResponse.json({ error: r.error || "The email did not send." }, { status: 502 });
   await recordAudit({
     firm_id: lead.firm_id, lead_id: lead.id, actor: me.id, actor_name: me.name ?? "Staff", category: "contact",
-    description: `Emailed the case to ${to}${attachments.length ? " with the signed agreement" : ""}.`,
+    description: `Emailed the case and intake PDF to ${to}${hasSignedPdf ? " with the signed agreement" : ""}.`,
   });
-  return NextResponse.json({ ok: true, attached: attachments.length > 0, attach_error: attachError || null, signed: report.agreement.signed, has_pdf: report.agreement.hasPdf });
+  return NextResponse.json({ ok: true, attached: hasSignedPdf, intake_pdf_attached: true, attach_error: attachError || null, signed: report.agreement.signed, has_pdf: report.agreement.hasPdf });
 }

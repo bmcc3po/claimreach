@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { PDFDocument, PDFRawStream, PDFArray, decodePDFRawStream } from "pdf-lib";
-import { intakeSections, buildIntakeCsvSingle, buildIntakePdf, buildIntakeEmailHtml, loadIntakeBundle, type IntakeBundle } from "./intake-render";
+import { intakeSections, buildIntakeCsvSingle, buildIntakePdf, buildIntakePdfAttachment, buildIntakeEmailHtml, loadIntakeBundle, type IntakeBundle } from "./intake-render";
 import { caseReport } from "./mva-call/report";
 import fs from "node:fs";
 import path from "node:path";
@@ -73,6 +73,15 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>)
     const text = await pdfText(await buildIntakePdf(bundle));
     assert.match(text, /Houston, TX/); assert.match(text, /Neck, Back/); assert.match(text, /MVA_ONLY_SENTINEL/);
     for (const value of ["State Farm", "TEST-REPORT", "2022", "Toyota", "Camry"]) assert.ok(text.includes(value), value);
+    assert.ok(!text.includes("000001234"));
+  });
+  await t("email attachment contains the same PDF bytes and excludes SSN", async () => {
+    const attachment = await buildIntakePdfAttachment(bundle);
+    assert.equal(attachment.filename, "Synthetic_PNC_intake.pdf");
+    const bytes = Buffer.from(attachment.content, "base64");
+    assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
+    const text = await pdfText(bytes);
+    assert.match(text, /MVA_ONLY_SENTINEL/);
     assert.ok(!text.includes("000001234"));
   });
   await t("a moderately sized intake stays on one PDF page without losing answers", async () => {
