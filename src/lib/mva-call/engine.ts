@@ -16,9 +16,10 @@
 import { SOL, stateCodeOf, injuryYears as injuryYearsFor } from './state';
 import { agreementChoice, agreementKey } from './agreement-choice';
 import { agreementName } from './agreement-names';
-import { canDirectVoid, agreementSendStatus } from './replacement';
+import { canDirectVoid, agreementSendStatus, type SendAttemptHold } from './replacement';
 import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './intake';
 import { QUESTION_ORDER, QUESTION_PATHS, questionPhase } from './question-spine';
+import { INTAKE_STEPS, stepIndexForPosition } from './step-layout';
 export { SOL };
 export const REBS: any[] = [
   { id: 'report', phase: 'open', group: 'Opening', title: "I was just checking on my police report.", text: "Got it, and that's exactly why we have you. When that report gets requested it comes over to us too. We're the intake center for {FIRM}, and I was reaching out to see what kind of pain you've been dealing with since the accident. Tell me what happened out there." },
@@ -231,7 +232,8 @@ export interface CallProps {
   saved?: any;
   reasons: { esign: Reason[]; dq: Reason[]; callback: Reason[]; ni: Reason[] };
   notifyDefaults: { who: string; how: string }[];
-  esign: { status: string; configured: boolean; pax: Record<string, string>; templateKeys?: string[]; templateKey?: string | null };
+  esign: { status: string; configured: boolean; pax: Record<string, string>; templateKeys?: string[]; templateKey?: string | null;
+    sendGate?: 'checking' | 'clear' | 'held' | 'error'; sendAttempt?: SendAttemptHold | null; paxSendAttempts?: Record<string, SendAttemptHold> };
   /** A newer emergency packet requires a new primary before office completion. */
   agreementSuperseded?: boolean;
   /** What the marketer sent, shown on Story so the agent confirms instead of re-asking. */
@@ -918,7 +920,7 @@ export class CallEngine {
     rows.push(I('Date of birth', 'file', 'dob', 'MM/DD/YYYY', 'text', 'numeric'));
     rows.push(I('SSN', 'file', 'ssn', 'Last 4 or all 9', 'text', 'numeric'));
     var signed = s.send.status === 'signed';
-    if (s.file.agreement === 'open') rows.push({ isButton: true, label: this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.sentNameReview ? 'Send the corrected agreement first' : s.send.nameReview ? 'Review the agreement name first' : signed ? 'Complete the agreement' : 'Unlocks after the PNC signs', disabled: !signed || !!s.send.nameReview || !!s.send.sentNameReview || !!this.props.agreementSuperseded, go: () => this.completeAgreement() });
+    if (s.file.agreement === 'open') rows.push({ isButton: true, label: this.agreementHoldNotice() ? 'Signing paused: send outcome unconfirmed' : this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.sentNameReview ? 'Send the corrected agreement first' : s.send.nameReview ? 'Review the agreement name first' : signed ? 'Complete the agreement' : 'Unlocks after the PNC signs', disabled: !signed || !!this.agreementHoldNotice() || !!s.send.nameReview || !!s.send.sentNameReview || !!this.props.agreementSuperseded, go: () => this.completeAgreement() });
     else rows.push({ isInfo: true, label: 'Agreement', value: s.file.agreement === 'done' ? 'Complete' : 'Finish later' });
     rows.push(I('Home address', 'file', 'addr', ''));
     rows.push(I("Driver's license", 'file', 'dl', ''));
@@ -1071,8 +1073,23 @@ export class CallEngine {
     this.setState({ fi: Object.assign({}, this.state.fi, fi) });
   }
 
-  sendAgreement() { this.api.sendAgreement(); }
+  agreementHoldNotice() {
+    const gate = this.props.esign.sendGate;
+    if (gate === 'held' || this.props.esign.sendAttempt || Object.keys(this.props.esign.paxSendAttempts || {}).length) {
+      return 'Send outcome unconfirmed. An agreement may already have been sent. Do not send another link or finish signing. Ask an owner or admin to reconcile this file.';
+    }
+    if (gate === 'checking') return 'Checking for an unfinished agreement send before signing actions become available.';
+    if (gate === 'error') return 'Could not verify prior agreement sends. Signing actions are paused. Refresh the file or ask an owner or admin.';
+    return '';
+  }
+  sendAgreement() {
+    const hold = this.agreementHoldNotice();
+    if (hold) { this.setState({ send: { ...this.state.send, error: hold } }); return; }
+    this.api.sendAgreement();
+  }
   completeAgreement() {
+    const hold = this.agreementHoldNotice();
+    if (hold) { this.setState({ file: { ...this.state.file, error: hold } }); return; }
     if (this.props.agreementSuperseded) { this.setState({ file: Object.assign({}, this.state.file, { error: 'A newer emergency packet supersedes this agreement. Prepare the DocuSeal re-sign first; the original stays in history.' }) }); return; }
     if (this.state.send.sentNameReview) { this.setState({ file: Object.assign({}, this.state.file, { error: this.state.send.sentNameReview }) }); return; }
     if (this.state.send.nameReview) { this.setState({ file: Object.assign({}, this.state.file, { error: this.state.send.nameReview }) }); return; }
@@ -1080,6 +1097,8 @@ export class CallEngine {
   }
 
   sendPax(i: number) {
+    const hold = this.agreementHoldNotice();
+    if (hold) { this.setState({ file: { ...this.state.file, error: hold } }); return; }
     var p = this.state.car.people[i] || {};
     var minor = p.age === 'Under 18';
     if (p.wantsRep === 'No') { this.setState({ file: Object.assign({}, this.state.file, { error: (p.name || 'This passenger') + ' said no to representation. Change it on the Car step if that changed.' }) }); return; }
@@ -1123,7 +1142,7 @@ export class CallEngine {
   setView(view: any) {
     var s = this.state;
     var patch: any = { view: view, modeMenu: false, free: view === 'qa', bare: view === 'qa' };
-    var onePage = (x: any) => ['full', 'chore', 'form', 'convo', 'quick'].includes(x);
+    var onePage = (x: any) => ['full', 'chore', 'form', 'steps', 'convo', 'quick'].includes(x);
     var fromGuided = s.view === 'guided';
     var inPhase = QUESTION_ORDER.filter(id => questionPhase(id) === s.phase && this.fiInfo(id).applies);
     var phaseQuestion = inPhase.find(id => !this.fiInfo(id).answered && !this.fiInfo(id).optional) || inPhase[0];
@@ -1221,7 +1240,7 @@ export class CallEngine {
     var today = todayNo();
     // Simple Chorelist draws every question with its answers showing, like a
     // paper form. Same questions, same answers, same controls.
-    var allOpen = s.view === 'chore' || s.view === 'form';
+    var allOpen = s.view === 'chore' || s.view === 'form' || s.view === 'steps';
     var info: any = {};
     INTAKE_SECTIONS.forEach((sec) => sec.questions.forEach((id) => { info[id] = this.fiInfo(id); }));
 
@@ -1492,11 +1511,35 @@ export class CallEngine {
         }
       };
     }
+    const stepIndex = stepIndexForPosition(fi.sec, fi.cq);
+    const currentStep = INTAKE_STEPS[stepIndex];
+    const goStep = (index: number) => {
+      const step = INTAKE_STEPS[index];
+      if (!step) return;
+      const id = step.questions.find(id => this.fiInfo(id).applies) || null;
+      this.setFi({ sec: id ? sectionOf(id) : 'retainer', cq: id, target: null,
+        edit: null, flash: null, finishAsk: false, jump: (this.state.fi.jump || 0) + 1 });
+    };
+    const step = s.view === 'steps' ? {
+      ...currentStep, index: stepIndex, number: stepIndex + 1, total: INTAKE_STEPS.length,
+      items: INTAKE_STEPS.map((item, index) => ({ ...item, on: index === stepIndex, go: () => goStep(index) })),
+      back: stepIndex > 0 ? { label: 'Back', go: () => goStep(stepIndex - 1) } : null,
+      next: stepIndex < INTAKE_STEPS.length - 1
+        ? { label: 'Next: ' + INTAKE_STEPS[stepIndex + 1].label, go: () => goStep(stepIndex + 1) }
+        : { label: 'Finish the call', go: chore.finish.go, finish: true },
+      enterSection: (sec: string) => {
+        const id = currentStep.questions.find(id => sectionOf(id) === sec && this.fiInfo(id).applies) || null;
+        if (this.state.fi.sec !== sec || (id && !currentStep.questions.includes(this.state.fi.cq))) {
+          this.setFi({ sec, cq: id, target: null });
+        }
+      },
+    } : null;
     var bad = pre.gates.filter((g) => g.cls.indexOf('bad') >= 0);
     var now = new Date();
     var stamp = ((now.getHours() % 12) || 12) + ':' + String(now.getMinutes()).padStart(2, '0') + (now.getHours() < 12 ? ' AM' : ' PM');
     return {
       sections: sections,
+      step,
       guided: guided,
       bookmarks: sections.map((x) => ({ id: x.id, label: x.label, status: x.status, on: x.open,
         go: () => this.setFi({ sec: x.id, edit: null, target: null, cq: this.fiNext(x.id) || INTAKE_SEQUENCE.find((id) => sectionOf(id) === x.id && this.fiInfo(id).applies) || this.state.fi.cq, jump: (this.state.fi.jump || 0) + 1 }) })),
@@ -1531,7 +1574,7 @@ export class CallEngine {
         }
       },
       lead: pre.lead,
-      viewLabel: s.view === 'form' ? 'Simple form' : allOpen ? 'All questions' : s.view === 'convo' ? 'Conversation' : s.view === 'quick' ? 'Quick Capture' : 'Collapsible'
+      viewLabel: s.view === 'steps' ? 'Step by step' : s.view === 'form' ? 'Simple form' : allOpen ? 'All questions' : s.view === 'convo' ? 'Conversation' : s.view === 'quick' ? 'Quick Capture' : 'Collapsible'
     };
   }
 
@@ -1555,6 +1598,8 @@ export class CallEngine {
     var currentContract = ['sent', 'opened', 'signed'].includes(s.send.status)
       ? { key: this.props.esign.templateKey, label: agreementName(this.props.esign.templateKey) || 'Contract type unavailable — check the file history', status: s.send.status } : null;
     var canReplaceDraft = ['sent', 'opened', 'signed'].includes(s.send.status);
+    var sendHoldNotice = this.agreementHoldNotice();
+    var sendHeld = !!sendHoldNotice;
     var selectContract = (key: string) => {
       if (!(this.state.send.status === 'ready' || canReplaceDraft) || !contract.options.some(o => o.key === key && o.available)) return;
       this.setState({ send: Object.assign({}, this.state.send, { nvVariant: key === 'NV_FLAT' ? 'flat' : 'tiered' }) });
@@ -1693,7 +1738,7 @@ export class CallEngine {
     var noDoi = !crashIsoOf(st);
     var nvFlat = contract.requiresReason;
     var nvNeedReason = nvFlat && !String(s.send.nvReason || '').trim();
-    var sendBlocked = repBlock || !agreement || !contract.available || noDoi || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || nvNeedReason || !!s.send.nameReview || s.send.status === 'sending';
+    var sendBlocked = sendHeld || repBlock || !agreement || !contract.available || noDoi || !String(s.send.client || '').trim() || !this.props.esign.configured || contactMissing || nvNeedReason || !!s.send.nameReview || s.send.status === 'sending';
     // Everything still missing, said once, so nobody has to guess why Send is grey.
     var needs: string[] = [];
     if (!agreement) needs.push('the state where the wreck happened');
@@ -1701,12 +1746,12 @@ export class CallEngine {
     if (!String(s.send.client || '').trim()) needs.push("the PNC's full name");
     if (contactMissing) needs.push(s.send.via === 'Email' ? "the PNC's email" : "the PNC's 10-digit cell number");
     var needText = needs.length === 1 ? needs[0] : needs.slice(0, -1).join(', ') + ' and ' + needs[needs.length - 1];
-    var sendWarnText = s.send.nameReview ? s.send.nameReview : repBlock ? 'The PNC has an attorney. Only a good case they are unhappy about gets sent.'
+    var sendWarnText = sendHoldNotice || (s.send.nameReview ? s.send.nameReview : repBlock ? 'The PNC has an attorney. Only a good case they are unhappy about gets sent.'
       : !this.props.esign.configured ? 'E-sign is not set up for this campaign yet. An admin sets it up once.'
       : contract.key && contract.error ? contract.error
       : needs.length ? 'To send it, add ' + needText + '.'
       : nvNeedReason ? 'The non-tiered Nevada agreement needs the approval reason before it can go.'
-      : anyBad ? 'A gate is red. Send only if you are sure, it gets flagged for review.' : '';
+      : anyBad ? 'A gate is red. Send only if you are sure, it gets flagged for review.' : '');
 
     var fileSteps = [['agreement', 'Agreement'], ['info', 'PNC info'], ['crash', 'Crash']];
     if (hurtPax.length) fileSteps.push(['pax', 'Passengers']);
@@ -1718,7 +1763,7 @@ export class CallEngine {
     // Send is never a dead grey button. Tapping it while something is missing
     // says what, right above the button, and it clears the moment it is fixed.
     var sendNext = {
-      label: 'Send agreement', disabled: s.send.status === 'sending', muted: sendBlocked,
+      label: sendHeld ? 'Send paused' : 'Send agreement', disabled: sendHeld || s.send.status === 'sending', muted: sendBlocked,
       go: sendBlocked ? () => this.setState({ sendNudge: Date.now() }) : () => this.sendAgreement()
     };
     var next: any;
@@ -1781,10 +1826,10 @@ export class CallEngine {
       // Three views while the agents try them (Brett, Sep 27): Guided, one step
       // at a time; Collapsible, every section on one page, one open at a time;
       // All questions, the whole intake open as one numbered form.
-      modeLabel: ({ qa: 'Q&A', full: 'Collapsible', chore: 'All questions', form: 'Simple form', convo: 'Conversation', quick: 'Quick Capture' } as any)[s.view] || 'Guided',
+      modeLabel: ({ qa: 'Q&A', full: 'Collapsible', chore: 'All questions', form: 'Simple form', steps: 'Step by step', convo: 'Conversation', quick: 'Quick Capture' } as any)[s.view] || 'Guided',
       modeMenuOpen: !!s.modeMenu,
       toggleModeMenu: () => this.setState({ modeMenu: !this.state.modeMenu }),
-      modes: [['All questions', 'chore'], ['Simple form', 'form']].map((m) => ({
+      modes: [['All questions', 'chore'], ['Simple form', 'form'], ['Step by step', 'steps']].map((m) => ({
         key: m[1],
         label: m[0],
         on: s.view === m[1],
@@ -1883,6 +1928,7 @@ export class CallEngine {
         sameAddrs: ['Same address', 'Different'].map((r) => ({ label: r, cls: 'chip sm' + (p.sameAddr === r ? ' on' : ''), pick: () => this.setPerson(i, 'sameAddr', p.sameAddr === r ? null : r) })),
         noRep: p.wantsRep === 'No'
       })),
+      sendHold: sendHeld, sendHoldNotice: sendHoldNotice,
       sendReady: s.send.status === 'ready',
       sendLive: s.send.status !== 'ready',
       notSigned: s.send.status !== 'signed',
@@ -1952,8 +1998,8 @@ export class CallEngine {
       reopenAgreement: () => this.set('file', 'agreement', 'open'),
       agreementNote: s.file.agreement === 'done' ? 'Agreement complete. Review the file, then send it to the firm.' : 'Finish later. You still own this file.',
       completeAgreement: () => this.completeAgreement(),
-      agreementLocked: s.send.status !== 'signed' || !!s.send.nameReview || !!s.send.sentNameReview || !!this.props.agreementSuperseded,
-      completeLabel: this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.sentNameReview ? 'Send the corrected agreement first' : s.send.nameReview ? 'Review the agreement name first' : s.send.status === 'signed' ? 'Complete the agreement' : 'Unlocks after the PNC signs',
+      agreementLocked: sendHeld || s.send.status !== 'signed' || !!s.send.nameReview || !!s.send.sentNameReview || !!this.props.agreementSuperseded,
+      completeLabel: sendHeld ? 'Signing paused: send outcome unconfirmed' : this.props.agreementSuperseded ? 'Prepare the DocuSeal re-sign first' : s.send.sentNameReview ? 'Send the corrected agreement first' : s.send.nameReview ? 'Review the agreement name first' : s.send.status === 'signed' ? 'Complete the agreement' : 'Unlocks after the PNC signs',
       leaveForQa: () => this.set('file', 'agreement', 'qa'),
       ecRel: this.chips('file', 'ecRel', ['Spouse or partner', 'Parent', 'Child', 'Sibling', 'Friend', 'Other'], null, true),
       carriers: ['Pick one', 'Not sure yet', 'State Farm', 'GEICO', 'Progressive', 'Allstate', 'USAA', 'Farmers', 'Liberty Mutual', 'Nationwide', 'Travelers', 'American Family', 'Other'],
@@ -1978,7 +2024,7 @@ export class CallEngine {
             : byEmail ? nm + ' signs their own agreement. It goes to THEIR email' + (x.p.email ? ' (' + x.p.email + ')' : '') + ', never the caller\'s.'
             : nm + ' signs their own agreement. It goes to THEIR phone' + (cellDigits.length >= 10 ? ' (' + fmtPhone(x.p.cell) + ')' : '') + ', never the caller\'s.',
           button: 'Send ' + nm + "'s agreement",
-          ready: !status && !noRep, live: !!status, noRep: noRep,
+          ready: !sendHeld && !status && !noRep, live: !!status, noRep: noRep,
           needCell: needCell, needEmail: needEmail,
           cell: { value: x.p.cell || '', set: (e: any) => this.setPerson(x.i, 'cell', e.target.value.replace(/[^\d() +-]/g, '').slice(0, 16)) },
           email: { value: x.p.email || '', set: (e: any) => this.setPerson(x.i, 'email', String(e.target.value).trim().slice(0, 120)) },
@@ -2017,19 +2063,19 @@ export class CallEngine {
       textDraft: this.field('text', 'draft'),
       textCantSend: !String(s.text.draft || '').trim(),
       sendText: () => this.sendText(String(this.state.text.draft || '').trim()),
-      canResend: s.send.status === 'sent' || s.send.status === 'opened',
+      canResend: !sendHeld && (s.send.status === 'sent' || s.send.status === 'opened'),
       resendLink: () => this.api.resendLink(),
       // A staff correction is a single replacement send with a reason. It
       // never grants an agent the ability to void an envelope in isolation.
-      canReplace: canReplaceDraft,
+      canReplace: !sendHeld && canReplaceDraft,
       replaceAgreement: () => {
-        if (!canReplaceDraft || typeof window === 'undefined') return;
+        if (sendHeld || !canReplaceDraft || typeof window === 'undefined') return;
         if (sendBlocked) { this.setState({ sendNudge: Date.now() }); return; }
         const why = window.prompt('What is wrong with this agreement? The original stays in history. A client-signed original also goes to supervisor review.');
         if (why?.trim() && why.trim().length >= 10) this.api.sendAgreement(why.trim());
         else if (why != null) this.setState({ send: { ...this.state.send, error: 'Explain the correction in at least 10 characters.' } });
       },
-      canVoid: canDirectVoid(this.props.agentRole) && ['sent', 'opened', 'signed'].indexOf(s.send.status) >= 0 && !!this.api.voidAgreement,
+      canVoid: !sendHeld && canDirectVoid(this.props.agentRole) && ['sent', 'opened', 'signed'].indexOf(s.send.status) >= 0 && !!this.api.voidAgreement,
       voidLabel: s.send.status === 'signed' ? 'Void the signed agreement' : 'Void this agreement',
       voidAgreement: () => { if (this.api.voidAgreement) this.api.voidAgreement(); },
       dispoOpen: !!d.open,
@@ -2098,6 +2144,7 @@ export class CallEngine {
     if (out.fullView || out.oneQ) { out.showOpen = false; out.showStory = false; out.showBodyGuided = false; out.showCar = false; }
     // Simple Chorelist is the whole call on one numbered form, at every step.
     out.choreView = s.view === 'chore';
+    out.stepView = s.view === 'steps';
     // Simple form: the print layout as a working view — a flat one-page form,
     // every question a plain row, for agents who want zero chrome (Brett,
     // Sep 28). Same engine, same answers.

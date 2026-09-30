@@ -31,15 +31,124 @@ const stubs={
 function load(file){file=path.resolve(file);if(cache.has(file))return cache.get(file).exports;const m={exports:{}};cache.set(file,m);const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;const req=k=>{if(stubs[k])return stubs[k];if(k.startsWith('@/'))return load(path.join(app,'src',k.slice(2))+'.ts');if(k.startsWith('.'))return load(path.resolve(path.dirname(file),k)+'.ts');return require(k)};const fn=vm.runInThisContext('(function(require,module,exports){'+code+'\n})',{filename:file});fn(req,m,m.exports);return m.exports}
 const {FakeDb}=load(path.join(app,'src/lib/test-fake-db.ts'));
 stubs['@/lib/mva-call/identity'].normalizeIdentityValue=load(path.join(app,'src/lib/mva-call/identity.ts')).normalizeIdentityValue;
-function world(){provider=[];sent=[];attachments=[];transitions=[];audit=[];archiveResult={ok:true};expireResult={ok:true};expiryVerified=true;syncStatus='completed';role='owner';identityResult={ok:true,identity:null};identityReads=[];identitySaves=[];identitySaveFailure=null;db=new FakeDb({leads:[{id:L,firm_id:F,campaign_id:CA,case_type:'mva',campaign:'A',claimant_name:'CHAT TESTER',phone:'2025550110',email:'caller@example.invalid',archived_at:null}],claims:[{id:C,lead_id:L,firm_id:F,campaign_id:CA,claim_type:'mva',status:'esign_sent'}],campaigns:[{id:CA,firm_id:F,ssn_require_full:false}],firms:[{id:F,name:'Offline firm',slug:'test'}],esign_templates:[{campaign_id:CA,provider:'docuseal',key:'TX',template_id:'1'}],intake_calls:[{id:'call',lead_id:L,firm_id:F,claim_id:C,campaign_id:CA,answers:{story:{text:'OWN'}}}],esign_submissions:[],signable_documents:[]});db.auth={getUser:async()=>({data:{user:{id:'agent',email:'agent@example.invalid'}}})};db.rpc=async()=>({data:'TMP-TEST'});return db;}
+function world(){provider=[];sent=[];attachments=[];transitions=[];audit=[];archiveResult={ok:true};expireResult={ok:true};expiryVerified=true;syncStatus='completed';role='owner';identityResult={ok:true,identity:null};identityReads=[];identitySaves=[];identitySaveFailure=null;db=new FakeDb({leads:[{id:L,firm_id:F,campaign_id:CA,case_type:'mva',campaign:'A',claimant_name:'CHAT TESTER',phone:'2025550110',email:'caller@example.invalid',archived_at:null}],claims:[{id:C,lead_id:L,firm_id:F,campaign_id:CA,claim_type:'mva',status:'esign_sent'}],campaigns:[{id:CA,firm_id:F,ssn_require_full:false}],firms:[{id:F,name:'Offline firm',slug:'test'}],esign_templates:[{campaign_id:CA,provider:'docuseal',key:'TX',template_id:'1'}],intake_calls:[{id:'call',lead_id:L,firm_id:F,claim_id:C,campaign_id:CA,answers:{story:{text:'OWN'}}}],esign_submissions:[],signable_documents:[]});db.auth={getUser:async()=>({data:{user:{id:'agent',email:'agent@example.invalid'}}})};require('./send-attempt-rpc-fake.cjs').installAttemptRpc(db);return db;}
 const request=body=>({json:async()=>body,url:'https://offline.invalid/api',headers:new Headers()});
 const row=(extras={})=>({id:'agreement',lead_id:L,firm_id:F,claim_id:C,campaign_id:CA,status:'signed',pax_index:null,submission_id:'sub',intake_submitter_id:'intake',created_at:'2026-09-28T10:00:00Z',voided_at:null,signed_at:['signed','completed'].includes(extras.status||'signed')?'2026-09-28T10:02:00Z':null,completed_at:null,agent_reviewed_at:'2026-09-28T10:03:00Z',agent_reviewed_by:'agent',...extras});
 const route=p=>load(path.join(app,'src/app/api',p,'route.ts'));
-const send=route('calls/esign'),complete=route('calls/esign/complete'),cancel=route('calls/esign/void'),email=route('calls/email');
+const send=route('calls/esign'),complete=route('calls/esign/complete'),cancel=route('calls/esign/void'),email=route('calls/email'),resend=route('calls/esign/resend');
 const tests=[];const test=(name,fn)=>tests.push([name,fn]);
+const freshSend=()=>({lead_id:L,claim_id:C,signer_name:'CHAT TESTER',today:'09/28/2026',doi:'09/01/2026',city:'Dallas TX',via:'Email',email:'tester@example.invalid'});
+test('concurrent first sends reserve once and issue only one provider create',async()=>{
+  world();const results=await Promise.all([send.POST(request(freshSend())),send.POST(request(freshSend()))]);
+  assert.deepEqual(results.map(x=>x.status).sort(),[200,409]);assert.equal(provider.filter(x=>x[0]==='send').length,1);
+  assert.equal(db.tables.esign_submissions.length,1);assert.equal(db.tables.esign_send_attempts.filter(x=>x.state==='linked').length,1);
+  assert.equal(provider.find(x=>x[0]==='send')[1].externalId,db.tables.esign_send_attempts[0].id);
+});
+test('timeout and malformed provider success hold retries without another create',async()=>{
+  const normal=stubs['@/lib/docuseal'].createSubmission;
+  try {for(const response of [{ok:false,status:504,error:'synthetic timeout'},{ok:true,data:{unrecognized:true}}]){
+    world();stubs['@/lib/docuseal'].createSubmission=async x=>{provider.push(['send',x]);return response};
+    const first=await send.POST(request(freshSend()));assert.equal(first.status,502);assert.equal(first.body.send_attempt.state,'uncertain');
+    const second=await send.POST(request(freshSend()));assert.equal(second.status,409);assert.equal(provider.filter(x=>x[0]==='send').length,1);
+    assert.equal(db.tables.esign_submissions.length,0);assert.equal(db.tables.esign_send_attempts[0].state,'uncertain');
+  }}finally{stubs['@/lib/docuseal'].createSubmission=normal;}
+});
+test('definitive structured provider rejection releases only for a deliberate new request',async()=>{
+  world();const normal=stubs['@/lib/docuseal'].createSubmission;
+  try{stubs['@/lib/docuseal'].createSubmission=async x=>{provider.push(['send',x]);return{ok:false,status:422,error:'synthetic refusal',definitiveRejection:true}};
+    const failed=await send.POST(request(freshSend()));assert.equal(failed.status,424);assert.equal(db.tables.esign_send_attempts[0].state,'rejected');assert.equal(provider.length,1);
+  }finally{stubs['@/lib/docuseal'].createSubmission=normal;}
+  assert.equal((await send.POST(request(freshSend()))).status,200);assert.equal(provider.filter(x=>x[0]==='send').length,2);
+});
+test('signed correction can retry a definite rejection while preserving original supervisor hold',async()=>{
+  world();role='agent';syncStatus='signed';db.tables.esign_submissions=[row({template_key:'TX'})];
+  const normal=stubs['@/lib/docuseal'].createSubmission;
+  try{stubs['@/lib/docuseal'].createSubmission=async x=>{provider.push(['send',x]);return{ok:false,status:422,error:'synthetic refusal',definitiveRejection:true}};
+    assert.equal((await send.POST(request(correctedSend()))).status,424);
+  }finally{stubs['@/lib/docuseal'].createSubmission=normal;}
+  const original={...db.tables.esign_submissions[0]};assert.ok(original.replacement_requested_at);
+  const retry=await send.POST(request(correctedSend()));assert.equal(retry.status,200,JSON.stringify(retry));
+  assert.equal(db.tables.esign_submissions[0].replacement_requested_at,original.replacement_requested_at);
+  assert.equal(db.tables.esign_submissions[0].status,'signed');assert.equal(db.tables.esign_submissions[0].replacement_reason,original.replacement_reason);
+  assert.equal(db.tables.esign_submissions[1].replacement_of,original.id);
+});
+test('lost response after durable pending transition prevents any provider create or retry',async()=>{
+  for(const error of [null,{code:'08006'}]){
+    world();const actual=db.rpc;db.rpc=async(name,args)=>{const result=await actual(name,args);return name==='cr_mark_esign_send_pending'?{data:null,error}:result};
+    const first=await send.POST(request(freshSend()));assert.equal(first.status,503);assert.equal(db.tables.esign_send_attempts[0].state,'provider_pending');assert.equal(provider.length,0);
+    assert.equal((await send.POST(request(freshSend()))).status,409);assert.equal(provider.length,0);
+  }
+});
+test('atomic binding rejects an agreement that changed since route validation',async()=>{
+  world();const actual=db.rpc;db.rpc=async(name,args)=>{if(name==='cr_bind_esign_send')db.tables.esign_submissions.push(row({status:'sent'}));return actual(name,args)};
+  const result=await send.POST(request(freshSend()));assert.equal(result.status,409);assert.equal(provider.length,0);assert.equal(db.tables.esign_send_attempts[0].state,'rejected');
+});
+test('office completion refuses unresolved sends and unavailable reservation checks before identity or provider work',async()=>{
+  for(const state of ['reserved','provider_pending','uncertain','unavailable']){
+    world();db.tables.esign_submissions=[row()];
+    if(state==='unavailable'){const actual=db.rpc;db.rpc=async(name,args)=>name==='cr_pending_esign_send'?{data:null,error:{code:'08006'}}:actual(name,args)}
+    else db.tables.esign_send_attempts.push({id:'attempt',parent_claim_id:C,pax_key:'',state,created_at:'2026-09-29T19:00:00Z',send_context:{private:'not in response'}});
+    const result=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement',dob:'01/02/1990',ssn:'0000'}));
+    assert.equal(result.status,state==='unavailable'?503:409);assert.equal(provider.length,0);assert.equal(identityReads.length,0);assert.equal(identitySaves.length,0);
+    assert.ok(!JSON.stringify(result).includes('private'));
+  }
+});
+test('resending old signing link is blocked on exact-matter hold or unavailable check',async()=>{
+  const original=stubs['@/lib/justcall-send'].sendJustCallSms,from=process.env.JUSTCALL_DEFAULT_FROM;process.env.JUSTCALL_DEFAULT_FROM='+12025550100';
+  try{stubs['@/lib/justcall-send'].sendJustCallSms=async x=>{provider.push(['sms',x]);return{ok:true}};
+    for(const state of ['none','reserved','provider_pending','uncertain','unavailable']){
+      world();db.tables.esign_submissions=[row({status:'sent',via:'Text',phone:'+12025550110',sign_url:'https://offline.invalid/sign'})];
+      if(state==='unavailable'){const actual=db.rpc;db.rpc=async(name,args)=>name==='cr_pending_esign_send'?{data:null,error:{code:'08006'}}:actual(name,args)}
+      else if(state!=='none')db.tables.esign_send_attempts.push({id:'attempt',parent_claim_id:C,pax_key:'',state,created_at:'2026-09-29T19:00:00Z'});
+      const result=await resend.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement'}));
+      assert.equal(result.status,state==='none'?200:state==='unavailable'?503:409);assert.equal(provider.length,state==='none'?1:0);
+    }
+  }finally{stubs['@/lib/justcall-send'].sendJustCallSms=original;if(from===undefined)delete process.env.JUSTCALL_DEFAULT_FROM;else process.env.JUSTCALL_DEFAULT_FROM=from;}
+});
+test('poll preserves signed review status while returning only safe exact-matter hold metadata',async()=>{
+  world();syncStatus='signed';db.tables.esign_submissions=[row()];
+  db.tables.esign_send_attempts.push({id:'attempt',parent_claim_id:C,pax_key:'',state:'uncertain',created_at:'2026-09-29T19:00:00Z',send_context:{private:'not in response'}});
+  const result=await send.GET({url:'https://offline.invalid/api/calls/esign?'+new URLSearchParams({lead_id:L,claim_id:C})});
+  assert.equal(result.status,200);assert.equal(result.body.status,'signed');assert.equal(result.body.send_attempt.id,'attempt');assert.ok(!JSON.stringify(result).includes('private'));
+});
+test('passenger hold and main send stay separate while direct passenger access finds the same hold',async()=>{
+  world();const child='90000000-0000-4000-8000-000000000001';db.tables.leads.push({...db.tables.leads[0],id:child,external_id:L+':pax:p1'});db.tables.claims.push({...db.tables.claims[0],id:B,lead_id:child});
+  db.tables.esign_send_attempts.push({id:'pax-attempt',parent_claim_id:C,pax_key:'p1',pax_index:0,state:'uncertain',created_at:'2026-09-29T19:00:00Z'});
+  const main=await send.GET({url:'https://offline.invalid/api/calls/esign?'+new URLSearchParams({lead_id:L,claim_id:C})});
+  assert.equal(main.body.send_attempt,null);assert.equal(main.body.pax_send_attempts['0'].id,'pax-attempt');
+  const direct=await send.GET({url:'https://offline.invalid/api/calls/esign?'+new URLSearchParams({lead_id:child,claim_id:B})});
+  assert.equal(direct.body.send_attempt.id,'pax-attempt');
+});
 test('explicit wrong call claim rejects before DocuSeal',async()=>{world();db.tables.claims.push({...db.tables.claims[0],id:B});const r=await send.POST(request({lead_id:L,claim_id:B,call_id:'call',signer_name:'CHAT TESTER',today:'09/28/2026',doi:'09/01/2026',city:'Dallas TX',via:'Email',email:'tester@example.invalid'}));assert.equal(r.status,409);assert.equal(provider.length,0)});
 test('adult email-only passenger file has own email and no inherited caller cell',async()=>{world();const r=await send.POST(request({lead_id:L,claim_id:C,call_id:'call',signer_name:'Passenger Tester',injured_name:'Passenger Tester',today:'09/28/2026',doi:'09/01/2026',city:'Dallas TX',via:'Email',email:'passenger@example.invalid',pax_index:0,pax_key:'p1'}));assert.equal(r.status,200,JSON.stringify(r));const child=db.tables.leads.find(x=>x.id!==L);assert.equal(child.phone,null);assert.equal(child.email,'passenger@example.invalid');assert.equal(db.tables.esign_submissions[0].lead_id,child.id);assert.ok(r.body.claim_id)});
-test('passenger completes original indexed agreement on own file',async()=>{world();db.tables.leads[0].external_id='90000000-0000-4000-8000-000000000001:pax:p1';db.tables.esign_submissions=[row({pax_index:2})];const r=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement',dob:'01/02/1990',ssn:'0000'}));assert.equal(r.status,200,JSON.stringify(r));assert.equal(provider[0][0],'complete')});
+test('ambiguous passenger writes keep the reservation even when the database committed before its response failed',async()=>{
+  for(const table of ['leads','claims'])for(const failure of ['Synthetic response lost','THROW']){
+    world();let writes=0;
+    db.failOn=op=>{
+      if(op.kind==='insert'&&op.table===table){
+        writes++;db.tables[table].push({id:db.nextId(),...op.patch});return failure;
+      }
+      return null;
+    };
+    const body={...freshSend(),signer_name:'Passenger Tester',injured_name:'Passenger Tester',pax_index:0,pax_key:'uncertain-pax'};
+    const first=await send.POST(request(body));assert.equal(first.status,503,JSON.stringify(first));
+    assert.equal(first.body.send_attempt.state,'uncertain');assert.equal(db.tables.esign_send_attempts[0].state,'uncertain');
+    assert.equal(db.tables.esign_send_attempts[0].provider_started_at,undefined);assert.equal(provider.length,0);
+    assert.equal(db.tables.leads.filter(x=>x.id!==L).length,1);
+    assert.ok(db.tables.leads.filter(x=>x.id!==L).every(x=>!x.archived_at));
+    db.failOn=()=>null;
+    const retry=await send.POST(request(body));assert.equal(retry.status,409);assert.equal(writes,1);assert.equal(provider.length,0);
+    assert.equal(db.tables.leads.filter(x=>x.id!==L).length,1);
+  }
+});
+test('passenger write refusal stays held if recording uncertainty itself is unavailable',async()=>{
+  world();const rpc=db.rpc;db.rpc=async(name,args)=>name==='cr_hold_esign_send'?{data:null,error:{code:'08006'}}:rpc(name,args);
+  db.failOn=op=>op.table==='leads'&&op.kind==='insert'?'Synthetic write unavailable':null;
+  const body={...freshSend(),signer_name:'Passenger Tester',injured_name:'Passenger Tester',pax_index:0,pax_key:'held-pax'};
+  assert.equal((await send.POST(request(body))).status,503);assert.equal(db.tables.esign_send_attempts[0].state,'reserved');
+  db.failOn=()=>null;assert.equal((await send.POST(request(body))).status,409);assert.equal(provider.length,0);
+});
+test('passenger completes original indexed agreement on own file',async()=>{world();db.tables.leads.push({...db.tables.leads[0],id:'90000000-0000-4000-8000-000000000001'});db.tables.claims.push({...db.tables.claims[0],id:B,lead_id:'90000000-0000-4000-8000-000000000001'});db.tables.leads[0].external_id='90000000-0000-4000-8000-000000000001:pax:p1';db.tables.esign_submissions=[row({pax_index:2})];const r=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement',dob:'01/02/1990',ssn:'0000'}));assert.equal(r.status,200,JSON.stringify(r));assert.equal(provider[0][0],'complete')});
 test('stale agreement ID cannot complete a replacement',async()=>{world();db.tables.esign_submissions=[row(),row({id:'new',created_at:'2026-09-28T11:00:00Z'})];const r=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement',dob:'01/02/1990',ssn:'0000'}));assert.equal(r.status,409);assert.equal(provider.length,0)});
 test('corrected record name blocks completing old evidence instead of rewriting it',async()=>{world();db.tables.esign_submissions=[row({injured_name:'Old Name',signer_name:'Old Name'})];const r=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement',dob:'01/02/1990',ssn:'0000'}));assert.equal(r.status,409);assert.match(r.body.error,/send a corrected agreement/);assert.equal(provider.length,0);assert.equal(db.tables.esign_submissions[0].injured_name,'Old Name')});
 test('OBO signer stays separate when injured person matches corrected record',async()=>{world();db.tables.esign_submissions=[row({injured_name:'CHAT TESTER',signer_name:'Guardian Tester'})];const r=await complete.POST(request({lead_id:L,claim_id:C,agreement_id:'agreement',dob:'01/02/1990',ssn:'0000'}));assert.equal(r.status,200);assert.equal(provider[0][0],'complete')});
@@ -147,7 +256,7 @@ test('legacy mismatched or concurrently changed identity cannot overwrite or com
 });
 test('agent replaces signed agreement immediately while preserving original and supervisor hold',async()=>{world();role='agent';syncStatus='signed';db.tables.esign_submissions=[row({template_key:'TX'})];const r=await send.POST(request(correctedSend()));assert.equal(r.status,200,JSON.stringify(r));assert.equal(r.body.owner_review_required,true);assert.equal(db.tables.esign_submissions[0].status,'signed');assert.equal(db.tables.esign_submissions[0].voided_at,null);assert.equal(db.tables.esign_submissions[0].replacement_requested_by,'agent');assert.match(db.tables.esign_submissions[0].replacement_reason,/Wrong contract version/);assert.equal(db.tables.esign_submissions[1].replacement_of,'agreement');assert.ok(provider.some(x=>x[0]==='send'));assert.ok(audit.some(x=>x.meta?.supervisor_review_required===true&&x.meta?.replacement_reason))});
 test('a pending signed correction cannot produce a second provider submission',async()=>{world();role='agent';syncStatus='signed';db.tables.esign_submissions=[row({replacement_requested_at:'2026-09-29T11:00:00Z',replacement_reason:'Wrong contract version selected'})];const r=await send.POST(request(correctedSend()));assert.equal(r.status,409);assert.equal(provider.length,0)});
-test('failed local save expires the orphan correction link and keeps original signed evidence held',async()=>{world();role='agent';syncStatus='signed';db.tables.esign_submissions=[row({template_key:'TX'})];db.failOn=o=>o.table==='esign_submissions'&&o.kind==='insert'?'offline insert':null;const r=await send.POST(request(correctedSend()));assert.equal(r.status,500);assert.equal(r.body.error.includes('untracked DocuSeal link was expired'),true);assert.deepEqual(provider.map(x=>x[0]),['send','expire','get']);assert.equal(db.tables.esign_submissions.length,1);assert.equal(db.tables.esign_submissions[0].status,'signed');assert.ok(db.tables.esign_submissions[0].replacement_requested_at);assert.ok(audit.some(x=>x.meta?.orphan_expired===true&&x.meta?.needs_reconciliation===true))});
+test('failed local save holds the attempt and keeps original signed evidence without sending another link',async()=>{world();role='agent';syncStatus='signed';db.tables.esign_submissions=[row({template_key:'TX'})];db.failOn=o=>o.table==='esign_submissions'&&o.kind==='insert'?'offline insert':null;const r=await send.POST(request(correctedSend()));assert.equal(r.status,500);assert.match(r.body.error,/saving it could not be confirmed/);assert.deepEqual(provider.map(x=>x[0]),['send']);assert.equal(db.tables.esign_send_attempts[0].state,'uncertain');assert.equal(db.tables.esign_submissions.length,1);assert.equal(db.tables.esign_submissions[0].status,'signed');assert.ok(db.tables.esign_submissions[0].replacement_requested_at);assert.ok(audit.some(x=>x.meta?.attempt_id&&x.meta?.needs_reconciliation===true))});
 test('unsigned correction verifies provider expiry before a new send and preserves old history',async()=>{world();role='agent';syncStatus='sent';db.tables.esign_submissions=[row({status:'sent',signed_at:null,agent_reviewed_at:null})];const r=await send.POST(request(correctedSend()));assert.equal(r.status,200,JSON.stringify(r));assert.deepEqual(provider.map(x=>x[0]),['expire','get','send']);assert.equal(db.tables.esign_submissions[0].status,'voided');assert.match(db.tables.esign_submissions[0].void_reason,/corrected agreement/);assert.equal(db.tables.esign_submissions[1].replacement_of,'agreement')});
 test('unsigned correction never sends when DocuSeal cannot confirm expiry',async()=>{world();role='agent';syncStatus='sent';expiryVerified=false;db.tables.esign_submissions=[row({status:'opened',signed_at:null,agent_reviewed_at:null})];const r=await send.POST(request(correctedSend()));assert.equal(r.status,502);assert.deepEqual(provider.map(x=>x[0]),['expire','get']);assert.equal(db.tables.esign_submissions[0].status,'opened')});
 test('voided current agreement is excluded from case email',async()=>{world();db.tables.esign_submissions=[row({status:'voided',completed_pdf_path:'old-private.pdf'})];const r=await email.POST(request({lead_id:L,claim_id:C,to:'review@example.invalid'}));assert.equal(r.status,200);assert.equal(attachments.length,0);assert.equal(sent.length,1);assert.equal(r.body.signed,false)});

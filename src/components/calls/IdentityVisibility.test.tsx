@@ -25,7 +25,7 @@ const modules: Record<string, any> = {
 };
 function load(name: string): any {
   if (name in modules) return modules[name];
-  assert.ok(["./AgreementChoice","./ChoreList","./FormView","./CallView"].includes(name),`Unexpected import ${name}`);
+  assert.ok(["./AgreementChoice","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
   const source=fs.readFileSync(path.join(__dirname,`${name}.tsx`),"utf8");
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
   const exports: any={}; new Function("require","exports",code)(load,exports);
@@ -48,7 +48,7 @@ function render(e: CallEngine,view: string,extra: any={}) {
   return {html,v};
 }
 let count=0;
-for(const view of ["chore","form","guided","full"]) {
+for(const view of ["chore","form","guided","full","steps"]) {
   const e=engine();
   const {html}=render(e,view);
   assert.match(html,/DOB and SSN are optional before sending/);
@@ -59,9 +59,11 @@ for(const view of ["chore","form","guided","full"]) {
   assert.match(switched,/aria-label="Date of birth" value="01\/01\/1990"/);
   assert.match(switched,/aria-label="Social Security number" value="123-45-6789"/);
   assert.equal(e.state.file.ssn,"123456789");
+  assert.equal(e.persistable().file.ssn,undefined);
+  if(view==="steps") assert.match(render(e,"steps").html,/aria-label="Social Security number" value="123-45-6789"/);
   count++; console.log("ok",view,"pre-send identity is editable and survives view switch");
 }
-for(const view of ["chore","form","guided","full"]) {
+for(const view of ["chore","form","guided","full","steps"]) {
   const e=engine("sent"); e.setState({phase:"file"});
   const {html,v}=render(e,view);
   assert.equal(v.agreementLocked,true);

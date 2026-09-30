@@ -5,6 +5,7 @@ import { sendJustCallSms } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided } from "@/lib/mva-call/signing-matter";
 import { recordAudit } from "@/lib/audit";
+import { readPendingSendAttempt, SEND_HELD_MESSAGE } from "@/lib/mva-call/send-attempt";
 
 export const runtime = "edge";
 
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
 
   const context = await resolveSigningMatter(sb, leadId, { claimId: b?.claim_id });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  const pending = await readPendingSendAttempt(supabaseAdmin(), context.matter.claim.id);
+  if (!pending.ok) return NextResponse.json({ error: pending.error }, { status: pending.status });
+  if (pending.attempt) return NextResponse.json({ error: SEND_HELD_MESSAGE, send_attempt: pending.attempt }, { status: 409 });
   const selected = await getMatterAgreement(sb, context.lead, context.matter, b?.agreement_id);
   if (!selected.ok) return NextResponse.json({ error: selected.error }, { status: selected.status });
   const row = selected.row;

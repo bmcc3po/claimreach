@@ -30,7 +30,7 @@ const longDay = (iso: string) => { const d = new Date(iso + "T12:00:00Z"); retur
 const when = (ts: any) => { const d = ts ? new Date(ts) : null; return d && !isNaN(d.getTime()) ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" }) : ""; };
 const andList = (xs: string[]) => xs.length <= 1 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
 
-export function caseReport(lead: any, answers: any, esign?: any): CaseReport {
+export function caseReport(lead: any, answers: any, esign?: any, opts: { includeAgreement?: boolean } = {}): CaseReport {
   const sub = esign || null;
   const engineStatus = sub?.status === "completed" || sub?.status === "signed" ? "signed" : sub?.status === "opened" ? "opened" : sub?.status === "sent" ? "sent" : "ready";
   const noop = () => {};
@@ -112,7 +112,9 @@ export function caseReport(lead: any, answers: any, esign?: any): CaseReport {
   const agreementLine = signed
     ? `${sub?.signer_name && sub?.injured_name && sub.signer_name !== sub.injured_name ? `${sub.signer_name} signed the ${agrName} for ${sub.injured_name}` : `Signed the ${agrName}`}${signedOn ? ` on ${signedOn}` : ""}.${sub?.status === "completed" ? " Complete, with DOB and SSN." : " DOB and SSN are added at step 2."}`
     : sub?.status === "sent" || sub?.status === "opened" ? `The ${agrName} was sent${when(sub.sent_at) ? ` on ${when(sub.sent_at)}` : ""} and is not signed yet.` : "No agreement sent yet.";
-  close.push(agreementLine.replace(/^Signed/, `${first} signed`));
+  // Live intake summaries leave signing to the verified Agreement card. Report
+  // exports retain their existing agreement sentence by default.
+  if (opts.includeAgreement !== false) close.push(agreementLine.replace(/^Signed/, `${first} signed`));
   const red = (fi.lights?.rows || []).length ? e.gates().filter((g: any) => g.cls.indexOf("bad") >= 0).map((g: any) => FLAG_WORD[g.label] || g.label) : [];
   if (red.length) close.push(`Red flags: ${andList(red)}.`);
 

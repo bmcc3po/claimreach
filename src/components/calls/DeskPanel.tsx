@@ -1,7 +1,7 @@
 "use client";
 // The case file stays beside the desktop intake and opens through Case tools
 // on smaller screens. Every layout uses the same contact and document controls.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import Icon from "@/components/ui/Icon";
 import AgreementChoice from "./AgreementChoice";
 import LawRulerSyncSummary from "@/components/LawRulerSyncSummary";
@@ -13,6 +13,8 @@ import { splitUsAddress, joinUsAddress, mailColumnsFrom } from "@/lib/us-address
 
 export type DeskTab = "summary" | "know" | "texts" | "phone" | "retainer" | "file" | "tools";
 export interface PhoneRow { label: string; number: string; pretty: string; kind: "caller" | "threeway" }
+interface FileNoteDraft { body: string; scope: string; saving: boolean; error: string }
+const EMPTY_FILE_NOTE_DRAFT: FileNoteDraft = { body: "", scope: "call", saving: false, error: "" };
 
 export interface PreviewInfo {
   href: string | null;
@@ -21,7 +23,7 @@ export interface PreviewInfo {
 
 const PHASE_LABEL: Record<string, string> = { open: "Open", story: "Story", body: "Injury", car: "Car", money: "Money", send: "Send", file: "File", close: "Close" };
 
-export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, onDialState, onCollapse, panelId }: {
+export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, caseSummary, onDialState, onCollapse, panelId }: {
   v: any;
   onCollapse?: () => void;
   panelId?: string;
@@ -29,6 +31,8 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   onDialState?: (s: DialerState) => void;
   /** The Full Intake workspace: next best action, what's missing, the live summary. */
   summary?: ReactNode;
+  /** The current intake facts, displayed once in the case file. */
+  caseSummary?: ReactNode;
   tab: DeskTab;
   setTab: (t: DeskTab) => void;
   phase: string;
@@ -44,12 +48,37 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   // The dialer stays loaded once opened, so switching tabs never drops a call.
   const [phoneOn, setPhoneOn] = useState(false);
   const [dialState, setDialState] = useState<DialerState>("loading");
+  const [moreOpen, setMoreOpen] = useState(false);
+  // File contents unmount when another tool opens. Keep unsaved notes above
+  // that boundary, scoped to their exact lead and matter while this Desk lives.
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, FileNoteDraft>>({});
+  const noteKey = `${leadId}:${claimId}`;
+  const noteDraft = noteDrafts[noteKey] || EMPTY_FILE_NOTE_DRAFT;
+  const updateNoteDraft = (update: (draft: FileNoteDraft) => FileNoteDraft) => setNoteDrafts((drafts) => ({
+    ...drafts, [noteKey]: update(drafts[noteKey] || EMPTY_FILE_NOTE_DRAFT),
+  }));
+  const moreId = useId();
+  const moreButton = useRef<HTMLButtonElement | null>(null);
   const dialer = useRef<JustCallDialerHandle | null>(null);
   useEffect(() => { if (tab === "phone") setPhoneOn(true); }, [tab]);
-  const tabs: [DeskTab, string][] = [["file", "File"], ...(summary ? [["summary", "Helper"] as [DeskTab, string]] : []), ["know", "Scripts"], ["texts", "Texts"], ["phone", "Phone"], ["retainer", "Agreement"], ["tools", "Tools"]];
+  const primaryTabs: [DeskTab, string][] = [["file", "File"], ["texts", "Texts"], ["retainer", "Agreement"]];
+  const secondaryTabs: [DeskTab, string][] = [["phone", "Phone"], ["know", "Scripts"], ["tools", "Tools"], ...(summary ? [["summary", "Helper"] as [DeskTab, string]] : [])];
+  const activeSecondary = secondaryTabs.find(([key]) => key === tab)?.[1];
+  const callActive = dialState === "on-call" || dialState === "ringing";
+  const tabButton = ([key, label]: [DeskTab, string]) => (
+    <button type="button" key={key} role="tab" aria-selected={tab === key} className={`cc-htab${tab === key ? " cc-on" : ""}`} onClick={() => {
+      setTab(key); setMoreOpen(false);
+      if (secondaryTabs.some(([secondaryKey]) => secondaryKey === key)) moreButton.current?.focus();
+    }}>
+      {label}{key === "texts" && v.textUnread > 0 && tab !== "texts" ? <span className="cc-side-dot">{v.textUnread}</span> : null}
+      {key === "phone" && callActive ? <span className="cc-side-live" aria-label={dialState === "ringing" ? "Ringing" : "On a call"} /> : null}
+    </button>
+  );
   return (
     <aside className={`cc-side${summary ? " ws-side" : ""}`} aria-label="Command center">
-      <div className="cc-side-top">
+      <div className="cc-side-top" onKeyDown={(event) => {
+        if (event.key === "Escape" && moreOpen) { event.preventDefault(); setMoreOpen(false); moreButton.current?.focus(); }
+      }}>
         <div className="cc-file-heading">
           <Icon name="files" size={22} />
           <div className="cc-file-heading-copy"><strong>Command center</strong><span>Contact, documents &amp; activity</span></div>
@@ -57,20 +86,25 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m8 6 6 6-6 6M19 4v16" /></svg>
           </button>}
         </div>
-        <div className="cc-htabs" role="tablist" aria-label="Command center sections">
-          {tabs.map(([k, label]) => (
-            <button type="button" key={k} role="tab" aria-selected={tab === k} className={`cc-htab${tab === k ? " cc-on" : ""}`} onClick={() => setTab(k)}>
-              {label}{k === "texts" && v.textUnread > 0 && tab !== "texts" ? <span className="cc-side-dot">{v.textUnread}</span> : null}
-              {k === "phone" && (dialState === "on-call" || dialState === "ringing") && tab !== "phone" ? <span className="cc-side-live" aria-label="On a call" /> : null}
-            </button>
-          ))}
+        <div className="cc-desk-nav">
+          <div className="cc-htabs cc-primary-tabs" role="tablist" aria-label="Command center sections">
+            {primaryTabs.map(tabButton)}
+          </div>
+          <button ref={moreButton} type="button" className={`cc-desk-more${activeSecondary ? " cc-on" : ""}`} aria-expanded={moreOpen} aria-controls={moreId} onClick={() => setMoreOpen((open) => !open)}>
+            <span>{activeSecondary ? `More · ${activeSecondary}` : "More"}</span>
+            {callActive && !moreOpen && <span className="cc-side-live" aria-label={dialState === "ringing" ? "Ringing" : "On a call"} />}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={moreOpen ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} /></svg>
+          </button>
+        </div>
+        <div id={moreId} className="cc-htabs cc-secondary-tabs" role="tablist" aria-label="More command center sections" hidden={!moreOpen}>
+          {secondaryTabs.map(tabButton)}
         </div>
       </div>
       {tab === "summary" && !!summary && <div className="cc-side-b ws-side-b">{summary}</div>}
       {tab === "know" && <Knowledge v={v} phase={phase} fill={fill} focusLines={focusLines} />}
       {tab === "texts" && <Texts v={v} />}
       {tab === "retainer" && <Retainer v={v} preview={preview} />}
-      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} onCorrect={() => setTab("retainer")} />}
+      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} caseSummary={caseSummary} noteDraft={noteDraft} updateNoteDraft={updateNoteDraft} sendHoldNotice={v.sendHoldNotice || ""} reconcileActions={v.reconcileActions || []} reconcileBusy={!!v.reconcileBusy} reconcileMessage={v.reconcileMessage || ""} onCorrect={() => setTab("retainer")} />}
       {tab === "tools" && <Tools v={v} story={story} />}
       {phoneOn && (
         <div className="cc-side-b cc-side-phone" hidden={tab !== "phone"}>
@@ -297,6 +331,7 @@ function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
   const [reload, setReload] = useState(0);
   const missing = preview.checks.filter((c) => !c.ok && !c.later).length;
   if (!v.sendReady) return <div className="cc-side-b cc-side-ret">
+    {!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>Signing actions paused</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
     <div className="cc-agreement-current"><span>{v.currentAgreement ? "Contract already sent" : "Sending agreement"}</span><strong>{v.currentAgreement?.label || "Preparing the selected contract…"}</strong></div>
     <p className="cc-cue">The original stays in File history. Select and preview the corrected agreement, then report the error and send the replacement. A client-signed original is held for supervisor review before firm delivery.</p>
     {v.canReplace && <><AgreementChoice v={v} />{preview.href && <a className="cc-btn" href={preview.href} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn" disabled={!preview.href || missing > 0 || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></>}
@@ -306,6 +341,7 @@ function Retainer({ v, preview }: { v: any; preview: PreviewInfo }) {
   </div>;
   return (
     <div className="cc-side-b cc-side-ret">
+      {!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>Signing actions paused</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
       <AgreementChoice v={v} />
       {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review and send</button>}
       <div className="cc-grp">
@@ -506,12 +542,11 @@ function ContactCard({ leadId, initial }: { leadId: string; initial: Record<stri
   );
 }
 
-function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null; onCorrect: () => void }) {
+function FileTab({ leadId, claimId, lead, caseSummary, noteDraft, updateNoteDraft, sendHoldNotice, reconcileActions, reconcileBusy, reconcileMessage, onCorrect }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null; caseSummary?: ReactNode; noteDraft: FileNoteDraft; updateNoteDraft: (update: (draft: FileNoteDraft) => FileNoteDraft) => void; sendHoldNotice: string; reconcileActions: { label: string; go: () => void }[]; reconcileBusy: boolean; reconcileMessage: string; onCorrect: () => void }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
-  const [note, setNote] = useState("");
-  const [scope, setScope] = useState("call");
-  const [saving, setSaving] = useState(false);
+  const noteInput = useRef<HTMLTextAreaElement | null>(null);
+  const { body: note, scope, saving } = noteDraft;
   const [openedSignedPreview, setOpenedSignedPreview] = useState<string | null>(null);
   const [voidTarget, setVoidTarget] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState("");
@@ -527,14 +562,15 @@ function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leadId, claimId]);
   const addNote = async () => {
     const body = note.trim();
-    if (!body) return;
-    setSaving(true);
+    if (!body || saving) return;
+    updateNoteDraft((draft) => ({ ...draft, saving: true, error: "" }));
     try {
       const r = await fetch("/api/notes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, scope, body }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) throw new Error(j.error || "The note did not save.");
-      setNote(""); await load();
-    } catch (e: any) { setErr(e.message); } finally { setSaving(false); }
+      updateNoteDraft((draft) => ({ ...draft, body: draft.body === note && draft.scope === scope ? "" : draft.body, saving: false, error: "" }));
+      await load();
+    } catch (e: any) { updateNoteDraft((draft) => ({ ...draft, saving: false, error: e.message || "The note did not save." })); }
   };
   // Owner/admin-only server action. The reason is collected inline because
   // browser-embedded desks may suppress native prompt dialogs.
@@ -566,12 +602,21 @@ function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId
   return (
     <div className="cc-side-b">
       {err && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>{err}</div>}
+      {!!sendHoldNotice && <div className="cc-stop" role="status"><strong>{sendHoldNotice.startsWith("Send outcome unconfirmed") ? "Send outcome unconfirmed" : "Signing actions paused"}</strong><p>{sendHoldNotice}</p><span className="cc-cue">Existing signed copies and history remain available below. The owner must reconcile the send before another link or office completion.</span>{reconcileActions.map((action) => <button type="button" key={action.label} className="cc-btn" disabled={reconcileBusy} onClick={action.go}>{reconcileBusy ? "Checking" : action.label}</button>)}{!!reconcileMessage && <p>{reconcileMessage}</p>}</div>}
+      <div className="cc-card cc-file-status-card">
+        <FileStatusControl leadId={leadId} claimId={claimId} current={d.status?.key || "new"} onChanged={() => { void load(); }} />
+      </div>
+      {caseSummary}
+      <div className="cc-file-quick-actions">
+        <a className="cc-chip cc-sm" href={`/app/${encodeURIComponent(L.lead_no || leadId)}/print?claim=${encodeURIComponent(claimId)}`}>Print or email</a>
+        <button type="button" className="cc-chip cc-sm" onClick={() => {
+          noteInput.current?.focus({ preventScroll: true });
+          noteInput.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}>Add note</button>
+      </div>
       <ContactCard leadId={leadId} initial={d.contact || {}} />
       <LawRulerSyncSummary imported={d.imported} />
       <div className="cc-grp">
-        <div className="cc-chk cc-file-status">
-          <FileStatusControl leadId={leadId} claimId={claimId} current={d.status?.key || "new"} onChanged={() => { void load(); }} />
-        </div>
         {row("Lead number", L.lead_no)}
         {row("Case", L.campaign)}
         {row("Attorney", L.attorney)}
@@ -613,14 +658,15 @@ function FileTab({ leadId, claimId, lead, onCorrect }: { leadId: string; claimId
       )}
 
       {/\bMVA\b/i.test(String(L.campaign || "")) && <FirmHandoff leadId={leadId} claimId={claimId}
-        awaitingOfficeSigner={(() => { const active = d.agreements.find((a: any) => a.pax == null && !a.voided); return !!active && active.status === "signed" && !!active.agent_reviewed_at && !d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided); })()}
-        hasSignedPacket={(() => { const active = d.agreements.find((a: any) => a.pax == null && !a.voided); return !!active && active.status === "completed" && !!active.agent_reviewed_at && !!active.signed_url && !!active.cert_url && !d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided); })()} />}
+        awaitingOfficeSigner={(() => { const active = d.agreements.find((a: any) => a.pax == null && !a.voided); return !sendHoldNotice && !!active && active.status === "signed" && !!active.agent_reviewed_at && !d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided); })()}
+        hasSignedPacket={(() => { const active = d.agreements.find((a: any) => a.pax == null && !a.voided); return !sendHoldNotice && !!active && active.status === "completed" && !!active.agent_reviewed_at && !!active.signed_url && !!active.cert_url && !d.agreements.some((a: any) => a.pax == null && a.replacement_requested_at && !a.voided); })()} />}
 
       <div className="cc-rb-h">Notes</div>
       <div className="cc-card">
-        <div className="cc-chips cc-seg">{SCOPES.map(([k, label]) => <button key={k} className={`cc-chip${scope === k ? " cc-on" : ""}`} onClick={() => setScope(k)}>{label}</button>)}</div>
-        <textarea className="cc-area" rows={2} placeholder="Add a note to the file" aria-label="Add a note" value={note} onChange={(e) => setNote(e.target.value)} />
+        <div className="cc-chips cc-seg">{SCOPES.map(([k, label]) => <button key={k} className={`cc-chip${scope === k ? " cc-on" : ""}`} onClick={() => updateNoteDraft((draft) => ({ ...draft, scope: k }))}>{label}</button>)}</div>
+        <textarea ref={noteInput} className="cc-area" rows={2} placeholder="Add a note to the file" aria-label="Add a note" value={note} onChange={(e) => { const body = e.target.value; updateNoteDraft((draft) => ({ ...draft, body })); }} />
         <button className="cc-btn cc-full" disabled={saving || !note.trim()} onClick={addNote}>{saving ? "Saving" : "Save note"}</button>
+        {noteDraft.error && <div className="cc-cue cc-red" role="alert">{noteDraft.error}</div>}
       </div>
       {d.notes.length > 0 && (
         <div className="cc-grp">
@@ -679,6 +725,12 @@ function FirmHandoff({ leadId, claimId, hasSignedPacket, awaitingOfficeSigner }:
     } catch (e: any) { setState(null); setError(e?.message || "Could not check firm delivery."); }
   };
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leadId, claimId]);
+  useEffect(() => {
+    const onRecovered = (event: Event) => { const detail = (event as CustomEvent).detail || {}; if (detail.leadId === leadId && detail.claimId === claimId) void load(); };
+    window.addEventListener("cr:esign-reconciled", onRecovered);
+    return () => window.removeEventListener("cr:esign-reconciled", onRecovered);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, claimId]);
   const dispatchPending = ["sending", "uncertain"].includes(state?.dispatch?.state);
   const sent = !!state?.firm_sent_at;
   const send = async () => {

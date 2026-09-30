@@ -118,5 +118,5 @@ function FullSiteLink() {
       }
     } catch { /* keep the dashboard */ }
   }, []);
-  return <a className="cc-chrome-link" href={href}>{href === "/dashboard" ? "Dashboard" : "Review case"}</a>;
+  return <a className="cc-chrome-link" href={href}><Icon name={href === "/dashboard" ? "home" : "files"} size={16} />{href === "/dashboard" ? "Dashboard" : "Review case"}</a>;
 }

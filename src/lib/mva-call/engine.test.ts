@@ -74,6 +74,9 @@ t("every engine-owned top-level property in CallView resolves", () => {
   roots.delete("identitySaveError");
   roots.delete("identityRetry");
   roots.delete("identitySavedMode");
+  // Owner reconciliation controls are supplied by CallConsole from the
+  // authenticated role and the durable send reservation, not by the engine.
+  roots.delete("reconcileActions"); roots.delete("reconcileBusy"); roots.delete("reconcileMessage");
   const states: Array<(e: CallEngine) => void> = [
     () => {},
     (e) => e.setState({ phase: "story" }),
@@ -873,13 +876,14 @@ t("a completed primary re-sign can resume ordinary office completion", () => {
   assert.equal(calls.length, before + 1); assert.equal(calls[calls.length - 1], "completeAgreement");
 });
 
-t("agent view picker offers only All questions and Simple form without changing answers", () => {
+t("agent view picker offers All questions, Simple form and Step by step without changing answers", () => {
   const e = mk();
   e.setState({ story: { ...e.state.story, city: "Las Vegas, NV" } });
   const before = e.state.story.city;
-  assert.deepEqual(e.renderVals().modes.map((mode: any) => mode.label), ["All questions", "Simple form"]);
+  assert.deepEqual(e.renderVals().modes.map((mode: any) => mode.label), ["All questions", "Simple form", "Step by step"]);
   e.setView("chore");
   e.setView("form");
+  e.setView("steps");
   assert.equal(e.state.story.city, before);
 });
 

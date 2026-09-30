@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, firmSpoken, parseDob, dobForForm } from "@/lib/mva-call/server";
 import { agreementChoice } from "@/lib/mva-call/agreement-choice";
-import { createSubmission, docusealConfigured, expireSubmission, getSubmission, MISSING_DOCUSEAL, plainDocuSeal, templateProblem } from "@/lib/docuseal";
+import { createSubmission, docusealConfigured, expireSubmission, getSubmission, MISSING_DOCUSEAL, plainDocuSeal } from "@/lib/docuseal";
 import { syncSubmission, packetsFor, templateFor, ssnForForm } from "@/lib/mva-call/esign";
 import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
@@ -13,6 +13,7 @@ import { recordAudit } from "@/lib/audit";
 import { ensureClientSignedSnapshot } from "@/lib/mva-call/client-signed";
 import { readIdentityForSigning } from "@/lib/mva-call/identity";
 import { UNSIGNED_AGREEMENT_STATUSES, agreementSendStatus } from "@/lib/mva-call/replacement";
+import { bindSendAttempt, finalizeSendAttempt, holdSendAttempt, markSendPending, readPendingSendAttempt, rejectSendAttempt, reserveSendAttempt, safeSendAttempt, SEND_HELD_MESSAGE } from "@/lib/mva-call/send-attempt";
 
 export const runtime = "edge";
 
@@ -118,6 +119,20 @@ async function send(req: NextRequest) {
   if (!campaign || (campaign.firm_id && campaign.firm_id !== lead.firm_id)) return NextResponse.json({ error: "This matter's campaign is not available for its firm." }, { status: 409 });
   const { data: firm } = await admin.from("firms").select("name, slug").eq("id", lead.firm_id).maybeSingle();
 
+  // Reserve the stable parent/passenger scope before creating a passenger
+  // file or touching any signing link. A competing request cannot get past
+  // this durable reservation, including when the first request times out.
+  const reservation = await reserveSendAttempt(admin, { claimId: context.matter.claim.id, actorId: me.id, paxKey, paxIndex });
+  if (!reservation.ok) return NextResponse.json({ error: reservation.error }, { status: reservation.status });
+  const attempt = reservation.attempt;
+  let keepHeld = false;
+  const held = async (code: string, message = SEND_HELD_MESSAGE, status = 502) => {
+    keepHeld = true;
+    await holdSendAttempt(admin, attempt.id, code);
+    return NextResponse.json({ error: message, send_attempt: { ...attempt, state: "uncertain" } }, { status });
+  };
+  try {
+
   // A passenger is their own file.
   let fileLeadId = lead.id;
   if (paxIndex != null) {
@@ -150,15 +165,18 @@ async function send(req: NextRequest) {
         }
       }
       if (leadNo) ins.lead_no = leadNo;
-      const { data: pl, error } = await sb.from("leads").insert(ins).select("id").single();
-      if (error) return NextResponse.json({ error: `Could not open the passenger's file: ${error.message}` }, { status: 500 });
-      const { error: cErr } = await sb.from("claims").insert({ firm_id: lead.firm_id, lead_id: pl.id, claim_type: lead.case_type, campaign: lead.campaign, campaign_id: lead.campaign_id, status: "new", is_this_file: true, created_by: me.id });
-      if (cErr) {
-        // Never leave a claimless passenger file behind (Astra round 6).
-        await admin.from("leads").update({ archived_at: new Date().toISOString(), archived_by: me.id, archive_reason: "claim failed at birth" }).eq("id", pl.id);
-        return NextResponse.json({ error: `Could not open the passenger's file: ${cErr.message}. Nothing was sent.` }, { status: 500 });
+      // A database timeout can happen after the insert commits. Keep the
+      // parent/passenger reservation until an owner verifies that outcome;
+      // releasing it or blindly archiving can race an in-flight claim insert.
+      try {
+        const { data: pl, error } = await sb.from("leads").insert(ins).select("id").single();
+        if (error || !pl?.id) return held("passenger_creation_unconfirmed", "The passenger file could not be confirmed. No agreement was sent; the owner must check it before another attempt.", 503);
+        const { error: cErr } = await sb.from("claims").insert({ firm_id: lead.firm_id, lead_id: pl.id, claim_type: lead.case_type, campaign: lead.campaign, campaign_id: lead.campaign_id, status: "new", is_this_file: true, created_by: me.id });
+        if (cErr) return held("passenger_creation_unconfirmed", "The passenger matter could not be confirmed. No agreement was sent; the owner must check the saved file before another attempt.", 503);
+        fileLeadId = pl.id;
+      } catch {
+        return held("passenger_creation_unconfirmed", "The passenger file could not be confirmed. No agreement was sent; the owner must check it before another attempt.", 503);
       }
-      fileLeadId = pl.id;
     }
   }
 
@@ -219,6 +237,14 @@ async function send(req: NextRequest) {
   const capturedSsn = capturedIdentity.identity ? ssnForForm(capturedIdentity.identity.ssn) : null;
   const intakeValues = { ...(capturedDob ? { "Patient DOB": dobForForm(capturedDob) } : {}), ...(capturedSsn ? { "Patient SSN": capturedSsn.printed } : {}) };
 
+  const bound = await bindSendAttempt(admin, attempt.id, {
+    leadId: fileLeadId, claimId: signClaimId, expectedId: current.row?.id ?? null, expectedStatus: current.row?.status ?? null,
+    templateKey: key, templateId: String(tpl.template_id), via, emergencyDocumentId: emergencyResign ? emergency.row.id : null,
+    sendContext: { signer_name: signer, injured_name: injured, phone, email: email || null,
+      call_id: b?.call_id || null, pax_index: paxIndex, replacement_of: live ? current.row.id : null },
+  });
+  if (!bound.ok) return NextResponse.json({ error: bound.error }, { status: bound.status });
+
   // Replacement is one deliberate send, never an agent-operated void. Verify
   // the latest provider state before changing anything: a signature can land
   // while an agent is selecting the correction. The old signed evidence stays
@@ -241,11 +267,22 @@ async function send(req: NextRequest) {
       if (!old.agent_reviewed_at) return NextResponse.json({ error: "Open the client-signed preview in File, mark it reviewed, then report the error and send its correction." }, { status: 409 });
       const snapshot = await ensureClientSignedSnapshot(admin, old);
       if (!snapshot.ok) return NextResponse.json({ error: `Could not preserve the client-signed original (${snapshot.error}). No correction was sent.` }, { status: 503 });
-      if (old.replacement_requested_at) return NextResponse.json({ error: "A correction is already in progress for this signed agreement. Refresh the file; no second agreement was sent." }, { status: 409 });
-      const { data: held, error: holdError } = await admin.from("esign_submissions").update({
-        replacement_requested_at: now, replacement_requested_by: me.id, replacement_reason: replacementReason, updated_at: now,
-      }).eq("id", old.id).eq("status", "signed").is("replacement_requested_at", null).select("id").maybeSingle();
-      if (holdError || !held) return NextResponse.json({ error: "Could not flag the signed original for supervisor review. No replacement was sent." }, { status: 409 });
+      if (old.replacement_requested_at) {
+        // The original's supervisor-review flag is permanent evidence. It is
+        // not the send mutex: a conclusively rejected prior create may be
+        // retried deliberately under this new durable reservation.
+        const prior = await admin.from("esign_send_attempts").select("id,state,error_code,provider_started_at")
+          .eq("target_claim_id", signClaimId).eq("expected_submission_id", old.id).eq("state", "rejected")
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        const safeRetry = prior.data?.error_code === "definitive_provider_rejection" ||
+          (prior.data?.error_code === "pre_provider_abort" && !prior.data.provider_started_at);
+        if (prior.error || !safeRetry) return NextResponse.json({ error: "A correction is already in progress for this signed agreement. Refresh the file; no second agreement was sent." }, { status: 409 });
+      } else {
+        const { data: held, error: holdError } = await admin.from("esign_submissions").update({
+          replacement_requested_at: now, replacement_requested_by: me.id, replacement_reason: replacementReason, updated_at: now,
+        }).eq("id", old.id).eq("status", "signed").is("replacement_requested_at", null).select("id").maybeSingle();
+        if (holdError || !held) return NextResponse.json({ error: "Could not flag the signed original for supervisor review. No replacement was sent." }, { status: 409 });
+      }
       await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
         description: `Requested supervisor review of the client-signed ${old.template_key || "agreement"} before sending a correction: ${replacementReason}`.slice(0, 600),
         meta: { claim_id: signClaimId, original_agreement_id: old.id, replacement_reason: replacementReason, supervisor_review_required: true } });
@@ -254,11 +291,11 @@ async function send(req: NextRequest) {
       // Expiration, unlike archiving, explicitly disables the signing link.
       const expiredAt = new Date(Date.now() - 60_000).toISOString();
       const expired = await expireSubmission(old.submission_id, expiredAt);
-      if (!expired.ok) return NextResponse.json({ error: `DocuSeal did not expire the old link (${expired.error}). No replacement was sent.` }, { status: 502 });
+      if (!expired.ok) return held("prior_expiry_unconfirmed", "The old link's expiry could not be confirmed. No replacement was sent; ask the owner to reconcile this file.");
       const checked = await getSubmission(old.submission_id);
       const providerExpiry = checked.ok ? Date.parse(String((checked.data as any)?.expire_at || "")) : NaN;
       if (!checked.ok || !Number.isFinite(providerExpiry) || providerExpiry > Date.now()) {
-        return NextResponse.json({ error: "DocuSeal did not confirm that the old link expired. No replacement was sent; ask an owner to reconcile the old link." }, { status: 502 });
+        return held("prior_expiry_unconfirmed", "DocuSeal did not confirm that the old link expired. No replacement was sent; ask an owner to reconcile the old link.");
       }
       const clientSigned = Array.isArray((checked.data as any)?.submitters) && (checked.data as any).submitters.some((s: any) =>
         s.role === "Client" && (s.completed_at || s.status === "completed"));
@@ -270,7 +307,7 @@ async function send(req: NextRequest) {
         await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
           description: "DocuSeal confirmed the old link expired, but the local record did not retire. Replacement blocked for owner reconciliation.",
           meta: { claim_id: signClaimId, original_agreement_id: old.id, replacement_reason: replacementReason, needs_reconciliation: true } });
-        return NextResponse.json({ error: "The old DocuSeal link expired, but ClaimReach could not update the original. No replacement was sent; an owner must reconcile the file." }, { status: 409 });
+        return held("prior_retirement_failed", "The old DocuSeal link expired, but ClaimReach could not update the original. No replacement was sent; an owner must reconcile the file.", 409);
       }
       await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
         description: `Expired the prior unsigned ${old.template_key || "agreement"} link and prepared a corrected agreement: ${replacementReason}`.slice(0, 600),
@@ -287,48 +324,44 @@ async function send(req: NextRequest) {
     },
     intake: { email: auth?.user?.email || "intake@claimreach.com", name: me.name || "Intake", values: intakeValues },
     emailClient: via === "Email",
-    externalId: fileLeadId,
+    externalId: attempt.id,
   });
-  let res = await submit(tpl.template_id);
-  // The stored template is gone or empty in DocuSeal (a new key, or an old bad
-  // one): make it new from the packet and try once more.
-  if (!res.ok && packet && templateProblem(res.error, res.status)) {
-    const first = res.status ?? null;
-    const t = await templateFor(admin, { firmId: lead.firm_id, campaignId: lead.campaign_id, key, packet, origin: new URL(req.url).origin, actorId: me.id, force: true });
-    if (!t.ok) return failed(lead, me, t.error, { stage: "template_retry", key, first });
-    tpl = { template_id: t.templateId };
-    res = await submit(tpl.template_id);
+  // Mark BEFORE the network call. Even losing this RPC's response must leave
+  // the attempt held; no new request can guess whether create ran afterward.
+  keepHeld = true;
+  const pending = await markSendPending(admin, attempt.id);
+  if (!pending.ok) return NextResponse.json({ error: pending.error, send_attempt: attempt }, { status: pending.status });
+  const res = await submit(tpl.template_id);
+  if (!res.ok) {
+    if (res.definitiveRejection === true) {
+      const rejected = await rejectSendAttempt(admin, attempt.id, true);
+      if (rejected.ok) return failed(lead, me, plainDocuSeal("provider rejected request", res.status, "send"), { stage: "docuseal_rejected", status: res.status ?? null, attempt_id: attempt.id, key });
+    }
+    await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, category: "retainer",
+      description: "Agreement creation could not be confirmed. Further sends are held for owner reconciliation.",
+      meta: { claim_id: signClaimId, attempt_id: attempt.id, provider_status: res.status ?? null, needs_reconciliation: true } });
+    return held("provider_create_unconfirmed");
   }
-  if (!res.ok) return failed(lead, me, plainDocuSeal("provider rejected request", res.status, "send"), { stage: "docuseal", status: res.status ?? null, template_id: tpl.template_id, key });
   // DocuSeal answers with the list of signers. Read it either way it comes back.
   const list: any[] = Array.isArray(res.data) ? res.data : Array.isArray((res.data as any)?.submitters) ? (res.data as any).submitters : [];
   const client = list.find((s) => s.role === "Client");
   const intake = list.find((s) => s.role === "Intake");
-  if (!client) return failed(lead, me, "DocuSeal answered without a client signer. Ask an owner to check the provider before sending again.", { stage: "no_signer", submitter_count: list.length });
+  if (!client?.id || !client.submission_id || !intake?.id || !client.embed_src) return held("provider_response_incomplete", "DocuSeal returned an incomplete agreement response. Further sends are held; ask the owner to reconcile this file.");
 
-  const { data: row, error: rowErr } = await admin.from("esign_submissions").insert({
+  const finalized = await finalizeSendAttempt(admin, attempt.id, {
     firm_id: lead.firm_id, lead_id: fileLeadId, call_id: b?.call_id || null, campaign_id: lead.campaign_id,
     provider: "docuseal", template_key: key, template_id: String(tpl.template_id), claim_id: signClaimId,
     submission_id: String(client.submission_id ?? ""), client_submitter_id: String(client.id), intake_submitter_id: intake ? String(intake.id) : null,
     signer_name: signer, injured_name: injured, phone, email: email || null, via, pax_index: paxIndex,
     status: "sent", sign_url: client.embed_src || null, sent_by: me.id, replacement_of: replaced?.id || null,
-  }).select("id").single();
-  if (rowErr) {
-    // The provider can create (and email) a signing link before our local
-    // insert fails. Revoke that untracked link as far as DocuSeal will confirm;
-    // never report success or let a second live link be sent blindly.
-    let orphanExpired = false;
-    if (client.submission_id) {
-      const orphanExpiry = await expireSubmission(client.submission_id, new Date(Date.now() - 60_000).toISOString());
-      if (orphanExpiry.ok) {
-        const checked = await getSubmission(client.submission_id);
-        const expiry = checked.ok ? Date.parse(String((checked.data as any)?.expire_at || "")) : NaN;
-        orphanExpired = checked.ok && Number.isFinite(expiry) && expiry <= Date.now();
-      }
-    }
-    return failed(lead, me, `DocuSeal created the agreement, but ClaimReach could not save it (${rowErr.message}). ${orphanExpired ? "The untracked DocuSeal link was expired." : "The untracked DocuSeal link could not be confirmed expired."} The prior ${signedReplacement ? "signed copy remains preserved and held for supervisor review" : "link remains expired"}; an owner must reconcile this file before another send.`,
-      { stage: "save", submission_id: client.submission_id, replacement_of: replaced?.id || null, orphan_expired: orphanExpired, needs_reconciliation: true }, 500);
+  });
+  if (!finalized.ok) {
+    await recordAudit({ firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, category: "retainer",
+      description: "DocuSeal created an agreement, but saving its local record was not confirmed. Further sends are held for owner reconciliation.",
+      meta: { claim_id: signClaimId, attempt_id: attempt.id, submission_id: client.submission_id, needs_reconciliation: true } });
+    return held("local_finalize_unconfirmed", "DocuSeal created the agreement, but saving it could not be confirmed. No text was sent by ClaimReach; ask the owner to reconcile this file before another send.", 500);
   }
+  const row = { id: finalized.id };
 
   // Text the link ourselves so it comes from the firm's line and lands on the file.
   let textError: string | null = null;
@@ -362,6 +395,12 @@ async function send(req: NextRequest) {
   const identity = { claim_id: signClaimId, agreement_id: row.id, lead_id: fileLeadId, template_key: key, replacement_of: replaced?.id || null, owner_review_required: signedReplacement };
   if (textError) return NextResponse.json({ ok: true, status: "sent", ...identity, warning: `The agreement is ready, but the text did not go out: ${textError}. Use Resend in the text sheet.` });
   return NextResponse.json({ ok: true, status: "sent", ...identity });
+  } finally {
+    // Safe only while no create/uncertain provider mutation was attempted.
+    // A crashed process leaves its reservation held rather than risking a
+    // second send. An ordinary validation refusal releases it explicitly.
+    if (!keepHeld) await rejectSendAttempt(admin, attempt.id);
+  }
 }
 
 // GET /api/calls/esign?lead_id=&call_id=
@@ -377,6 +416,13 @@ export async function GET(req: NextRequest) {
   const admin = supabaseAdmin();
   const context = await resolveSigningMatter(sb, leadId, { claimId: url.searchParams.get("claim_id"), callId: callId || null, allowArchived: true });
   if (!context.ok) return NextResponse.json({ error: context.error, ambiguous: !!context.ambiguous }, { status: context.status });
+  const pending = await readPendingSendAttempt(admin, context.matter.claim.id);
+  if (!pending.ok) return NextResponse.json({ error: pending.error }, { status: pending.status });
+  const passengerHolds = await admin.from("esign_send_attempts").select("id,state,created_at,pax_index,pax_key")
+    .eq("parent_claim_id", context.matter.claim.id).in("state", ["reserved", "provider_pending", "uncertain"]);
+  if (passengerHolds.error) return NextResponse.json({ error: "Could not verify passenger agreement sends. Refresh before sending another agreement." }, { status: 503 });
+  const paxSendAttempts: Record<string, any> = {};
+  for (const entry of passengerHolds.data ?? []) { const hold = safeSendAttempt(entry); if (hold && entry.pax_index != null) paxSendAttempts[String(entry.pax_index)] = hold; }
 
   // Every live submission goes through the one sync, INCLUDING completed rows
   // whose pointers exist: the manifest check inside syncSubmission is what
@@ -423,6 +469,7 @@ export async function GET(req: NextRequest) {
   if (templates.error) return NextResponse.json({ error: "Could not read this campaign's agreement setup." }, { status: 503 });
   return NextResponse.json({ status: status === "completed" ? "signed" : agreementSendStatus(status), complete: status === "completed", pax,
     claim_id: context.matter.claim.id, agreement_id: main?.id ?? null, templates: templates.data ?? [], case_type: context.matter.claim.claim_type, read_only: !!context.lead.archived_at,
+    send_attempt: pending.attempt, pax_send_attempts: paxSendAttempts,
     emergency: emergency.row ? { group: emergency.row.packet_group, status: emergency.row.status, needs_resign: emergencySupersedes(main, emergency.row) } : null,
     agreement: main ? { id: main.id, status: main.status, via: main.via, template_key: main.template_key, sent_at: main.created_at, signed_at: main.signed_at, voided_at: main.voided_at, void_reason: main.void_reason } : null });
 }

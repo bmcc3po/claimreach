@@ -33,3 +33,10 @@ export const UNSIGNED_AGREEMENT_STATUSES = ["sent", "opened", "sending", "failed
 export function agreementSendStatus(status: string | null | undefined): string {
   return !status || ["voided", "expired", "declined", "failed"].includes(status) ? "ready" : status;
 }
+export type SendAttemptHold = {
+  id: string;
+  state: "reserved" | "provider_pending" | "uncertain";
+  created_at: string;
+  needs_reconciliation: true;
+  pax_key?: string;
+};
