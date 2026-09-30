@@ -33,7 +33,7 @@ export default async function AppHomePage() {
     ? campaigns.filter((c: any) => packetsFor((firmById.get(c.firm_id) as any)?.slug, c.case_type)) : [];
   const [leadRes, tplRes, textRes] = await Promise.all([
     campIds.length ? readDeskRows(() => sb.from("leads")
-      .select("id, firm_id, external_id, archived_at, lead_no, claimant_name, phone, campaign_id, campaign, created_at, last_called_at, marketing_source, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, created_at, updated_at)")
+      .select("id, firm_id, external_id, archived_at, lead_no, claimant_name, phone, campaign_id, campaign, created_at, last_called_at, signed_at, marketing_source, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, created_at, updated_at)")
       .in("campaign_id", campIds).is("archived_at", null)) : { data: [], error: null },
     setupCamps.length ? sb.from("esign_templates").select("campaign_id, key").in("campaign_id", setupCamps.map((c: any) => c.id)).eq("provider", "docuseal") : { data: [], error: null },
     // Messages remain reachable outside the six work queues, including replies
@@ -62,7 +62,7 @@ export default async function AppHomePage() {
   if (campRes.error || firmRes.error) notes.push("Campaigns did not load. Do not assume your work queues are empty.");
   if (leadRes.error) notes.push("Files did not load. Retry before assuming there are no files to work.");
   if (!acquisitionReady) notes.push("Current call or status data did not load. Calling queues are paused until it can be checked.");
-  if (!signingReady) notes.push("Agreements did not load. Signed status records remain visible, but signature details could not be checked.");
+  if (!signingReady) notes.push("Agreements did not load. Signature-dependent queues may be incomplete; retry before assuming they are empty.");
   let holds = new Map<string, MvaAcquisitionSignal>();
   try { holds = await loadMvaAcquisitionHolds(sb, leadIds); }
   catch (error) { acquisitionReady = false; notes.push(error instanceof Error ? error.message : "Could not check external contact holds."); }
@@ -94,3 +94,4 @@ export default async function AppHomePage() {
     queues, texts, setup, notes };
   return <>{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`${pilot ? "/app" : "/leads"}/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || "Open matter"}</Link>: {r.source_status || "Status missing"} — {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
 }
+
