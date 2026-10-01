@@ -89,7 +89,7 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
   await t('NETFLY LawRuler transfer requires original PDF and stores it with the unchanged handoff note', async () => {
     const h = harness('');
     Object.assign(h.database.tables.campaigns[0], { name: 'NETFLY ONTAKE', path: 'secondary', esign_required: false });
-    Object.assign(h.database.tables.leads[0], { campaign_id: 'mva', case_type: 'mva' });
+    Object.assign(h.database.tables.leads[0], { external_id: 'other-source', campaign_id: 'mva', case_type: 'mva' });
     Object.assign(h.database.tables.claims[0], { answers: {}, updated_at: '2026-09-30T00:00:00.000Z' });
     const missing = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', NetflyHandoffNote: 'Client/Driver: Synthetic Person' }));
     assert.equal(missing.status, 422);
@@ -101,7 +101,8 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     }) };
     const note = 'Client/Driver: Synthetic Person\nAccident Date: 09/04/2026\nAccident Summary: Rear ended while stopped.';
     const send = () => { const form = new FormData();
-      form.set('LeadID', '264972'); form.set('CaseType', 'NETFLY ONTAKE'); form.set('NetflyHandoffNote', note);
+      form.set('LeadID', '264972'); form.set('CaseType', 'NETFLY ONTAKE');
+      form.set('FirstName', 'Synthetic'); form.set('LastName', 'Person'); form.set('NetflyHandoffNote', note);
       // DocuSeal's number in the filename is a submission ID, not LawRuler's LeadID.
       form.set('retainer', new Blob([`%PDF-1.4\n${'synthetic evidence '.repeat(8)}\n%%EOF`], { type: 'application/pdf' }), 'signed-11738202.pdf');
       return new Request('https://synthetic.invalid/api/webhooks/lawruler', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form }); };
@@ -111,6 +112,7 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     assert.equal(h.ingestOptions[0].holdOutreach, true);
     assert.equal(h.database.tables.leads[0].perm_text, false);
     assert.equal(h.database.tables.case_documents[0].doc_type, 'netfly_signed_retainer');
+    assert.equal(h.ingestOptions[0].lead.phone, null);
     assert.equal(h.database.tables.claims[0].answers.netfly_secondary.handoffs[0].note, note.replace(/\n/g, '\r\n'));
     assert.equal(h.database.tables.claims[0].status, 'new');
     assert.equal(first.body.communications_triggered, false);
