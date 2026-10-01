@@ -45,11 +45,16 @@ function clock(iso?: string | null) {
   const h = t.getHours(), m = t.getMinutes();
   return `${t.getMonth() + 1}/${t.getDate()} ${(h % 12) || 12}:${m < 10 ? "0" : ""}${m} ${h < 12 ? "AM" : "PM"}`;
 }
+function leadClock(iso?: string | null, zone?: string | null) {
+  if (!iso || !zone) return "";
+  try { return new Intl.DateTimeFormat("en-US", { timeZone: zone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(iso)); }
+  catch { return ""; }
+}
 
 export default function CallsHome({ data }: { data: HomeData }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>(() => data.queues.callbacks.some((r) => r.due && Date.parse(r.due) <= Date.now())
-    ? "callbacks" : data.queues.signed.length ? "signed" : "new");
+  const [tab, setTab] = useState<Tab>(() => data.queues.due.length ? "due" : data.queues.callbacks.some((r) => r.due && Date.parse(r.due) <= Date.now())
+    ? "callbacks" : data.queues.signed.length ? "signed" : "wait");
   const [q, setQ] = useState("");
   const [results, setResults] = useState<any[] | null>(null);
   const [searchErr, setSearchErr] = useState("");
@@ -77,7 +82,8 @@ export default function CallsHome({ data }: { data: HomeData }) {
   useEffect(() => {
     try {
       const p = new URLSearchParams(window.location.search);
-      const requestedTab = DESK_TABS.find(([key]) => key === p.get("tab"))?.[0];
+      const tabKey = p.get("tab") === "new" || p.get("tab") === "calling" ? "due" : p.get("tab");
+      const requestedTab = DESK_TABS.find(([key]) => key === tabKey)?.[0];
       if (requestedTab) setTab(requestedTab);
       if (p.get("phone")) setPhone(p.get("phone") || "");
       if (p.get("new") === "1" || p.get("phone")) { setSheet(true); window.history.replaceState(null, "", "/app"); }
@@ -106,7 +112,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
 
   const lists: Record<Tab, HomeRow[]> = { ...data.queues, texts: data.texts };
   const rows = lists[tab];
-  const dueNow = useMemo(() => data.queues.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.queues.callbacks, now]);
+  const dueNow = useMemo(() => data.queues.due.length + data.queues.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.queues.due, data.queues.callbacks, now]);
 
   async function startCall() {
     if (kind === NETFLY_KIND.key) {
@@ -158,7 +164,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
         <div className="cc-home-h">
           <div>
             <div className="cc-home-hi">{first ? `Hi, ${first}` : "App"}</div>
-            <div className="cc-home-sub">{dueNow ? `${dueNow} call back${dueNow === 1 ? "" : "s"} due now` : `${Object.values(data.queues).reduce((total, list) => total + list.length, 0)} active files`}</div>
+            <div className="cc-home-sub">{dueNow ? `${dueNow} call${dueNow === 1 ? "" : "s"} due now` : `${Object.values(data.queues).reduce((total, list) => total + list.length, 0)} active files`}</div>
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <button type="button" className="cc-home-link" style={{ border: 0, background: "transparent", fontFamily: "inherit", cursor: "pointer" }} aria-pressed={tab === "texts"} onClick={() => { setQ(""); setResults(null); setTab("texts"); }}>Texts{data.texts.length ? ` (${data.texts.length})` : ""}</button>
@@ -177,6 +183,9 @@ export default function CallsHome({ data }: { data: HomeData }) {
         </nav>
       )}
       <main className="cc-main" style={{ gap: 12 }}>
+        {results === null && tab === "due" && <div className="cc-due-head">CALL NOW <span>{rows.length} due</span></div>}
+        {results === null && tab === "wait" && <div className="cc-cue" style={{ marginTop: 0 }}>Not yet due. The next call time appears on each file.</div>}
+        {results === null && tab === "review" && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>These files need a manager or call-history check before another scheduled attempt. They remain visible here.</div>}
         {results === null && tab === "texts" && <div className="cc-cue" style={{ marginTop: 0 }}>Recent incoming texts</div>}
         {results === null && tab === "signed" && <div className="cc-cue" style={{ marginTop: 0 }}>
           Review the signed agreement and finish any office step. Signed files stay here until delivered or closed.
@@ -204,7 +213,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
               <div className="cc-grp">
                 {results.map((r) => (
                   <a key={r.id} className="cc-lrow" href={`/app/${r.id}`}>
-                    <span className="cc-lrow-main"><span className="cc-lrow-n">{r.claimant_name || "No name yet"}</span><span className="cc-lrow-s">{[fmtPhone(r.phone), r.lead_no, r.campaign].filter(Boolean).join("  ")}</span></span>
+                    <span className="cc-lrow-main"><span className="cc-lrow-n">{r.claimant_name || "No name yet"}</span><span className="cc-lrow-s">{[fmtPhone(r.phone), r.lead_no, r.campaign].filter(Boolean).join("  ")}</span><span className="cc-lrow-s">Calls: {r.call_count == null ? "unverified" : r.call_count} · Last call: {r.last_call_at ? clock(r.last_call_at) : "none verified"}</span></span>
                     <span className="cc-lrow-t">{r.archived_at ? "Archived" : statusText(r.status)}</span>
                   </a>
                 ))}
@@ -213,21 +222,24 @@ export default function CallsHome({ data }: { data: HomeData }) {
           </>
         ) : rows.length === 0 ? (
           <div className="cc-cue" style={{ textAlign: "center", marginTop: 28 }}>
-            {tab === "new" ? "No new files." : tab === "calling" ? "No files need another call." : tab === "signed" ? "No signed files awaiting completion or delivery." : tab === "callbacks" ? "No call backs scheduled." : tab === "texts" ? "No texts in the last three days." : tab === "sent" ? "Nothing out for signature." : "No signed files returned by QA."}
+            {tab === "due" ? "No calls due now." : tab === "wait" ? "No files are waiting for their next call." : tab === "review" ? "No files need a call-history review." : tab === "signed" ? "No signed files awaiting completion or delivery." : tab === "callbacks" ? "No call backs scheduled." : tab === "texts" ? "No texts in the last three days." : tab === "sent" ? "Nothing out for signature." : "No signed files returned by QA."}
           </div>
         ) : (
           <div className="cc-grp">
             {rows.map((r, i) => {
-              const late = tab === "callbacks" && r.due && Date.parse(r.due) <= now;
+              const late = (tab === "callbacks" && r.due && Date.parse(r.due) <= now) || r.outreach?.overdue;
               return (
                 <a key={r.href || r.id + i} className="cc-lrow" href={r.href || (r.id ? `/app/${r.id}` : "#")}
                   onClick={(ev) => { if (r.newPhone) { ev.preventDefault(); setPhone(r.newPhone); setName(""); setErr(""); setSheet(true); } }}>
                   <span className="cc-lrow-main">
-                    <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}</span>
+                    <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}{r.outreach?.badge === "new" && <span className="cc-dial-badge cc-new-badge">New</span>}{r.outreach?.overdue && <span className="cc-dial-badge cc-overdue-badge">Overdue</span>}</span>
                     <span className="cc-lrow-s">{[r.name ? fmtPhone(r.phone) : "", r.sub].filter(Boolean).join("  ")}</span>
+                    {tab !== "texts" && <span className="cc-lrow-s">{`Calls: ${r.callCount == null ? "unverified" : r.callCount} · Last call: ${r.lastCallAt ? clock(r.lastCallAt) : "none verified"}`}</span>}
+                    {r.outreach && <span className={`cc-lrow-s${r.outreach.stage === "review" ? " cc-red" : ""}`}>{r.outreach.reason}{r.outreach.dueAt ? ` · Due ${leadClock(r.outreach.dueAt, r.outreach.zone)} (client time)` : ""}</span>}
+                    {r.outreach?.textPrompt && <span className="cc-lrow-s cc-text-reminder">{r.outreach.textAfterCall ? `After call #${r.outreach.nextAttempt}` : `Text step ${r.outreach.textStep} is due`}: text only with verified permission and no opt-out. Suggested: “Hi {String(r.name || "there").split(" ")[0]}, this is the Turnbull Moak & Pendergrass intake team. Please call us when convenient. Reply STOP to opt out.”</span>}
                   </span>
                   <span className={`cc-lrow-t${late ? " cc-late" : ""}`}>
-                    {tab === "callbacks" ? (late ? `Due ${ago(r.due, now)}` : clock(r.due)) : tab === "texts" ? ago(r.at, now) : <><b>{r.tag}</b><br />{ago(r.at, now)}</>}
+                    {tab === "callbacks" ? (late ? `Due ${ago(r.due, now)}` : clock(r.due)) : tab === "texts" ? ago(r.at, now) : <><b>{r.tag}</b><br />{tab === "due" || tab === "wait" ? ago(r.due, now) : ago(r.at, now)}</>}
                   </span>
                 </a>
               );

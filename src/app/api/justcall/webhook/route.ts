@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ingestComm } from "@/lib/comms";
+import { ingestComm, normPhone, providerCallResult } from "@/lib/comms";
+import { isSmsRevocation } from "@/lib/sms-opt-out";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { recordAudit } from "@/lib/audit";
 import {
@@ -100,6 +101,16 @@ export async function POST(req: NextRequest) {
         try { await supabaseAdmin().from("webhook_events").insert({ direction: "inbound", event_type: "justcall." + type, status: "failed", payload: p, error: String(r.error) }); } catch {}
         return NextResponse.json({ ok: false, kind: "sms", error: "message not recorded", media: mediaOut }, { status: 500 });
       }
+      if (dir === "inbound" && isSmsRevocation(d.sms_info?.body || d.body || "")) {
+        const phone = normPhone(d.contact_number);
+        if (phone.length !== 10) return NextResponse.json({ error: "opt-out number could not be verified" }, { status: 500 });
+        const admin = supabaseAdmin();
+        // A shared number revokes texting across all files. Duplicate webhook
+        // deliveries are idempotent; a failed update gets retried by provider.
+        const { error: leadOptError } = await admin.from("leads").update({ perm_text: false }).eq("phone_norm", phone);
+        const { error: pointOptError } = await admin.from("contact_points").update({ status: "opted_out" }).eq("kind", "mobile").eq("value", d.contact_number);
+        if (leadOptError || pointOptError) return NextResponse.json({ error: "opt-out could not be saved" }, { status: 500 });
+      }
       return NextResponse.json({ ok: true, kind: "sms", media: mediaOut });
     }
 
@@ -110,6 +121,7 @@ export async function POST(req: NextRequest) {
       await ingestComm({
         channel: "call", direction: String(ci.direction || "Outgoing").toLowerCase().includes("in") ? "inbound" : "outbound",
         call_kind: "dialer",
+        provider_call_result: providerCallResult(ci.type || ci.status),
         phone: d.contact_number,
         duration_sec: Number(ci.duration || 0) || undefined,
         recording_url: ci.recording || undefined,
@@ -136,6 +148,7 @@ export async function POST(req: NextRequest) {
         channel: isVoicemail ? "voicemail" : "call",
         direction,
         call_kind: direction,
+        provider_call_result: isVoicemail ? "voicemail" : providerCallResult(ci.type),
         phone: d.contact_number,
         duration_sec: Number(cd.total_duration ?? cd.conversation_time ?? 0) || undefined,
         recording_url: ci.recording || undefined,

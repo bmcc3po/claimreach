@@ -2,7 +2,7 @@
 // First-dial stamping on new and duplicate call events. Offline: an
 // in-memory database; the audit helper has no service key and writes nothing.
 import assert from "node:assert/strict";
-import { ingestComm, stampFirstDial } from "./comms";
+import { ingestComm, providerCallResult, stampFirstDial } from "./comms";
 import { FakeDb } from "./test-fake-db";
 
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,12 +30,35 @@ function world(lead: Record<string, any> = {}, comms: Record<string, any>[] = []
 const call = (o: Record<string, any> = {}) => ({ channel: "call" as const, direction: "outbound" as const, phone: "(832) 555-0148", call_sid: "CA1", ...o });
 const original = { id: "c-1", lead_id: LEAD, firm_id: "firm-tmp", channel: "call", direction: "outbound", call_sid: "CA1", duration_sec: null, occurred_at: "2026-09-28T10:20:00Z", created_at: "2026-09-28T10:20:03Z" };
 
+assert.equal(providerCallResult("unanswered"), "unanswered");
+assert.equal(providerCallResult("No Answer"), "unanswered");
+assert.equal(providerCallResult("answered"), "answered");
+assert.equal(providerCallResult("Unarchived"), null);
+assert.equal(providerCallResult("Completed"), null);
+
 t("a new outbound call stamps first dial with its own time", async () => {
   const w = world();
   const r: any = await ingestComm(call({ occurred_at: "2026-09-28T10:07:00Z" }), { db: w.db });
   assert.equal(r.matched, true);
   assert.equal(r.stamp_error, undefined);
   assert.equal(w.lead().first_dialed_at, "2026-09-28T10:07:00Z");
+});
+
+t("a shared phone cannot credit a guessed newest file", async () => {
+  const w = world();
+  w.db.tables.leads.push({ ...w.lead(), id: "other-active", created_at: "2026-09-29T10:00:00Z" });
+  const r: any = await ingestComm(call({ occurred_at: "2026-09-29T11:00:00Z" }), { db: w.db });
+  assert.equal(r.matched, false);
+  assert.equal(w.comm().lead_id, null);
+  assert.equal(w.lead().first_dialed_at, null);
+});
+
+t("explicit provider result survives first delivery and a later duplicate", async () => {
+  const w = world();
+  await ingestComm(call({ occurred_at: "2026-09-28T10:07:00Z", provider_call_result: "unanswered" }), { db: w.db });
+  assert.equal(w.comm().provider_call_result, "unanswered");
+  await ingestComm(call({ occurred_at: "2026-09-28T10:07:00Z", provider_call_result: "answered" }), { db: w.db });
+  assert.equal(w.comm().provider_call_result, "answered");
 });
 
 t("a duplicate repairs a missing stamp with the ORIGINAL call's time, not the duplicate's", async () => {

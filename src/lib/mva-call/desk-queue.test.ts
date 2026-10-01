@@ -9,17 +9,18 @@ const lead = (id: string, status = "new") => ({ id, firm_id: "firm", campaign_id
   claims: [{ id: `${id}-claim`, lead_id: id, firm_id: "firm", campaign_id: "inno", claim_type: "mva", campaign: "INNO MVA", status, created_at: old }] });
 const call = (file: any, extra = {}) => ({ id: `${file.id}-call`, lead_id: file.id, claim_id: file.claims[0].id, campaign_id: "inno", created_at: old, ...extra });
 const agreement = (file: any, extra = {}) => ({ id: `${file.id}-agreement`, lead_id: file.id, claim_id: file.claims[0].id, firm_id: "firm", campaign_id: "inno", status: "sent", created_at: old, sent_at: old, template_key: "NV_FLAT", ...extra });
-const classify = (leads: any[], calls: any[] = [], agreements: any[] = [], extra = {}) => buildDeskQueues({ leads, calls, agreements, campaignIds: ["inno"], statuses: DEFAULT_STATUSES, holds: new Map(), acquisitionReady: true, ...extra });
+const classify = (leads: any[], calls: any[] = [], agreements: any[] = [], extra = {}) => buildDeskQueues({ leads, calls, agreements, campaignIds: ["inno"], statuses: DEFAULT_STATUSES, holds: new Map(), acquisitionReady: true,
+  dialSummaries: new Map(leads.map(file => [file.id, { local_zone: "America/Chicago", shared_phone: false, total_dials: 0, dials_today: 0, unanswered_dials: 0, answered_dials: 0, unverified_dials: 0, first_call_at: null, last_call_at: null, dial_times: [], outbound_sms_times: [] }])), ...extra });
 let passed = 0;
 function test(name: string, run: () => void) { run(); passed++; console.log("ok", name); }
 
-test("six queues have the exact approved order and labels", () => {
-  assert.deepEqual(DESK_TABS.map(row => row[1]), ["NEW", "CONTINUE CALLING", "CALLBACK SCHEDULED", "SENT ESIGN", "SIGNED ESIGN", "WIP"]);
+test("due and waiting lead the work queues", () => {
+  assert.deepEqual(DESK_TABS.map(row => row[1]), ["CALL NOW", "WAIT TO CALL", "CALLBACK SCHEDULED", "SENT ESIGN", "SIGNED ESIGN", "WIP", "NEEDS REVIEW"]);
 });
-test("one matter appears in exactly one of the six queues", () => {
+test("one matter appears in exactly one queue", () => {
   const fresh = lead("fresh"), calling = lead("calling", "contacting"), callback = lead("callback", "contacting"), sent = lead("sent", "esign_sent"), signed = lead("signed", "signed_grievous"), wip = lead("wip", "signed_wip");
   const queues = classify([fresh, calling, callback, sent, signed, wip], [call(callback, { disposition: "callback", callback_at: recent })], [agreement(sent), agreement(signed, { status: "signed", signed_at: old })]);
-  assert.deepEqual(Object.values(queues).map(rows => rows.length), [1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(Object.values(queues).map(rows => rows.length), [2, 0, 1, 1, 1, 1, 0]);
   assert.equal(new Set(Object.values(queues).flat().map(row => row.claimId)).size, 6);
 });
 test("all DQ and terminal states stay out even with old signed envelopes or callback records", () => {
@@ -32,14 +33,14 @@ test("only explicit signed_wip enters WIP; partial calls and unsigned QA returns
   const partial = lead("partial", "contacting"), unsigned = lead("unsigned", "wip"), returned = lead("returned", "signed_wip");
   const queues = classify([partial, unsigned, returned], [call(partial)]);
   assert.deepEqual(queues.wip.map(row => row.id), ["returned"]);
-  assert.deepEqual(queues.calling.map(row => row.id), ["partial"]);
+  assert.deepEqual(queues.due.map(row => row.id), ["partial"]);
 });
 test("an exact source DQ hold blocks stale signing work without closing an eligible sibling", () => {
   const file = lead("held", "esign_sent");
   file.claims.push({ ...file.claims[0], id: "open-sibling", status: "contacting" });
   const holds = new Map([[file.claims[0].id, { lead_id: file.id, firm_id: "firm", campaign_id: "inno", acquisition_hold: true, mapped_status: "dq" }]]);
   const queues = classify([file], [], [agreement(file, { status: "signed", signed_at: old })], { holds });
-  assert.equal(queues.signed.length + queues.sent.length, 0); assert.equal(queues.calling[0].claimId, "open-sibling");
+  assert.equal(queues.signed.length + queues.sent.length, 0); assert.equal(queues.review[0].claimId, "open-sibling");
 });
 test("reviewed, completed and approved signed work does not age out", () => {
   for (const [status, providerStatus, reviewed] of [["signed_grievous", "signed", null], ["signed_grievous", "signed", recent], ["signed_qa", "completed", recent], ["signed_approved", "completed", recent]]) {
@@ -65,9 +66,9 @@ test("latest exact-matter callback wins without crossing a sibling", () => {
   const file = lead("siblings", "contacting");
   file.claims.push({ ...file.claims[0], id: "sibling-closed", status: "dq" });
   const queues = classify([file], [call(file, { disposition: "callback", callback_at: old }), call(file, { claim_id: "sibling-closed", created_at: recent })]);
-  assert.equal(queues.callbacks.length, 1); assert.equal(queues.calling.length, 0);
+  assert.equal(queues.callbacks.length, 1); assert.equal(queues.due.length, 0);
   const resumed = classify([file], [call(file, { disposition: "callback", callback_at: old }), call(file, { created_at: recent, disposition: "no_answer" })]);
-  assert.equal(resumed.callbacks.length, 0); assert.equal(resumed.calling.length, 1);
+  assert.equal(resumed.callbacks.length, 0); assert.equal(resumed.review.length, 1);
 });
 test("ambiguous, foreign and passenger envelopes never sign the wrong file", () => {
   const file = lead("parent");
@@ -81,7 +82,7 @@ test("ambiguous, foreign and passenger envelopes never sign the wrong file", () 
 test("newest voided envelope does not revive an older pending envelope", () => {
   const file = lead("voided", "esign_sent");
   const queues = classify([file], [], [agreement(file), agreement(file, { id: "newest", created_at: recent, status: "voided", voided_at: recent })]);
-  assert.equal(queues.sent.length, 0); assert.equal(queues.calling.length, 1);
+  assert.equal(queues.sent.length, 0); assert.equal(queues.due.length, 1);
 });
 test("correction waiting for signature is Sent E-Sign while signed original remains history", () => {
   const file = lead("corrected", "signed_grievous");
@@ -95,7 +96,7 @@ test("archives, other campaigns and other case types cannot leak into pilot queu
 });
 test("failed acquisition dependencies pause calling but preserve signed service work", () => {
   const queues = classify([lead("new"), lead("calling", "contacting"), { ...lead("signed", "signed_grievous"), signed_at: old }, lead("wip", "signed_wip")], [], [], { acquisitionReady: false });
-  assert.equal(queues.new.length + queues.calling.length + queues.callbacks.length, 0);
+  assert.equal(queues.due.length + queues.wait.length + queues.callbacks.length, 0);
   assert.equal(queues.signed.length + queues.wip.length, 2);
 });
 (async () => {

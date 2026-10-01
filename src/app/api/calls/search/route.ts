@@ -38,11 +38,16 @@ export async function GET(req: NextRequest) {
   const visible = (data ?? []).filter((l: any) => l.campaign !== "NETFLY ONTAKE" && !secondaryIds.includes(l.campaign_id));
   const ids = visible.map((l: any) => l.id);
   const statusBy: Record<string, string> = {};
+  const callsBy: Record<string, { count: number; last: string | null }> = {};
   if (ids.length) {
-    const { data: claims } = await sb.from("claims").select("lead_id, status, created_at").in("lead_id", ids).order("created_at", { ascending: true });
+    const [{ data: claims }, { data: callStats }] = await Promise.all([
+      sb.from("claims").select("lead_id, status, created_at").in("lead_id", ids).order("created_at", { ascending: true }),
+      sb.from("cr_mva_dial_summary").select("lead_id, total_dials, last_call_at").in("lead_id", ids),
+    ]);
     for (const c of claims ?? []) if (!statusBy[c.lead_id]) statusBy[c.lead_id] = c.status;
+    for (const c of callStats ?? []) callsBy[c.lead_id] = { count: c.total_dials, last: c.last_call_at };
   }
   return NextResponse.json({
-    results: visible.map((l: any) => ({ ...l, status: statusBy[l.id] || null })),
+    results: visible.map((l: any) => ({ ...l, status: statusBy[l.id] || null, call_count: callsBy[l.id]?.count ?? null, last_call_at: callsBy[l.id]?.last ?? null })),
   });
 }

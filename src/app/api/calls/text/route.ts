@@ -24,7 +24,12 @@ export async function POST(req: NextRequest) {
 
   const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  if (lead.perm_text === false) return NextResponse.json({ error: "The PNC asked not to be texted. This file is marked do not contact." }, { status: 409 });
+  if (lead.perm_text !== true) return NextResponse.json({ error: "Texting is disabled for this file." }, { status: 409 });
+  const { data: phonePoints, error: pointError } = await sb.from("contact_points")
+    .select("kind, status, value").eq("lead_id", lead.id).in("kind", ["mobile", "landline"]).is("retired_at", null);
+  if (pointError) return NextResponse.json({ error: "Could not verify opt-out status. Text held." }, { status: 503 });
+  if ((phonePoints ?? []).some((point: any) => point.status === "opted_out" && normPhone(point.value) === normPhone(lead.phone)))
+    return NextResponse.json({ error: "This number opted out. Do not text it." }, { status: 409 });
   if (lead.comms_monitored) {
     const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
     if (!safe.includes("Text")) return NextResponse.json({ error: "Texting is not a safe channel for this caller." }, { status: 409 });
