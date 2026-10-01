@@ -14,11 +14,11 @@ const VERIFY_STEPS = [
   { title: "2. Verify their story", script: "I have your name as [spell name], and the accident listed as [date and location]. Is that right? I'll read back the key points; please stop me if anything has changed or is missing.", fields: ["confirmed_name", "name_confirmed", "dob", "mailing_address", "confirmed_phone", "confirmed_email", "accident_date", "road", "position", "incident_story", "fault", "passengers", "passenger_details"] },
   { title: "3. Fill the gaps", script: "I have most of the accident details already. I just want to check the pieces the case manager will need: the police report, the vehicles and insurance, your treatment plan, and whether anyone else is representing you.", fields: ["police_came", "police_report", "ticket", "other_insurer", "other_claim", "drivable", "totaled", "photos", "insurer_contact", "recorded_statement", "other_lawyer_talk", "other_lawyer_signed", "client_questions"] },
   { title: "4. Close the ontake", script: "Before we finish, I'll make sure the legal team knows what is complete and what needs follow-up. I don't make the final decision about your case.", fields: [] },
-  { title: "5. Meet the case manager", script: "While I have you on the phone, I just want to see if your case manager is at her desk to say hi. Would that be okay?", fields: ["final_notes"] },
+  { title: "5. Close & follow up", script: "Thanks so much for your patience. We're going to get your case entered into the system, and we'll call you back within 24 to 48 hours.", fields: ["final_notes"] },
 ] as const;
 const verifyIds = new Set<string>(VERIFY_STEPS.flatMap((step) => [...step.fields]));
 const fieldById = new Map(NETFLY_FIELDS.map((field) => [field.id, field]));
-const emptyCallClose: NetflyCallClose = { completion: "" as NetflyCallClose["completion"], disposition: "" as NetflyCallClose["disposition"], dq_reason_key: "", assessment_reason: "", transfer_destination: "", transfer_outcome: "" as NetflyCallClose["transfer_outcome"], transfer_note: "", client_notified_48_business_hours: false };
+const emptyCallClose: NetflyCallClose = { closeout_version: 2, completion: "" as NetflyCallClose["completion"], disposition: "" as NetflyCallClose["disposition"], dq_reason_key: "", assessment_reason: "", transfer_destination: "", transfer_outcome: "not_attempted", transfer_note: "", client_notified_48_business_hours: false, callback_promised_24_48_hours: false };
 export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [section, setSection] = useState(0);
@@ -39,14 +39,13 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [verificationNote, setVerificationNote] = useState("");
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [callClose, setCallClose] = useState<NetflyCallClose>(emptyCallClose);
-  const [introDecision, setIntroDecision] = useState<"yes" | "no" | "not_attempted" | null>(null);
   const [callCloseDirty, setCallCloseDirty] = useState(false);
   const [callCloseBusy, setCallCloseBusy] = useState(false);
   const [dqDialogOpen, setDqDialogOpen] = useState(false);
   const [liveCall, setLiveCall] = useState<NetflyLiveCall | null>(null);
   const [presenceBusy, setPresenceBusy] = useState(false);
   async function load(forceCall = false) {
-    try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setDetail(d); setLiveCall(d.live_call || null); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { setCallClose(d.answers?.call_close ? { ...emptyCallClose, ...d.answers.call_close } : emptyCallClose); setCallCloseDirty(false); } }
+    try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setDetail(d); setLiveCall(d.live_call || null); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { const saved = d.answers?.call_close; setCallClose(saved ? { ...emptyCallClose, ...saved, closeout_version: 2, callback_promised_24_48_hours: saved.closeout_version === 2 && saved.callback_promised_24_48_hours === true } : emptyCallClose); setCallCloseDirty(false); } }
     catch (e: any) { setError(e.message || "NETFLY file did not load."); }
   }
   useEffect(() => { void load(); }, [fileKey]);
@@ -105,21 +104,11 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const chooseDisposition = (disposition: NetflyCallClose["disposition"]) => {
     setCallClose((old) => ({ ...old, disposition,
       dq_reason_key: disposition === "appears_dq" ? old.dq_reason_key : "",
-      transfer_destination: "", transfer_outcome: "" as NetflyCallClose["transfer_outcome"],
-      transfer_note: "", client_notified_48_business_hours: false,
+      transfer_destination: "", transfer_outcome: "not_attempted",
+      transfer_note: "", client_notified_48_business_hours: false, callback_promised_24_48_hours: false,
     }));
-    setIntroDecision(null);
     setCallCloseDirty(true);
     if (disposition === "appears_dq") setDqDialogOpen(true);
-  };
-  const chooseIntro = (choice: "yes" | "no" | "not_attempted") => {
-    setIntroDecision(choice);
-    setCallClose((old) => ({ ...old,
-      transfer_outcome: choice === "no" ? "client_declined" : choice === "not_attempted" ? "not_attempted"
-        : ["connected", "attempted_no_answer"].includes(old.transfer_outcome) ? old.transfer_outcome : "" as NetflyCallClose["transfer_outcome"],
-      client_notified_48_business_hours: choice === "no" ? old.client_notified_48_business_hours : false,
-    }));
-    setCallCloseDirty(true);
   };
   async function recordCallClose() {
     const invalid = validateNetflyCallClose(callClose);
@@ -144,11 +133,9 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const sourceFieldRows = Object.entries(sourceFieldRevisions.at(-1)?.fields || {});
   const checked = detail.answers.handoff_verification?.source_revision === handoffs.length &&
     (detail.answers.handoff_verification?.source_field_revision ?? 0) === sourceFieldRevisions.length && handoffs.length > 0;
-  const callRecorded = detail.answers.call_close?.source_revision === handoffs.length &&
+  const callRecorded = detail.answers.call_close?.closeout_version === 2 && detail.answers.call_close?.source_revision === handoffs.length &&
     (detail.answers.call_close?.source_field_revision ?? 0) === sourceFieldRevisions.length &&
     handoffs.length > 0 && !callCloseDirty && !validateNetflyCallClose(detail.answers.call_close);
-  const needsIntroduction = callClose.completion === "complete" && callClose.disposition === "appears_qualified";
-  const introStage = introDecision || (["connected", "attempted_no_answer"].includes(callClose.transfer_outcome) ? "yes" : callClose.transfer_outcome === "client_declined" ? "no" : callClose.transfer_outcome === "not_attempted" ? "not_attempted" : null);
   const renderStep = (stepIndex: number) => {
     const current = VERIFY_STEPS[stepIndex];
     const visible = current.fields.map((id) => fieldById.get(id)).filter((f): f is NetflyField => !!f && (!f.when || values[f.when.id] === f.when.is));
@@ -187,30 +174,9 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         {callClose.disposition === "appears_dq" && callClose.dq_reason_key && <button type="button" className="nf-secondary" onClick={() => setDqDialogOpen(true)}>DQ reason: {DEFAULT_DQ_REASONS.find((reason) => reason.key === callClose.dq_reason_key)?.label || callClose.dq_reason_key} · Change</button>}
         {callClose.disposition && callClose.disposition !== "appears_qualified" && <label className="nf-call-label">What happened, and what should happen next?<textarea value={callClose.assessment_reason} onChange={(e) => updateCallClose("assessment_reason", e.target.value)} placeholder="Record the facts, callback plan, or the client's concern." /></label>}
         {flags.length > 0 && <p className="nf-alert">These flags need supervisor attention. Do not decline the client on this call.</p>}
-        {!needsIntroduction && callClose.disposition && <button type="button" className="nf-primary" disabled={callCloseBusy} onClick={() => void recordCallClose()}>{callCloseBusy ? "Recording…" : "Record ontake result"}</button>}
-        {callRecorded && !needsIntroduction && <p className="nf-saved">Result saved. {callClose.completion === "incomplete" ? "Keep this file open for follow-up." : "Send the completed file for supervisor review below."}</p>}
+        {callClose.disposition && <p className="nf-muted">Continue to the closing line, then record the result.</p>}
       </div>}
-      {stepIndex === 4 && needsIntroduction && <div className="nf-call-block">
-        <p className="nf-muted">Ask permission first. Choosing an answer here records the result; it does not place a call.</p>
-        <strong>May I try to introduce you to your case manager now?</strong>
-        <div className="nf-options nf-options-binary" role="group" aria-label="Client agreed to a live introduction">
-          <button type="button" aria-pressed={introStage === "yes"} className={introStage === "yes" ? "selected" : ""} onClick={() => chooseIntro("yes")}>Yes · Try now</button>
-          <button type="button" aria-pressed={introStage === "no"} className={introStage === "no" ? "selected" : ""} onClick={() => chooseIntro("no")}>No · Client declined</button>
-        </div>
-        <button type="button" className={`nf-unknown${introStage === "not_attempted" ? " selected" : ""}`} aria-pressed={introStage === "not_attempted"} onClick={() => chooseIntro("not_attempted")}>Could not offer the introduction</button>
-        {introStage === "yes" && <>
-          <label className="nf-call-label">Case manager number or queue<input value={callClose.transfer_destination} onChange={(e) => updateCallClose("transfer_destination", e.target.value)} placeholder="Enter the number or JustCall queue when available" /></label>
-          <strong>After the attempt, what happened?</strong>
-          <div className="nf-options nf-options-binary" role="group" aria-label="Live introduction result">
-            <button type="button" aria-pressed={callClose.transfer_outcome === "connected"} className={callClose.transfer_outcome === "connected" ? "selected" : ""} onClick={() => updateCallClose("transfer_outcome", "connected")}>Connected live</button>
-            <button type="button" aria-pressed={callClose.transfer_outcome === "attempted_no_answer"} className={callClose.transfer_outcome === "attempted_no_answer" ? "selected" : ""} onClick={() => updateCallClose("transfer_outcome", "attempted_no_answer")}>No answer</button>
-          </div>
-        </>}
-        {introStage === "no" && <div className="nf-followup"><strong>Say</strong><p>Of course. Your case manager will call you within 48 business hours.</p><label><input type="checkbox" checked={callClose.client_notified_48_business_hours} onChange={(e) => updateCallClose("client_notified_48_business_hours", e.target.checked)} /> I told the client this</label></div>}
-        {introStage && <><label className="nf-call-label">Transfer or follow-up note<textarea value={callClose.transfer_note} onChange={(e) => updateCallClose("transfer_note", e.target.value)} placeholder="Who did you try? If you could not try, why?" /></label><button className="nf-primary" disabled={callCloseBusy || (introStage === "yes" && !["connected", "attempted_no_answer"].includes(callClose.transfer_outcome))} onClick={() => void recordCallClose()}>{callCloseBusy ? "Recording…" : callRecorded ? "Update assessment and transfer result" : "Record assessment and transfer result"}</button></>}
-        {callRecorded && <p className="nf-saved">Recorded by {detail.answers.call_close?.by_name || "agent"} at {new Date(detail.answers.call_close!.at).toLocaleString()}. {callClose.disposition === "callback_to_finish" ? "Callback needed to finish." : callClose.disposition === "appears_dq" || callClose.disposition === "client_remorse" ? "Supervisor review needed; signed retainer remains on file." : detail.answers.call_close?.followup_required ? "Case-manager follow-up still needed." : "Live introduction connected."}</p>}
-      </div>}
-      {stepIndex === 4 && <div className="nf-call-block nf-finish-call"><strong>Finish the welcome call</strong><p className="nf-muted">{callClose.completion === "incomplete" ? "This file remains open for a callback. Record the result above and finish the missing information on the next call." : "The signed retainer, verified note, and call result stay together for review."}</p><button type="button" className="nf-primary" disabled={!latest || !checked || !callRecorded || callClose.completion !== "complete" || callClose.disposition === "callback_to_finish" || (detail.answers.review?.status === "correction_needed" || detail.answers.review?.retainer_reviewed_document_id !== latest.id)} onClick={() => void review("ready_for_review")}>{detail.answers.review?.status === "ready_for_review" ? "Ready for supervisor review" : "Send completed ontake to review"}</button></div>}
+      {stepIndex === 4 && <div className="nf-call-block nf-finish-call"><strong>Finish the welcome call</strong><p>Thanks so much for your patience. We're going to get your case entered into the system, and we'll call you back within 24 to 48 hours.</p><label className="nf-inline-confirm"><input type="checkbox" checked={callClose.callback_promised_24_48_hours === true} onChange={(e) => updateCallClose("callback_promised_24_48_hours", e.target.checked)} /> I told the client we will call back within 24–48 hours.</label><button type="button" className="nf-primary" disabled={callCloseBusy || !callClose.disposition || !callClose.callback_promised_24_48_hours} onClick={() => void recordCallClose()}>{callCloseBusy ? "Recording…" : callRecorded ? "Update call result" : "Record call result"}</button>{callRecorded && <p className="nf-saved">Call result saved. A callback is needed within 24–48 hours. {callClose.completion === "incomplete" ? "Finish the missing details on the next call." : "Send the completed file for supervisor review below."}</p>}<p className="nf-muted">{callClose.completion === "incomplete" ? "This file stays open for the callback." : "The signed retainer, verified note, and call result stay together for review."}</p><button type="button" className="nf-primary" disabled={!latest || !checked || !callRecorded || callClose.completion !== "complete" || callClose.disposition === "callback_to_finish" || (detail.answers.review?.status === "correction_needed" || detail.answers.review?.retainer_reviewed_document_id !== latest.id)} onClick={() => void review("ready_for_review")}>{detail.answers.review?.status === "ready_for_review" ? "Ready for supervisor review" : "Send completed ontake to review"}</button></div>}
       {viewMode === "step" && <div className="nf-footer"><button className="nf-secondary" disabled={stepIndex === 0} onClick={() => setSection((i) => Math.max(0, i - 1))}>← Previous</button><button className="nf-primary" onClick={() => setSection((i) => Math.min(VERIFY_STEPS.length - 1, i + 1))} disabled={stepIndex === VERIFY_STEPS.length - 1}>Next step →</button></div>}</section>
     </div>;
   };
@@ -258,7 +224,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         {commandTab === "scripts" && <div className="nf-command-content"><h2>Call help</h2>
     <details className="nf-history"><summary>Caller objections / responses from the supplied script</summary><p><strong>Who is this?</strong> Recognize that they may have spoken with several people; explain the firm's follow-up role; return to the question where they paused.</p><p><strong>I gave this already.</strong> Acknowledge it and explain that the read-back catches incorrect names and numbers; return to that question.</p><p><strong>I only wanted the report / did not know I signed.</strong> Pause and bring in a supervisor if they dispute representation or want out. Record their concern without assuming consent.</p></details>
         </div>}
-        {commandTab === "phone" && <div className="nf-command-content"><h2>Phone</h2><p className="nf-muted">Check the active JustCall conversation before dialing so a second agent does not call this client at the same time. Record the case-manager introduction result in the last call step.</p>{detail.file.phone && <p><strong>Client number:</strong> {detail.file.phone}</p>}{callClose.transfer_destination && <p><strong>Case manager destination:</strong> {callClose.transfer_destination}</p>}</div>}
+        {commandTab === "phone" && <div className="nf-command-content"><h2>Phone</h2><p className="nf-muted">Check the active JustCall conversation before dialing so a second agent does not call this client at the same time. Close the welcome call with the 24–48-hour callback promise in the center intake.</p>{detail.file.phone && <p><strong>Client number:</strong> {detail.file.phone}</p>}</div>}
       </aside>
     </div>
   </main>;

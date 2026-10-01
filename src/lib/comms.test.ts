@@ -2,7 +2,7 @@
 // First-dial stamping on new and duplicate call events. Offline: an
 // in-memory database; the audit helper has no service key and writes nothing.
 import assert from "node:assert/strict";
-import { ingestComm, providerCallResult, stampFirstDial } from "./comms";
+import { ingestComm, matchLeadByPhone, providerCallResult, stampFirstDial } from "./comms";
 import { FakeDb } from "./test-fake-db";
 
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -29,6 +29,17 @@ function world(lead: Record<string, any> = {}, comms: Record<string, any>[] = []
 }
 const call = (o: Record<string, any> = {}) => ({ channel: "call" as const, direction: "outbound" as const, phone: "(832) 555-0148", call_sid: "CA1", ...o });
 const original = { id: "c-1", lead_id: LEAD, firm_id: "firm-tmp", channel: "call", direction: "outbound", call_sid: "CA1", duration_sec: null, occurred_at: "2026-09-28T10:20:00Z", created_at: "2026-09-28T10:20:03Z" };
+
+t("phone matching selects only existing lead columns", async () => {
+  const db = { from: (table: string) => {
+    assert.equal(table, "leads");
+    return { select: (columns: string) => {
+      assert.equal(columns, "id, firm_id", "a non-existent leads.status column must not reject completed calls");
+      return { eq: () => ({ is: () => ({ limit: async () => ({ data: [{ id: LEAD, firm_id: "firm-tmp" }], error: null }) }) }) };
+    } };
+  } };
+  assert.deepEqual(await matchLeadByPhone("(832) 555-0148", db), { lead_id: LEAD, firm_id: "firm-tmp" });
+});
 
 assert.equal(providerCallResult("unanswered"), "unanswered");
 assert.equal(providerCallResult("No Answer"), "unanswered");

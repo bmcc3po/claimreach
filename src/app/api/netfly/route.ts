@@ -215,6 +215,7 @@ export async function POST(req: NextRequest) {
   if (body?.op === "call_close") {
     if (!ctx.actor.can("intake.fill")) return fail("This account cannot record a NETFLY call.", 403);
     const call: NetflyCallClose = {
+      closeout_version: body.closeout_version === 2 ? 2 : undefined,
       completion: String(body.completion || "").slice(0, 40) as NetflyCallClose["completion"],
       disposition: String(body.disposition || "").slice(0, 40) as NetflyCallClose["disposition"],
       dq_reason_key: String(body.dq_reason_key || "").slice(0, 80),
@@ -223,9 +224,10 @@ export async function POST(req: NextRequest) {
       transfer_outcome: String(body.transfer_outcome || "").slice(0, 40) as NetflyCallClose["transfer_outcome"],
       transfer_note: String(body.transfer_note || "").trim().slice(0, 2000),
       client_notified_48_business_hours: body.client_notified_48_business_hours === true,
+      callback_promised_24_48_hours: body.callback_promised_24_48_hours === true,
     };
     if (call.disposition !== "appears_dq") call.dq_reason_key = "";
-    if (call.disposition !== "appears_qualified") {
+    if (call.closeout_version === 2 || call.disposition !== "appears_qualified") {
       call.transfer_destination = "";
       call.transfer_outcome = "not_attempted";
       call.transfer_note = "";
@@ -244,9 +246,12 @@ export async function POST(req: NextRequest) {
       const handoffs = Array.isArray(netfly.handoffs) ? netfly.handoffs : [];
       if (!handoffs.length) return fail("Add NETFLY's handoff note before closing the welcome call.", 400);
       const sourceFieldRevision = Array.isArray(netfly.source_field_revisions) ? netfly.source_field_revisions.length : 0;
+      const recordedAt = new Date();
       const recorded = { ...call, source_revision: handoffs.length, source_field_revision: sourceFieldRevision,
-        followup_required: call.completion === "incomplete" || call.disposition !== "appears_qualified" || call.transfer_outcome !== "connected",
-        at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
+        followup_required: call.closeout_version === 2 || call.completion === "incomplete" || call.disposition !== "appears_qualified" || call.transfer_outcome !== "connected",
+        callback_window_starts_at: call.closeout_version === 2 ? new Date(recordedAt.getTime() + 24 * 60 * 60 * 1000).toISOString() : null,
+        callback_due_at: call.closeout_version === 2 ? new Date(recordedAt.getTime() + 48 * 60 * 60 * 1000).toISOString() : null,
+        at: recordedAt.toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
       const live = activeNetflyCall(netfly.live_call);
       const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, call_close: recorded,
         live_call: live?.by === ctx.actor.id ? null : netfly.live_call || null } };
@@ -263,6 +268,8 @@ export async function POST(req: NextRequest) {
             assessment_reason: call.assessment_reason,
             transfer_outcome: call.transfer_outcome, transfer_destination: call.transfer_destination,
             transfer_note: call.transfer_note, client_notified_48_business_hours: call.client_notified_48_business_hours,
+            closeout_version: call.closeout_version, callback_promised_24_48_hours: call.callback_promised_24_48_hours,
+            callback_due_at: recorded.callback_due_at,
             source_revision: handoffs.length, source_field_revision: sourceFieldRevision } });
         if (audit.error) return fail("Call result saved, but its audit record failed. Refresh and notify a supervisor.", 503);
         return NextResponse.json({ ok: true, call_close: recorded });

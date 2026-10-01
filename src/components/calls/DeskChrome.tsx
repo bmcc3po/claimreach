@@ -107,7 +107,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
             </div>
           )}
         </div>
-        <a className="cc-chrome-new" href="/app?new=1"><Icon name="headset" size={16} />New call</a>
+        <a className="cc-chrome-new" href="/app?new=1"><Icon name="headset" size={16} />CREATE NEW LEAD</a>
         <FullSiteLink owner={owner} />
       </header>
     </>

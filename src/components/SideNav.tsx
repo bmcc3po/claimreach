@@ -223,7 +223,7 @@ export default function SideNav({
           {!isFirm ? <LeadSearch basePath={pilot ? "/app" : "/leads"} /> : <span style={{ flex: 1 }} />}
           <div className="cl-top-r">
             {!isFirm && role !== "firm" && (
-              <a className="cl-btn cl-gold" href="/app?new=1"><Icon name="headset" size={16} /><span className="cl-hide-sm">New call</span></a>
+              <a className="cl-btn cl-gold" href="/app?new=1"><Icon name="headset" size={16} /><span className="cl-hide-sm">CREATE NEW LEAD</span></a>
             )}
             {topRight}
           </div>

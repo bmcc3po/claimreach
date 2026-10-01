@@ -35,4 +35,9 @@ assert.equal(validateNetflyCallClose({ ...close, completion: "incomplete", dispo
 assert.match(validateNetflyCallClose({ ...close, disposition: "appears_dq", dq_reason_key: "" }) || "", /DQ reason/);
 assert.equal(validateNetflyCallClose({ ...close, disposition: "appears_dq", dq_reason_key: "criteria", assessment_reason: "Liability needs supervisor review." }), null);
 assert.equal(validateNetflyCallClose({ ...close, disposition: "client_remorse", assessment_reason: "Client disputes representation; supervisor to call." }), null);
+const callbackClose: NetflyCallClose = { ...close, closeout_version: 2, transfer_outcome: "not_attempted", transfer_note: "", client_notified_48_business_hours: false, callback_promised_24_48_hours: false };
+assert.match(validateNetflyCallClose(callbackClose) || "", /24–48 hours/);
+assert.equal(validateNetflyCallClose({ ...callbackClose, callback_promised_24_48_hours: true }), null);
+assert.equal(validateNetflyCallClose({ ...callbackClose, callback_promised_24_48_hours: true, disposition: "callback_to_finish", completion: "incomplete", assessment_reason: "Call client to complete missing details." }), null);
+assert.match(validateNetflyCallClose({ ...callbackClose, callback_promised_24_48_hours: true, disposition: "appears_dq", dq_reason_key: "" }) || "", /DQ reason/);
 console.log("NETFLY source map and review triggers passed");

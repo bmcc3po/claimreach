@@ -41,7 +41,7 @@ export async function matchLeadByPhone(phone: string, db?: any): Promise<{ lead_
   if (norm.length < 10) return { lead_id: null, firm_id: null };
   const admin = db ?? supabaseAdmin();
   const { data: candidates, error } = await admin.from("leads")
-    .select("id, firm_id, status").eq("phone_norm", norm).is("archived_at", null).limit(2);
+    .select("id, firm_id").eq("phone_norm", norm).is("archived_at", null).limit(2);
   if (error) throw new Error(`Could not match communication to a file: ${error.message}`);
   if (candidates?.length === 1) return { lead_id: candidates[0].id, firm_id: candidates[0].firm_id };
   return { lead_id: null, firm_id: null };
