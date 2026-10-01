@@ -1,11 +1,12 @@
 "use client";
 // Calls home. iPhone first: one list at a time, search on top, New call in the
 // thumb zone. Tapping any row opens that file's call screen.
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { APP_KINDS } from "@/lib/mva-call/links";
 import { DESK_TABS, type DeskTab, type DeskQueues, type DeskRow } from "@/lib/mva-call/desk-types";
+import { organizeCallNow, type CallNowSort } from "@/lib/mva-call/call-now-sort";
 
 export type HomeRow = DeskRow;
 export interface HomeData {
@@ -69,6 +70,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
   const [err, setErr] = useState("");
   const [setupMsg, setSetupMsg] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => Date.now());
+  const [callNowSort, setCallNowSort] = useState<CallNowSort>("priority");
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
   // A DocuSeal signature can arrive while the agent is working the queue.
@@ -114,6 +116,8 @@ export default function CallsHome({ data }: { data: HomeData }) {
 
   const lists: Record<Tab, HomeRow[]> = { ...data.queues, texts: data.texts };
   const rows = lists[tab];
+  const callNow = useMemo(() => organizeCallNow(data.queues.due, callNowSort), [data.queues.due, callNowSort]);
+  const displayRows = tab === "due" ? [...callNow.newLeads, ...callNow.followUps] : rows;
   const dueNow = useMemo(() => data.queues.due.length + data.queues.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.queues.due, data.queues.callbacks, now]);
 
   async function startCall() {
@@ -185,7 +189,19 @@ export default function CallsHome({ data }: { data: HomeData }) {
         </nav>
       )}
       <main className="cc-main" style={{ gap: 12 }}>
-        {results === null && tab === "due" && <div className="cc-due-head">CALL NOW <span>{rows.length} due</span></div>}
+        {results === null && tab === "due" && <div className="cc-callnow-toolbar">
+          <div className="cc-due-head">NEW LEADS <span>{callNow.newLeads.length} awaiting first call</span></div>
+          <label className="cc-callnow-sort">Sort within sections
+            <select aria-label="Sort Call Now" value={callNowSort} onChange={(e) => setCallNowSort(e.target.value as CallNowSort)}>
+              <option value="priority">Priority</option>
+              <option value="due">Due time</option>
+              <option value="newest">Newest received</option>
+              <option value="oldest">Oldest received</option>
+              <option value="name">Name A–Z</option>
+            </select>
+          </label>
+        </div>}
+        {results === null && tab === "due" && callNow.newLeads.length === 0 && rows.length > 0 && <div className="cc-cue cc-callnow-empty">No new leads waiting for a first call.</div>}
         {results === null && tab === "wait" && <div className="cc-cue" style={{ marginTop: 0 }}>Not yet due. The next call time appears on each file.</div>}
         {results === null && tab === "review" && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>These files need a manager or call-history check before another scheduled attempt. They remain visible here.</div>}
         {results === null && tab === "texts" && <div className="cc-cue" style={{ marginTop: 0 }}>Recent incoming texts</div>}
@@ -228,10 +244,12 @@ export default function CallsHome({ data }: { data: HomeData }) {
           </div>
         ) : (
           <div className="cc-grp">
-            {rows.map((r, i) => {
+            {displayRows.map((r, i) => {
               const late = (tab === "callbacks" && r.due && Date.parse(r.due) <= now) || r.outreach?.overdue;
               return (
-                <a key={r.href || r.id + i} className="cc-lrow" href={r.href || (r.id ? `/app/${r.id}` : "#")}
+                <Fragment key={r.href || r.id + i}>
+                {tab === "due" && i === callNow.newLeads.length && callNow.followUps.length > 0 && <div className="cc-callnow-followup">FOLLOW-UP CALLS <span>{callNow.followUps.length} due</span></div>}
+                <a className="cc-lrow" href={r.href || (r.id ? `/app/${r.id}` : "#")}
                   onClick={(ev) => { if (r.newPhone) { ev.preventDefault(); setPhone(r.newPhone); setName(""); setErr(""); setSheet(true); } }}>
                   <span className="cc-lrow-main">
                     <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}{r.outreach?.badge === "new" && <span className="cc-dial-badge cc-new-badge">New</span>}{r.outreach?.overdue && <span className="cc-dial-badge cc-overdue-badge">Overdue</span>}</span>
@@ -244,6 +262,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
                     {tab === "callbacks" ? (late ? `Due ${ago(r.due, now)}` : clock(r.due)) : tab === "texts" ? ago(r.at, now) : <><b>{r.tag}</b><br />{tab === "due" || tab === "wait" ? ago(r.due, now) : ago(r.at, now)}</>}
                   </span>
                 </a>
+                </Fragment>
               );
             })}
           </div>
