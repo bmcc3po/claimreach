@@ -1,0 +1,42 @@
+.packet-page{max-width:1320px;margin:0 auto;padding:32px 24px 72px;color:#10243d}
+.packet-heading h1{font-size:clamp(30px,3vw,40px);letter-spacing:-.035em;margin:3px 0 8px}
+.packet-heading p{margin:0;color:#566a80;font-size:16px}
+.packet-heading .packet-kicker{text-transform:uppercase;color:#24558c;font-size:12px;font-weight:800;letter-spacing:.1em}
+.packet-warning{padding:14px 18px;background:#fff2da;color:#71430b;border:1px solid #e2b45d;border-radius:12px;font-weight:650}
+.packet-tabs{display:flex;gap:8px;margin-top:27px;border-bottom:1px solid #bccada}
+.packet-tabs button{border:0;border-bottom:3px solid transparent;background:transparent;color:#4a5e73;padding:12px 17px;font-size:16px;font-weight:700;cursor:pointer}
+.packet-tabs button.active{color:#113f77;border-bottom-color:#23599c}
+.packet-tabs span{display:inline-block;min-width:27px;margin-left:5px;padding:2px 6px;border-radius:7px;background:#e5edf7;font-size:13px}
+.packet-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:20px 0}
+.packet-metrics>div{display:grid;gap:2px;padding:18px 20px;background:#fff;border:1px solid #ced9e5;border-radius:13px}
+.packet-metrics strong{font-size:30px;line-height:1;color:#143f73}
+.packet-metrics span{color:#53677c;font-size:14px;font-weight:600}
+.packet-week{display:flex;gap:15px;align-items:center;margin-top:17px}
+.packet-week a{padding:6px 12px;background:#fff;border:1px solid #c9d6e3;border-radius:9px;text-decoration:none;color:#173d6b}
+.packet-toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:24px 0 14px}
+.packet-toolbar label{display:grid;gap:6px;width:min(480px,100%);font-size:13px;font-weight:700;color:#40556f}
+.packet-toolbar input{width:100%;padding:12px 14px;border:1px solid #aebfd0;border-radius:9px;background:#fff;color:#10243d;font-size:15px}
+.packet-toolbar button{padding:12px 16px;border:1px solid #7f9dbb;border-radius:9px;background:#fff;color:#153c68;font-weight:700;cursor:pointer}
+.packet-list{background:#fff;border:1px solid #c9d6e3;border-radius:15px;overflow:hidden}
+.packet-row{display:grid;grid-template-columns:minmax(190px,1.4fr) minmax(160px,1fr) minmax(155px,.9fr) minmax(145px,.8fr) 20px;align-items:center;gap:18px;padding:17px 20px;border-top:1px solid #d8e0e9;text-decoration:none;color:#10243d}
+.packet-row:first-child{border-top:0}.packet-row:hover{background:#f5f9ff}
+.packet-person,.packet-context,.packet-date{display:grid;gap:4px;min-width:0}.packet-row strong{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.packet-row small{color:#60748a;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.packet-stage{justify-self:start;padding:6px 10px;border-radius:7px;font-size:12px;font-weight:800;background:#eaf0f7;color:#234b74}.packet-stage.ready{background:#dff3e8;color:#09663a}.packet-stage.held{background:#fff0df;color:#915218}.packet-stage.delivered{background:#e5f1fd;color:#185d9a}.packet-arrow{color:#547190;font-size:26px}.packet-empty{padding:32px;text-align:center;color:#64768a}
+.packet-agent-counts{margin-top:30px;padding:21px;background:#fff;border:1px solid #c9d6e3;border-radius:15px}.packet-agent-counts h2{margin:0 0 4px;font-size:22px}.packet-agent-counts p,.packet-scope{color:#63768b;font-size:13px;line-height:1.5}.packet-agent-head,.packet-agent-row{display:grid;grid-template-columns:1fr 80px 80px;gap:12px;padding:10px 12px;border-bottom:1px solid #dce4ec}.packet-agent-head{color:#62758b;font-size:12px;font-weight:800;text-transform:uppercase}.packet-agent-row span{text-align:center}.packet-agent-head span:not(:first-child){text-align:center}.packet-scope{margin-top:20px}
+@media(max-width:850px){.packet-page{padding:22px 12px 48px}.packet-metrics{gap:6px}.packet-metrics>div{padding:12px}.packet-metrics strong{font-size:23px}.packet-row{grid-template-columns:1fr auto;gap:8px;padding:14px}.packet-context,.packet-date{grid-column:1}.packet-stage{grid-column:2;grid-row:1}.packet-arrow{display:none}.packet-toolbar{align-items:stretch}.packet-toolbar button{align-self:end}}
+.call-agent-head,.call-agent-row{display:grid;grid-template-columns:minmax(160px,1fr) repeat(4,90px) minmax(150px,1fr);gap:12px;padding:11px 12px;border-bottom:1px solid #dce4ec;align-items:center}
+.call-agent-head{font-size:12px;text-transform:uppercase;font-weight:800;color:#62758b}
+.call-agent-row span:not(:last-child),.call-agent-head span:not(:first-child):not(:last-child){text-align:center}
+.call-agent-row span:last-child{color:#586d82;font-size:13px}
+.call-activity-row{display:grid;grid-template-columns:minmax(190px,1.3fr) minmax(170px,1fr) 100px 150px;gap:16px;align-items:center;padding:16px 20px;border-top:1px solid #d8e0e9;color:#10243d;text-decoration:none}
+.call-activity-row:first-child{border-top:0}.call-activity-row:hover{background:#f5f9ff}
+.call-activity-row>span:first-child,.call-activity-row>span:nth-child(2){display:grid;gap:4px;min-width:0}
+.call-activity-row strong{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.call-activity-row small{font-size:12px;color:#60748a}
+.call-count{font-size:15px;background:#e5edf7;color:#23599c;padding:3px 8px;border-radius:7px;vertical-align:middle}
+.call-callback-head,.call-callback-row{display:grid;grid-template-columns:minmax(180px,1.3fr) minmax(170px,1fr) minmax(150px,1fr);gap:12px;padding:11px 12px;border-bottom:1px solid #dce4ec;align-items:center}
+.call-callback-head{font-size:12px;text-transform:uppercase;color:#62758b;font-weight:800}
+.call-callback-row{color:#10243d;text-decoration:none}.call-callback-row:hover{background:#f5f9ff}
+.call-callback-row small{display:block;color:#60748a;font-size:12px;font-weight:400;margin-top:3px}
+@media(max-width:850px){.call-agent-head,.call-agent-row{grid-template-columns:minmax(110px,1fr) repeat(3,52px);gap:5px}.call-agent-head span:nth-child(5),.call-agent-head span:nth-child(6),.call-agent-row span:nth-child(5),.call-agent-row span:nth-child(6){display:none}.call-activity-row{grid-template-columns:1fr auto;gap:7px;padding:14px}.call-activity-row>span:nth-child(2){grid-column:1}.call-activity-row>span:nth-child(4){grid-column:2;grid-row:2;font-size:12px}}
+@media(max-width:850px){.call-callback-head,.call-callback-row{grid-template-columns:1fr 1fr}.call-callback-head span:nth-child(3),.call-callback-row span:nth-child(3){display:none}}

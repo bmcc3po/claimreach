@@ -11,6 +11,7 @@ import { APP_CASE_TYPES } from "@/lib/mva-call/links";
 import { caseSummaryRows } from "@/lib/mva-call/server";
 import { caseReport } from "@/lib/mva-call/report";
 import { matterRowsFilter } from "@/lib/matter";
+import { mayOpenFullFile } from "@/lib/file-fence";
 
 export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ classic?: string; claim?: string }> }) {
   const { id: key } = await params;
@@ -22,6 +23,19 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
 
   const { data: lead } = await sb.from("leads").select("*").eq("id", id).maybeSingle();
   if (!lead) notFound();
+  const { data: { user: cur } } = await authUser();
+  if (!cur) redirect("/login");
+  const { data: meRow } = await sb.from("app_users").select("role, full_name, active, perm_overrides").eq("id", cur.id).maybeSingle();
+  if (!meRow || meRow.active !== true) redirect("/dashboard");
+  if (!mayOpenFullFile(meRow.role)) {
+    // Never render the owner file for an agent, even when its URL is pasted.
+    // The Desk keeps the same case available for the call.
+    const { data: deskClaims } = await sb.from("claims").select("id, claim_type").eq("lead_id", id);
+    const selected = deskClaims?.find((c: any) => c.id === selectedClaimId) || deskClaims?.[0];
+    if (selected?.claim_type === "netfly_secondary") redirect(`/app/netfly/${leadKeyOf(lead)}`);
+    if (selected && APP_CASE_TYPES.includes(String(selected.claim_type))) redirect(`/app/${leadKeyOf(lead)}?claim=${selected.id}`);
+    redirect("/queue");
+  }
   // INNO MVA files are worked in the App, wide on a computer. The classic page
   // is still one click away (?classic=1) for status, QA, lock and send to firm.
   // Speed to lead, open side: first staff open of the file stamps it (this
@@ -92,8 +106,6 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   const nameOf = new Map((staff ?? []).map((u: any) => [u.id, u.full_name || ""]));
   const notes = mergeFileNotes(fileNotesRaw.notes, fileNotesRaw.deskNotes, nameOf);
 
-  const { data: { user: cur } } = await authUser();
-  const { data: meRow } = await sb.from("app_users").select("role, full_name, active, perm_overrides").eq("id", cur!.id).maybeSingle();
   (lead as any).current_user_role = meRow?.role ?? null;
   (lead as any).current_user_name = meRow?.full_name ?? "Staff";
   (lead as any).current_user_can_archive = meRow?.active !== false && (["owner", "admin"].includes(meRow?.role || "") || (meRow?.perm_overrides as any)?.["leads.delete"] === true);

@@ -14,6 +14,7 @@ import { GuidedIntake } from "./OneQuestion";
 import IntakeQuestion, { AgreementRecipient, QuestionControl } from "./IntakeQuestion";
 import { DobField, SsnField } from "./SsnDob";
 import AgreementChoice from "./AgreementChoice";
+import SignedInlineReview from "./SignedInlineReview";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
@@ -382,11 +383,16 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-say-line">{SIGNED.line}</div>
 <div className="cc-cue">{SIGNED.cue}</div>
 </div>
+<SignedInlineReview v={v} />
 </>)}
 </>)}
 </>)}
 
 {!!(v.showFile) && (<>
+{v.signed && !v.showSend && !v.choreView && !v.formView && !v.stepView && <>
+<div className="cc-say cc-say-win"><div className="cc-say-label">{SIGNED.label}</div><div className="cc-say-line">{SIGNED.line}</div><div className="cc-cue">{SIGNED.cue}</div></div>
+<SignedInlineReview v={v} />
+</>}
 {!!(v.free) && (<><div id="fs-file" className="cc-sec-h">File and agreement details</div></>)}
 {!!(v.guided) && (<>
 <div className="cc-fsteps" role="tablist" aria-label="Finish the file">
@@ -402,7 +408,6 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-cue" style={{marginTop: "0"}}>These print on the HIPAA pages as the patient's. For a child, it's the child's.</div>
 <IdentityFields v={v} />
 {!!(v.agreementOpen) && (<>
-{v.signed && v.openFile && <button type="button" className="cc-btn cc-soft" onClick={v.openFile}>Review client-signed PDF in File</button>}
 <button className="cc-btn cc-full" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
 <button className="cc-btn cc-soft" onClick={v.leaveForQa}>Finish later</button>
 </>)}

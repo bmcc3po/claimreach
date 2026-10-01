@@ -35,6 +35,11 @@ export type FileTab = (typeof FILE_TABS_CORE)[number];
 
 const QA_ROLES = new Set(["owner", "admin", "manager", "qa"]);
 
+/** Agents work the guided Desk; the full file is an owner/oversight surface. */
+export function mayOpenFullFile(role: string | null | undefined): boolean {
+  return QA_ROLES.has(role || "");
+}
+
 export function isFirmAudience(fence?: FileFence | null): boolean {
   return fence?.audience === "firm";
 }

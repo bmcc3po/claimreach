@@ -6,6 +6,7 @@ import {
   fileMaySeeCrissiHub, fileMayUseStaffTools,
   fileSafeAudit, fileShowsQaTab, fileTabs, isFirmAudience, isMoneyShapedAudit,
   isStaffOnlyDetailKey, stripStaffFormFields,
+  mayOpenFullFile,
 } from "./file-fence";
 import type { Field } from "./questionnaire";
 
@@ -32,6 +33,9 @@ check("undefined back is /leads", fileBackHref(undefined), "/leads");
 check("agent tabs omit QA", fileTabs("agent", INTERNAL_STAFF_FENCE), FILE_TABS_CORE.filter((t) => t !== "QA"));
 check("qa role tabs include QA", fileShowsQaTab("qa", INTERNAL_STAFF_FENCE), true);
 check("owner tabs include every listed tab", fileTabs("owner"), [...FILE_TABS_CORE]);
+check("agents cannot open owner file", mayOpenFullFile("agent"), false);
+check("owner can open owner file", mayOpenFullFile("owner"), true);
+check("QA can open owner file for oversight", mayOpenFullFile("qa"), true);
 
 console.log("\nM6 FIRM");
 check("firm audience", isFirmAudience(M6_FIRM_FENCE), true);

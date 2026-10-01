@@ -18,6 +18,7 @@ import PlaceField from "./PlaceField";
 import { OPEN_LINE, OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 import { DobField, SsnField } from "./SsnDob";
 import AgreementChoice from "./AgreementChoice";
+import SignedInlineReview from "./SignedInlineReview";
 
 const isOn = (cls: string) => / on(\s|$)/.test(" " + String(cls || "") + " ");
 
@@ -127,7 +128,7 @@ function Retainer({ v }: { v: any }) {
       </div>
       {v.canResend && <div className="ch-wide"><button type="button" className="ch-btn ch-line" onClick={v.resendLink}>Send the link again</button></div>}
     </>)}
-    {v.signed && <Say label={SIGNED.label} line={SIGNED.line} cue={SIGNED.cue} />}
+    {v.signed && <><Say label={SIGNED.label} line={SIGNED.line} cue={SIGNED.cue} /><SignedInlineReview v={v} /></>}
     {/* Identity stays editable after sending; completion still uses the
         signature/review lock supplied by the shared engine. */}
     <>
@@ -135,7 +136,6 @@ function Retainer({ v }: { v: any }) {
       <div className="ch-q ch-wide">
         {v.agreementOpen && (
           <div className="ch-row">
-            {v.signed && v.openFile && <button type="button" className="ch-btn ch-line" onClick={v.openFile}>Review client-signed PDF in File</button>}
             <button type="button" className="ch-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel || "Complete the agreement"}</button>
             <button type="button" className="ch-btn ch-line" onClick={v.leaveForQa}>Finish later</button>
           </div>

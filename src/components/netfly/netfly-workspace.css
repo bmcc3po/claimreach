@@ -64,6 +64,12 @@
 .nf-inline-retainer p{margin:0;line-height:1.45}
 .nf-inline-retainer .nf-actions{display:flex;flex-wrap:wrap;gap:9px}
 .nf-inline-retainer .nf-pdf-preview iframe{height:min(65vh,720px)}
+.nf-inline-issue{margin:8px 0 0;border-color:#bd93a0;background:#fffafa}
+.nf-inline-issue textarea{width:100%;min-height:76px;margin:10px 0;border:1px solid #bccbe0;border-radius:9px;padding:11px;font:inherit;color:#142338;background:#fff}
+.nf-handoff-inline{border:2px solid #9db7d7;background:#f7faff;border-radius:14px;padding:18px;margin:12px 0 22px}
+.nf-handoff-inline>strong{font-size:18px;color:#133e71}
+.nf-handoff-inline>p{line-height:1.45;margin:7px 0 0}
+.nf-handoff-inline .nf-source-grid{margin-top:14px}
 .nf-inline-confirm{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:700;line-height:1.4}
 .nf-inline-confirm input{flex:none;width:20px;height:20px;margin:0}
 .nf-finish-call{margin-top:22px;padding:16px;border:1px solid #bdd1e8;border-radius:12px;background:#f3f7fd}

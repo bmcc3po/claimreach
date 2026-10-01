@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import { redirect } from "next/navigation";
 import { isInternalRole } from "@/lib/permissions";
+import { mayOpenFullFile } from "@/lib/file-fence";
 import LeadsView from "@/components/LeadsView";
 
 export default async function LeadsPage() {
@@ -12,6 +13,7 @@ export default async function LeadsPage() {
   if (!user) redirect("/login");
   const { data: me } = await sb.from("app_users").select("role,firm_id,active,perm_overrides").eq("id", user.id).maybeSingle();
   if (!me || me.active !== true || !isInternalRole(me.role)) redirect("/dashboard");
+  if (!mayOpenFullFile(me.role)) redirect("/queue");
   let pilotCampaignId: string | null = null;
   if (me.role !== "owner") {
     if (!me.firm_id) redirect("/dashboard");
