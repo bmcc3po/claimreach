@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mondayOf, packetWorklist, pacificDay } from "./packet-worklist";
+import { mondayOf, packetWorklist, pacificDay, pacificCalendarDay, pacificDayStartUtc } from "./packet-worklist";
 
 test("archived signed packet stays visible until firm delivery is verified", () => {
   const rows = packetWorklist({
@@ -54,5 +54,9 @@ test("a newer void or correction cannot make an older signature ready to send", 
 
 test("weekly grouping uses Los Angeles dates", () => {
   assert.equal(pacificDay("2026-10-01T06:30:00Z"), "2026-09-30");
+  assert.equal(pacificCalendarDay("2026-10-01T06:30:00Z"), "2026-09-30");
+  assert.equal(pacificCalendarDay("2026-09-30"), "2026-09-30");
+  assert.equal(pacificDayStartUtc("2026-09-30"), "2026-09-30T07:00:00.000Z");
+  assert.equal(pacificDayStartUtc("2026-12-01"), "2026-12-01T08:00:00.000Z");
   assert.equal(mondayOf("2026-09-30"), "2026-09-28");
 });

@@ -29,6 +29,7 @@ import { crashDateOf } from "@/lib/mva-call/server";
 import { stateCodeOf } from "@/lib/mva-call/state";
 import { isoDate } from "@/lib/mva-call/lead-story";
 import { resolveMatter, matterRowsFilter, rowBelongsToMatter } from "@/lib/matter";
+import { pacificCalendarDay, pacificDayStartUtc } from "@/lib/packet-worklist";
 
 export type StdGroup = "file" | "person" | "contact" | "emergency" | "incident" | "status" | "agreement" | "timeline";
 export type StdAccess = "writable" | "derived" | "protected";
@@ -590,8 +591,8 @@ export async function loadStandardExport(db: any, f: ExportFilter, chunk = 150):
     if (f.firmId) q = q.eq("firm_id", f.firmId);
     if (f.state) q = q.eq("mail_state", f.state);
     if (f.city) q = q.eq("mail_city", f.city);
-    if (f.since) q = q.gte("created_at", f.since);
-    if (f.until) q = q.lt("created_at", nextDay(f.until));
+    if (f.since) q = q.gte("created_at", pacificDayStartUtc(f.since));
+    if (f.until) q = q.lt("created_at", pacificDayStartUtc(nextDay(f.until)));
     return q.order("created_at", { ascending: true }).order("id", { ascending: true });
   }, "the files");
   if (!leads.ok) return leads;
@@ -630,11 +631,11 @@ export async function loadStandardExport(db: any, f: ExportFilter, chunk = 150):
   });
   // Signing belongs to the exported matter, not its person's lead-level copy.
   // Filter only after resolving each record's own agreement evidence/date.
-  const signedFrom = f.signedFrom ? Date.parse(f.signedFrom) : null;
-  const signedUntil = f.signedTo ? Date.parse(nextDay(f.signedTo)) : null;
+  const signedFrom = f.signedFrom ?? null;
+  const signedUntil = f.signedTo ?? null;
   const filtered = signedFrom === null && signedUntil === null ? records : records.filter((record) => {
-    const signed = record.sign_date ? Date.parse(record.sign_date) : NaN;
-    return Number.isFinite(signed) && (signedFrom === null || signed >= signedFrom) && (signedUntil === null || signed < signedUntil);
+    const signed = record.sign_date ? pacificCalendarDay(record.sign_date) : null;
+    return signed !== null && (signedFrom === null || signed >= signedFrom) && (signedUntil === null || signed <= signedUntil);
   });
   return { ok: true, records: filtered };
 }
