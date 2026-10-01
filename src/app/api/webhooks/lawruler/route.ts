@@ -241,8 +241,6 @@ export async function POST(req: NextRequest) {
       if (netflyInbound) {
         if (!targets.data?.length && !(norm.name || [norm.first, norm.last].filter(Boolean).join(" ")).trim())
           return NextResponse.json({ error: "Map the NETFLY client's name before posting.", saved: false }, { status: 422 });
-        if (!targets.data?.length && !norm.phone && !norm.email)
-          return NextResponse.json({ error: "Map a callback phone or email for the NETFLY welcome call.", saved: false }, { status: 422 });
         const invalid = validateNetflyLawRulerPayload(fields, files, !targets.data?.length);
         if (invalid) return NextResponse.json({ error: invalid, saved: false, attachments_complete: false }, { status: 422 });
         if (!files.length && targets.data?.[0]) {
