@@ -137,7 +137,7 @@ function LeadWorkspaceRecord({
             </>)}
             {lead.created_at && (<>
               <span className="leadhead-dot">·</span>
-              <span>Opened {new Date(lead.created_at).toLocaleDateString()}</span>
+              <span>Opened {new Date(lead.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })} Pacific</span>
             </>)}
             {canTools && stats ? (<>
               <span className="leadhead-dot">·</span>
@@ -511,7 +511,7 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   return (
     <span className="lf-send-action">
       <button className="cl-btn lf-primary-action lf-send-button" onClick={() => send(false)} disabled={busy || !loaded || unresolved || !!state.sentAt}
-        title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this matter's documents"}>
+        title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString("en-US", { timeZone: "America/Los_Angeles", timeZoneName: "short" })}` : "Email the firm this matter's documents"}>
         {label}
       </button>
       {unresolved && <span className="muted" role="status">Delivery outcome needs review.{canReconcile && <><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(true)}>Record delivered</button><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(false)}>Record not delivered</button></>}</span>}
@@ -527,7 +527,7 @@ function AppAnswers({ call, onShowOld }: {
   call: { rows: { k: string; v: string }[]; answered: number; href: string; when: string | null; agent: string | null; dispo: string | null };
   onShowOld?: () => void;
 }) {
-  const when = call.when ? new Date(call.when).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  const when = call.when ? new Date(call.when).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }) : null;
   return (
     <div>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 12, flexWrap: "wrap" }}>

@@ -27,7 +27,7 @@ const AGREEMENT: Record<string, string> = { TX: "Texas", FL: "Florida", OTHER: "
 
 const fmtPhone = (raw: any) => { const d = String(raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, ""); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(raw || ""); };
 const longDay = (iso: string) => { const d = new Date(iso + "T12:00:00Z"); return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }); };
-const when = (ts: any) => { const d = ts ? new Date(ts) : null; return d && !isNaN(d.getTime()) ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" }) : ""; };
+const when = (ts: any) => { const d = ts ? new Date(ts) : null; return d && !isNaN(d.getTime()) ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Los_Angeles" }) : ""; };
 const andList = (xs: string[]) => xs.length <= 1 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
 
 export function caseReport(lead: any, answers: any, esign?: any, opts: { includeAgreement?: boolean } = {}): CaseReport {

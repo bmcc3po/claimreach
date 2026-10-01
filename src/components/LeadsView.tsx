@@ -8,6 +8,7 @@ import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, resolveStatus, type StatusDef, ty
 import { primaryClock } from "@/lib/sla-clocks";
 import { tierLabel } from "@/lib/tiers";
 import { caseName, ago, prettyPhone } from "@/lib/case-name";
+import { pacificCalendarDay } from "@/lib/packet-worklist";
 
 type Row = any;
 type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
@@ -82,7 +83,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     if (fCampaign !== "all") r = r.filter((x) => x.campaign === fCampaign);
     if (fCity !== "all") r = r.filter((x) => x.city === fCity);
     // Compare on the calendar day, so "from the 9th" includes the whole 9th.
-    const day = (v: any) => (v ? String(v).slice(0, 10) : "");
+    const day = (v: any) => (v ? pacificCalendarDay(String(v)) : "");
     if (fCreatedFrom) r = r.filter((x) => day(x.created) >= fCreatedFrom);
     if (fCreatedTo) r = r.filter((x) => day(x.created) <= fCreatedTo);
     if (fSignedFrom) r = r.filter((x) => day(x.signed_at) && day(x.signed_at) >= fSignedFrom);
@@ -419,7 +420,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                     <td className="cl-hide-sm">
                       <div className="cl-cell">
                         <span style={{ fontSize: 13.5 }} suppressHydrationWarning>{ago(r.updated)}</span>
-                        <span className="cl-t2" suppressHydrationWarning>{r.created ? `Came in ${new Date(r.created).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : ""}</span>
+                        <span className="cl-t2" suppressHydrationWarning>{r.created ? `Came in ${new Date(r.created).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric" })} Pacific` : ""}</span>
                       </div>
                     </td>
                     <td className="cl-c-act" onClick={(e) => e.stopPropagation()}>
