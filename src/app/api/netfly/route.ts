@@ -194,7 +194,8 @@ export async function POST(req: NextRequest) {
       const netfly = all[NETFLY_ANSWER_KEY] && typeof all[NETFLY_ANSWER_KEY] === "object" ? all[NETFLY_ANSWER_KEY] : {};
       const handoffs: any[] = Array.isArray(netfly.handoffs) ? netfly.handoffs : [];
       if (!handoffs.length) return fail("Add NETFLY's original handoff note before verifying it.", 400);
-      const verification = { status, note, source_revision: handoffs.length, at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
+      const sourceFieldRevision = Array.isArray(netfly.source_field_revisions) ? netfly.source_field_revisions.length : 0;
+      const verification = { status, note, source_revision: handoffs.length, source_field_revision: sourceFieldRevision, at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
       const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, handoff_verification: verification } };
       const { data: saved, error: saveError } = await ctx.db.from("claims")
         .update({ answers: next, updated_at: new Date().toISOString() })
@@ -204,7 +205,7 @@ export async function POST(req: NextRequest) {
       if (saved) {
         const audit = await ctx.db.from("audit_log").insert({ firm_id: ctx.campaign.firm_id, lead_id: matter.lead.id,
           claim_id: matter.claim.id, actor: ctx.actor.id, actor_name: ctx.actor.name, category: "intake",
-          description: `NETFLY handoff checked with client: ${status}`, meta: { source_revision: handoffs.length, note_length: note.length } });
+          description: `NETFLY handoff checked with client: ${status}`, meta: { source_revision: handoffs.length, source_field_revision: sourceFieldRevision, note_length: note.length } });
         if (audit.error) return fail("Verification saved, but its audit record failed. Refresh and notify a supervisor.", 503);
         return NextResponse.json({ ok: true, verification });
       }
@@ -242,7 +243,8 @@ export async function POST(req: NextRequest) {
       const netfly = all[NETFLY_ANSWER_KEY] && typeof all[NETFLY_ANSWER_KEY] === "object" ? all[NETFLY_ANSWER_KEY] : {};
       const handoffs = Array.isArray(netfly.handoffs) ? netfly.handoffs : [];
       if (!handoffs.length) return fail("Add NETFLY's handoff note before closing the welcome call.", 400);
-      const recorded = { ...call, source_revision: handoffs.length,
+      const sourceFieldRevision = Array.isArray(netfly.source_field_revisions) ? netfly.source_field_revisions.length : 0;
+      const recorded = { ...call, source_revision: handoffs.length, source_field_revision: sourceFieldRevision,
         followup_required: call.completion === "incomplete" || call.disposition !== "appears_qualified" || call.transfer_outcome !== "connected",
         at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
       const live = activeNetflyCall(netfly.live_call);
@@ -261,7 +263,7 @@ export async function POST(req: NextRequest) {
             assessment_reason: call.assessment_reason,
             transfer_outcome: call.transfer_outcome, transfer_destination: call.transfer_destination,
             transfer_note: call.transfer_note, client_notified_48_business_hours: call.client_notified_48_business_hours,
-            source_revision: handoffs.length } });
+            source_revision: handoffs.length, source_field_revision: sourceFieldRevision } });
         if (audit.error) return fail("Call result saved, but its audit record failed. Refresh and notify a supervisor.", 503);
         return NextResponse.json({ ok: true, call_close: recorded });
       }
@@ -335,9 +337,12 @@ export async function POST(req: NextRequest) {
       if ((saved.review?.status === "correction_needed" || corrected !== null) && !corrected)
         return fail("The corrected agreement must be client-signed, agent-reviewed, office-completed, and stored before QA.", 409);
       const handoffs = Array.isArray(saved.handoffs) ? saved.handoffs : [];
-      if (!handoffs.length || saved.handoff_verification?.source_revision !== handoffs.length)
+      const sourceFieldRevision = Array.isArray(saved.source_field_revisions) ? saved.source_field_revisions.length : 0;
+      if (!handoffs.length || saved.handoff_verification?.source_revision !== handoffs.length ||
+          (saved.handoff_verification?.source_field_revision ?? 0) !== sourceFieldRevision)
         return fail("Check the latest NETFLY handoff with the client before sending this file to review.", 400);
-      if (saved.call_close?.source_revision !== handoffs.length)
+      if (saved.call_close?.source_revision !== handoffs.length ||
+          (saved.call_close?.source_field_revision ?? 0) !== sourceFieldRevision)
         return fail("Record ontake completion and the call outcome before sending this file to review.", 400);
       if (validateNetflyCallClose(saved.call_close as NetflyCallClose))
         return fail("Update the NETFLY call closeout with completion and outcome before review.", 400);

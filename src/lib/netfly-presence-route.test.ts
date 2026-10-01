@@ -53,6 +53,19 @@ async function main() {
   assert.equal(listed.body.files[0].claims.length, 1);
   assert.equal(listed.body.files[0].claims[0].id, CLAIM);
   assert.deepEqual(listed.body.files[0].missing_source, ["handoff_note", "signed_retainer_pdf"]);
+  db.tables.claims[0].answers = { netfly_secondary: {
+    handoffs: [{ note: "Synthetic original note", source_id: "42" }],
+    source_field_revisions: [{ fields: { "Case number": "SYN-1" } }],
+    handoff_verification: { source_revision: 1, source_field_revision: 0 },
+    call_close: { source_revision: 1, source_field_revision: 0 },
+  } };
+  const staleVerification = await route.POST({ json: async () => ({ op: "review", status: "ready_for_review", file: LEAD }) });
+  assert.equal(staleVerification.status, 400);
+  assert.match(staleVerification.body.error, /latest NETFLY handoff/);
+  (db.tables.claims[0].answers as any).netfly_secondary.handoff_verification.source_field_revision = 1;
+  const staleCall = await route.POST({ json: async () => ({ op: "review", status: "ready_for_review", file: LEAD }) });
+  assert.equal(staleCall.status, 400);
+  assert.match(staleCall.body.error, /call outcome/);
   console.log("NETFLY call presence ownership and expiry checks passed");
 }
 void main().catch(error => { console.error(error); process.exitCode = 1; });

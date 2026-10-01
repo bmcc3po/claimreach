@@ -258,7 +258,7 @@ export async function POST(req: NextRequest) {
       const scope = { firmId: camp.firm_id, leadId: r.lead_id!, claimId: matter.claim.id, vendorId: norm.leadId!, caseType: camp.case_type };
       if (netflyInbound) {
         try {
-          const held = await admin.from("leads").update({ perm_call: false, perm_text: false, perm_email: false, marketing_source: "NETFLY" })
+          const held = await admin.from("leads").update({ perm_call: false, perm_text: false, perm_email: false, marketing_source: norm.channel || "NETFLY" })
             .eq("id", r.lead_id!).eq("firm_id", camp.firm_id).eq("campaign_id", camp.id);
           if (held.error) throw new Error(`NETFLY communications hold failed: ${held.error.message}`);
           const sync = await syncLawRulerNetfly(admin, scope, fields, files);
