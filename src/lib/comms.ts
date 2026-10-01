@@ -1,10 +1,24 @@
-// Communications ingest + attribution. Given a phone number, find the right file:
-// newest OPEN lead with that number wins; no match -> unmatched (lead_id null).
+// Communications ingest + attribution. Phone-only events stay unmatched when
+// more than one active file has that number; never guess the newest file.
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { recordAudit } from "@/lib/audit";
 
 export function normPhone(p?: string | null): string {
   return (p || "").replace(/\D/g, "").slice(-10);
+}
+
+// JustCall's call_info.type is a call result; call_info.status may instead be
+// an archive state such as "Unarchived". Only explicit results can drive a
+// no-answer lane. Never infer one from a zero/absent duration.
+export function providerCallResult(raw: unknown): "answered" | "unanswered" | "busy" | "voicemail" | "failed" | null {
+  const value = String(raw ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  // Sales Dialer returns longer result names than the standard dialer.
+  if (["answered", "connected", "outgoing_answered_call", "outgoing_human_answered", "call.answered"].includes(value)) return "answered";
+  if (["unanswered", "no_answer", "outgoing_unanswered_call", "call.unanswered"].includes(value)) return "unanswered";
+  if (value === "busy") return "busy";
+  if (value === "voicemail" || value === "outgoing_machine_answered") return "voicemail";
+  if (["failed", "outgoing_failed_call", "outgoing_restricted_call", "outgoing_blocked_call", "outgoing_cancelled_call", "outgoing_abandoned_call"].includes(value)) return "failed";
+  return null;
 }
 
 function fmtDuration(sec?: number): string {
@@ -20,22 +34,16 @@ function fmtPhoneComm(raw?: string): string {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 }
 
-const OPEN_STATUSES = ["new", "in_progress", "qualified", "wip", "pending"];
-
-// Find the file for an inbound/outbound comm by phone. Newest open file wins;
-// if none open, newest file of any status; if none, null (unmatched).
+// Find a unique unarchived file for a phone. A shared number cannot establish
+// the right matter, even when one file was updated more recently.
 export async function matchLeadByPhone(phone: string, db?: any): Promise<{ lead_id: string | null; firm_id: string | null }> {
   const norm = normPhone(phone);
   if (norm.length < 10) return { lead_id: null, firm_id: null };
   const admin = db ?? supabaseAdmin();
-  // prefer open files
-  const { data: open } = await admin.from("leads")
-    .select("id, firm_id, status, created_at").eq("phone_norm", norm)
-    .in("status", OPEN_STATUSES).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (open) return { lead_id: open.id, firm_id: open.firm_id };
-  const { data: any1 } = await admin.from("leads")
-    .select("id, firm_id, created_at").eq("phone_norm", norm).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (any1) return { lead_id: any1.id, firm_id: any1.firm_id };
+  const { data: candidates, error } = await admin.from("leads")
+    .select("id, firm_id, status").eq("phone_norm", norm).is("archived_at", null).limit(2);
+  if (error) throw new Error(`Could not match communication to a file: ${error.message}`);
+  if (candidates?.length === 1) return { lead_id: candidates[0].id, firm_id: candidates[0].firm_id };
   return { lead_id: null, firm_id: null };
 }
 
@@ -48,20 +56,23 @@ const PRIOR_COLS = "id, lead_id, duration_sec, occurred_at, created_at, directio
 // service client).
 export async function ingestComm(c: {
   channel: "call" | "sms" | "voicemail"; direction: "inbound" | "outbound"; call_kind?: string;
+  provider_call_result?: ReturnType<typeof providerCallResult>;
   phone?: string; agent_name?: string; agent_email?: string; body?: string; duration_sec?: number;
   recording_url?: string; transcript?: string; jc_summary?: string; jc_sentiment?: string; jc_insights?: any;
   call_sid?: string; sms_sid?: string; external_ref?: string; occurred_at?: string;
-}, opts: { db?: any } = {}) {
+}, opts: { db?: any; onlyExisting?: boolean } = {}) {
   const admin = opts.db ?? supabaseAdmin();
   // de-dupe
   // A duplicate reports the lead and time the first delivery was filed under,
   // so callers (texted-in media) see the same answer on every repeat.
   if (c.call_sid) { const { data } = await admin.from("communications").select(PRIOR_COLS).eq("call_sid", c.call_sid).maybeSingle(); if (data) return await update(admin, data.id, c, data); }
   if (c.sms_sid) { const { data } = await admin.from("communications").select(PRIOR_COLS).eq("sms_sid", c.sms_sid).maybeSingle(); if (data) return await update(admin, data.id, c, data); }
+  if (opts.onlyExisting) return { deferred: true };
 
   const { lead_id, firm_id } = await matchLeadByPhone(c.phone || "", admin);
   const row: any = {
     lead_id, firm_id, channel: c.channel, direction: c.direction, call_kind: c.call_kind ?? null,
+    provider_call_result: c.provider_call_result ?? null,
     phone_raw: c.phone ?? null, phone_norm: normPhone(c.phone), agent_name: c.agent_name ?? null, agent_email: c.agent_email ?? null,
     body: c.body ?? null, duration_sec: c.duration_sec ?? null, recording_url: c.recording_url ?? null, transcript: c.transcript ?? null,
     jc_summary: c.jc_summary ?? null, jc_sentiment: c.jc_sentiment ?? null, jc_insights: c.jc_insights ?? {},
@@ -150,7 +161,7 @@ async function update(admin: any, id: string, c: any, prior?: {
     }
   }
   const patch: any = {};
-  for (const k of ["recording_url", "transcript", "jc_summary", "jc_sentiment", "duration_sec", "body"]) if (c[k] != null) patch[k] = c[k];
+  for (const k of ["recording_url", "transcript", "jc_summary", "jc_sentiment", "duration_sec", "body", "provider_call_result"]) if (c[k] != null) patch[k] = c[k];
   if (c.jc_insights) patch.jc_insights = c.jc_insights;
   let writeError: string | undefined;
   if (Object.keys(patch).length) {

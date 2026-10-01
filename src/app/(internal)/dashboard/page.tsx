@@ -142,7 +142,7 @@ export default async function Dashboard() {
 
   const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", hourCycle: "h23" }).format(now));
   const data: HomeData = {
-    links: pilot ? { add: "/app?new=1", all: "/app", fresh: "/app?tab=new", open: "/app?tab=calling", signed: "/app?tab=signed" }
+    links: pilot ? { add: "/app?new=1", all: "/app", fresh: "/app?tab=due", open: "/app?tab=wait", signed: "/app?tab=signed" }
       : { add: "/intake", all: "/leads", fresh: "/leads", open: "/leads", signed: "/signed" },
     greeting: hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening",
     first: (me?.full_name || "").split(" ")[0] || "",

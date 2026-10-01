@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ingestComm } from "@/lib/comms";
+import { ingestComm, normPhone, providerCallResult } from "@/lib/comms";
+import { isSmsRevocation } from "@/lib/sms-opt-out";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { recordAudit } from "@/lib/audit";
 import {
@@ -100,16 +101,38 @@ export async function POST(req: NextRequest) {
         try { await supabaseAdmin().from("webhook_events").insert({ direction: "inbound", event_type: "justcall." + type, status: "failed", payload: p, error: String(r.error) }); } catch {}
         return NextResponse.json({ ok: false, kind: "sms", error: "message not recorded", media: mediaOut }, { status: 500 });
       }
+      if (dir === "inbound" && isSmsRevocation(d.sms_info?.body || d.body || "")) {
+        const phone = normPhone(d.contact_number);
+        if (phone.length !== 10) return NextResponse.json({ error: "opt-out number could not be verified" }, { status: 500 });
+        const admin = supabaseAdmin();
+        // A shared number revokes texting across all files. Duplicate webhook
+        // deliveries are idempotent; a failed update gets retried by provider.
+        const { error: leadOptError } = await admin.from("leads").update({ perm_text: false }).eq("phone_norm", phone);
+        const { error: pointOptError } = await admin.from("contact_points").update({ status: "opted_out" }).eq("kind", "mobile").eq("value", d.contact_number);
+        if (leadOptError || pointOptError) return NextResponse.json({ error: "opt-out could not be saved" }, { status: 500 });
+      }
       return NextResponse.json({ ok: true, kind: "sms", media: mediaOut });
     }
 
     // ---- Sales Dialer calls (sd.*) ----
     if (type.startsWith("sd.")) {
+      // A ringing/answered/update event is not a completed dial. Waiting for
+      // the terminal event also prevents an early SID-only update from taking
+      // the completed event's unique call SID without its phone or result.
+      if (type !== "sd.call_completed") return NextResponse.json({ ok: true, kind: "sd_update_deferred" });
       const ci = d.call_info || {};
       const ai = d.justcall_ai || {};
-      await ingestComm({
+      // A Sales Dialer update may contain only a SID and changed notes. If it
+      // arrives before the completed event, creating a phone-less call would
+      // permanently prevent attribution of the later completed event.
+      if (!d.contact_number || !ci.direction || !d.call_date || !d.call_time || !(d.call_sid || d.call_id)) {
+        if (type.endsWith("updated")) return NextResponse.json({ ok: true, kind: "sd_update_deferred" });
+        return NextResponse.json({ error: "call identity or time missing" }, { status: 500 });
+      }
+      const r = await ingestComm({
         channel: "call", direction: String(ci.direction || "Outgoing").toLowerCase().includes("in") ? "inbound" : "outbound",
         call_kind: "dialer",
+        provider_call_result: providerCallResult(ci.type || ci.status),
         phone: d.contact_number,
         duration_sec: Number(ci.duration || 0) || undefined,
         recording_url: ci.recording || undefined,
@@ -121,21 +144,46 @@ export async function POST(req: NextRequest) {
         call_sid: String(d.call_sid || d.call_id || ""),
         occurred_at: joinDT(d.call_date, d.call_time),
       });
+      if (r.error || ("stamp_error" in r && r.stamp_error)) return NextResponse.json({ error: "call not fully recorded" }, { status: 500 });
       return NextResponse.json({ ok: true, kind: "sd_call" });
     }
 
     // ---- JustCall calls + voicemail + AI report (call.* / jc.call_ai_generated) ----
     if (type.startsWith("call.") || type === "jc.call_ai_generated") {
+      if (type === "jc.call_ai_generated") {
+        // Enrich a completed call when it is already present. AI delivery can
+        // precede completion, so it must never create a counted dial by itself.
+        const ai = d.justcall_ai || {};
+        if (!(d.call_sid || d.id)) return NextResponse.json({ ok: true, kind: "call_ai_deferred" });
+        const enriched = await ingestComm({ channel: "call", direction: "inbound",
+          call_sid: String(d.call_sid || d.id), phone: d.contact_number,
+          transcript: flattenTranscript(ai) || undefined,
+          jc_summary: ai.call_summary || undefined,
+          jc_sentiment: ai.customer_sentiment || undefined,
+          jc_insights: ai && Object.keys(ai).length ? ai : undefined,
+        }, { onlyExisting: true });
+        if (enriched.error || ("stamp_error" in enriched && enriched.stamp_error))
+          return NextResponse.json({ error: "AI details not fully recorded" }, { status: 500 });
+        return NextResponse.json({ ok: true, kind: "deferred" in enriched && enriched.deferred ? "call_ai_deferred" : "call_ai_enriched" });
+      }
+      if (type !== "call.completed" && type !== "call.voicemail")
+        return NextResponse.json({ ok: true, kind: "call_update_deferred" });
       const ci = d.call_info || {};
       const cd = d.call_duration || {};
       const ai = d.justcall_ai || {};
+      if (!d.contact_number || !ci.direction || !d.call_date || !d.call_time || !(d.call_sid || d.id)) {
+        if (type !== "call.completed" && type !== "call.voicemail")
+          return NextResponse.json({ ok: true, kind: "call_update_deferred" });
+        return NextResponse.json({ error: "call identity or time missing" }, { status: 500 });
+      }
       const isVoicemail = type === "call.voicemail" || String(ci.type).toLowerCase() === "voicemail";
       const direction = String(ci.direction || "").toLowerCase().includes("out") ? "outbound" : "inbound";
 
-      await ingestComm({
+      const r = await ingestComm({
         channel: isVoicemail ? "voicemail" : "call",
         direction,
         call_kind: direction,
+        provider_call_result: isVoicemail ? "voicemail" : providerCallResult(ci.type),
         phone: d.contact_number,
         duration_sec: Number(cd.total_duration ?? cd.conversation_time ?? 0) || undefined,
         recording_url: ci.recording || undefined,
@@ -147,6 +195,7 @@ export async function POST(req: NextRequest) {
         call_sid: String(d.call_sid || d.id || ""),
         occurred_at: joinDT(d.call_date, d.call_time),
       });
+      if (r.error || ("stamp_error" in r && r.stamp_error)) return NextResponse.json({ error: "call not fully recorded" }, { status: 500 });
       return NextResponse.json({ ok: true, kind: isVoicemail ? "voicemail" : "call" });
     }
 
