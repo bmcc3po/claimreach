@@ -72,12 +72,15 @@ export function buildDeskQueues(opts: {
         if (!opts.acquisitionReady || !isAcquisitionEligible(lead, claim, { statuses: opts.statuses, holds: opts.holds })) continue;
         if (claim.status === "esign_sent" && matterAgreements.length === 0) {
           bucket = "sent"; row.tag = "Sent";
+        } else if (lead.perm_call === false) {
+          bucket = "review"; row.tag = "Do not call"; row.sub = "Calling is disabled for this number. Review the contact preference.";
         } else if (latestCall?.disposition === "callback" && latestCall.callback_at) {
           bucket = "callbacks"; row.tag = "Call back"; row.due = latestCall.callback_at; row.at = latestCall.callback_at;
           row.sub = [latestCall.reason, latestCall.agent_name].filter(Boolean).join(", ");
         } else {
           const matters = (lead.claims || []).filter((c: any) => c.firm_id === lead.firm_id && c.campaign_id === claim.campaign_id && c.claim_type === "mva");
           row.outreach = placeOutreach(summary ?? null, lead.first_dialed_at ?? null, matters.length, lead.created_at);
+          if (lead.perm_text === false) row.outreach.textPrompt = false;
           bucket = row.outreach.stage;
           row.tag = row.outreach.overdue ? "Overdue" : row.outreach.badge === "new" ? "New" : row.outreach.stage === "review" ? "Review" : row.outreach.stage === "wait" ? "Not yet due" : "Call now";
           row.due = row.outreach.dueAt;

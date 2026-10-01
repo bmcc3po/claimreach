@@ -33,6 +33,11 @@ const original = { id: "c-1", lead_id: LEAD, firm_id: "firm-tmp", channel: "call
 assert.equal(providerCallResult("unanswered"), "unanswered");
 assert.equal(providerCallResult("No Answer"), "unanswered");
 assert.equal(providerCallResult("answered"), "answered");
+assert.equal(providerCallResult("Outgoing human answered"), "answered");
+assert.equal(providerCallResult("Outgoing answered call"), "answered");
+assert.equal(providerCallResult("Outgoing unanswered call"), "unanswered");
+assert.equal(providerCallResult("Outgoing machine answered"), "voicemail");
+assert.equal(providerCallResult("Outgoing blocked call"), "failed");
 assert.equal(providerCallResult("Unarchived"), null);
 assert.equal(providerCallResult("Completed"), null);
 

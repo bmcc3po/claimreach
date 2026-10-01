@@ -45,7 +45,7 @@ export default async function AppHomePage() {
     ? campaigns.filter((c: any) => packetsFor((firmById.get(c.firm_id) as any)?.slug, c.case_type)) : [];
   const [leadRes, tplRes, textRes] = await Promise.all([
     campIds.length ? readDeskRows(() => sb.from("leads")
-      .select("id, firm_id, external_id, archived_at, lead_no, claimant_name, phone, campaign_id, campaign, created_at, last_called_at, first_dialed_at, signed_at, marketing_source, mail_state, mail_zip, client_time_zone, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, created_at, updated_at)")
+      .select("id, firm_id, external_id, archived_at, lead_no, claimant_name, phone, campaign_id, campaign, created_at, last_called_at, first_dialed_at, signed_at, marketing_source, mail_state, mail_zip, client_time_zone, perm_call, perm_text, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, created_at, updated_at)")
       .in("campaign_id", campIds).is("archived_at", null)) : { data: [], error: null },
     setupCamps.length ? sb.from("esign_templates").select("campaign_id, key").in("campaign_id", setupCamps.map((c: any) => c.id)).eq("provider", "docuseal") : { data: [], error: null },
     // Messages remain reachable outside the six work queues, including replies

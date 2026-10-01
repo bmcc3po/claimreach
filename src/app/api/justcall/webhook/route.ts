@@ -118,7 +118,14 @@ export async function POST(req: NextRequest) {
     if (type.startsWith("sd.")) {
       const ci = d.call_info || {};
       const ai = d.justcall_ai || {};
-      await ingestComm({
+      // A Sales Dialer update may contain only a SID and changed notes. If it
+      // arrives before the completed event, creating a phone-less call would
+      // permanently prevent attribution of the later completed event.
+      if (!d.contact_number || !ci.direction || !d.call_date || !d.call_time || !(d.call_sid || d.call_id)) {
+        if (type.endsWith("updated")) return NextResponse.json({ ok: true, kind: "sd_update_deferred" });
+        return NextResponse.json({ error: "call identity or time missing" }, { status: 500 });
+      }
+      const r = await ingestComm({
         channel: "call", direction: String(ci.direction || "Outgoing").toLowerCase().includes("in") ? "inbound" : "outbound",
         call_kind: "dialer",
         provider_call_result: providerCallResult(ci.type || ci.status),
@@ -133,6 +140,7 @@ export async function POST(req: NextRequest) {
         call_sid: String(d.call_sid || d.call_id || ""),
         occurred_at: joinDT(d.call_date, d.call_time),
       });
+      if (r.error || ("stamp_error" in r && r.stamp_error)) return NextResponse.json({ error: "call not fully recorded" }, { status: 500 });
       return NextResponse.json({ ok: true, kind: "sd_call" });
     }
 
@@ -141,10 +149,15 @@ export async function POST(req: NextRequest) {
       const ci = d.call_info || {};
       const cd = d.call_duration || {};
       const ai = d.justcall_ai || {};
+      if (!d.contact_number || !ci.direction || !d.call_date || !d.call_time || !(d.call_sid || d.id)) {
+        if (type !== "call.completed" && type !== "call.voicemail")
+          return NextResponse.json({ ok: true, kind: "call_update_deferred" });
+        return NextResponse.json({ error: "call identity or time missing" }, { status: 500 });
+      }
       const isVoicemail = type === "call.voicemail" || String(ci.type).toLowerCase() === "voicemail";
       const direction = String(ci.direction || "").toLowerCase().includes("out") ? "outbound" : "inbound";
 
-      await ingestComm({
+      const r = await ingestComm({
         channel: isVoicemail ? "voicemail" : "call",
         direction,
         call_kind: direction,
@@ -160,6 +173,7 @@ export async function POST(req: NextRequest) {
         call_sid: String(d.call_sid || d.id || ""),
         occurred_at: joinDT(d.call_date, d.call_time),
       });
+      if (r.error || ("stamp_error" in r && r.stamp_error)) return NextResponse.json({ error: "call not fully recorded" }, { status: 500 });
       return NextResponse.json({ ok: true, kind: isVoicemail ? "voicemail" : "call" });
     }
 
