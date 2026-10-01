@@ -53,7 +53,7 @@ export function buildDeskQueues(opts: {
       const summary = opts.dialSummaries?.get(lead.id);
       const row: DeskRow = { id: lead.id, claimId: claim.id, name: lead.claimant_name, phone: lead.phone,
         sub: [lead.marketing_source, claim.campaign || lead.campaign].filter(Boolean).join(", "),
-        at: claim.updated_at || lead.last_called_at || lead.created_at, href: `/app/${lead.id}?claim=${claim.id}`,
+        at: claim.updated_at || lead.last_called_at || lead.created_at, receivedAt: lead.created_at, href: `/app/${lead.id}?claim=${claim.id}`,
         callCount: summary?.total_dials ?? null, lastCallAt: summary?.last_call_at ?? null };
       let bucket: DeskTab;
       if (claim.status === SIGNED_QA_RETURN_STATUS) {
