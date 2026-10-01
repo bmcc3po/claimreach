@@ -270,7 +270,7 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-say">
 <div className="cc-say-label">Say</div>
 <div className="cc-say-line">Who else was in the car with you?</div>
-<div className="cc-cue">Do not skip this. Ever. Every passenger is their own file and their own agreement.</div>
+<div className="cc-cue">Ask when possible. If there was a passenger, add them to their own file and agreement.</div>
 </div>
 <div className="cc-chips cc-list">
 <button className={cx(v.justMeCls)} onClick={v.justMe}>Just me</button>
