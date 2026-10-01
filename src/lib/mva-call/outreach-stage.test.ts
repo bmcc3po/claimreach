@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { placeOutreach, type DialSummary } from "./outreach-stage";
+import { outreachZone, placeOutreach, type DialSummary } from "./outreach-stage";
 
 const receipt = "2026-09-29T14:00:00Z"; // Tuesday 9 AM Central
 const now = new Date("2026-09-29T14:01:00Z");
@@ -11,6 +11,18 @@ function missed(total: number, dialTimes = times.slice(0, total)): DialSummary {
     first_call_at: dialTimes[0] || null, last_call_at: dialTimes[total - 1] || null, dial_times: dialTimes, outbound_sms_times: [] };
 }
 const place = (s: DialSummary | null, first: string | null = null, matters = 1, at = now) => placeOutreach(s, first, matters, receipt, at);
+assert.equal(outreachZone(null, "North Carolina", "7025550100"), "America/New_York");
+assert.equal(outreachZone(null, null, "7025550100"), "America/Los_Angeles");
+assert.equal(outreachZone(null, null, "9845550100"), "America/New_York");
+assert.equal(outreachZone(null, null, "6015550100"), "America/Chicago");
+assert.equal(outreachZone(null, null, "6025550100"), "America/Phoenix");
+assert.equal(outreachZone(null, null, "4235550100"), "America/New_York");
+assert.equal(outreachZone(null, null, "9015550100"), "America/Chicago");
+assert.equal(outreachZone("Mountain", "Arizona", "6025550100"), "America/Phoenix");
+assert.equal(outreachZone("America/Chicago", "Nevada", "7025550100"), "America/Chicago");
+assert.equal(outreachZone(null, null, "0005550100"), null);
+assert.equal(place({ ...missed(0), local_zone: outreachZone(null, "Nevada", "0005550100") }, null, 1,
+  new Date("2026-09-29T16:01:00Z")).stage, "due");
 assert.equal(place(missed(0)).stage, "due");
 assert.equal(place(missed(0)).badge, "new");
 assert.equal(place(missed(0)).overdue, true);

@@ -45,10 +45,11 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
   let callId: string | null = b?.call_id ? String(b.call_id) : null;
+  let postCallCorrection = false;
 
   // Refuse an ended or mismatched session BEFORE touching canonical answers.
   if (callId) {
-    const { data: was, error } = await sb.from("intake_calls").select("id, lead_id, status, claim_id").eq("id", callId).maybeSingle();
+    const { data: was, error } = await sb.from("intake_calls").select("id, lead_id, status, claim_id, agent_id, disposition, ended_at").eq("id", callId).maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (was && (was.lead_id !== leadId || (was.claim_id && was.claim_id !== claim.id))) {
       return NextResponse.json({ error: "This call belongs to a different matter on this file. Refresh the page.", ended: true }, { status: 409 });
@@ -56,13 +57,25 @@ export async function POST(req: NextRequest) {
     if (was && !was.claim_id && !matter.sole) {
       return NextResponse.json({ error: "This older call is not tied to a matter on a multi-matter file. Start a new call on the selected matter before saving.", ended: true }, { status: 409 });
     }
-    if (was && was.status !== "live") return NextResponse.json({ error: "This call was already closed (maybe on another screen). Open the file again to start a new call.", ended: true }, { status: 409 });
+    if (was && was.status !== "live") {
+      if (b?.post_call_correction !== true || was.agent_id !== me.id || was.disposition !== "signed" || !was.ended_at) {
+        return NextResponse.json({ error: "This call was already closed (maybe on another screen). Open the file again to start a new call.", ended: true }, { status: 409 });
+      }
+      if (["signed_approved", "delivered", "retained"].includes(String(claim.status || ""))) {
+        return NextResponse.json({ error: "This signed file has advanced past agent review. Ask QA to return it before changing intake answers.", ended: true }, { status: 409 });
+      }
+      const { data: latestQa, error: qaErr } = await sb.from("qa_reviews").select("decision").eq("claim_id", claim.id)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (qaErr) return NextResponse.json({ error: "Could not check QA status before correcting the closed call." }, { status: 503 });
+      if (latestQa?.decision === "approve") return NextResponse.json({ error: "This file has already passed QA. Ask QA to return it before changing intake answers.", ended: true }, { status: 409 });
+      postCallCorrection = true;
+    }
     if (!was) callId = null;
   }
 
   // Claim answers are canonical. CAS the whole bag so a concurrent import or
   // classic-form save cannot be erased; reapply only this client's changed leaves.
-  let answers: Record<string, any> = {}, previous: Record<string, any> = {}, wrote = false;
+  let answers: Record<string, any> = {}, previous: Record<string, any> = {}, changedPaths: string[] = [], wrote = false;
   for (let attempt = 0; attempt < 4; attempt++) {
     const { data: fresh, error } = await sb.from("claims").select("answers, updated_at").eq("id", claim.id).eq("lead_id", leadId).maybeSingle();
     if (error || !fresh) return NextResponse.json({ error: error?.message || "The claim is no longer available." }, { status: 500 });
@@ -74,6 +87,7 @@ export async function POST(req: NextRequest) {
     const merged = hasBase ? mergeAnswerDelta(base, previous, incoming) : { value: incoming, conflicts: [] };
     if (merged.conflicts.length) return NextResponse.json({ error: `These answers changed on another screen: ${merged.conflicts.join(", ")}. Your edits remain on this screen; review the file before saving again.`, conflict: true, conflicts: merged.conflicts }, { status: 409 });
     answers = merged.value;
+    changedPaths = "changedPaths" in merged ? merged.changedPaths : [];
     if (isAnswerObject(answers.file)) delete answers.file.ssn;
     let q = sb.from("claims").update({ answers: { ...bag, mva_call: answers } }).eq("id", claim.id).eq("lead_id", leadId);
     q = fresh.updated_at == null ? q.is("updated_at", null) : q.eq("updated_at", fresh.updated_at);
@@ -85,7 +99,7 @@ export async function POST(req: NextRequest) {
 
   // Session rows are mirrors, never the authority used to reopen the call.
   // A failed mirror is reported and can be retried against the same base.
-  if (callId) {
+  if (callId && !postCallCorrection) {
     const { data: upd, error } = await sb.from("intake_calls")
       .update({ answers, mode, updated_at: now, claim_id: claim.id })
       .eq("id", callId).eq("lead_id", leadId).eq("status", "live")
@@ -132,12 +146,26 @@ export async function POST(req: NextRequest) {
   const inferredZone = !lead.client_time_zone
     ? inferMailTimeZone(since.mail_state ?? lead.mail_state, since.mail_zip ?? lead.mail_zip)
     : null;
-  const patch = { ...since, last_called_at: now,
-    ...(!lead.intake_agent_id ? { intake_agent_id: me.id } : {}),
+  const patch = { ...since, ...(!postCallCorrection ? { last_called_at: now } : {}),
+    ...(!postCallCorrection && !lead.intake_agent_id ? { intake_agent_id: me.id } : {}),
     ...(inferredZone ? { client_time_zone: inferredZone } : {}),
   };
-  const { error: lpErr } = await sb.from("leads").update(patch).eq("id", lead.id);
-  if (lpErr) return NextResponse.json({ error: `Answers saved, the lead record did not: ${lpErr.message}`, call_id: callId }, { status: 500 });
+  if (Object.keys(patch).length) {
+    const { error: lpErr } = await sb.from("leads").update(patch).eq("id", lead.id);
+    if (lpErr) return NextResponse.json({ error: `Answers saved, the lead record did not: ${lpErr.message}`, call_id: callId }, { status: 500 });
+  }
+
+  if (postCallCorrection && changedPaths.length) {
+    // Closed call evidence is immutable. Record which canonical answer leaves
+    // were corrected, without copying sensitive answer values into the log.
+    const { error: auditErr } = await supabaseAdmin().from("audit_log").insert({
+      firm_id: lead.firm_id, lead_id: leadId, claim_id: claim.id, actor: me.id,
+      actor_name: me.name, category: "call",
+      description: `Corrected ${changedPaths.length} intake answer${changedPaths.length === 1 ? "" : "s"} after the signed call ended, before QA.`,
+      meta: { call_id: callId, changed_fields: changedPaths },
+    });
+    if (auditErr) return NextResponse.json({ error: "The answer saved, but the required correction history did not. Stop and ask an administrator to review this file.", call_id: callId, ended: true }, { status: 500 });
+  }
 
   // The contact fields this save put on the record, so every open screen
   // (the File tab's contact card) shows them at once.

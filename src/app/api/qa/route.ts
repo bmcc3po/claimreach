@@ -8,6 +8,7 @@ import { packetShort } from "@/lib/mva-call/esign";
 import { SIGNED_BUCKET } from "@/lib/signed-docs";
 import { agreementName } from "@/lib/mva-call/agreement-names";
 import { signingReleaseGate } from "@/lib/mva-call/replacement";
+import { missingRequiredMvaIntake } from "@/lib/mva-call/intake-readiness";
 
 export const runtime = "edge";
 
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
     // evidence, the status change) is bound to that matter, never a sibling
     // (Astra rounds 4-5).
     const { data: allClaims } = await admin.from("claims")
-      .select("id, status, claim_type, created_by, campaign_id, firm_id, created_at")
+      .select("id, status, claim_type, created_by, campaign_id, firm_id, created_at, answers")
       .eq("lead_id", lead_id).order("created_at", { ascending: false });
     const claim = claim_id
       ? (allClaims ?? []).find((c: any) => c.id === claim_id)
@@ -189,6 +190,8 @@ export async function POST(req: NextRequest) {
         .eq("lead_id", lead_id).eq("claim_id", claim.id).eq("agent_id", u.uid)
         .eq("disposition", "signed").not("ended_at", "is", null).limit(1).maybeSingle();
       if (callErr || !ownCall) return NextResponse.json({ error: "End and disposition your own signed call before reviewing this file for firm delivery." }, { status: 403 });
+      const missing = missingRequiredMvaIntake(claim.answers?.mva_call);
+      if (missing.length) return NextResponse.json({ error: `Complete the required intake answers before firm delivery: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? `, and ${missing.length - 5} more` : ""}.`, missing }, { status: 409 });
       const { data: reviewed, error: reviewErr } = await sb.from("esign_submissions")
         .select("id").eq("lead_id", lead_id).eq("claim_id", claim.id).eq("status", "completed")
         .not("agent_reviewed_at", "is", null).limit(1).maybeSingle();

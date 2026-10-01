@@ -187,7 +187,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
     <CallConsole init={{
       leadId: lead.id,
       claimId: claim.id,
-      callId: liveRes.data?.id ?? null,
+      callId: liveRes.data?.id ?? signedDispoRes.data?.id ?? null,
       signedDispoDone: !!signedDispoRes.data && !liveRes.data,
       baseAnswers: saved || {},
       agreementId: mainRes.row?.id ?? null,

@@ -131,6 +131,28 @@ async function main() {
       assert.ok(db.ops.every(o => o.kind === "select"));
     }
   });
+  await check("an agent can finish missing intake after a signed disposition without rewriting the call", async () => {
+    const db = world();
+    Object.assign(db.tables.intake_calls[0], { status: "ended", agent_id: "agent", disposition: "signed", ended_at: "2026-09-29T14:00:00Z" });
+    const before = { ...db.tables.intake_calls[0] };
+    const result = await route(db)({ post_call_correction: true });
+    assert.equal(result.status, 200);
+    assert.equal(db.tables.claims[0].answers.mva_call.story.text, "Agent edit");
+    assert.deepEqual(db.tables.intake_calls[0], before);
+    assert.equal(db.tables.audit_log.length, 1);
+    assert.deepEqual(db.tables.audit_log[0].meta.changed_fields, ["story.text"]);
+    assert.equal(db.tables.leads[0].last_called_at, undefined);
+  });
+  await check("a closed-call correction requires the original agent and stops after QA", async () => {
+    const other = world();
+    Object.assign(other.tables.intake_calls[0], { status: "ended", agent_id: "other", disposition: "signed", ended_at: "2026-09-29T14:00:00Z" });
+    assert.equal((await route(other)({ post_call_correction: true })).status, 409);
+    const reviewed = world();
+    Object.assign(reviewed.tables.intake_calls[0], { status: "ended", agent_id: "agent", disposition: "signed", ended_at: "2026-09-29T14:00:00Z" });
+    reviewed.tables.qa_reviews = [{ claim_id: C, decision: "approve", created_at: "2026-09-29T14:01:00Z" }];
+    assert.equal((await route(reviewed)({ post_call_correction: true })).status, 409);
+    assert.equal(reviewed.tables.claims[0].answers.mva_call.story.text, "Before");
+  });
   await check("SSN is excluded from both saved answers and returned canonical document", async () => {
     const db = world(); const r = await route(db)({ answers: { story: { text: "Agent edit" }, file: { ssn: "000000000", dob: "01/01/1990" } } });
     assert.equal(r.status, 200); assert.ok(!JSON.stringify(r.body.answers).includes("000000000"));
