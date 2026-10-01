@@ -68,4 +68,22 @@
 .nf-inline-confirm input{flex:none;width:20px;height:20px;margin:0}
 .nf-finish-call{margin-top:22px;padding:16px;border:1px solid #bdd1e8;border-radius:12px;background:#f3f7fd}
 .nf-finish-call strong{color:#123866;font-size:17px}
+/* The global iOS theme paints native fields dark even inside NETFLY's light cards. */
+.nf-page{color-scheme:light}
+.nf-page .nf-question input,.nf-page .nf-question textarea,
+.nf-page .nf-call-label input,.nf-page .nf-call-label textarea,
+.nf-page .nf-form input,.nf-page .nf-form textarea,
+.nf-page .nf-source-input,.nf-page .nf-review textarea,
+.nf-page .nf-command-more select,.nf-page .nf-emergency select{
+  background:#fff!important;color:#17283d!important;-webkit-text-fill-color:#17283d;
+  border:1px solid #bdcce0!important;box-shadow:none!important;
+}
+.nf-page input::placeholder,.nf-page textarea::placeholder{color:#697d94;opacity:1}
+.nf-page .nf-question label,.nf-page .nf-question-label{color:#233a56}
+.nf-dq-overlay{position:fixed;inset:0;background:#10223888;z-index:120;display:flex;align-items:center;justify-content:center;padding:16px}
+.nf-dq-dialog{border:1px solid #a9bdd8;border-radius:16px;padding:22px;width:min(92vw,420px);color:#142338;background:#fff;box-shadow:0 20px 70px #14233844}
+.nf-dq-dialog h3{margin:0 0 8px}.nf-dq-dialog p{line-height:1.45}
+.nf-dq-dialog select{width:100%;min-height:44px;margin:12px 0;border:1px solid #bdcce0;border-radius:10px;background:#fff!important;color:#17283d!important;padding:9px}
+.nf-closeout{border:1px solid #bbcee5;background:#f7faff;border-radius:12px;padding:16px;display:grid;gap:12px}
+.nf-closeout>strong{color:#123866}
 @media(max-width:700px){.nf-view-bar{display:flex;flex-wrap:wrap}.nf-view-bar .nf-view-actions{order:3;width:100%}.nf-view-bar-collapsed{flex-wrap:nowrap}.nf-inline-retainer{padding:14px}}

@@ -3,10 +3,14 @@
 export const NETFLY_CAMPAIGN = "NETFLY ONTAKE";
 export const NETFLY_ANSWER_KEY = "netfly_secondary";
 export const NETFLY_RETAINER_TYPE = "netfly_signed_retainer";
-export const NETFLY_ASSESSMENTS = ["likely_case", "needs_review", "unlikely_case"] as const;
+export const NETFLY_COMPLETIONS = ["complete", "incomplete"] as const;
+export const NETFLY_DISPOSITIONS = ["appears_qualified", "appears_dq", "callback_to_finish", "client_remorse"] as const;
+export const NETFLY_DQ_REASONS = ["sol", "diagnosis", "already_rep", "criteria", "prior_signup", "location", "duplicate", "other"] as const;
 export const NETFLY_TRANSFER_OUTCOMES = ["connected", "attempted_no_answer", "client_declined", "not_attempted"] as const;
 export type NetflyCallClose = {
-  assessment: (typeof NETFLY_ASSESSMENTS)[number];
+  completion: (typeof NETFLY_COMPLETIONS)[number];
+  disposition: (typeof NETFLY_DISPOSITIONS)[number];
+  dq_reason_key: string;
   assessment_reason: string;
   transfer_destination: string;
   transfer_outcome: (typeof NETFLY_TRANSFER_OUTCOMES)[number];
@@ -14,8 +18,14 @@ export type NetflyCallClose = {
   client_notified_48_business_hours: boolean;
 };
 export function validateNetflyCallClose(value: NetflyCallClose): string | null {
-  if (!NETFLY_ASSESSMENTS.includes(value.assessment)) return "Record your best assessment of the case.";
-  if (value.assessment_reason.trim().length < 5) return "Briefly explain your case assessment.";
+  if (!NETFLY_COMPLETIONS.includes(value.completion)) return "Choose whether the ontake is complete.";
+  if (!NETFLY_DISPOSITIONS.includes(value.disposition)) return "Choose the call outcome.";
+  if (value.disposition === "appears_qualified" && value.completion !== "complete") return "Finish the ontake before marking it appears to qualify.";
+  if (value.disposition === "callback_to_finish" && value.completion !== "incomplete") return "A callback to finish requires an incomplete ontake.";
+  if (value.disposition === "appears_dq" && !NETFLY_DQ_REASONS.includes(value.dq_reason_key as typeof NETFLY_DQ_REASONS[number])) return "Choose a DQ reason for supervisor review.";
+  if (["appears_dq", "callback_to_finish", "client_remorse"].includes(value.disposition) && value.assessment_reason.trim().length < 5)
+    return "Briefly explain this outcome and the next step.";
+  if (value.disposition !== "appears_qualified") return null;
   if (!NETFLY_TRANSFER_OUTCOMES.includes(value.transfer_outcome)) return "Record what happened with the case-manager introduction.";
   if (["connected", "attempted_no_answer"].includes(value.transfer_outcome) && !value.transfer_destination.trim())
     return "Record the case-manager number or queue you actually called.";

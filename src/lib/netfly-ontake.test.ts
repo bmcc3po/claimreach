@@ -23,10 +23,16 @@ const source = parseNetflyHandoff("Accident Intake Note – Turnbull Law\nClient
 assert.deepEqual(source.map((item) => item.label), ["Client/Driver", "Accident Date", "Accident Summary", "Insurance", "Next Steps"]);
 assert.equal(source.find((item) => item.label === "Accident Summary")?.value, "First sentence. Continued detail.");
 assert.equal(source.find((item) => item.label === "Insurance")?.value, "Details were missing, but have now been obtained.");
-const close: NetflyCallClose = { assessment: "needs_review", assessment_reason: "The treatment and liability need a closer look.", transfer_destination: "", transfer_outcome: "client_declined", transfer_note: "Client prefers a callback.", client_notified_48_business_hours: false };
+const close: NetflyCallClose = { completion: "complete", disposition: "appears_qualified", dq_reason_key: "", assessment_reason: "", transfer_destination: "", transfer_outcome: "client_declined", transfer_note: "Client prefers a callback.", client_notified_48_business_hours: false };
 assert.match(validateNetflyCallClose(close) || "", /48 business hours/);
 assert.equal(validateNetflyCallClose({ ...close, client_notified_48_business_hours: true }), null);
 assert.match(validateNetflyCallClose({ ...close, transfer_outcome: "connected" }) || "", /number or queue/);
 assert.equal(validateNetflyCallClose({ ...close, transfer_outcome: "attempted_no_answer", transfer_destination: "case-manager queue" }), null);
 assert.match(validateNetflyCallClose({ ...close, transfer_outcome: "not_attempted", transfer_note: "" }) || "", /why/);
+assert.match(validateNetflyCallClose({ ...close, completion: "incomplete" }) || "", /Finish the ontake/);
+assert.match(validateNetflyCallClose({ ...close, completion: "incomplete", disposition: "callback_to_finish" }) || "", /explain this outcome/i);
+assert.equal(validateNetflyCallClose({ ...close, completion: "incomplete", disposition: "callback_to_finish", assessment_reason: "Call client tomorrow afternoon." }), null);
+assert.match(validateNetflyCallClose({ ...close, disposition: "appears_dq", dq_reason_key: "" }) || "", /DQ reason/);
+assert.equal(validateNetflyCallClose({ ...close, disposition: "appears_dq", dq_reason_key: "criteria", assessment_reason: "Liability needs supervisor review." }), null);
+assert.equal(validateNetflyCallClose({ ...close, disposition: "client_remorse", assessment_reason: "Client disputes representation; supervisor to call." }), null);
 console.log("NETFLY source map and review triggers passed");

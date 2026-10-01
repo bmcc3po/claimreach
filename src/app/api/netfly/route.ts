@@ -167,13 +167,22 @@ export async function POST(req: NextRequest) {
   if (body?.op === "call_close") {
     if (!ctx.actor.can("intake.fill")) return fail("This account cannot record a NETFLY call.", 403);
     const call: NetflyCallClose = {
-      assessment: String(body.assessment || "").slice(0, 40) as NetflyCallClose["assessment"],
+      completion: String(body.completion || "").slice(0, 40) as NetflyCallClose["completion"],
+      disposition: String(body.disposition || "").slice(0, 40) as NetflyCallClose["disposition"],
+      dq_reason_key: String(body.dq_reason_key || "").slice(0, 80),
       assessment_reason: String(body.assessment_reason || "").trim().slice(0, 2000),
       transfer_destination: String(body.transfer_destination || "").trim().slice(0, 160),
       transfer_outcome: String(body.transfer_outcome || "").slice(0, 40) as NetflyCallClose["transfer_outcome"],
       transfer_note: String(body.transfer_note || "").trim().slice(0, 2000),
       client_notified_48_business_hours: body.client_notified_48_business_hours === true,
     };
+    if (call.disposition !== "appears_dq") call.dq_reason_key = "";
+    if (call.disposition !== "appears_qualified") {
+      call.transfer_destination = "";
+      call.transfer_outcome = "not_attempted";
+      call.transfer_note = "";
+      call.client_notified_48_business_hours = false;
+    }
     const invalid = validateNetflyCallClose(call);
     if (invalid) return fail(invalid, 400);
     const matter = await netflyMatter(ctx, String(body.file || ""));
@@ -186,7 +195,8 @@ export async function POST(req: NextRequest) {
       const netfly = all[NETFLY_ANSWER_KEY] && typeof all[NETFLY_ANSWER_KEY] === "object" ? all[NETFLY_ANSWER_KEY] : {};
       const handoffs = Array.isArray(netfly.handoffs) ? netfly.handoffs : [];
       if (!handoffs.length) return fail("Add NETFLY's handoff note before closing the welcome call.", 400);
-      const recorded = { ...call, source_revision: handoffs.length, followup_required: call.transfer_outcome !== "connected",
+      const recorded = { ...call, source_revision: handoffs.length,
+        followup_required: call.completion === "incomplete" || call.disposition !== "appears_qualified" || call.transfer_outcome !== "connected",
         at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
       const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, call_close: recorded } };
       const { data: saved, error: saveError } = await ctx.db.from("claims")
@@ -197,8 +207,9 @@ export async function POST(req: NextRequest) {
       if (saved) {
         const audit = await ctx.db.from("audit_log").insert({ firm_id: ctx.campaign.firm_id, lead_id: matter.lead.id,
           claim_id: matter.claim.id, actor: ctx.actor.id, actor_name: ctx.actor.name, category: "intake",
-          description: "NETFLY assessment and case-manager introduction recorded",
-          meta: { assessment: call.assessment, assessment_reason: call.assessment_reason,
+          description: "NETFLY ontake completion and call outcome recorded",
+          meta: { completion: call.completion, disposition: call.disposition, dq_reason_key: call.dq_reason_key,
+            assessment_reason: call.assessment_reason,
             transfer_outcome: call.transfer_outcome, transfer_destination: call.transfer_destination,
             transfer_note: call.transfer_note, client_notified_48_business_hours: call.client_notified_48_business_hours,
             source_revision: handoffs.length } });
@@ -278,7 +289,11 @@ export async function POST(req: NextRequest) {
       if (!handoffs.length || saved.handoff_verification?.source_revision !== handoffs.length)
         return fail("Check the latest NETFLY handoff with the client before sending this file to review.", 400);
       if (saved.call_close?.source_revision !== handoffs.length)
-        return fail("Record your case assessment and case-manager introduction outcome before sending this file to review.", 400);
+        return fail("Record ontake completion and the call outcome before sending this file to review.", 400);
+      if (validateNetflyCallClose(saved.call_close as NetflyCallClose))
+        return fail("Update the NETFLY call closeout with completion and outcome before review.", 400);
+      if (saved.call_close?.completion !== "complete" || saved.call_close?.disposition === "callback_to_finish")
+        return fail("This ontake is not complete. Keep it open for the callback instead of sending it to review.", 400);
       const { data: docs, error: docsError } = await ctx.db.from("case_documents").select("id")
         .eq("firm_id", ctx.campaign.firm_id).eq("lead_id", matter.lead.id).eq("claim_id", matter.claim.id)
         .eq("doc_type", "netfly_signed_retainer").order("created_at", { ascending: false }).limit(1);
