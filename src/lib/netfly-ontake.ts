@@ -16,6 +16,7 @@ export const NETFLY_DISPOSITIONS = ["appears_qualified", "appears_dq", "callback
 export const NETFLY_DQ_REASONS = ["sol", "diagnosis", "already_rep", "criteria", "prior_signup", "location", "duplicate", "other"] as const;
 export const NETFLY_TRANSFER_OUTCOMES = ["connected", "attempted_no_answer", "client_declined", "not_attempted"] as const;
 export type NetflyCallClose = {
+  closeout_version?: 2;
   completion: (typeof NETFLY_COMPLETIONS)[number];
   disposition: (typeof NETFLY_DISPOSITIONS)[number];
   dq_reason_key: string;
@@ -24,6 +25,7 @@ export type NetflyCallClose = {
   transfer_outcome: (typeof NETFLY_TRANSFER_OUTCOMES)[number];
   transfer_note: string;
   client_notified_48_business_hours: boolean;
+  callback_promised_24_48_hours?: boolean;
 };
 export function validateNetflyCallClose(value: NetflyCallClose): string | null {
   if (!NETFLY_COMPLETIONS.includes(value.completion)) return "Choose whether the ontake is complete.";
@@ -33,6 +35,8 @@ export function validateNetflyCallClose(value: NetflyCallClose): string | null {
   if (value.disposition === "appears_dq" && !NETFLY_DQ_REASONS.includes(value.dq_reason_key as typeof NETFLY_DQ_REASONS[number])) return "Choose a DQ reason for supervisor review.";
   if (["appears_dq", "callback_to_finish", "client_remorse"].includes(value.disposition) && value.assessment_reason.trim().length < 5)
     return "Briefly explain this outcome and the next step.";
+  if (value.closeout_version === 2) return value.callback_promised_24_48_hours === true
+    ? null : "Tell the client we will call back in 24–48 hours, then confirm it here.";
   if (value.disposition !== "appears_qualified") return null;
   if (!NETFLY_TRANSFER_OUTCOMES.includes(value.transfer_outcome)) return "Record what happened with the case-manager introduction.";
   if (["connected", "attempted_no_answer"].includes(value.transfer_outcome) && !value.transfer_destination.trim())

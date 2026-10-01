@@ -269,7 +269,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
         )}
       </main>
       <div className="cc-bar">
-        <button className="cc-btn cc-go" onClick={() => { setSheet(true); setErr(""); }}>New call</button>
+        <button className="cc-btn cc-go" onClick={() => { setSheet(true); setErr(""); }}>CREATE NEW LEAD</button>
       </div>
 
       {sheet && (
