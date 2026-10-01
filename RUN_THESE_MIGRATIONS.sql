@@ -4835,7 +4835,16 @@ alter table public.communications
 -- Completed standard and Sales Dialer webhooks carry an explicit result.
 -- Match by provider call SID; leave other older records unclassified rather
 -- than inventing a no-answer from duration or a preliminary event.
-with provider_results as (
+-- Scope historical backfill to INNO MVA; other campaigns' calls are untouched.
+with target_calls as materialized (
+  select c.id, c.call_sid
+  from public.communications c
+  join public.leads l on l.id = c.lead_id
+  join public.campaigns cp on cp.id = l.campaign_id
+  where cp.name = 'INNO MVA' and cp.case_type = 'mva'
+    and c.call_sid is not null and c.channel = 'call'
+    and c.provider_call_result is null
+), provider_results as (
   select distinct on (payload->'data'->>'call_sid')
     payload->'data'->>'call_sid' as call_sid,
     case lower(replace(coalesce(payload->'data'->'call_info'->>'type', ''), ' ', '_'))
@@ -4856,16 +4865,16 @@ with provider_results as (
       when 'outgoing_abandoned_call' then 'failed'
       else null
     end as result
-  from public.webhook_events
-  where event_type in ('justcall.call.completed', 'justcall.sd.call_completed')
-    and payload->'data'->>'call_sid' is not null
-  order by payload->'data'->>'call_sid', created_at desc
+  from public.webhook_events e
+  join target_calls t on t.call_sid = e.payload->'data'->>'call_sid'
+  where e.event_type in ('justcall.call.completed', 'justcall.sd.call_completed')
+  order by e.payload->'data'->>'call_sid', e.created_at desc
 )
 update public.communications c
 set provider_call_result = p.result
 from provider_results p
-where c.call_sid = p.call_sid
-  and c.channel = 'call'
+join target_calls t on t.call_sid = p.call_sid
+where c.id = t.id
   and c.provider_call_result is null
   and p.result is not null;
 
