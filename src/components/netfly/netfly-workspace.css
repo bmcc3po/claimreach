@@ -30,6 +30,12 @@
 .nf-command-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:8px}
 .nf-command-more{grid-column:1/-1;display:flex;align-items:center;gap:8px;color:#315786;font-size:12px;font-weight:700}
 .nf-command-more select{min-width:0;flex:1;padding:7px 8px;border:1px solid #cbd9e9;border-radius:8px;background:#fff;color:#173a71;font:inherit}
+.nf-question-label{font-weight:750;line-height:1.35}
+.nf-choice-group{display:grid;gap:5px}
+.nf-options-binary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.nf-options-binary button{min-height:44px;text-align:left}
+.nf-unknown{justify-self:start;border:0;background:transparent;color:#315786;padding:7px 2px;font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+.nf-unknown.selected{color:#173a71;text-decoration:underline}
 .nf-command-content .nf-panel{padding:14px;box-shadow:none}
 .nf-command-content .nf-panel h2{font-size:18px}
 .nf-command-content .nf-retainer{display:block;padding:13px;margin-bottom:12px}

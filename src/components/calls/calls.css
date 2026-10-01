@@ -2010,6 +2010,8 @@ div.ws-row{cursor:default}
 .sf-c .iq-ask { font-size: 14px; }
 .sf-c .fi-addrow, .sf-c .fi-car { min-width: 0; }
 .iq-person .fi-chips { flex-wrap: wrap; }
+.cc-app.ix .iq-binary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cc-app.ix .iq-binary>*{min-width:0;width:100%;justify-content:flex-start;text-align:left}
 @media (max-width: 600px) {
   .iq-person { padding: 10px; }
   .iq-guided .fi-q-edit { padding: 14px; }

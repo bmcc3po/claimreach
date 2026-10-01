@@ -5,6 +5,9 @@
 .cc-app.ix .step-intake-count{display:block;color:#52627a;font-size:12px;font-weight:650;letter-spacing:.03em}
 .cc-app.ix .step-intake-heading h1{margin:4px 0 14px;font-size:23px;line-height:1.3;color:#132b49;outline:none}
 .cc-app.ix .step-intake-nav{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 6px;scrollbar-width:thin}
+.cc-app.ix .step-intake-jump{margin:0 0 2px}
+.cc-app.ix .step-intake-jump summary{display:inline-flex;align-items:center;min-height:36px;color:#315786;font-size:13px;font-weight:650;cursor:pointer}
+.cc-app.ix .step-intake-jump[open] .step-intake-nav{margin-top:5px}
 .cc-app.ix .step-intake-nav button{display:flex;align-items:center;gap:7px;flex:1 0 auto;min-height:42px;padding:8px 10px;border:1px solid #dce4ef;border-radius:8px;background:#fff;color:#52627a;text-align:left;font:inherit;font-size:12px;cursor:pointer}
 .cc-app.ix .step-intake-nav b{display:grid;place-items:center;width:21px;height:21px;border-radius:50%;background:#edf2f8;font-size:11px}
 .cc-app.ix .step-intake-nav .step-intake-current{border-color:#16345c;background:#16345c;color:#fff}

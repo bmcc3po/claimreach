@@ -8,11 +8,12 @@ export type IntakePresentation = "guided" | "full" | "chore" | "form";
 export const choicesFromClasses = (items: any[]) => (items || []).map((o: any) => ({ ...o, on: /(?:^|\s)on(?:\s|$)/.test(o.cls || "") }));
 
 export function IntakeChoices({ opts, presentation = "full", multi = false }: { opts: any[]; presentation?: IntakePresentation; multi?: boolean }) {
-  if (presentation === "form") return <div className="sf-chips sf-radios">{(opts || []).map((o, i) => (
+  const binary = !multi && (opts || []).length === 2;
+  if (presentation === "form") return <div className={`sf-chips sf-radios${binary ? " iq-binary" : ""}`}>{(opts || []).map((o, i) => (
     <label key={i} className={`sf-radio${o.on ? " sf-on" : ""}`}><input type={multi ? "checkbox" : "radio"} checked={!!o.on} onChange={() => {}} onClick={o.pick} /><span>{o.label}{!!o.sub && <small> {o.sub}</small>}</span></label>
   ))}</div>;
   const ch = presentation === "chore";
-  return <div className={ch ? "ch-opts" : "fi-chips"}>{(opts || []).map((o, i) => (
+  return <div className={`${ch ? "ch-opts" : "fi-chips"}${binary ? " iq-binary" : ""}`}>{(opts || []).map((o, i) => (
     <button key={i} type="button" className={ch ? `ch-opt${o.on ? " ch-on" : ""}` : `fi-chip${o.on ? " fi-on" : ""}`} aria-pressed={!!o.on} onClick={o.pick}>
       {ch && <span className="ch-box" aria-hidden="true">{o.on ? "✓" : ""}</span>}<span>{o.label}{!!o.sub && <small>{o.sub}</small>}</span>
     </button>

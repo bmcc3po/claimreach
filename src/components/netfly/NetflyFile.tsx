@@ -41,6 +41,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [verificationNote, setVerificationNote] = useState("");
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [callClose, setCallClose] = useState<NetflyCallClose>(emptyCallClose);
+  const [introDecision, setIntroDecision] = useState<"yes" | "no" | "not_attempted" | null>(null);
   const [callCloseDirty, setCallCloseDirty] = useState(false);
   const [callCloseBusy, setCallCloseBusy] = useState(false);
   const [correction, setCorrection] = useState<Correction>({ name: "", email: "", city: "", state: "", accident_date: "", nv_variant: "tiered", nv_reason: "" });
@@ -103,6 +104,15 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const updateCallClose = <K extends keyof NetflyCallClose>(key: K, value: NetflyCallClose[K]) => {
     setCallClose((old) => ({ ...old, [key]: value })); setCallCloseDirty(true);
   };
+  const chooseIntro = (choice: "yes" | "no" | "not_attempted") => {
+    setIntroDecision(choice);
+    setCallClose((old) => ({ ...old,
+      transfer_outcome: choice === "no" ? "client_declined" : choice === "not_attempted" ? "not_attempted"
+        : ["connected", "attempted_no_answer"].includes(old.transfer_outcome) ? old.transfer_outcome : "" as NetflyCallClose["transfer_outcome"],
+      client_notified_48_business_hours: choice === "no" ? old.client_notified_48_business_hours : false,
+    }));
+    setCallCloseDirty(true);
+  };
   async function recordCallClose() {
     const invalid = validateNetflyCallClose(callClose);
     if (invalid) { setError(invalid); return; }
@@ -124,6 +134,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const sourceRows = parseNetflyHandoff(latestHandoff?.note || "");
   const checked = detail.answers.handoff_verification?.source_revision === handoffs.length && handoffs.length > 0;
   const callRecorded = detail.answers.call_close?.source_revision === handoffs.length && handoffs.length > 0 && !callCloseDirty;
+  const introStage = introDecision || (["connected", "attempted_no_answer"].includes(callClose.transfer_outcome) ? "yes" : callClose.transfer_outcome === "client_declined" ? "no" : callClose.transfer_outcome === "not_attempted" ? "not_attempted" : null);
   const correctedComplete = correctionAgreement?.status === "completed" && !!correctionAgreement.agent_reviewed_at && correctionAgreement.packet_ready;
   const renderStep = (stepIndex: number) => {
     const current = VERIFY_STEPS[stepIndex];
@@ -151,7 +162,26 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       {visible.length > 0 && <div className="nf-questions">{visible.map((field) => <Question key={field.id} field={field} value={values[field.id] || ""} set={(value) => set(field.id, value)} save={(value) => save(field.id, value)} />)}</div>}
       {stepIndex === 1 && latestHandoff && <div className="nf-handoff-check"><strong>{checked ? `Checked with client · ${detail.answers.handoff_verification?.status === "matches" ? "details match" : "changes recorded"}` : "Confirm NETFLY's note with the client"}</strong><p className="nf-muted">The first intake stays intact. If the client corrects anything, describe it and record the corrected answer above.</p><textarea className="nf-source-input" value={verificationNote} onChange={(e) => setVerificationNote(e.target.value)} placeholder="What changed? Leave blank if the read-back matches." /><div className="nf-actions"><button className="nf-secondary" disabled={verificationBusy} onClick={() => void verifyHandoff("matches")}>Details match</button><button className="nf-primary" disabled={verificationBusy || verificationNote.trim().length < 5} onClick={() => void verifyHandoff("changes_recorded")}>Record changes</button></div></div>}
       {stepIndex === 3 && <div className="nf-call-block"><p className="nf-muted">Use the verified facts and any supervisor flags above. This is your provisional judgment for the legal team; it does not accept or decline a signed client.</p><div className="nf-options nf-assessment">{[["likely_case", "Likely a case"], ["needs_review", "Needs closer review"], ["unlikely_case", "May not be a case"]].map(([value, label]) => <button key={value} type="button" className={callClose.assessment === value ? "selected" : ""} onClick={() => updateCallClose("assessment", value as NetflyCallClose["assessment"])}>{label}</button>)}</div><label className="nf-call-label">What makes you think that?<textarea value={callClose.assessment_reason} onChange={(e) => updateCallClose("assessment_reason", e.target.value)} placeholder="Briefly explain the facts that support your judgment or need a legal review." /></label>{flags.length > 0 && <p className="nf-alert">These flags still require supervisor attention. Do not decline the client on this call.</p>}</div>}
-      {stepIndex === 4 && <div className="nf-call-block"><p className="nf-muted">Ask permission, then use the existing phone/JustCall transfer controls. The destination is open for the agent to enter when known; choosing an outcome here does not place a call.</p><label className="nf-call-label">Case manager number or queue<input value={callClose.transfer_destination} onChange={(e) => updateCallClose("transfer_destination", e.target.value)} placeholder="Enter the number or JustCall queue when available" /></label><strong>What happened?</strong><div className="nf-options nf-assessment">{[["connected", "Connected live"], ["attempted_no_answer", "Attempted, no answer"], ["client_declined", "Client declined"], ["not_attempted", "Not attempted"]].map(([value, label]) => <button key={value} type="button" className={callClose.transfer_outcome === value ? "selected" : ""} onClick={() => updateCallClose("transfer_outcome", value as NetflyCallClose["transfer_outcome"])}>{label}</button>)}</div>{callClose.transfer_outcome === "client_declined" && <div className="nf-followup"><strong>Say</strong><p>Of course. Your case manager will call you within 48 business hours.</p><label><input type="checkbox" checked={callClose.client_notified_48_business_hours} onChange={(e) => updateCallClose("client_notified_48_business_hours", e.target.checked)} /> I told the client this</label></div>}<label className="nf-call-label">Transfer or follow-up note<textarea value={callClose.transfer_note} onChange={(e) => updateCallClose("transfer_note", e.target.value)} placeholder="Who did you try? If you could not try, why?" /></label><button className="nf-primary" disabled={callCloseBusy} onClick={() => void recordCallClose()}>{callCloseBusy ? "Recording…" : callRecorded ? "Update assessment and transfer result" : "Record assessment and transfer result"}</button>{callRecorded && <p className="nf-saved">Recorded by {detail.answers.call_close?.by_name || "agent"} at {new Date(detail.answers.call_close!.at).toLocaleString()}. {detail.answers.call_close?.followup_required ? "Case-manager follow-up still needed." : "Live introduction connected."}</p>}</div>}
+      {stepIndex === 4 && <div className="nf-call-block">
+        <p className="nf-muted">Ask permission first. Choosing an answer here records the result; it does not place a call.</p>
+        <strong>May I try to introduce you to your case manager now?</strong>
+        <div className="nf-options nf-options-binary" role="group" aria-label="Client agreed to a live introduction">
+          <button type="button" aria-pressed={introStage === "yes"} className={introStage === "yes" ? "selected" : ""} onClick={() => chooseIntro("yes")}>Yes · Try now</button>
+          <button type="button" aria-pressed={introStage === "no"} className={introStage === "no" ? "selected" : ""} onClick={() => chooseIntro("no")}>No · Client declined</button>
+        </div>
+        <button type="button" className={`nf-unknown${introStage === "not_attempted" ? " selected" : ""}`} aria-pressed={introStage === "not_attempted"} onClick={() => chooseIntro("not_attempted")}>Could not offer the introduction</button>
+        {introStage === "yes" && <>
+          <label className="nf-call-label">Case manager number or queue<input value={callClose.transfer_destination} onChange={(e) => updateCallClose("transfer_destination", e.target.value)} placeholder="Enter the number or JustCall queue when available" /></label>
+          <strong>After the attempt, what happened?</strong>
+          <div className="nf-options nf-options-binary" role="group" aria-label="Live introduction result">
+            <button type="button" aria-pressed={callClose.transfer_outcome === "connected"} className={callClose.transfer_outcome === "connected" ? "selected" : ""} onClick={() => updateCallClose("transfer_outcome", "connected")}>Connected live</button>
+            <button type="button" aria-pressed={callClose.transfer_outcome === "attempted_no_answer"} className={callClose.transfer_outcome === "attempted_no_answer" ? "selected" : ""} onClick={() => updateCallClose("transfer_outcome", "attempted_no_answer")}>No answer</button>
+          </div>
+        </>}
+        {introStage === "no" && <div className="nf-followup"><strong>Say</strong><p>Of course. Your case manager will call you within 48 business hours.</p><label><input type="checkbox" checked={callClose.client_notified_48_business_hours} onChange={(e) => updateCallClose("client_notified_48_business_hours", e.target.checked)} /> I told the client this</label></div>}
+        {introStage && <><label className="nf-call-label">Transfer or follow-up note<textarea value={callClose.transfer_note} onChange={(e) => updateCallClose("transfer_note", e.target.value)} placeholder="Who did you try? If you could not try, why?" /></label><button className="nf-primary" disabled={callCloseBusy || (introStage === "yes" && !["connected", "attempted_no_answer"].includes(callClose.transfer_outcome))} onClick={() => void recordCallClose()}>{callCloseBusy ? "Recording…" : callRecorded ? "Update assessment and transfer result" : "Record assessment and transfer result"}</button></>}
+        {callRecorded && <p className="nf-saved">Recorded by {detail.answers.call_close?.by_name || "agent"} at {new Date(detail.answers.call_close!.at).toLocaleString()}. {detail.answers.call_close?.followup_required ? "Case-manager follow-up still needed." : "Live introduction connected."}</p>}
+      </div>}
       {stepIndex === 4 && <div className="nf-call-block nf-finish-call"><strong>Finish the welcome call</strong><p className="nf-muted">The signed retainer, note check, assessment and case-manager introduction stay together on this file.</p><button type="button" className="nf-primary" disabled={!latest || !checked || !callRecorded || (detail.answers.review?.status === "correction_needed" ? !correctedComplete : detail.answers.review?.retainer_reviewed_document_id !== latest.id)} onClick={() => void review("ready_for_review")}>{detail.answers.review?.status === "ready_for_review" ? "Ready for supervisor review" : "Send welcome call to review"}</button></div>}
       {viewMode === "step" && <div className="nf-footer"><button className="nf-secondary" disabled={stepIndex === 0} onClick={() => setSection((i) => Math.max(0, i - 1))}>← Previous</button><button className="nf-primary" onClick={() => setSection((i) => Math.min(VERIFY_STEPS.length - 1, i + 1))} disabled={stepIndex === VERIFY_STEPS.length - 1}>Next step →</button></div>}</section>
     </div>;
@@ -206,8 +236,10 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
 }
 
 function Question({ field, value, set, save }: { field: NetflyField; value: string; set: (v: string) => void; save: (v: string) => void }) {
-  return <div className="nf-question"><label htmlFor={`nf-${field.id}`}>{field.label}</label>{field.hint && <p className="nf-muted">{field.hint}</p>}
-    {field.kind === "choice" ? <div className="nf-options">{(field.choices || []).map((choice) => <button key={choice} type="button" className={value === choice ? "selected" : ""} onClick={() => { set(choice); save(choice); }}>{choice}</button>)}</div>
+  const binary = field.kind === "choice" && ["Yes", "No"].every((choice) => field.choices?.includes(choice)) && (field.choices || []).every((choice) => ["Yes", "No", "Not sure"].includes(choice));
+  const choose = (choice: string) => { set(choice); save(choice); };
+  return <div className="nf-question">{field.kind === "choice" ? <strong className="nf-question-label">{field.label}</strong> : <label htmlFor={`nf-${field.id}`}>{field.label}</label>}{field.hint && <p className="nf-muted">{field.hint}</p>}
+    {field.kind === "choice" ? <div className={binary ? "nf-choice-group" : "nf-options"} role="group" aria-label={field.label}>{binary ? <><div className="nf-options nf-options-binary">{["Yes", "No"].map((choice) => <button key={choice} type="button" aria-pressed={value === choice} className={value === choice ? "selected" : ""} onClick={() => choose(choice)}>{choice}</button>)}</div>{field.choices?.includes("Not sure") && <button type="button" className={`nf-unknown${value === "Not sure" ? " selected" : ""}`} aria-pressed={value === "Not sure"} onClick={() => choose("Not sure")}>Not sure yet</button>}</> : (field.choices || []).map((choice) => <button key={choice} type="button" aria-pressed={value === choice} className={value === choice ? "selected" : ""} onClick={() => choose(choice)}>{choice}</button>)}</div>
     : field.kind === "long" ? <textarea id={`nf-${field.id}`} value={value} onChange={(e) => set(e.target.value)} onBlur={(e) => void save(e.target.value)} />
     : <input id={`nf-${field.id}`} type={field.kind === "date" ? "date" : field.kind === "tel" ? "tel" : field.kind === "email" ? "email" : "text"} value={value} onChange={(e) => set(e.target.value)} onBlur={(e) => void save(e.target.value)} />}</div>;
 }

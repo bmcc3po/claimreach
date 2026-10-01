@@ -35,7 +35,7 @@ function Opt({ label, sub, on, pick }: { label: string; sub?: string; on: boolea
 }
 
 function Opts({ opts }: { opts: { label: string; sub?: string; on: boolean; pick: () => void }[] }) {
-  return <div className="ch-opts">{opts.map((o, i) => <Opt key={i} {...o} />)}</div>;
+  return <div className={`ch-opts${opts.length === 2 ? " iq-binary" : ""}`}>{opts.map((o, i) => <Opt key={i} {...o} />)}</div>;
 }
 
 /** Engine chips that carry "chip on" classes (Send, passengers). */

@@ -8,9 +8,11 @@ import ChoreList from './ChoreList';
 export default function StepByStep({ v }: { v: any }) {
   const step = v.fi.step;
   const heading = useRef<HTMLHeadingElement | null>(null);
+  const jump = useRef<HTMLDetailsElement | null>(null);
   const previousStep = useRef<number | null>(null);
   useEffect(() => {
     const arriving = previousStep.current === null;
+    if (previousStep.current !== step.index && jump.current) jump.current.open = false;
     previousStep.current = step.index;
     if (arriving || !v.fi.target) {
       heading.current?.focus({ preventScroll: true });
@@ -38,11 +40,14 @@ export default function StepByStep({ v }: { v: any }) {
     <header className="step-intake-heading">
       <span className="step-intake-count">Step {step.number} of {step.total}</span>
       <h1 ref={heading} tabIndex={-1}>{step.label}</h1>
-      <nav className="step-intake-nav" aria-label="Intake stages">
-        {step.items.map((item: any, index: number) => <button key={item.id} type="button"
-          className={item.on ? 'step-intake-current' : ''} aria-current={item.on ? 'step' : undefined}
-          onClick={item.go}><b>{index + 1}</b><span>{item.label}</span></button>)}
-      </nav>
+      <details ref={jump} className="step-intake-jump">
+        <summary>Jump to another call step</summary>
+        <nav className="step-intake-nav" aria-label="Intake stages">
+          {step.items.map((item: any, index: number) => <button key={item.id} type="button"
+            className={item.on ? 'step-intake-current' : ''} aria-current={item.on ? 'step' : undefined}
+            onClick={item.go}><b>{index + 1}</b><span>{item.label}</span></button>)}
+        </nav>
+      </details>
     </header>
     {step.id === 'retainer' && !v.sendReady && <p className="step-intake-note">DOB and SSN are optional before sending. You can collect them now or after the client signs.</p>}
     <ChoreList v={filtered} sectionActions={false} scrollSections={false} />
