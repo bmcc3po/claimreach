@@ -80,7 +80,7 @@ const yn = (id: string, label: string, extra: Partial<NetflyField> = {}): Netfly
 const txt = (id: string, label: string, extra: Partial<NetflyField> = {}): NetflyField => ({ id, label, kind: "text", ...extra });
 
 export const NETFLY_SECTIONS: NetflySection[] = [
-  { id: "care", title: "1. Welcome & medical care", script: "Hi, my name is [your name] from Turnbull, Moak & Pendergrass. It's great to meet you. Let me be the first to welcome you to the firm. I'd like to gather a few more details about your case and answer any questions. Most importantly, have you seen a doctor yet to get checked out?", fields: [
+  { id: "care", title: "1. Welcome to the firm", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you! I just wanted to jump on the phone to welcome you to the firm. I'm going to verify a few things, gather some brief additional details, and then we'll talk about next steps.", fields: [
     yn("seen_doctor", "Have you seen a doctor yet?"),
     txt("first_provider", "Where did you go?", { when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_provider_address", "First provider address", { when: { id: "seen_doctor", is: "Yes" } }),
@@ -101,7 +101,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
     txt("dob", "Date of birth", { kind: "date" }), txt("mailing_address", "Mailing address"),
     txt("confirmed_email", "Best email", { kind: "email" }), txt("confirmed_phone", "Best number", { kind: "tel" }),
   ] },
-  { id: "accident", title: "3. The accident & passengers", script: "I have the city, state and rough month and year from NETFLY. Let me confirm the exact details with you.", fields: [
+  { id: "accident", title: "3. The accident & passengers", script: "I have the city, state and approximate date on your file. Let me confirm the exact details with you.", fields: [
     txt("accident_city", "What city did this happen in?"), txt("accident_state", "What state?"),
     txt("accident_month_year", "Rough month and year from NETFLY"), txt("accident_date", "Exact accident date, if known", { kind: "date" }),
     txt("road", "What road or intersection was it on?"),
