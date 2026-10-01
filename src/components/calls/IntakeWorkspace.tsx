@@ -438,7 +438,7 @@ function sayNow(v: any): { k: string; lines: string[]; cue?: string } {
     ? { k: "If the PNC didn't say it, ask", lines: [v.gapNext], cue: OPEN_LINE.cue }
     : { k: OPEN_LINE.label, lines: [OPEN_LINE.line], cue: OPEN_LINE.cue };
   if (!onePage && v.isBody && v.hasQ) return { k: v.q.step ? `Ask, ${v.q.step}` : "Ask", lines: [v.q.line], cue: v.q.cue };
-  if (!onePage && v.isCar) return { k: "Say", lines: ["Who else was in the car with you?"], cue: "Do not skip this. Ever. Every passenger is their own file and their own agreement." };
+  if (!onePage && v.isCar) return { k: "Say", lines: ["Who else was in the car with you?"], cue: "Ask when possible. If there was a passenger, add them to their own file and agreement." };
   // Collapsible and All questions: the open first, then the next question still open.
   if (fi.progress.done === 0) return open;
   if (fi.next) return { k: `Ask next, ${fi.next.label.replace(/^Next: /, "")}`, lines: [fi.next.ask || fi.next.label.replace(/^Next: /, "")], cue: fi.next.cue };

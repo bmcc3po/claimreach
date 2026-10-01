@@ -484,7 +484,7 @@ export class CallEngine {
                started: !!(st.fault || st.seat || st.police || st.when || st.city) },
       injury: { missing: open(injKeys), started: touched(injKeys) },
       cover: { missing: open(covKeys), started: touched(covKeys) },
-      car: { missing: s.car.justMe ? [] : (s.car.people.length ? s.car.people.filter((p) => !p.age || !p.hurt).map((p, i) => 'p' + i) : ['who']),
+      car: { missing: s.car.justMe ? [] : s.car.people.filter((p) => !p.age || !p.hurt).map((p, i) => 'p' + i),
              started: s.car.justMe || s.car.people.length > 0 },
       send: { missing: s.send.status === 'signed' ? [] : ['signed'], started: s.send.status !== 'ready' },
       file: { missing: gaps([['dob', f.dob], ['ssn', f.ssn], ['addr', f.addr]]), started: !!(f.dob || f.ssn || f.addr || f.dl || f.ecName) },
@@ -1208,7 +1208,8 @@ export class CallEngine {
     if (id === 'carrier') return one("Other driver's insurance", f.carrier && f.carrier !== 'Pick one', f.carrier);
     if (id === 'people') {
       var ok = car.justMe || (car.people.length > 0 && car.people.every((p) => p.age && p.hurt));
-      return { ...one('Passengers', ok, car.justMe ? 'Just them' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers'), ask: 'Who else was in the car with you?' };
+      return { ...one('Passengers', ok, car.justMe ? 'Just them' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers'),
+        optional: !car.justMe && car.people.length === 0, ask: 'Who else was in the car with you?' };
     }
     if (id === 'car') { var cv = [f.vYear !== 'Year' ? f.vYear : '', f.vMake, f.vModel].filter(Boolean).join(' '); return one('Their car', cv, cv); }
     if (id === 'notes') { var nt = String(st.text || '').trim(); return one('Notes', nt, nt); }
@@ -1358,7 +1359,7 @@ export class CallEngine {
             editing: editing, flash: fi.flash === id,
             showAsk: !!x.ask,
             paths: QUESTION_PATHS[id],
-            cue: (BODYQ.find(q => q.key === id) || {}).cue || (id === 'people' ? 'Do not skip this. Ever. Every passenger is their own file and their own agreement.' : ''),
+            cue: (BODYQ.find(q => q.key === id) || {}).cue || (id === 'people' ? 'Ask when possible. If there was a passenger, add them to their own file and agreement.' : ''),
             soreness: id === 'pain' && b.pain.includes(FINE) ? this.firmText(REBS.find(r => r.id === 'soreness').text) : '',
             focus: () => { if (this.state.fi.cq !== id) this.setFi({ cq: id, sec: sec.id, target: id }); },
             edit: () => this.setFi({ cq: id, target: id, sec: sec.id, edit: fi.edit === id ? null : id, flash: null }),
@@ -1370,8 +1371,9 @@ export class CallEngine {
     });
 
     var seqLive = INTAKE_SEQUENCE.filter((id) => this.fiInfo(id).applies);
-    var total = seqLive.length;
-    var doneN = seqLive.filter((id) => this.fiInfo(id).answered).length;
+    var requiredSeq = seqLive.filter((id) => !this.fiInfo(id).optional);
+    var total = requiredSeq.length;
+    var doneN = requiredSeq.filter((id) => this.fiInfo(id).answered).length;
     var nextId = this.fiNext();
     // Open a question's section and point at it (Next, and the missing list).
     var goTo = (id: any) => {
