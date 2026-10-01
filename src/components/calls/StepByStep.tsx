@@ -46,6 +46,6 @@ export default function StepByStep({ v }: { v: any }) {
     </header>
     {step.id === 'retainer' && !v.sendReady && <p className="step-intake-note">DOB and SSN are optional before sending. You can collect them now or after the client signs.</p>}
     <ChoreList v={filtered} sectionActions={false} scrollSections={false} />
-    {step.id === 'retainer' && v.fi.chore.finish.ask && <div className="ch-note ch-note-bad" role="alert">{v.fi.chore.finish.askText}</div>}
+    {step.id === 'retainer' && v.fi.chore.finish.ask && <div className="ch-note ch-note-bad" role="alert"><strong>{v.fi.chore.finish.askText}</strong><ul>{(v.fi.chore.finish.missing || []).map((item: any) => <li key={item.label}><button type="button" className="ch-missing-link" onClick={item.go}>{item.label} →</button></li>)}</ul></div>}
   </div>;
 }

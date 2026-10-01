@@ -40,13 +40,20 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   const userIds = [...new Set((submissions || []).map((row) => row.sent_by).filter(Boolean))] as string[];
   const [leads, claims, calls, users, deliveries] = await Promise.all([
     inChunks(sb, "leads", "id,lead_no,claimant_name,campaign,case_type,firm_id,firm_sent_at,archived_at", "id", leadIds),
-    inChunks(sb, "claims", "id,lead_id,campaign,claim_type,status,firm_id,firm_sent_at", "id", claimIds),
+    inChunks(sb, "claims", "id,lead_id,campaign,campaign_id,claim_type,status,firm_id,firm_sent_at", "id", claimIds),
     inChunks(sb, "intake_calls", "id,agent_id,agent_name", "id", callIds),
     inChunks(sb, "app_users", "id,full_name", "id", userIds),
-    inChunks(sb, "firm_deliveries", "id,lead_id,claim_id,ok,created_at", "lead_id", leadIds),
+    inChunks(sb, "firm_deliveries", "id,lead_id,claim_id,ok,to_email,cc_email,created_at", "lead_id", leadIds),
   ]);
+  const campaignIds = [...new Set(claims.map((claim) => claim.campaign_id).filter(Boolean))] as string[];
+  const [campaigns, ownerResult] = await Promise.all([
+    inChunks(sb, "campaigns", "id,firm_email", "id", campaignIds),
+    sb.from("app_users").select("email").eq("role", "owner").eq("active", true),
+  ]);
+  if (ownerResult.error) throw new Error(`Could not verify packet recipients: ${ownerResult.error.message}`);
+  const ownerEmail = (ownerResult.data || []).map((row: any) => String(row.email || "").toLowerCase()).find((value: string) => value === "bmc@innovativeintake.com") || null;
   const firmIds = [...new Set([...leads.map((lead) => lead.firm_id), ...claims.map((claim) => claim.firm_id)].filter(Boolean))] as string[];
   const firms = await inChunks(sb, "firms", "id,name", "id", firmIds);
-  const rows = packetWorklist({ submissions: submissions || [], leads, claims, calls, users, firms, deliveries });
+  const rows = packetWorklist({ submissions: submissions || [], leads, claims, calls, users, firms, deliveries, campaigns, ownerEmail });
   return <PacketWorklist rows={rows} monday={monday} truncated={(submissions || []).length === 3000} />;
 }

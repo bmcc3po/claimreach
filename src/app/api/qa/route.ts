@@ -154,10 +154,11 @@ export async function POST(req: NextRequest) {
 
   // Submit a QA review + route the file.
   if (b.op === "submit") {
+    const agentReady = b.agent_ready === true && u.role === "agent" && can(u.role, u.perm_overrides, "claims.status");
     // Routing a file takes the QA capability — the role defaults, honoring an
     // explicit per-user grant or denial (Astra round 5: an explicit
     // intake.qa=false was ignored by the hardcoded role list).
-    if (u.role === "firm" || !can(u.role, u.perm_overrides, "intake.qa")) {
+    if (u.role === "firm" || (!agentReady && !can(u.role, u.perm_overrides, "intake.qa"))) {
       return NextResponse.json({ error: "Only QA, a manager, an admin or the owner can route a file." }, { status: 403 });
     }
     const { lead_id, claim_id } = b;
@@ -168,13 +169,31 @@ export async function POST(req: NextRequest) {
     // evidence, the status change) is bound to that matter, never a sibling
     // (Astra rounds 4-5).
     const { data: allClaims } = await admin.from("claims")
-      .select("id, status, claim_type, created_by, campaign_id, created_at")
+      .select("id, status, claim_type, created_by, campaign_id, firm_id, created_at")
       .eq("lead_id", lead_id).order("created_at", { ascending: false });
     const claim = claim_id
       ? (allClaims ?? []).find((c: any) => c.id === claim_id)
       : (allClaims ?? [])[0];
     if (claim_id && !claim) return NextResponse.json({ error: "That claim is not on this file. Refresh and pick the matter again." }, { status: 400 });
     if (!claim) return NextResponse.json({ error: "This file has no claim to review." }, { status: 400 });
+    if (agentReady) {
+      if (claim.claim_type !== "mva" || b.decision !== "approve"
+        || [b.g_qa_pass, b.g_esign, b.g_criteria].some((grade: unknown) => grade !== "green")
+        || b.confirm_intake !== true || b.confirm_signed_packet !== true || b.confirm_criteria !== true) {
+        return NextResponse.json({ error: "Confirm all three INNO MVA file checks before marking your own file ready." }, { status: 403 });
+      }
+      const { data: campaign } = await admin.from("campaigns").select("name, firm_id, firms(slug)").eq("id", claim.campaign_id).maybeSingle();
+      const campaignFirm = Array.isArray(campaign?.firms) ? campaign.firms[0] : campaign?.firms;
+      if (campaign?.name !== "INNO MVA" || campaign.firm_id !== claim.firm_id || campaignFirm?.slug !== "tmp") return NextResponse.json({ error: "This agent handoff is only available for INNO MVA." }, { status: 403 });
+      const { data: ownCall, error: callErr } = await sb.from("intake_calls").select("id")
+        .eq("lead_id", lead_id).eq("claim_id", claim.id).eq("agent_id", u.uid)
+        .eq("disposition", "signed").not("ended_at", "is", null).limit(1).maybeSingle();
+      if (callErr || !ownCall) return NextResponse.json({ error: "End and disposition your own signed call before reviewing this file for firm delivery." }, { status: 403 });
+      const { data: reviewed, error: reviewErr } = await sb.from("esign_submissions")
+        .select("id").eq("lead_id", lead_id).eq("claim_id", claim.id).eq("status", "completed")
+        .not("agent_reviewed_at", "is", null).limit(1).maybeSingle();
+      if (reviewErr || !reviewed) return NextResponse.json({ error: "Open and approve the client-signed packet, including HIPAA/HITECH, and complete the office signer step first." }, { status: 409 });
+    }
 
     // The three hard gates must actually be graded. A missing value is not a
     // pass (Astra round 5); yellow remains allowed by policy.
@@ -231,12 +250,20 @@ export async function POST(req: NextRequest) {
         }, { status: ev.status });
       }
     }
+    if (agentReady && ["signed_approved", "delivered", "retained"].includes(claim.status)) {
+      const { data: latestReview, error: latestReviewErr } = await admin.from("qa_reviews")
+        .select("reviewer, decision").eq("claim_id", claim.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (latestReviewErr) return NextResponse.json({ error: "Could not confirm the latest file review. Nothing was sent." }, { status: 503 });
+      if (latestReview?.reviewer === u.uid && latestReview?.decision === "approve") {
+        return NextResponse.json({ ok: true, already: true, status: claim.status });
+      }
+    }
 
     // Record the QA review. The review of record MUST write before the file
     // moves: a routed file with no stored review is a false audit trail
     // (Astra round 5).
     const { error: revErr } = await admin.from("qa_reviews").insert({
-      lead_id, claim_id: claim.id, firm_id: u.firm_id, reviewer: u.uid, reviewer_name: u.full_name ?? "User",
+      lead_id, claim_id: claim.id, firm_id: claim.firm_id, reviewer: u.uid, reviewer_name: u.full_name ?? "User",
       g_qa_pass: b.g_qa_pass, g_esign: b.g_esign, g_criteria: b.g_criteria,
       c_leading: b.c_leading, c_complete: b.c_complete,
       qa_note: b.qa_note ?? null, agent_note: b.agent_note ?? null,
@@ -275,19 +302,23 @@ export async function POST(req: NextRequest) {
     // The decision moves THE REVIEWED MATTER. The setter verifies the claim
     // belongs to the lead, requires a real row change, and keeps the person's
     // QA/WIP flags as lead-level aggregates (a sibling still in QA keeps them).
-    const res = await setClaimStatusForLeads({
+    const res = agentReady && ["signed_approved", "delivered", "retained"].includes(claim.status)
+      ? { ok: true as const }
+      : await setClaimStatusForLeads({
       leadIds: [lead_id], claimIds: [claim.id], status: nextStatus, dqReasonKey: b.dq_reason_key ?? null,
       actorId: u.uid, actorName: u.full_name ?? "QA",
+      suppressAutoDelivery: agentReady,
     });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
 
     await recordAudit({
-      firm_id: u.firm_id, lead_id, actor: u.uid, actor_name: u.full_name ?? "QA",
-      category: "status", description: `QA ${b.decision}${b.decision === "decline" ? " (drop letter)" : ""}.`,
+      firm_id: claim.firm_id, lead_id, claim_id: claim.id, actor: u.uid, actor_name: u.full_name ?? "QA",
+      category: "status", description: agentReady ? "Agent confirmed their own signed INNO MVA file is ready for firm delivery." : `QA ${b.decision}${b.decision === "decline" ? " (drop letter)" : ""}.`,
       meta: { decision: b.decision, gates: { g_qa_pass: b.g_qa_pass, g_esign: b.g_esign, g_criteria: b.g_criteria } },
     });
 
-    return NextResponse.json({ ok: true, status: nextStatus, ...(res.deliveryWarning ? { delivery_warning: res.deliveryWarning } : {}) });
+    return NextResponse.json({ ok: true, status: agentReady && ["signed_approved", "delivered", "retained"].includes(claim.status) ? claim.status : nextStatus,
+      ...("deliveryWarning" in res && res.deliveryWarning ? { delivery_warning: res.deliveryWarning } : {}) });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });

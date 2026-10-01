@@ -1859,6 +1859,16 @@ div.ws-row{cursor:default}
 .ws-review-heading>div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .ws-review-heading strong{font-size:15px;line-height:1.25;font-weight:700;color:#FFFFFF}
 .ws-review-heading span{font-size:12px;line-height:1.35;color:#E0E9FA}
+.ws-left>.ws-next-guide{padding:16px 14px 14px;border:2px solid #275997;background:#EAF2FF;box-shadow:0 5px 16px rgba(22,61,108,.1)}
+.ws-next-guide{display:flex;flex-direction:column;gap:7px}
+.ws-next-guide .ws-next-kicker{font-size:12px;font-weight:850;letter-spacing:.11em;color:#245387}
+.ws-next-guide strong{font-size:20px;line-height:1.15;color:#112e53;overflow-wrap:anywhere}
+.ws-next-guide p{margin:0;font-size:14px;line-height:1.4;color:#31506f}
+.ws-next-guide button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin-top:5px;padding:10px 12px;border:0;border-radius:8px;background:#174b8b;color:#fff;font-size:14px;font-weight:750;cursor:pointer;text-align:left}
+.ws-left>.ws-next-urgent{border-color:#1b4f92;background:#e9f2ff}
+.ws-left>.ws-next-hold{border-color:#a83f32;background:#fff0eb}
+.ws-left>.ws-next-done{border-color:#26835d;background:#edf9f3}
+.ws-next-done strong{color:#176646}
 .ws-left>section,.ws-left>.ws-block:last-child{padding:12px;border:1px solid #D7E0EC;border-radius:12px;background:#FFFFFF;box-shadow:0 1px 3px rgba(15,34,64,0.025)}
 .ws-left .ws-h{flex-wrap:wrap;font-size:13px}
 .ws-left .ws-name{font-size:20px;overflow-wrap:anywhere}
@@ -1913,6 +1923,24 @@ div.ws-row{cursor:default}
 .ws-pace-over .ws-clock,.ws-pace-over .ws-pace-g{color:#B42318;font-weight:600}
 
 /* ---- Strict DOB and SSN fields (Brett, Sep 27): never an open box ---- */
+.ssn-refusal{display:flex;flex-wrap:wrap;align-items:flex-start;gap:9px;margin-top:11px;padding:12px 14px;border:1px solid #b9cce0;border-radius:10px;background:#f4f8fc;color:#16324f;font-size:14px;font-weight:650;line-height:1.4;cursor:pointer}
+.ssn-refusal input{width:19px;height:19px;flex:none;margin:0;accent-color:#184b8b}
+.ssn-refusal small{flex-basis:100%;padding-left:28px;font-size:12px;color:#764618;font-weight:500}
+.ch-missing-link{border:0;background:none;padding:5px 0;color:#123c74;font:inherit;font-weight:750;text-decoration:underline;text-align:left;cursor:pointer}
+.ch-finish-ask ul,.sf-bad ul,.step-intake .ch-note-bad ul{margin:7px 0 0 18px;padding:0}
+.final-handoff{margin:18px 0 28px;padding:22px;border:2px solid #295894;border-radius:16px;background:#f3f7fd;color:#152a44;text-align:left;box-shadow:0 10px 28px rgba(23,60,105,.1)}
+.final-handoff h2{margin:0 0 10px;font-size:23px;line-height:1.2;color:#102e59}
+.final-handoff p{margin:8px 0;font-size:15px;line-height:1.45}
+.final-handoff ol{margin:12px 0 17px;padding-left:25px;font-weight:650;line-height:1.5}
+.final-handoff-check{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-top:1px solid #b3c5de;font-size:15px;font-weight:600;line-height:1.4;cursor:pointer}
+.final-handoff-check input{width:20px;height:20px;flex:none;margin:0;accent-color:#174b8b}
+.final-handoff-address{margin:13px 0;padding:13px;border-radius:10px;background:#e3ecf8;line-height:1.6;font-size:15px;overflow-wrap:anywhere}
+.final-handoff-extra{display:block;font-weight:650;font-size:14px}
+.final-handoff-extra input{display:block;width:100%;box-sizing:border-box;margin:7px 0 13px;padding:11px;border:1px solid #8aa6c8;border-radius:9px;font:inherit;background:#fff;color:#142945}
+.final-handoff-send{display:block;width:100%;padding:15px 18px;border:0;border-radius:10px;background:#174b8b;color:#fff;font-size:16px;font-weight:800;cursor:pointer}
+.final-handoff-send:disabled{background:#97a7bc;cursor:not-allowed}
+.final-handoff-error{padding:10px 12px;border-left:4px solid #b54037;border-radius:4px;background:#fff2ed;color:#812d28;font-weight:650}
+.final-handoff-sent{border-color:#24815d;background:#edf8f2}
 .sd-good{color:#15803D !important;font-weight:600}
 .sd-l4{display:flex;align-items:center;gap:8px}
 .sd-mask{font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-size:16px;font-weight:700;color:#5F6F87;letter-spacing:0.06em;flex-shrink:0}

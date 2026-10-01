@@ -11,6 +11,7 @@ import IntakeQuestion, { QuestionControl, AgreementRecipient } from "./IntakeQue
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, OPEN_LINE, MONEY, SEND_LINE, STAY, SIGNED, walkThrough, NO_DEAD_AIR, closeLines, CLOSE_CUE } from "./scripts";
 import PlaceField from "./PlaceField";
 import { DobField, SsnField } from "./SsnDob";
+import { SsnRefusal } from "./SsnRefusal";
 import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 
@@ -33,7 +34,7 @@ function IdentityRows({ v }: { v: any }) {
   return (<>
     {v.sendReady && <div className="sf-row"><span className="sf-l">Identity details</span><div className="sf-c sf-mini">DOB and SSN are optional before sending. Enter them now or after the client signs.</div></div>}
     <div className={`sf-row${!v.sendReady && !v.f.dob.value ? " sf-need" : ""}`}><label className="sf-l">Date of birth</label><div className="sf-c"><DobField cls="ch" value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} /></div></div>
-    <div className="sf-row"><label className="sf-l">Social Security number</label><div className="sf-c"><SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /></div></div>
+    <div className="sf-row"><label className="sf-l">Social Security number</label><div className="sf-c"><SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /><SsnRefusal v={v} /></div></div>
   </>);
 }
 
@@ -91,7 +92,6 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
           {v.hasSendError && <div className="sf-bad">{v.sendError}</div>}
           <div className="sf-addrow" style={{ marginTop: 8 }}>
             {v.canResend && <button type="button" className="sf-btn sf-line" onClick={v.resendLink}>Send the link again</button>}
-            {v.canVoid && <button type="button" className="sf-btn sf-line" onClick={v.voidAgreement}>{v.voidLabel}</button>}
           </div>
         </>))}
       </div>
@@ -142,7 +142,7 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
       <div className="sf-rows" style={{ marginTop: 12 }}>
         <div className="sf-row sf-send"><label className="sf-l">{v.saveBad ? <span className="sf-bad">{v.saveError}</span> : (v.saveText || "Saves as you go")}</label><div className="sf-c">
           <button type="button" className="sf-btn sf-go" disabled={!!finish.disabled} onClick={finish.go}>{finish.label || "Finish the call"}</button>
-          {finish.ask && <div className="sf-bad" role="alert">{finish.askText}</div>}
+          {finish.ask && <div className="sf-bad" role="alert"><strong>{finish.askText}</strong><ul>{(finish.missing || []).map((item: any) => <li key={item.label}><button type="button" className="ch-missing-link" onClick={item.go}>{item.label} →</button></li>)}</ul></div>}
         </div></div>
       </div>
     )}

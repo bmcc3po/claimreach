@@ -8,23 +8,25 @@ import * as matter from "./matter";
 const leadId = "11111111-1111-4111-8111-111111111111";
 const claimId = "22222222-2222-4222-8222-222222222222";
 const attemptKey = "33333333-3333-4333-8333-333333333333";
-function harness(role = "agent", visible = true, capable = true, dispatchError: string | null = null) {
+function harness(role = "agent", visible = true, capable = true, dispatchError: string | null = null, ownCall = true, ownQa = true) {
   const sends: any[] = [], rpcs: any[] = [], audits: any[] = [];
   const lead = { id: leadId, firm_id: "firm", campaign_id: "campaign" };
   const claim = { id: claimId, lead_id: leadId, firm_id: "firm", campaign_id: "campaign", status: "signed_grievous" };
   const sb = { from(table: string) {
-    const rows: Record<string, any[]> = { leads: visible ? [lead] : [], claims: [claim], campaigns: [{ id: "campaign", firm_id: "firm", name: "MVA", firm_email: "firm@synthetic.invalid" }], firms: [{ id: "firm", name: "Synthetic firm" }] };
+    const rows: Record<string, any[]> = { leads: visible ? [lead] : [], claims: [claim], campaigns: [{ id: "campaign", firm_id: "firm", name: "MVA", firm_email: "firm@synthetic.invalid" }], firms: [{ id: "firm", name: "Synthetic firm" }], intake_calls: ownCall ? [{ id: "call", lead_id: leadId, claim_id: claimId, agent_id: "actual-user", disposition: "signed", ended_at: "2026-10-01T00:00:00Z" }] : [], qa_reviews: ownQa ? [{ claim_id: claimId, reviewer: "actual-user", decision: "approve" }] : [] };
     let filters: ((r: any) => boolean)[] = [];
     const results = () => (rows[table] ?? []).filter((r) => filters.every((f) => f(r)));
-    const q: any = { select: () => q, order: () => q, eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; },
+    const q: any = { select: () => q, order: () => q, limit: () => q, not: (k: string, op: string, v: any) => { filters.push((r) => r[k] !== v); return q; }, eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; },
       maybeSingle: async () => ({ data: results()[0] ?? null, error: null }),
       then: (a: any, b: any) => Promise.resolve({ data: results(), error: null }).then(a, b) };
     return q;
   } };
   const admin = { from: (table: string) => { let head = false; const filters: ((r: any) => boolean)[] = [];
-    const matches = () => (table === "claims" ? [claim] : []).filter((r) => filters.every((f) => f(r)));
+    const source: Record<string, any[]> = { claims: [claim], campaigns: [{ id: "campaign", firm_email: "firm@synthetic.invalid" }], app_users: [{ role: "owner", active: true, email: "bmc@innovativeintake.com" }], firm_deliveries: [] };
+    const matches = () => (source[table] ?? []).filter((r) => filters.every((f) => f(r)));
     const q: any = { select: (_cols: string, opts?: any) => { head = !!opts?.head; return q; },
       eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; }, or: () => q, order: () => q,
+      maybeSingle: async () => ({ data: matches()[0] ?? null, error: null }),
       then: (a: any, b: any) => Promise.resolve({ data: head ? null : matches(), count: head ? matches().length : null, error: null }).then(a, b) }; return q; },
     rpc: async (name: string, args: any) => { rpcs.push({ name, args }); return { data: true, error: null }; } };
   const user = { id: "actual-user", role, name: "Synthetic agent", can: (key: string) => capable && key === "claims.status" };
@@ -35,6 +37,7 @@ function harness(role = "agent", visible = true, capable = true, dispatchError: 
     "@/lib/matter": matter, "@/lib/firm-delivery": { deliverLeadToFirm: async (x: any) => { sends.push(x); return { ok: true }; }, matterSendState: async () => ({ ok: true, state: { sentAt: null, result: null, legacy: false } }) },
     "@/lib/firm-delivery-dispatch": { readFirmDispatch: async () => ({ row: null, error: dispatchError }) },
     "@/lib/audit": { recordAudit: async (a: any) => { audits.push(a); } },
+    "@/lib/firm-delivery-state": { confirmedFirmDeliveryAt: () => null },
   };
   const source = fs.readFileSync(path.resolve(__dirname, "../app/api/firm-delivery/route.ts"), "utf8");
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -46,8 +49,13 @@ let count = 0;
 const t = async (name: string, fn: () => Promise<void>) => { await fn(); count++; console.log("ok", name); };
 const req = (b: any) => ({ json: async () => ({ lead_id: leadId, claim_id: claimId, ...b }) });
 (async () => {
-  await t("agent with claims.status can manually deliver without intake.qa", async () => {
-    const h = harness(); const r = await h.POST(req({})); assert.equal(r.status, 200); assert.equal(h.sends[0].claimId, claimId);
+  await t("agent sends only after a signed call and their own approved QA, copying the owner", async () => {
+    const h = harness(); const r = await h.POST(req({ include_owner: true })); assert.equal(r.status, 200); assert.equal(h.sends[0].claimId, claimId); assert.equal(h.sends[0].includeOwner, true);
+  });
+  await t("agent cannot skip disposition, self-review, or owner copy", async () => {
+    for (const [h, body] of [[harness("agent", true, true, null, false), { include_owner: true }], [harness("agent", true, true, null, true, false), { include_owner: true }], [harness(), {}]] as const) {
+      const r = await h.POST(req(body)); assert.ok(r.status >= 400); assert.equal(h.sends.length, 0);
+    }
   });
   await t("missing caller-session lead never reaches privileged sender", async () => {
     const h = harness("agent", false); const r = await h.POST(req({})); assert.equal(r.status, 404); assert.equal(h.sends.length, 0);

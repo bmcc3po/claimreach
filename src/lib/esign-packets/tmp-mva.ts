@@ -34,7 +34,7 @@ function nvPacket(opts: {
   sig: { page: number; y: number }; date: { page: number; y: number };
 }): Packet {
   const text = (name: string, areas: PacketField["areas"], role = "Client", ro = true): PacketField => ({
-    name, type: "text", role, ...(ro ? { readonly: true } : {}), required: true,
+    name, type: "text", role, ...(ro ? { readonly: true } : {}), required: name !== "Patient SSN",
     preferences: { font_size: 10, font: "Helvetica", valign: "bottom" }, areas,
   });
   return {
@@ -83,14 +83,14 @@ function nvPacket(opts: {
 
 export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER" | "NV" | "NV_FLAT", Packet> = {
   "NV": nvPacket({
-    name: "TMP MVA Retainer + HIPAA/HITECH - Nevada Tiered v1",
-    external_id: "tmp-mva-nv-v1",
+    name: "TMP MVA Retainer + HIPAA/HITECH - Nevada Tiered v2",
+    external_id: "tmp-mva-nv-v2",
     path: "/esign-src/19ca4877a978c8c85317f5f9/tmp-mva-nv.pdf",
     sig: { page: 4, y: 0.0895 }, date: { page: 4, y: 0.16066 },
   }),
   "NV_FLAT": nvPacket({
-    name: "TMP MVA Retainer + HIPAA/HITECH - Nevada Non-Tiered v1",
-    external_id: "tmp-mva-nv-flat-v1",
+    name: "TMP MVA Retainer + HIPAA/HITECH - Nevada Non-Tiered v2",
+    external_id: "tmp-mva-nv-flat-v2",
     path: "/esign-src/19ca4877a978c8c85317f5f9/tmp-mva-nv-flat.pdf",
     // The non-tiered contract's signature block breaks across the page: the
     // signature lines sit at the bottom of page 3, the two Date lines at the
@@ -98,8 +98,8 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER" | "NV" | "NV_FLAT", P
     sig: { page: 3, y: 0.82103 }, date: { page: 4, y: 0.09274 },
   }),
   "TX": {
-    "name": "TMP MVA Retainer + HIPAA/HITECH - Texas v3",
-    "external_id": "tmp-mva-tx-v3",
+    "name": "TMP MVA Retainer + HIPAA/HITECH - Texas v4",
+    "external_id": "tmp-mva-tx-v4",
     "path": "/esign-src/19ca4877a978c8c85317f5f9/tmp-mva-tx.pdf",
     "fields": [
       {
@@ -288,7 +288,7 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER" | "NV" | "NV_FLAT", P
         "name": "Patient SSN",
         "type": "text",
         "role": "Intake",
-        "required": true,
+        "required": false,
         "preferences": {
           "font_size": 10,
           "font": "Helvetica",
@@ -334,8 +334,8 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER" | "NV" | "NV_FLAT", P
     ]
   },
   "OTHER": {
-    "name": "TMP MVA Retainer + HIPAA/HITECH - All other states (AL/GA form) v3",
-    "external_id": "tmp-mva-alga-v3",
+    "name": "TMP MVA Retainer + HIPAA/HITECH - All other states (AL/GA form) v4",
+    "external_id": "tmp-mva-alga-v4",
     "path": "/esign-src/19ca4877a978c8c85317f5f9/tmp-mva-other.pdf",
     "fields": [
       {
@@ -524,7 +524,7 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER" | "NV" | "NV_FLAT", P
         "name": "Patient SSN",
         "type": "text",
         "role": "Intake",
-        "required": true,
+        "required": false,
         "preferences": {
           "font_size": 10,
           "font": "Helvetica",
@@ -570,8 +570,8 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER" | "NV" | "NV_FLAT", P
     ]
   },
   "FL": {
-    "name": "TMP MVA Retainer + HIPAA/HITECH - Florida v3",
-    "external_id": "tmp-mva-fl-v3",
+    "name": "TMP MVA Retainer + HIPAA/HITECH - Florida v4",
+    "external_id": "tmp-mva-fl-v4",
     "path": "/esign-src/19ca4877a978c8c85317f5f9/tmp-mva-fl.pdf",
     "fields": [
       {
@@ -760,7 +760,7 @@ export const TMP_MVA_PACKETS: Record<"TX" | "FL" | "OTHER" | "NV" | "NV_FLAT", P
         "name": "Patient SSN",
         "type": "text",
         "role": "Intake",
-        "required": true,
+        "required": false,
         "preferences": {
           "font_size": 10,
           "font": "Helvetica",

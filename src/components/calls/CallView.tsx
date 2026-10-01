@@ -13,6 +13,8 @@ import FormView from "./FormView";
 import { GuidedIntake } from "./OneQuestion";
 import IntakeQuestion, { AgreementRecipient, QuestionControl } from "./IntakeQuestion";
 import { DobField, SsnField } from "./SsnDob";
+import { SsnRefusal } from "./SsnRefusal";
+import FinalHandoff from "./FinalHandoff";
 import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
@@ -51,7 +53,7 @@ function IdentityFields({ v }: { v: any }) {
   return (<>
     {v.sendReady && <div className="cc-cue">DOB and SSN are optional before sending. Enter them now or after the client signs.</div>}
     <div><div className="cc-lab">DATE OF BIRTH</div><DobField value={v.f.dob.value ?? ""} onChange={(t: string) => v.f.dob.set({ target: { value: t } })} /></div>
-    <div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /></div>
+    <div><div className="cc-lab">SSN</div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /><SsnRefusal v={v} /></div>
   </>);
 }
 
@@ -68,7 +70,7 @@ export default function CallView({ v }: { v: any }) {
 <IxTop v={v} />
 <main className={`cc-main ix-main${v.fullView ? " fi-main" : ""}${v.choreView || v.stepView ? " ch-main" : ""}`}>
 {!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>{v.sendHoldNotice.startsWith("Send outcome unconfirmed") ? "Send outcome unconfirmed" : "Signing actions paused"}</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
-{!!v.nameReview && <div className="cc-stop" role="status"><p>{v.nameReview}</p>{v.canUseRecordName && <button type="button" className="cc-btn" onClick={v.useRecordName}>{v.canReplace ? "Use corrected PNC name" : "Use PNC name"}</button>}{v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>Void incorrect agreement</button>}{v.canReplace && <button type="button" className="cc-btn" onClick={() => v.jumpTo("send")}>Review corrected agreement below</button>}</div>}
+{!!v.nameReview && <div className="cc-stop" role="status"><p>{v.nameReview}</p>{v.canUseRecordName && <button type="button" className="cc-btn" onClick={v.useRecordName}>{v.canReplace ? "Use corrected PNC name" : "Use PNC name"}</button>}{v.canReplace && <button type="button" className="cc-btn" onClick={() => v.jumpTo("send")}>Review corrected agreement below</button>}</div>}
 {!!v.emergencyNotice && <div className="cc-stop" role="status"><p>{v.emergencyNotice}</p>{v.prepareResign && <button type="button" className="cc-btn" onClick={v.prepareResign}>Prepare DocuSeal re-sign</button>}</div>}
 {!!(v.choreView) && <ChoreList v={v} />}
 {!!v.stepView && <StepByStep v={v} />}
@@ -567,7 +569,6 @@ That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passeng
 {!!(v.textEmpty) && (<><div className="cc-cue" style={{textAlign: "center", margin: "28px 0"}}>No texts with {v.callerFirst} yet.</div></>)}
 {(v.texts || []).map((m: any, i44: number) => (<Fragment key={i44}><div className={cx(m.cls)}><div>{m.body}</div>{(m.when || m.hasStatus) && (<><div className="cc-bub-s">{[m.when, m.status].filter(Boolean).join(" · ")}</div></>)}</div></Fragment>))}
 {!!(v.canResend) && (<><div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div></>)}
-{!!(v.canVoid) && (<div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip" onClick={v.voidAgreement}>{v.voidLabel}</button></div>)}
 {!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.textError}</div></div>}
 </div>
 <div className="cc-compose">
@@ -610,14 +611,7 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-grp" role="radiogroup" aria-label={v.dispo.whenHead}>{(v.dispo.when || []).map((c: any, i47: number) => (<Fragment key={i47}><button className={cx(c.cls)} role="radio" aria-checked={!!c.on} onClick={c.pick}><span>{c.label}</span>{!!(c.on) && (<><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg></>)}</button></Fragment>))}</div>
 {!!(v.dispo.pickTime) && (<><input className="cc-field" type="datetime-local" aria-label="Call back at" value={v.dispo.at.value ?? ""} onChange={v.dispo.at.set} /></>)}
 </>)}
-{!!(v.dispo.isSigned) && (<>
-<div className="cc-sec-h">Email the case to</div>
-<div className="cc-grp">
-{(v.dispo.notify || []).map((n: any, i48: number) => (<Fragment key={i48}><button className={cx(n.cls)} role="checkbox" aria-checked={!!n.on} onClick={n.toggle}><span className="cc-d-who"><span>{n.who}</span><span className="cc-d-how">{n.how}</span></span>{!!(n.on) && (<><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg></>)}</button></Fragment>))}
-</div>
-<div className="cc-d-add"><input className="cc-field" type="email" inputMode="email" placeholder="Add an email" aria-label="Add an email" value={v.dispo.add.value ?? ""} onChange={v.dispo.add.set} /><button className="cc-btn cc-soft" style={{width: "auto", padding: "0 18px"}} onClick={v.dispo.addGo}>Add</button></div>
-<div className="cc-cue" style={{margin: "0 4px"}}>Sends the case summary with a link to the signed file.</div>
-</>)}
+{!!(v.dispo.isSigned) && <div className="cc-stop"><strong>After saving this call:</strong> Review your file below and use the single final send. Saving the disposition does not email the packet.</div>}
 {!!(v.dispo.isDnc) && (<>
 <div className="cc-stop"><div className="cc-card-h">The number comes off every list</div><div className="cc-cue">No more calls or texts from any campaign.</div></div>
 </>)}
@@ -635,12 +629,13 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-grp">
 {(v.dispo.summary || []).map((r: any, i49: number) => (<Fragment key={i49}><div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">{r.k}</span><span className="cc-done-v">{r.v}</span></div></Fragment>))}
 </div>
+{v.dispo.isSigned && <FinalHandoff leadId={v.leadId} claimId={v.claimId} onNext={v.dispo.nextCall} />}
 </>)}
 {!!v.dispo.hasError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.dispo.error}</div></div>}
 </div>
 <div className="cc-bar">
 {!!(v.dispo.editing) && (<><button className="cc-btn cc-go" disabled={!!v.dispo.cantSave} onClick={v.dispo.save}>{v.dispo.saveLabel}</button></>)}
-{!!(v.dispo.saved) && (<><button className="cc-btn cc-soft" style={{flex: "1"}} onClick={v.dispo.edit}>Edit</button><a className="cc-btn cc-soft" style={{flex: "1", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none"}} href={`/leads/${v.leadId}?classic=1`}>Open the file</a><button className="cc-btn cc-go" onClick={v.dispo.nextCall}>Next call</button></>)}
+{!!(v.dispo.saved) && (<><button className="cc-btn cc-soft" style={{flex: "1"}} onClick={v.dispo.edit}>Edit</button><a className="cc-btn cc-soft" style={{flex: "1", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none"}} href={`/leads/${v.leadId}?classic=1`}>Open the file</a>{!v.dispo.isSigned && <button className="cc-btn cc-go" onClick={v.dispo.nextCall}>Next call</button>}</>)}
 </div>
 </div>
 </>)}

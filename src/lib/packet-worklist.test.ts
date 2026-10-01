@@ -22,9 +22,22 @@ test("a completed packet is not ready to send until the claim passes QA", () => 
   };
   const waiting = packetWorklist({ ...base, claims: [{ id: "c", lead_id: "l", claim_type: "mva", status: "signed_grievous" }] });
   assert.equal(waiting[0].stage, "qa");
-  assert.equal(waiting[0].stageLabel, "Awaiting QA approval");
+  assert.equal(waiting[0].stageLabel, "Awaiting file review");
   assert.equal(packetWorklist({ ...base, claims: [] })[0].stage, "qa");
   assert.equal(packetWorklist({ ...base, claims: [{ id: "c", lead_id: "l", claim_type: "mva", status: "signed_approved" }] })[0].stage, "ready");
+});
+
+test("owner worklist holds a signed packet when the firm address is missing or points back to Brett", () => {
+  const base = {
+    submissions: [{ id: "s", lead_id: "l", claim_id: "c", pax_index: null, signed_at: "2026-09-30T22:00:00Z", created_at: "2026-09-30T22:00:00Z", status: "completed", completed_pdf_path: "signed.pdf", cert_pdf_path: "cert.pdf", agent_reviewed_at: "2026-09-30T23:00:00Z" }],
+    leads: [{ id: "l", case_type: "mva" }], claims: [{ id: "c", lead_id: "l", campaign_id: "camp", claim_type: "mva", status: "signed_approved" }],
+    calls: [], users: [], firms: [], deliveries: [], ownerEmail: "bmc@innovativeintake.com",
+  };
+  for (const firm_email of [null, "bmc@innovativeintake.com"]) {
+    const [row] = packetWorklist({ ...base, campaigns: [{ id: "camp", firm_email }] });
+    assert.equal(row.stage, "held");
+    assert.equal(row.stageLabel, "Firm email needs configuration");
+  }
 });
 
 test("a successful firm delivery applies only to the corresponding claim", () => {

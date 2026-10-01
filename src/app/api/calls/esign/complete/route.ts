@@ -30,13 +30,16 @@ export async function POST(req: NextRequest) {
   if (!pending.ok) return NextResponse.json({ error: pending.error }, { status: pending.status });
   if (pending.attempt) return NextResponse.json({ error: SEND_HELD_MESSAGE, send_attempt: pending.attempt }, { status: 409 });
   const dob = parseDob(b?.dob || context.lead.dob);
+  const ssnRefused = b?.ssn_refused === true;
+  if (ssnRefused && b?.ssn) return NextResponse.json({ error: "Choose either an SSN or 'client refused,' not both." }, { status: 400 });
   let rawSsn = b?.ssn;
   const identityScope = { leadId: context.lead.id, claimId: context.matter.claim.id, firmId: context.lead.firm_id };
-  if (b?.use_saved_identity === true || rawSsn) {
+  if (b?.use_saved_identity === true || rawSsn || ssnRefused) {
     const saved = await readIdentityForSigning(supabaseAdmin(), identityScope);
     if (!saved.ok) return NextResponse.json({ error: saved.error }, { status: saved.status });
+    if (ssnRefused && saved.identity?.ssn) return NextResponse.json({ error: "An SSN is already securely saved on this matter. Review that value before completing; do not mark it refused." }, { status: 409 });
     if (b?.use_saved_identity === true) rawSsn = saved.identity?.ssn;
-    else {
+    else if (rawSsn) {
       // An already-open older app can still post the raw field. Retain its
       // first capture securely too, but never overwrite a newer saved value.
       const mode = String(rawSsn).replace(/\D/g, "").length === 4 ? "last4" : "full";
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
   const ssn = ssnForForm(rawSsn);
   const isMva = context.matter.claim.claim_type === "mva";
   if ((isMva || b?.dob) && !dob) return NextResponse.json({ error: "Date of birth should look like 04/12/1991." }, { status: 400 });
-  if ((isMva || b?.ssn) && !ssn) return NextResponse.json({ error: "SSN should be all 9 digits or the last 4." }, { status: 400 });
+  if ((isMva || b?.ssn) && !ssn && !ssnRefused) return NextResponse.json({ error: "Enter an SSN or mark 'client refused; will give to firm.'" }, { status: 400 });
   const selected = await getMatterAgreement(sb, context.lead, context.matter, b?.agreement_id);
   if (!selected.ok) return NextResponse.json({ error: selected.error }, { status: selected.status });
   const row = selected.row;
@@ -93,7 +96,9 @@ export async function POST(req: NextRequest) {
 
   // Step 2 also dates the firm's line, on the office clock.
   const firmDate = officeDateUS();
-  const res = await completeIntake(row.intake_submitter_id, { ...(dob ? { "Patient DOB": dobForForm(dob) } : {}), ...(ssn ? { "Patient SSN": ssn.printed } : {}), "Firm Date": firmDate });
+  // Send a blank field explicitly on refusal. Never insert placeholder digits
+  // into a signed legal document. The refusal is audited separately below.
+  const res = await completeIntake(row.intake_submitter_id, { ...(dob ? { "Patient DOB": dobForForm(dob) } : {}), ...(ssn ? { "Patient SSN": ssn.printed } : ssnRefused ? { "Patient SSN": "" } : {}), "Firm Date": firmDate });
   if (!res.ok) {
     const msg = res.status === 401 || res.status === 403
       ? "DocuSeal refused our key, so the DOB and SSN did not go on the agreement. Tell your admin: DOCUSEAL_API_KEY in Cloudflare is wrong or expired."
@@ -110,7 +115,8 @@ export async function POST(req: NextRequest) {
 
   await recordAudit({
     firm_id: row.firm_id, lead_id: leadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
-    description: "Completed the agreement's office signer fields.", meta: { submission_id: row.submission_id },
+    description: ssnRefused ? "Completed office signer fields; client refused SSN and will give it to the firm. SSN left blank on the agreement." : "Completed the agreement's office signer fields.",
+    meta: { submission_id: row.submission_id, ssn_refused: ssnRefused },
   });
   const status = await syncSubmission(supabaseAdmin(), row, { actorName: me.name ?? "Agent", origin: new URL(req.url).origin });
   return NextResponse.json({ ok: true, status });

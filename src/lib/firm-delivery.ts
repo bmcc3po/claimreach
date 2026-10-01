@@ -185,6 +185,9 @@ export async function deliverLeadToFirm(opts: {
   force?: boolean;
   expectedTo?: string;
   expectedCc?: string[];
+  /** Final agent handoff: copy the active owner and refuse an owner-only firm address. */
+  includeOwner?: boolean;
+  additionalRecipients?: string[];
 }, deps: DeliverDeps = {}): Promise<DeliverResult> {
   const db = deps.db ?? supabaseAdmin();
   const audit = deps.audit ?? (async (row: any) => { await recordAudit(row); });
@@ -311,6 +314,18 @@ export async function deliverLeadToFirm(opts: {
   }
   const replyTo = String(cfg.firm_reply_to || "").trim() || undefined;
   if (!to) return refuse("This campaign has no firm email set.");
+  if (opts.includeOwner) {
+    if (opts.triggeredBy !== "manual" || cfg.name !== "INNO MVA") return refuse("Owner-copy handoff is only available for a confirmed INNO MVA send.");
+    const { data: owners, error: ownerErr } = await db.from("app_users").select("email").eq("role", "owner").eq("active", true);
+    if (ownerErr || !owners?.length) return refuse("Could not verify Brett's delivery address. Nothing was emailed.");
+    const ownerEmails = (owners as { email?: string }[]).map((owner) => String(owner.email || "").trim().toLowerCase()).filter(Boolean);
+    if (!ownerEmails.includes("bmc@innovativeintake.com")) return refuse("Brett's active owner account was not found. Nothing was emailed.");
+    if (ownerEmails.includes(to.toLowerCase())) return refuse("The configured firm address is Brett's address. Set the Turnbull delivery email before sending to both recipients.");
+    const extras = opts.additionalRecipients ?? [];
+    if (extras.length > 3 || extras.some((address) => !/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(address.trim()))) return refuse("Up to three valid additional email addresses may be added to this handoff.");
+    cc = [...new Set([...cc, "bmc@innovativeintake.com", ...extras.map((address) => address.trim().toLowerCase())])]
+      .filter((address) => address.toLowerCase() !== to.toLowerCase());
+  }
 
   // Tokens for mail-merge (client + case + campaign), from THIS claim.
   const answers: Record<string, any> = (claim.answers ?? {}) as Record<string, any>;
@@ -327,7 +342,11 @@ export async function deliverLeadToFirm(opts: {
 
   // The body and both artifacts use this one matter's resolved question set.
   // A missing intake refuses the send, rather than shipping a partial packet.
-  const wantPdf = cfg.attach_intake_pdf !== false;
+  // INNO MVA is a two-part packet: intake PDF plus every signed retainer
+  // document (including the HIPAA/HITECH pages). Campaign toggles cannot
+  // silently turn the final handoff into an intake-only email.
+  const requirePrimary = String(claim.claim_type || cfg.case_type || lead.case_type || "").trim().toLowerCase() === "mva";
+  const wantPdf = requirePrimary || cfg.attach_intake_pdf !== false;
   const wantCsv = cfg.attach_intake_csv === true;
   let intakeFailed: string | null = null;
   let bundle: IntakeBundle | null = null;
@@ -350,11 +369,10 @@ export async function deliverLeadToFirm(opts: {
     }
   }
 
-  const wantRetainer = cfg.attach_retainer !== false;
+  const wantRetainer = requirePrimary || cfg.attach_retainer !== false;
   const wantCert = cfg.attach_certificate !== false;
   // MVA delivery follows agent review of a primary-signed matter. Attachment
   // choices control the email contents, never whether the matter is ready.
-  const requirePrimary = String(claim.claim_type || cfg.case_type || lead.case_type || "").trim().toLowerCase() === "mva";
   const checkPacket = requirePrimary || wantRetainer;
   const checkCertificate = requirePrimary || wantCert;
 
@@ -538,6 +556,9 @@ export async function deliverLeadToFirm(opts: {
   }
   if (intakeFailed) {
     return refuse(`The intake Q&A for this matter is not ready: ${intakeFailed}.`);
+  }
+  if (requirePrimary && !attachments.some((a) => a.kind === "intake_pdf")) {
+    return refuse("The intake PDF is missing from this matter's final packet.");
   }
   if ((checkCertificate && dsCertMissing) || (wantCert && !attachments.some((a) => a.kind === "certificate"))) {
     return refuse("The signing certificate has not stored yet. Open the file's agreement screen to recover it, then send again.");
