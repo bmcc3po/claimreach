@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField } from "@/lib/netfly-ontake";
+import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, netflyFlags, netflyMissingHandoffQuestions, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField } from "@/lib/netfly-ontake";
 import { DEFAULT_DQ_REASONS } from "@/lib/statuses";
 import "./netfly.css";
 import "./netfly-workspace.css";
@@ -10,9 +10,9 @@ type Handoff = { note: string; at: string; by_name?: string; channel?: string };
 type Detail = { file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string }; answers: { fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; handoff_verification?: { status: string; note: string; source_revision: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
 
 const VERIFY_STEPS = [
-  { title: "1. Welcome to the firm", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you! I just wanted to jump on the phone to welcome you to the firm. I'm going to verify a few things, gather some brief additional details, and then we'll talk about next steps.", fields: ["seen_doctor", "first_provider", "first_visit", "ambulance", "treated_injuries", "other_pain", "still_treating", "current_provider", "last_appointment", "next_appointment"] },
-  { title: "2. Verify their story", script: "I have your name as [spell name], and the accident listed as [date and location]. Is that right? I'll read back the key points; please stop me if anything has changed or is missing.", fields: ["confirmed_name", "name_confirmed", "dob", "mailing_address", "confirmed_phone", "confirmed_email", "accident_date", "road", "position", "incident_story", "fault", "passengers", "passenger_details"] },
-  { title: "3. Fill the gaps", script: "I have most of the accident details already. I just want to check the pieces the case manager will need: the police report, the vehicles and insurance, your treatment plan, and whether anyone else is representing you.", fields: ["police_came", "police_report", "ticket", "other_insurer", "other_claim", "drivable", "totaled", "photos", "insurer_contact", "recorded_statement", "other_lawyer_talk", "other_lawyer_signed", "client_questions"] },
+  { title: "1. Welcome to the firm", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you! I just wanted to jump on the phone to welcome you to the firm. I'm going to verify a few things, gather some brief additional details, and then we'll talk about next steps.", fields: [] },
+  { title: "2. Verify the handoff", script: "I have your name as [spell name], and the accident listed as [date and location]. Is that right? I'll read back the key points; please stop me if anything has changed or is missing.", fields: ["name_confirmed", "confirmed_phone", "confirmed_email"] },
+  { title: "3. Fill the gaps", script: "Thank you. I have a few details for your case manager: your care so far, your vehicle, and any contact from the insurance company.", fields: ["seen_doctor", "first_provider", "first_visit", "ambulance", "still_treating", "next_appointment", "drivable", "totaled", "photos", "insurer_contact", "other_claim", "client_questions"] },
   { title: "4. Close the ontake", script: "Before we finish, I'll make sure the legal team knows what is complete and what needs follow-up. I don't make the final decision about your case.", fields: [] },
   { title: "5. Meet the case manager", script: "While I have you on the phone, I just want to see if your case manager is at her desk to say hi. Would that be okay?", fields: ["final_notes"] },
 ] as const;
@@ -23,7 +23,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [section, setSection] = useState(0);
   const [viewMode, setViewMode] = useState<"step" | "all" | "simple">("all");
-  const [activeQuestion, setActiveQuestion] = useState<string>(VERIFY_STEPS[0].fields[0]);
+  const [activeQuestion, setActiveQuestion] = useState<string>("name_confirmed");
   const [commandTab, setCommandTab] = useState<"file" | "agreement" | "scripts" | "phone">("file");
   const [commandOpen, setCommandOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
@@ -115,13 +115,16 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const originalHandoff = handoffs[0];
   const latestHandoff = handoffs.at(-1);
   const sourceRows = parseNetflyHandoff(latestHandoff?.note || "");
+  const guidedIds = new Set([...verifyIds, ...netflyMissingHandoffQuestions(sourceRows)]);
   const checked = detail.answers.handoff_verification?.source_revision === handoffs.length && handoffs.length > 0;
   const callRecorded = detail.answers.call_close?.source_revision === handoffs.length && handoffs.length > 0 && !callCloseDirty && !validateNetflyCallClose(detail.answers.call_close);
   const needsIntroduction = callClose.completion === "complete" && callClose.disposition === "appears_qualified";
   const introStage = introDecision || (["connected", "attempted_no_answer"].includes(callClose.transfer_outcome) ? "yes" : callClose.transfer_outcome === "client_declined" ? "no" : callClose.transfer_outcome === "not_attempted" ? "not_attempted" : null);
   const renderStep = (stepIndex: number) => {
     const current = VERIFY_STEPS[stepIndex];
-    const visible = current.fields.map((id) => fieldById.get(id)).filter((f): f is NetflyField => !!f && (!f.when || values[f.when.id] === f.when.is));
+    const missing = stepIndex === 2 ? netflyMissingHandoffQuestions(sourceRows) : [];
+    const ids = [...new Set([...current.fields, ...missing])];
+    const visible = ids.map((id) => fieldById.get(id)).filter((f): f is NetflyField => !!f && (!f.when || values[f.when.id] === f.when.is));
     return <div key={current.title} id={`nf-step-${stepIndex}`} className="nf-step-card">
     <section className="nf-panel nf-intake"><div className="nf-section-head"><p className="nf-eyebrow">Welcome call · verify changes, not a new intake</p><h2>{current.title}</h2><span aria-live="polite">{saveState}</span></div>{viewMode !== "simple" && <div className="nf-script"><strong>Say</strong><p>{current.script}</p></div>}
       {stepIndex === 0 && <section className="nf-inline-retainer" aria-label="Original signed retainer">
@@ -199,7 +202,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         {viewMode === "step" ? <>
           {renderStep(section)}
         </> : <div className={`nf-all-steps${viewMode === "simple" ? " nf-simple-steps" : ""}`}>{VERIFY_STEPS.map((_, i) => renderStep(i))}</div>}
-    <details key={viewMode} open={viewMode === "all" ? true : undefined} className="nf-history nf-extra"><summary>More details, only if missing or changed</summary><p className="nf-muted">NETFLY already completed intake. Open only the questions needed to resolve a gap or new information. {answered} answers have been saved on this file.</p>{NETFLY_SECTIONS.map((group) => { const extras = group.fields.filter((field) => !verifyIds.has(field.id) && (!field.when || values[field.when.id] === field.when.is)); return extras.length ? <div key={group.id}><h3>{group.title}</h3><div className="nf-questions">{extras.map((field) => <Question key={field.id} field={field} value={values[field.id] || ""} set={(value) => set(field.id, value)} save={(value) => save(field.id, value)} />)}</div></div> : null; })}</details>
+    <details key={viewMode} className="nf-history nf-extra"><summary>More details, only if missing or changed</summary><p className="nf-muted">NETFLY already completed intake. Open only the questions needed to resolve a gap or new information. {answered} answers have been saved on this file.</p>{NETFLY_SECTIONS.map((group) => { const extras = group.fields.filter((field) => !guidedIds.has(field.id) && (!field.when || values[field.when.id] === field.when.is)); return extras.length ? <div key={group.id}><h3>{group.title}</h3><div className="nf-questions">{extras.map((field) => <Question key={field.id} field={field} value={values[field.id] || ""} set={(value) => set(field.id, value)} save={(value) => save(field.id, value)} />)}</div></div> : null; })}</details>
       </div>
       <aside id="netfly-command" className={`nf-command${commandOpen ? " nf-command-open" : ""}`} aria-label="Command center">
         <div className="nf-command-head"><div><strong>Command center</strong></div><button type="button" className="nf-command-close" onClick={() => setCommandOpen(false)} aria-label="Close Command center">×</button></div>

@@ -1,0 +1,7 @@
+{
+  "name": "netfly-email",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false
+}
