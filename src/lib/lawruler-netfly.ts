@@ -4,9 +4,13 @@ import { type LrOriginal, type LrDocumentScope, recordLawRulerSource, storeLawRu
 const key = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export function netflyHandoffNote(fields: Record<string, unknown>): string {
-  const found = Object.entries(fields).find(([name]) => key(name) === 'netflyhandoffnote');
-  const value = typeof found?.[1] === 'string' ? found[1].trim() : '';
-  return /^\{\{[^}]+\}\}(?:\s*[-–].*)?$/i.test(value) ? '' : value;
+  const values = ['netflyhandoffnote', 'summary', 'casedescription', 'default27'].map(name =>
+    Object.entries(fields).find(([field]) => key(field) === name)?.[1]);
+  for (const raw of values) {
+    const value = typeof raw === 'string' ? raw.trim() : '';
+    if (value.length >= 10 && !/^\{\{[^}]+\}\}(?:\s*[-–].*)?$/i.test(value)) return value;
+  }
+  return '';
 }
 
 export function validateNetflyLawRulerPayload(fields: Record<string, unknown>, files: LrOriginal[], _firstArrival: boolean): string | null {

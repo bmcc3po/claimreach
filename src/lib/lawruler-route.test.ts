@@ -88,6 +88,8 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
   });
   await t('NETFLY LawRuler transfer saves partial source, then completes with the original PDF and unchanged note', async () => {
     assert.equal(netflySync.netflyHandoffNote({ NetflyHandoffNote: '{{default27}}-Case Description' }), '');
+    assert.equal(netflySync.netflyHandoffNote({ NetflyHandoffNote: '{{default27}}-Case Description', Summary: 'Client/Driver: Synthetic Person' }), 'Client/Driver: Synthetic Person');
+    assert.equal(ingest.normalizeLead({ Summary: 'Client/Driver: Synthetic Person' }).description, 'Client/Driver: Synthetic Person');
     const h = harness('');
     Object.assign(h.database.tables.campaigns[0], { name: 'NETFLY ONTAKE', path: 'secondary', esign_required: false });
     Object.assign(h.database.tables.leads[0], { external_id: 'other-source', campaign_id: 'mva', case_type: 'mva' });
@@ -105,7 +107,7 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
       download: async (path: string) => ({ data: objects.has(path) ? new Blob([objects.get(path)!]) : null, error: null }),
     }) };
     const note = 'Client/Driver: Synthetic Person\nAccident Date: 09/04/2026\nAccident Summary: Rear ended while stopped.';
-    const noteOnly = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', FirstName: 'Synthetic', LastName: 'Person', NetflyHandoffNote: note }));
+    const noteOnly = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', FirstName: 'Synthetic', LastName: 'Person', Summary: note }));
     assert.equal(noteOnly.status, 200, JSON.stringify(noteOnly.body));
     assert.deepEqual(noteOnly.body.missing_source, ['signed_retainer_pdf']);
     assert.equal(noteOnly.body.attachments_complete, false);

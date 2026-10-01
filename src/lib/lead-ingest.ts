@@ -54,7 +54,7 @@ export const ALIASES: Record<string, string[]> = {
   source: ["source", "leadsource"],
   marketer: ["contactmethod", "marketer", "vendor", "publisher", "agency", "partner", "leadvendor", "contactused", "supplier", "affiliate"],
   adCampaign: ["adcampaign", "adname", "adset", "utmcampaign", "creative"],
-  description: ["description", "casedescription", "details", "story", "summary", "comments", "notes", "message", "whathappened"],
+  description: ["description", "casedescription", "default27", "details", "story", "summary", "comments", "notes", "message", "whathappened"],
   doi: ["doi", "dateofincident", "incidentdate", "accidentdate", "dateofaccident", "dateofloss", "crashdate", "dol"],
   accidentState: ["accidentstate", "incidentstate", "stateofaccident", "lossstate", "crashstate"],
   accidentCity: ["accidentcity", "incidentcity", "cityofaccident", "losscity", "crashcity"],
