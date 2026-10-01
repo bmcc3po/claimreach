@@ -341,11 +341,21 @@ const rec = (r: any) => { assert.ok(r.ok, r.ok ? "" : r.error); return r.record 
     let out = await loadStandardExport(fakeDb(tb), { signedFrom: "2026-09-28", signedTo: "2026-09-28" });
     assert.ok(out.ok); assert.deepEqual(out.ok ? out.records.map((r) => r.claim_id) : [], ["a1"]);
     tb.leads[0].signed_at = "2026-09-28T00:00:00Z";
-    tb.esign_submissions = [sub("a-old", "a1", "TX", "2026-09-27T23:59:59Z"), sub("b-next", "b2", "NV", "2026-09-29T00:00:00Z")];
+    tb.esign_submissions = [sub("a-old", "a1", "TX", "2026-09-28T06:59:59Z"), sub("b-next", "b2", "NV", "2026-09-29T07:00:00Z")];
     out = await loadStandardExport(fakeDb(tb), { signedFrom: "2026-09-28", signedTo: "2026-09-28" });
     assert.ok(out.ok); assert.deepEqual(out.ok ? out.records : [], []);
     const unfiltered = await loadStandardExport(fakeDb(tb), {});
     assert.ok(unfiltered.ok && unfiltered.records.length === 2);
+  });
+
+  await t("export created and signed day filters follow Pacific midnight", async () => {
+    const tb = base();
+    tb.leads[0].created_at = "2026-10-01T06:30:00Z"; // Sep 30, 11:30 PM PDT
+    tb.esign_submissions = [sub("pacific-sign", "a1", "TX", "2026-10-01T06:30:00Z")];
+    const included = await loadStandardExport(fakeDb(tb), { since: "2026-09-30", until: "2026-09-30", signedFrom: "2026-09-30", signedTo: "2026-09-30" });
+    assert.ok(included.ok && included.records.length === 1);
+    const nextDay = await loadStandardExport(fakeDb(tb), { since: "2026-10-01", until: "2026-10-01" });
+    assert.ok(nextDay.ok && nextDay.records.length === 0);
   });
 
   await t("export signed-date retains sole legacy date fallback but never assigns it to sibling matters", async () => {

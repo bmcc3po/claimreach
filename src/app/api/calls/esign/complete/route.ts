@@ -8,6 +8,7 @@ import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterE
 import { sameName } from "@/lib/linked-files";
 import { readIdentityForSigning, saveIdentity, normalizeIdentityValue } from "@/lib/mva-call/identity";
 import { readPendingSendAttempt, SEND_HELD_MESSAGE } from "@/lib/mva-call/send-attempt";
+import { officeDateUS } from "@/lib/office-clock";
 
 export const runtime = "edge";
 
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
   if (!row.intake_submitter_id) return NextResponse.json({ error: "This agreement has no second signer to complete." }, { status: 409 });
 
   // Step 2 also dates the firm's line, on the office clock.
-  const firmDate = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "2-digit", day: "2-digit", year: "numeric" }).format(new Date());
+  const firmDate = officeDateUS();
   const res = await completeIntake(row.intake_submitter_id, { ...(dob ? { "Patient DOB": dobForForm(dob) } : {}), ...(ssn ? { "Patient SSN": ssn.printed } : {}), "Firm Date": firmDate });
   if (!res.ok) {
     const msg = res.status === 401 || res.status === 403

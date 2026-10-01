@@ -124,8 +124,8 @@ export default function LeadsTable({ leads }: { leads: any[] }) {
                 <td><StatusBadge status={r.flag ? "flag" : r.status} /></td>
                 <td className="muted" style={{ whiteSpace: "nowrap" }}>{r.loc}</td>
                 <td className="trunc" title={r.summary}>{r.summary}</td>
-                <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.created).toLocaleDateString()}</td>
-                <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.updated).toLocaleDateString()}</td>
+                <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.created).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}</td>
+                <td className="muted" style={{ whiteSpace: "nowrap" }}>{new Date(r.updated).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })}</td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={11} className="muted">No leads match.</td></tr>}

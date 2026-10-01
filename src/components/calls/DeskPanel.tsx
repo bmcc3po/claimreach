@@ -393,7 +393,7 @@ function LeadCard({ lead }: { lead: { from: string; said: string; tags: string[]
 const fmtWhen = (iso?: string | null) => {
   if (!iso) return "";
   const t = new Date(iso);
-  return isNaN(t.getTime()) ? "" : t.toLocaleString(undefined, { month: "numeric", day: "numeric", year: "2-digit", hour: "numeric", minute: "2-digit" });
+  return isNaN(t.getTime()) ? "" : t.toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "numeric", day: "numeric", year: "2-digit", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 };
 
 // The file: status, agreements, notes, documents and history, without leaving

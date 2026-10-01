@@ -18,6 +18,7 @@ import { applyAnswerDelta, isAnswerObject } from "@/lib/mva-call/answer-merge";
 import type { SendAttemptHold } from "@/lib/mva-call/replacement";
 import { savedCallView } from "@/lib/mva-call/step-layout";
 import { OPEN_DESK_FILE_EVENT } from "@/lib/mva-call/links";
+import { officeDateUS } from "@/lib/office-clock";
 
 export interface ConsoleInit {
   leadId: string;
@@ -61,15 +62,15 @@ async function post(url: string, body: unknown): Promise<any> {
 }
 
 function todayMDY(): string {
-  const t = new Date();
-  return `${String(t.getMonth() + 1).padStart(2, "0")}/${String(t.getDate()).padStart(2, "0")}/${t.getFullYear()}`;
+  return officeDateUS();
 }
 
 export default function CallConsole({ init }: { init: ConsoleInit }) {
   // The call renders local calendar labels and a second-by-second clock. The
   // server's timezone/time cannot produce the browser's initial text reliably.
   // Keep SSR and the first browser pass identical; initialize the engine and
-  // its save/signing effects only after hydration, using the agent's local day.
+  // its save/signing effects only after hydration. Signing dates use the
+  // Pacific office day on both browser preview and server submission.
   const [ready, setReady] = useState(false);
   useEffect(() => { setReady(true); }, []);
   if (!ready) return <div className="cc-desk" aria-busy="true"><div className="cc-card" role="status" style={{ margin: 24 }}>Loading intake…</div></div>;

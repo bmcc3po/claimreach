@@ -91,6 +91,17 @@ export function pacificDay(iso: string): string {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
+/** Date filters use the same calendar day as the Pacific staff display. */
+export function pacificCalendarDay(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : pacificDay(value);
+}
+
+/** Pacific midnight as an absolute instant, accounting for PDT/PST changes. */
+export function pacificDayStartUtc(day: string): string {
+  const seven = `${day}T07:00:00.000Z`;
+  return pacificDay(seven) === day ? seven : `${day}T08:00:00.000Z`;
+}
+
 export function mondayOf(day: string): string {
   const date = new Date(`${day}T12:00:00Z`);
   const weekday = date.getUTCDay();

@@ -7,9 +7,10 @@ import { resolveStatus } from "@/lib/statuses";
 import { caseName, prettyPhone } from "@/lib/case-name";
 import HomeView, { type HomeData } from "@/components/home/HomeView";
 import { caseFileHref } from "@/lib/mva-call/links";
+import { OFFICE_TIME_ZONE } from "@/lib/office-clock";
 
 // Days, "today" and the greeting follow the office clock, not the server's.
-const TZ = "America/Chicago";
+const TZ = OFFICE_TIME_ZONE;
 const dayKey = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const WHY: Record<Alert["kind"], string> = {
   no_contact: "No contact yet",

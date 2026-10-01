@@ -11,6 +11,8 @@ import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
 import { notifySigned, signedNoticeDue } from "@/lib/notify-signed";
 import { resolveSigningMatter, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "./signing-matter";
 import { ensureClientSignedSnapshot } from "./client-signed";
+import { officeDateISO } from "@/lib/office-clock";
+export { officeDateISO } from "@/lib/office-clock";
 
 // Persisted with the signature transition so a crash or failed claim write
 // cannot leave a signed agreement permanently disconnected from its matter.
@@ -62,12 +64,6 @@ export async function recoverSignedTransition(admin: any, row: any, deps: {
   const { error } = await admin.from("esign_submissions").update({ error: remaining })
     .eq("id", row.id).eq("error", row.error).is("voided_at", null);
   return !error;
-}
-
-// The office's calendar date (America/Chicago), never the UTC date: a signature
-// at 6 PM in Vegas belongs to "today", not tomorrow (Astra audit, Sep 27).
-export function officeDateISO(at?: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(at ? new Date(at) : new Date());
 }
 
 /** Which packet set a campaign signs with. Only TMP MVA has one today. */
