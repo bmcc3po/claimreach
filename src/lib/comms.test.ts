@@ -66,6 +66,19 @@ t("explicit provider result survives first delivery and a later duplicate", asyn
   assert.equal(w.comm().provider_call_result, "answered");
 });
 
+t("early AI details cannot create a dial before the completed call", async () => {
+  const w = world();
+  const early: any = await ingestComm(call({ jc_summary: "Synthetic summary" }), { db: w.db, onlyExisting: true });
+  assert.equal(early.deferred, true);
+  assert.equal(w.db.tables.communications.length, 0);
+  assert.equal(w.lead().first_dialed_at, null);
+  await ingestComm(call({ occurred_at: "2026-09-28T10:07:00Z", provider_call_result: "unanswered" }), { db: w.db });
+  const later: any = await ingestComm(call({ jc_summary: "Synthetic summary" }), { db: w.db, onlyExisting: true });
+  assert.equal(later.updated, true);
+  assert.equal(w.comm().jc_summary, "Synthetic summary");
+  assert.equal(w.db.tables.communications.length, 1);
+});
+
 t("a duplicate repairs a missing stamp with the ORIGINAL call's time, not the duplicate's", async () => {
   const w = world({}, [original]);
   const r: any = await ingestComm(call({ occurred_at: "2026-09-28T10:31:00Z", duration_sec: 95 }), { db: w.db });

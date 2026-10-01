@@ -60,13 +60,14 @@ export async function ingestComm(c: {
   phone?: string; agent_name?: string; agent_email?: string; body?: string; duration_sec?: number;
   recording_url?: string; transcript?: string; jc_summary?: string; jc_sentiment?: string; jc_insights?: any;
   call_sid?: string; sms_sid?: string; external_ref?: string; occurred_at?: string;
-}, opts: { db?: any } = {}) {
+}, opts: { db?: any; onlyExisting?: boolean } = {}) {
   const admin = opts.db ?? supabaseAdmin();
   // de-dupe
   // A duplicate reports the lead and time the first delivery was filed under,
   // so callers (texted-in media) see the same answer on every repeat.
   if (c.call_sid) { const { data } = await admin.from("communications").select(PRIOR_COLS).eq("call_sid", c.call_sid).maybeSingle(); if (data) return await update(admin, data.id, c, data); }
   if (c.sms_sid) { const { data } = await admin.from("communications").select(PRIOR_COLS).eq("sms_sid", c.sms_sid).maybeSingle(); if (data) return await update(admin, data.id, c, data); }
+  if (opts.onlyExisting) return { deferred: true };
 
   const { lead_id, firm_id } = await matchLeadByPhone(c.phone || "", admin);
   const row: any = {

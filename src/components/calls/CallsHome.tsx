@@ -42,8 +42,10 @@ function statusText(k?: string | null) { return k ? STATUS_TEXT[k] || k.replace(
 function clock(iso?: string | null) {
   if (!iso) return "";
   const t = new Date(iso); if (isNaN(t.getTime())) return "";
-  const h = t.getHours(), m = t.getMinutes();
-  return `${t.getMonth() + 1}/${t.getDate()} ${(h % 12) || 12}:${m < 10 ? "0" : ""}${m} ${h < 12 ? "AM" : "PM"}`;
+  // Staff call-history labels use Pacific time regardless of the agent's
+  // device setting. Due times below remain explicitly in the client's zone.
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(t);
 }
 function leadClock(iso?: string | null, zone?: string | null) {
   if (!iso || !zone) return "";
@@ -236,7 +238,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
                     <span className="cc-lrow-s">{[r.name ? fmtPhone(r.phone) : "", r.sub].filter(Boolean).join("  ")}</span>
                     {tab !== "texts" && <span className="cc-lrow-s">{`Calls: ${r.callCount == null ? "unverified" : r.callCount} · Last call: ${r.lastCallAt ? clock(r.lastCallAt) : "none verified"}`}</span>}
                     {r.outreach && <span className={`cc-lrow-s${r.outreach.stage === "review" ? " cc-red" : ""}`}>{r.outreach.reason}{r.outreach.dueAt ? ` · Due ${leadClock(r.outreach.dueAt, r.outreach.zone)} (client time)` : ""}</span>}
-                    {r.outreach?.textPrompt && <span className="cc-lrow-s cc-text-reminder">{r.outreach.textAfterCall ? `After call #${r.outreach.nextAttempt}` : `Text step ${r.outreach.textStep} is due`}: text only with verified permission and no opt-out. Suggested: “Hi {String(r.name || "there").split(" ")[0]}, this is the Turnbull Moak & Pendergrass intake team. Please call us when convenient. Reply STOP to opt out.”</span>}
+                    {r.outreach?.textPrompt && <span className="cc-lrow-s cc-text-reminder">{r.outreach.textAfterCall ? `After call #${r.outreach.total}` : `Text step ${r.outreach.textStep} is due`}: text only with verified permission and no opt-out. Suggested: “Hi {String(r.name || "there").split(" ")[0]}, this is the Turnbull Moak & Pendergrass intake team. Please call us when convenient. Reply STOP to opt out.”</span>}
                   </span>
                   <span className={`cc-lrow-t${late ? " cc-late" : ""}`}>
                     {tab === "callbacks" ? (late ? `Due ${ago(r.due, now)}` : clock(r.due)) : tab === "texts" ? ago(r.at, now) : <><b>{r.tag}</b><br />{tab === "due" || tab === "wait" ? ago(r.due, now) : ago(r.at, now)}</>}

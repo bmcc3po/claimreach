@@ -16,14 +16,16 @@ assert.equal(place(missed(0)).badge, "new");
 assert.equal(place(missed(0)).overdue, true);
 assert.equal(place(missed(0), receipt).stage, "review");
 assert.equal(place(missed(1)).stage, "wait");
-assert.equal(place(missed(2), null, 1, new Date("2026-09-29T14:10:00Z")).textPrompt, true);
+assert.equal(place(missed(2), null, 1, new Date("2026-09-29T14:10:00Z")).textPrompt, false);
 assert.equal(place(missed(3), null, 1, new Date("2026-09-29T14:11:00Z")).textStep, 1);
+assert.equal(place(missed(3), null, 1, new Date("2026-09-29T14:11:00Z")).textAfterCall, true);
 assert.equal(place({ ...missed(3), outbound_sms_times: ["2026-09-29T14:10:30Z"] }).textPrompt, false);
 assert.equal(place(missed(6), null, 1, new Date("2026-09-29T16:00:00Z")).textPrompt, true);
-assert.equal(place(missed(6), null, 1, new Date("2026-09-29T16:00:00Z")).textAfterCall, false); // step 1 was missed; do not label it step 2
+assert.equal(place(missed(6), null, 1, new Date("2026-09-29T16:00:00Z")).textAfterCall, false);
 assert.equal(place({ ...missed(6), outbound_sms_times: ["2026-09-29T14:10:30Z"] }, null, 1,
-  new Date("2026-09-29T16:00:00Z")).textAfterCall, true);
+  new Date("2026-09-29T16:00:00Z")).textPrompt, false);
 assert.equal(place({ ...missed(7), outbound_sms_times: ["2026-09-29T14:10:30Z"] }).textStep, 2);
+assert.equal(place({ ...missed(7), outbound_sms_times: ["2026-09-29T14:10:30Z"] }).textAfterCall, true);
 assert.equal(place({ ...missed(7), outbound_sms_times: ["2026-09-29T16:00:30Z"] }).textPrompt, false);
 assert.equal(place(missed(9), null, 1, new Date("2026-09-29T19:30:00Z")).nextAttempt, 10);
 assert.equal(place(missed(10), null, 1, new Date("2026-09-30T13:00:00Z")).stage, "due");

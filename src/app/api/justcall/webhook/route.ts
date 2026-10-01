@@ -116,6 +116,10 @@ export async function POST(req: NextRequest) {
 
     // ---- Sales Dialer calls (sd.*) ----
     if (type.startsWith("sd.")) {
+      // A ringing/answered/update event is not a completed dial. Waiting for
+      // the terminal event also prevents an early SID-only update from taking
+      // the completed event's unique call SID without its phone or result.
+      if (type !== "sd.call_completed") return NextResponse.json({ ok: true, kind: "sd_update_deferred" });
       const ci = d.call_info || {};
       const ai = d.justcall_ai || {};
       // A Sales Dialer update may contain only a SID and changed notes. If it
@@ -146,6 +150,24 @@ export async function POST(req: NextRequest) {
 
     // ---- JustCall calls + voicemail + AI report (call.* / jc.call_ai_generated) ----
     if (type.startsWith("call.") || type === "jc.call_ai_generated") {
+      if (type === "jc.call_ai_generated") {
+        // Enrich a completed call when it is already present. AI delivery can
+        // precede completion, so it must never create a counted dial by itself.
+        const ai = d.justcall_ai || {};
+        if (!(d.call_sid || d.id)) return NextResponse.json({ ok: true, kind: "call_ai_deferred" });
+        const enriched = await ingestComm({ channel: "call", direction: "inbound",
+          call_sid: String(d.call_sid || d.id), phone: d.contact_number,
+          transcript: flattenTranscript(ai) || undefined,
+          jc_summary: ai.call_summary || undefined,
+          jc_sentiment: ai.customer_sentiment || undefined,
+          jc_insights: ai && Object.keys(ai).length ? ai : undefined,
+        }, { onlyExisting: true });
+        if (enriched.error || ("stamp_error" in enriched && enriched.stamp_error))
+          return NextResponse.json({ error: "AI details not fully recorded" }, { status: 500 });
+        return NextResponse.json({ ok: true, kind: "deferred" in enriched && enriched.deferred ? "call_ai_deferred" : "call_ai_enriched" });
+      }
+      if (type !== "call.completed" && type !== "call.voicemail")
+        return NextResponse.json({ ok: true, kind: "call_update_deferred" });
       const ci = d.call_info || {};
       const cd = d.call_duration || {};
       const ai = d.justcall_ai || {};

@@ -90,11 +90,13 @@ export function placeOutreach(summary: DialSummary | null, firstDialedAt: string
     const isDue = due.getTime() <= now.getTime();
     const overdue = now.getTime() > due.getTime();
     const sentAfter = (stamp: string) => (summary.outbound_sms_times || []).some(sms => Date.parse(sms) >= Date.parse(stamp));
-    const textStep: 1 | 2 | null = total === 2 || (total >= 3 && total < 7 && !sentAfter(summary.dial_times[2])) ? 1
-      : total === 6 || (total >= 7 && !sentAfter(summary.dial_times[6])) ? 2 : null;
+    // The reminder follows completed calls 3 and 7. Never prompt for a text
+    // before the qualifying dial, and keep an unsent reminder visible later.
+    const textStep: 1 | 2 | null = total >= 3 && !sentAfter(summary.dial_times[2]) ? 1
+      : total >= 7 && !sentAfter(summary.dial_times[6]) ? 2 : null;
     return { ...common, stage: isDue ? "due" : "wait", badge: total === 0 ? "new" : overdue ? "overdue" : isDue ? "due" : "wait", overdue,
       reason: total === 0 ? "First call" : total < 10 ? `Day 1 · call ${nextAttempt} of 10` : total < 15 ? `Day 2 · call ${nextAttempt} of 15` : `Follow-up · call ${total - 14} of 15`,
       dueAt: due.toISOString(), nextAttempt, textPrompt: textStep !== null, textStep,
-      textAfterCall: (total === 2 && textStep === 1) || (total === 6 && textStep === 2) };
+      textAfterCall: (total === 3 && textStep === 1) || (total === 7 && textStep === 2) };
   } catch { return review("The lead-local call time could not be resolved."); }
 }
