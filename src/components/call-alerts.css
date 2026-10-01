@@ -1,0 +1,18 @@
+.ca-green-pulse{position:fixed;inset:0;z-index:2147483000;pointer-events:none;background:rgba(34,197,94,.3);box-shadow:inset 0 0 110px 25px rgba(22,163,74,.4);animation:ca-pulse 1.2s ease-out both}
+@keyframes ca-pulse{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
+.ca-dock,.ca-banner{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-sizing:border-box}
+.ca-dock{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:calc(18px + env(safe-area-inset-bottom));z-index:2147483001;display:flex;align-items:center;gap:4px;padding:5px;border:1px solid #d4e6dc;border-radius:999px;background:rgba(255,255,255,.97);color:#153d2c;box-shadow:0 4px 20px #112f2317;backdrop-filter:blur(12px);font-size:11px;line-height:1.2}
+.ca-dock a,.ca-dock button{font:inherit;letter-spacing:0;color:inherit;text-decoration:none;border:0;border-radius:999px;background:transparent;padding:9px 10px;white-space:nowrap;cursor:pointer;font-weight:600}
+.ca-status{display:flex;gap:7px;align-items:center}.ca-dock .ca-status-due{background:#eaf9ee;color:#12612f}
+.ca-live{height:6px;width:6px;flex-shrink:0;border-radius:50%;background:#22a557;box-shadow:0 0 0 3px #22a55714}.ca-live-offline{background:#d28d1e;box-shadow:0 0 0 3px #d28d1e14}
+.ca-dock .ca-sound{border-left:1px solid #e0ebe4;border-radius:0}.ca-dock .ca-test{color:#6b7f73}.ca-dock button:hover{background:#edf6f0}
+.ca-banner{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:2147483002;display:flex;align-items:center;gap:18px;width:calc(100% - 40px);max-width:730px;padding:22px 24px;background:#f1fff4;color:#123b25;border:1px solid #a6dfb7;border-radius:20px;box-shadow:0 18px 65px #103b2530,0 2px 8px #103b2510;animation:ca-arrive .28s ease-out both}
+@keyframes ca-arrive{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}
+.ca-banner-icon{display:grid;place-items:center;flex:none;width:46px;height:46px;border-radius:14px;color:#f1fff4;background:#167c42;box-shadow:0 5px 12px #167c421c}.ca-banner-icon svg{width:25px;height:25px}
+.ca-banner-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:5px}.ca-eyebrow{font-size:10px;font-weight:750;letter-spacing:1.2px;color:#328247}.ca-banner-copy strong{font-size:21px;line-height:1.15;letter-spacing:-.5px}.ca-banner-copy>span:last-child{font-size:12px;line-height:1.5;color:#49745a}
+.ca-open{flex:none;background:#147c40!important;color:#fff!important;text-decoration:none!important;font-size:12px;font-weight:700;border-radius:11px;padding:13px 16px}.ca-open:hover{background:#0f6232!important}.ca-open span{margin-left:8px}
+.ca-dismiss{position:absolute;right:7px;top:6px;padding:3px 8px;line-height:1;border:0;background:transparent;color:#49745a;font-size:23px;cursor:pointer}
+.ca-dock :focus-visible,.ca-banner :focus-visible{outline:3px solid #137c43;outline-offset:3px}
+@media(max-width:600px){.ca-dock{right:10px;bottom:calc(10px + env(safe-area-inset-bottom));max-width:calc(100% - 20px);font-size:10px}.ca-dock a,.ca-dock button{padding:8px 7px}.ca-banner{bottom:calc(65px + env(safe-area-inset-bottom));width:calc(100% - 24px);padding:19px 17px;gap:12px;border-radius:17px;flex-wrap:wrap}.ca-banner-copy{flex-basis:calc(100% - 60px)}.ca-banner-copy strong{font-size:19px}.ca-banner-icon{width:40px;height:40px}.ca-open{margin-left:52px;padding:11px 15px}}
+@media(prefers-reduced-motion:reduce){.ca-green-pulse{animation:none;opacity:.13;box-shadow:inset 0 0 0 5px #22a557}.ca-banner{animation:none}}
+@media print{.ca-dock,.ca-banner,.ca-green-pulse{display:none!important}}

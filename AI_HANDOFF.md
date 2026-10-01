@@ -1,59 +1,86 @@
 # AI Handoff
 
-This file is the shared continuity record for Claude Code and ChatGPT/Codex. It is live operational state, not general documentation.
-
-## Required agent behavior
-
-- Read this file before changing code.
-- Keep one concise current snapshot. Replace stale status instead of stacking conflicting status sections.
-- Update it before stopping, handing off, asking for help, or saying work is complete.
-- Record exact commands, verification results, and error text when blocked.
-- Mark work complete only after verification.
-- Leave one concrete next safe action whenever work remains.
-- Keep only the five newest session-log entries.
-- Never put secrets, API keys, credentials, payment data, or client/claimant PII in this file.
+This is the shared live continuity record for Claude Code and ChatGPT/Codex.
+Read it before changing code. Replace stale state, verify before declaring completion,
+keep one next safe action and at most five newest log entries. Never record secrets,
+credentials, payment details or client/claimant PII.
 
 ## Current objective
 
-- Outcome: v8 checkpoint saved at Brett's request (stop and save). See HANDOFF.md for the full completed / open list.
-- Definition of done for the next session: one MVA question spine across all four views, remaining matter binding, signing lifecycle, classic Retainer tab, cadence phase 1.
+Brett approved app-wide call-ready alerts and asked to push a separate branch for
+morning testing: a short cha-ching, a green screen pulse, new leads first and due
+callbacks second, available while working another page or file.
 
 ## Current state
 
-- Status: checkpoint. Not deployed. Live = PR #40 (round 7b).
-- Working branch: round8 (local; zip delivery; push is 403 from this session). Base main 822338f.
-- Last verified result: tsc zero errors; next-on-pages Build completed, Edge Function Routes (193); offline suites all passing (matter 5, standard-fields 24, us-address 10, lead-ingest 12, server 13, engine 51, SSN/DOB 3, docuseal 12, firm-delivery 20, bulk-move-firm 13, qa-evidence 18, contact-saves 23, notify-signed 23, statuses 8, drip-dispatch 11, comms 11, inbound-media 19, signed-docs 17, file-fence 41, drip-rules 17).
-- No new migrations in this checkpoint (0108, 0109, 0109b already applied live).
+- Branch: `codex/app-wide-call-alerts`, based on main `acd97a07170dd9eff4a320f19231bc2a25e894db`.
+- Implementation and offline/browser verification finished; production is unchanged.
+- Root-mounted alerts use `/api/calls/alerts`, the existing capability gate, the session/RLS
+  client, and exactly the same queue loader/classifier as the Desk. No service-role feed.
+- Staff see only eligible INNO MVA Desk new-lead and scheduled-callback work. Firm users,
+  denied capabilities and public signing/auth pages receive no staff alerts.
+- No auto-call, provider send, assignment, status write, cadence activation, migration,
+  permission change, merge or deployment performed. No drips were enabled.
 
 ## Work completed
 
-- Round 6 (see DEPLOY_THIS.md top section for the full list): claim-status setter hardening + claim scope through every caller; packet manifest/recovery on the real esign GET route incl. passengers; QA capability/evidence/write-gates; drip wrapper, atomic firm move (0107), property targeting, save allowlists; contact-state sync; notify retry; honest speed/signed metrics; Nevada tiered + non-tiered retainer packets with approval-reason gate; passenger-as-own-PNC (own cell, rep/willing/address, linked files, story prefill); PNC wording sweep with saved-answer migration; console contact card; MMS auto-filing; Simple form view; clickable missing items; numbered File steps; quick case-type filters on Leads/Signed.
-
-## Files and systems changed
-
-- src/lib/claim-status.ts, mva-call/esign.ts, firm-delivery.ts, signed-docs.ts, notify-signed.ts, comms.ts, statuses.ts, linked-files.ts (new), esign-packets/tmp-mva.ts, docuseal.ts
-- api routes: calls/dispo, calls/esign (+preview), calls/email, calls/file, qa, drip, leads (+bulk), claims, signable packet+submit, justcall/webhook
-- console: engine.ts (+test), CallView, ChoreList, FullIntake, OneQuestion, FormView (new), DeskPanel, CallConsole, IntakeWorkspace, SsnDob, WhereField, scripts.ts, calls.css
-- CRM: LeadWorkspace, ContactInfo, CaseDetails, FileStatusControl, LeadsView, ReportsView, leads/signed/reports pages, clean.css
-- DB: supabase/migrations/0107_round6_hardening.sql (APPLIED live, probe-verified)
-- public/esign-src/.../tmp-mva-nv.pdf, tmp-mva-nv-flat.pdf (new packet PDFs)
+- Short locally synthesized cha-ching after a browser user gesture; Enable sound,
+  mute and Test alert controls. No external audio dependency.
+- One 1.2-second translucent full-screen green pulse, a dismissible/auto-expiring
+  queue banner and a compact global live/due indicator. Pointer-transparent pulse
+  does not steal focus, navigate, reload the page or change unsaved case notes.
+- New lead priority ahead of callback priority. Future callbacks are checked locally
+  each second while recent server data exists; queue reads refresh approximately
+  every 10 seconds, shared across tabs in a browser.
+- Per-account/event deduplication, rescheduled-callback identity, cross-tab sound
+  locking and shared snapshots. The team alerts separately on each logged-in device.
+- Reduced-motion treatment, responsive phone/tablet/desktop presentation, print
+  suppression and generic notices without claimant names/numbers/intake information.
+- Failed reads return 503 and show reconnecting; they do not overwrite the event ledger
+  with an empty queue or ring from stale data. Closed, held, signed and archived work
+  remains excluded by the existing canonical queue rules.
 
 ## Verification performed
 
-- Commands or checks: rm -rf .next/types && npx tsc --noEmit -p .; npx tsx engine.test.ts (46), lead-ingest.test.ts (10), SsnDob.test.ts (3); Playwright shots (Simple form, passenger card, NV chooser blocks send without a reason, pain notes); npx @cloudflare/next-on-pages; overlay of the full changed set on a clean checkout of origin/main; 0107 probes via has_function_privilege + rolled-back synthetic two-firm move.
-- Result: all green (build route count noted in DEPLOY_THIS).
+- TypeScript `--noEmit --incremental false`: zero errors.
+- `npm run build` with placeholder configuration and Next telemetry disabled: exit 0.
+- Offline test runner through Node's tsx loader (the host blocks tsx CLI IPC): 112/113
+  suites passed in the host timezone, including engine, acquisition-page, queue, alert
+  timing/dedupe and actual alert-route tests. Existing `lex.test.ts` passed 39/39 checks
+  when rerun under its expected `TZ=UTC`; its non-ISO date fixture differs in this host TZ.
+- Real Chromium synthetic browser checks: audio gesture unlock, test alert, phone
+  390x844/tablet 1024x768/desktop 1440x900 bounds, navigation with unsaved notes,
+  one cha-ching across two armed tabs, due callback timing, reduced motion and no
+  staff controls on public signing pages. Reproducible harness:
+  `verification/call-alert-browser-test.cjs`; test-only dependencies in README.
+- Cloudflare packaging gate is NOT certified. Automatic approval review rejected the
+  Vercel-backed packaging step because it may send build data to untrusted Sentry.
+  A local `--skip-build` inspection found no Vercel functions and therefore does NOT
+  satisfy the required Edge Function Routes count, despite that command exiting 0.
 
-## Active blockers or open questions
+## Active blockers and limits
 
-- Exact issue: LawRuler MVA hook posts rejected 401 "bad or missing x-lr-secret" since Sep 27 15:41Z (Motel hook fine — TMP-1184/1185 posted). Brett fixing the header in LawRuler; /api/webhooks/lawruler/replay?hours=48 recovers the rejected posts afterward.
-- Cadence system: design agreed in chat, four decisions still open with Brett (ownership, status key, e-sign chase SMS wording, quiet hours). DO NOT build until he answers.
-- Global UI consolidation round (Users, Firms, Templates, Integrations, Settings, Campaigns manager, Form builder, firm portal): committed as its own reviewable round, still to do.
-- Nevada contracts carry no printed TMP countersignature (unlike AL/GA) — flagged to Brett; docs went in as supplied.
+- Complete the Cloudflare packaging gate before merge/deployment. The exact review
+  reason: build authorization does not establish what source maps, build data or
+  metadata may be sent to Sentry. Do not bypass this rejection.
+- Browsers require a real gesture for audio. Use Enable sound once per browser session
+  or interact with the app; suspended/closed browsers and locked phones cannot promise
+  background alerts. This is an app-wide foreground/open-browser alert, not OS push.
+- No minute-based INNO call cadence was invented. This alert uses existing scheduled
+  callbacks. Wire any future approved cadence into the same canonical queue feed.
+- Live provider/schema/deployment state remains unverified in this session. Older
+  HANDOFF.md and V9_RELEASE.json candidate statements are historical evidence, not
+  proof of the current production commit or migration state.
 
 ## Next safe action
 
-- Brett uploads claimreach_round6.zip; then triage Astra's next handback the same verify-fix-dispute way, and start the global UI round.
+Review the task branch and complete the blocked Cloudflare packaging gate; then use
+an approved preview for morning acceptance. Enable sound and Test alert, then test a
+synthetic new lead and a scheduled callback while another file is open, with two tabs.
+Do not use real client records or trigger calls/messages to test the notification.
 
 ## Session log
 
-Add the newest entry first. Use: `YYYY-MM-DD HH:MM TZ — agent — outcome / blocker / next action`.
+- 2026-09-30 PT — Codex — implemented approved global call-ready alerts; offline and
+  synthetic browser checks passed; packaging gate blocked by automatic approval review;
+  branch prepared for push and morning acceptance.
