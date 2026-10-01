@@ -11,6 +11,7 @@ import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterE
 import { recordAudit } from "@/lib/audit";
 import { fireEvent } from "@/lib/webhook-deliver";
 import { sendEmail } from "@/lib/email";
+import { officeDateTime } from "@/lib/office-clock";
 
 export const runtime = "edge";
 
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
     await admin.from("contact_points").update({ status: "opted_out" }).eq("lead_id", lead.id).in("kind", ["mobile", "landline"]);
   }
 
-  const when = d.callbackAt ? new Date(d.callbackAt).toLocaleString("en-US", { timeZone: "America/Chicago", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) + " CT" : "";
+  const when = d.callbackAt ? officeDateTime(d.callbackAt) : "";
   await recordAudit({
     firm_id: lead.firm_id, lead_id: lead.id, actor: me.id, actor_name: me.name ?? "Agent", category: "call",
     description: `Call ended: ${DISPO_LABEL[d.dispo]}${labels.length ? ` (${labels.join(", ")})` : ""}${when ? `, call back ${when}` : ""}.`,

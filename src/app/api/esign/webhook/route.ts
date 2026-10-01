@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { getEsignAccount, getSignwellDocument } from "@/lib/signwell";
 import { fireEvent } from "@/lib/webhook-deliver";
+import { officeDateISO } from "@/lib/office-clock";
 export const runtime = "edge";
 
 // Legacy SignWell webhook (historical retainers only; new signings are DocuSeal).
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
     if (patch.status === "signed" && ret.lead_id && ret.status !== "signed") {
       // Idempotent: a duplicate completed callback finds the retainer already
       // signed and changes nothing downstream (Astra review, Sep 27).
-      await admin.from("leads").update({ status: "signed", esign_date: officeDate() }).eq("id", ret.lead_id);
+      await admin.from("leads").update({ status: "signed", esign_date: officeDateISO() }).eq("id", ret.lead_id);
       const { data: lead } = await admin.from("leads").select("firm_id, lead_no, first_name, last_name, phone, email, case_type").eq("id", ret.lead_id).maybeSingle();
       if (lead?.firm_id) await fireEvent(lead.firm_id, "retainer.signed", { lead_id: ret.lead_id, retainer_id: ret.id, completed_pdf_url: patch.completed_pdf_url, ...lead });
       try {
@@ -68,11 +69,4 @@ export async function POST(req: NextRequest) {
     try { await admin.from("webhook_events").insert({ direction: "inbound", event_type: "signwell.error", status: "failed", error: String(e?.message ?? e) }); } catch {}
     return NextResponse.json({ error: "handler failed" }, { status: 500 });
   }
-}
-
-// The office's calendar date (America/Chicago), not the UTC date: a signature
-// at 6 PM in Vegas is "today", not tomorrow.
-function officeDate(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  return parts; // en-CA formats as YYYY-MM-DD
 }

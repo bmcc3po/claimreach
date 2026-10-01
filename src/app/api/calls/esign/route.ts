@@ -14,6 +14,7 @@ import { ensureClientSignedSnapshot } from "@/lib/mva-call/client-signed";
 import { readIdentityForSigning } from "@/lib/mva-call/identity";
 import { UNSIGNED_AGREEMENT_STATUSES, agreementSendStatus } from "@/lib/mva-call/replacement";
 import { bindSendAttempt, finalizeSendAttempt, holdSendAttempt, markSendPending, readPendingSendAttempt, rejectSendAttempt, reserveSendAttempt, safeSendAttempt, SEND_HELD_MESSAGE } from "@/lib/mva-call/send-attempt";
+import { officeDateUS } from "@/lib/office-clock";
 
 export const runtime = "edge";
 
@@ -59,10 +60,11 @@ async function send(req: NextRequest) {
   const paxKey = paxIndex == null ? null
     : (/^[A-Za-z0-9_-]{1,40}$/.test(String(b?.pax_key || "")) ? String(b.pax_key) : String(paxIndex));
   const paxMinor = b?.pax_minor === true;
-  const today = TODAY_RE.test(String(b?.today || "")) ? String(b.today) : new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "2-digit", day: "2-digit", year: "numeric" }).format(new Date());
+  // The signing date is the Pacific office day, independent of the agent's
+  // device clock. The browser's preview uses this same calendar rule.
+  const today = officeDateUS();
   const doi = TODAY_RE.test(String(b?.doi || "")) ? String(b.doi) : null;
   if (!leadId || !signer) return NextResponse.json({ error: "Add the signer's full name." }, { status: 400 });
-  if (!today) return NextResponse.json({ error: "Your phone's date looks off. Refresh and try again." }, { status: 400 });
   if (via === "Email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Add the PNC's email to send it by email." }, { status: 400 });
 
   const context = await resolveSigningMatter(sb, leadId, { claimId: b?.claim_id || null, callId: b?.call_id || null });

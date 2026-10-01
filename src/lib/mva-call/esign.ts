@@ -11,7 +11,8 @@ import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
 import { notifySigned, signedNoticeDue } from "@/lib/notify-signed";
 import { resolveSigningMatter, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "./signing-matter";
 import { ensureClientSignedSnapshot } from "./client-signed";
-import { pacificDay } from "@/lib/packet-worklist";
+import { officeDateISO } from "@/lib/office-clock";
+export { officeDateISO } from "@/lib/office-clock";
 
 // Persisted with the signature transition so a crash or failed claim write
 // cannot leave a signed agreement permanently disconnected from its matter.
@@ -63,12 +64,6 @@ export async function recoverSignedTransition(admin: any, row: any, deps: {
   const { error } = await admin.from("esign_submissions").update({ error: remaining })
     .eq("id", row.id).eq("error", row.error).is("voided_at", null);
   return !error;
-}
-
-// The Pacific staff calendar date, never the UTC date. Keep the full signed_at
-// timestamp as evidence; this is only the lead's derived display date.
-export function officeDateISO(at?: string): string {
-  return pacificDay(at || new Date().toISOString());
 }
 
 /** Which packet set a campaign signs with. Only TMP MVA has one today. */
