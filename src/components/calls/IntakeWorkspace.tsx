@@ -382,7 +382,7 @@ function sayNow(v: any): { k: string; lines: string[]; cue?: string } {
   if (v.isSend && v.sendReady) return { k: "Say", lines: [SEND_LINE] };
   if (v.isSend && v.notSigned) return { k: STAY.label, lines: [STAY.line] };
   if ((v.isSend || v.isFile) && v.signed) return { k: SIGNED.label, lines: [SIGNED.line], cue: SIGNED.cue };
-  if (v.isClose) return { k: "Say, then hang up", lines: closeLines(first, v.firmSpoken).slice(0, 2), cue: CLOSE_CUE };
+  if (v.isClose) return { k: "Say, then hang up", lines: closeLines(first, v.firmSpoken), cue: CLOSE_CUE };
   const onePage = v.fullView || v.choreView || v.formView || v.stepView;
   if (!onePage && v.isOpen) return open;
   if (v.guidedQuestions && fi.guided?.q) return { k: "Ask", lines: [fi.guided.q.ask || fi.guided.q.label], cue: fi.guided.q.cue };
