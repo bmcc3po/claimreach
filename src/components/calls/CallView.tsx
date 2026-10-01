@@ -537,6 +537,8 @@ That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passeng
 <div className="cc-sheet-h"><span className="cc-card-h">Text {v.callerFirst}</span><button className="cc-x" onClick={v.closeText} aria-label="Close texting">Close</button></div>
 <div className="cc-sheet-b" style={{gap: "8px"}}>
 <div className="cc-cue" style={{margin: "0 4px 6px"}}>From {v.textFrom} through JustCall. It lands in the same thread in the JustCall app, and every text saves to the file.</div>
+{!!v.sharedCall && <div className="cc-stop" role="status">{v.sharedCall.agent} {v.sharedCall.state === "connected" ? "is talking to this client" : v.sharedCall.state === "ringing" ? "is calling this client" : "is starting a call to this client"}.</div>}
+{!!v.callGuardError && <div className="cc-cue cc-red" role="alert">{v.callGuardError}</div>}
 {!!(v.phoneRows && v.phoneRows.length) && (<>
 <div className="cc-sec-h" style={{paddingTop: "4px"}}>Call</div>
 <div className="cc-grp">

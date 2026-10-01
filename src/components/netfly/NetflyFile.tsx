@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { NETFLY_FIELDS, NETFLY_SECTIONS, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField } from "@/lib/netfly-ontake";
 import { agreementChoice } from "@/lib/mva-call/agreement-choice";
+import { reserveClientCall, useCallPresence } from "@/components/calls/useCallPresence";
 import "./netfly.css";
 import "./netfly-workspace.css";
 
@@ -23,6 +24,11 @@ const fieldById = new Map(NETFLY_FIELDS.map((field) => [field.id, field]));
 const emptyCallClose: NetflyCallClose = { assessment: "" as NetflyCallClose["assessment"], assessment_reason: "", transfer_destination: "", transfer_outcome: "" as NetflyCallClose["transfer_outcome"], transfer_note: "", client_notified_48_business_hours: false };
 export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [detail, setDetail] = useState<Detail | null>(null);
+  const { presence: sharedCalls, error: sharedCallError } = useCallPresence(detail?.file?.id ? [detail.file.id] : []);
+  const [callReady, setCallReady] = useState(false);
+  const [callCheckBusy, setCallCheckBusy] = useState(false);
+  const [callCheckError, setCallCheckError] = useState("");
+  useEffect(() => { if (!callReady) return; const timer = setTimeout(() => setCallReady(false), 100000); return () => clearTimeout(timer); }, [callReady]);
   const [section, setSection] = useState(0);
   const [viewMode, setViewMode] = useState<"step" | "all" | "simple">("all");
   const [activeQuestion, setActiveQuestion] = useState<string>(VERIFY_STEPS[0].fields[0]);
@@ -230,7 +236,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         {commandTab === "scripts" && <div className="nf-command-content"><h2>Call help</h2>
     <details className="nf-history"><summary>Caller objections / responses from the supplied script</summary><p><strong>Who is this?</strong> Recognize that they may have spoken with several people; explain the firm's follow-up role; return to the question where they paused.</p><p><strong>I gave this already.</strong> Acknowledge it and explain that the read-back catches incorrect names and numbers; return to that question.</p><p><strong>I only wanted the report / did not know I signed.</strong> Pause and bring in a supervisor if they dispute representation or want out. Record their concern without assuming consent.</p></details>
         </div>}
-        {commandTab === "phone" && <div className="nf-command-content"><h2>Phone</h2><p className="nf-muted">Call the client or use your JustCall dialer. Record the case-manager introduction outcome in the last call step.</p>{detail.file.phone && <a className="nf-primary" href={`tel:${detail.file.phone}`}>Call {detail.file.claimant_name}</a>}{callClose.transfer_destination && <p><strong>Case manager destination:</strong> {callClose.transfer_destination}</p>}</div>}
+        {commandTab === "phone" && <div className="nf-command-content"><h2>Phone</h2><p className="nf-muted">Check that nobody else is speaking with the client before calling. Record the case-manager introduction outcome in the last call step.</p>{sharedCalls[detail.file.id] && <p className="nf-alert" role="status">{sharedCalls[detail.file.id].agent} {sharedCalls[detail.file.id].state === "connected" ? "is talking to this client" : "is calling this client"}.</p>}{sharedCallError && <p className="nf-error">{sharedCallError}</p>}{callCheckError && <p className="nf-error" role="alert">{callCheckError}</p>}{detail.file.phone && (callReady ? <a className="nf-primary" href={`tel:${detail.file.phone}`} onClick={() => setCallReady(false)}>Call {detail.file.claimant_name}</a> : <button type="button" className="nf-primary" disabled={callCheckBusy} onClick={() => { setCallCheckBusy(true); setCallCheckError(""); void reserveClientCall(detail.file.id, detail.file.phone).then(() => setCallReady(true)).catch((error) => setCallCheckError(error?.message || "Could not check the client line.")).finally(() => setCallCheckBusy(false)); }}>{callCheckBusy ? "Checking line…" : "Check line to call"}</button>)}{callClose.transfer_destination && <p><strong>Case manager destination:</strong> {callClose.transfer_destination}</p>}</div>}
       </aside>
     </div>
   </main>;

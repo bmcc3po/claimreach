@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ingestComm, normPhone, providerCallResult } from "@/lib/comms";
 import { isSmsRevocation } from "@/lib/sms-opt-out";
+import { presenceEvent, recordProviderPresence } from "@/lib/call-presence";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { recordAudit } from "@/lib/audit";
 import {
@@ -116,6 +117,11 @@ export async function POST(req: NextRequest) {
 
     // ---- Sales Dialer calls (sd.*) ----
     if (type.startsWith("sd.")) {
+      if (presenceEvent(type) && type !== "sd.call_completed") {
+        await recordProviderPresence(supabaseAdmin(), type, d);
+        return NextResponse.json({ ok: true, kind: "sd_presence" });
+      }
+      if (type === "sd.call_completed") await recordProviderPresence(supabaseAdmin(), type, d);
       const ci = d.call_info || {};
       const ai = d.justcall_ai || {};
       // A Sales Dialer update may contain only a SID and changed notes. If it
@@ -146,11 +152,16 @@ export async function POST(req: NextRequest) {
 
     // ---- JustCall calls + voicemail + AI report (call.* / jc.call_ai_generated) ----
     if (type.startsWith("call.") || type === "jc.call_ai_generated") {
+      if (presenceEvent(type) && type !== "call.completed" && type !== "call.voicemail" && type !== "call.missed") {
+        await recordProviderPresence(supabaseAdmin(), type, d);
+        return NextResponse.json({ ok: true, kind: "call_presence" });
+      }
+      if (["call.completed", "call.voicemail", "call.missed"].includes(type)) await recordProviderPresence(supabaseAdmin(), type, d);
       const ci = d.call_info || {};
       const cd = d.call_duration || {};
       const ai = d.justcall_ai || {};
       if (!d.contact_number || !ci.direction || !d.call_date || !d.call_time || !(d.call_sid || d.id)) {
-        if (type !== "call.completed" && type !== "call.voicemail")
+        if (type !== "call.completed" && type !== "call.voicemail" && type !== "call.missed")
           return NextResponse.json({ ok: true, kind: "call_update_deferred" });
         return NextResponse.json({ error: "call identity or time missing" }, { status: 500 });
       }
@@ -161,7 +172,7 @@ export async function POST(req: NextRequest) {
         channel: isVoicemail ? "voicemail" : "call",
         direction,
         call_kind: direction,
-        provider_call_result: isVoicemail ? "voicemail" : providerCallResult(ci.type),
+        provider_call_result: isVoicemail ? "voicemail" : type === "call.missed" ? "unanswered" : providerCallResult(ci.type),
         phone: d.contact_number,
         duration_sec: Number(cd.total_duration ?? cd.conversation_time ?? 0) || undefined,
         recording_url: ci.recording || undefined,

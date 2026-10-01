@@ -10,6 +10,7 @@ import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./Desk
 import CaseSummary from "./CaseSummary";
 import { WsHelper } from "./IntakeWorkspace";
 import { popOutDialer } from "./JustCallDialer";
+import { reserveClientCall, useCallPresence } from "./useCallPresence";
 import { stateCodeOf } from "@/lib/mva-call/state";
 import { agreementChoice } from "@/lib/mva-call/agreement-choice";
 import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
@@ -78,6 +79,8 @@ export default function CallConsole({ init }: { init: ConsoleInit }) {
 
 function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const router = useRouter();
+  const { presence: sharedCalls, error: sharedCallError } = useCallPresence([init.leadId]);
+  const [callGuardError, setCallGuardError] = useState("");
   const [, bump] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const callId = useRef<string | null>(init.callId);
@@ -829,7 +832,22 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   ];
   // Phone: the JustCall section at the top of the text sheet.
   view.phoneRows = phones;
-  view.callOut = (n: string) => popOutDialer(n);
+  const reserveDial = async (n: string) => {
+    setCallGuardError("");
+    if (!(await flushSave())) throw new Error("The current phone could not be saved. Save the file before dialing.");
+    await reserveClientCall(init.leadId, n);
+  };
+  view.callOut = (n: string) => {
+    // Open on the direct click: browsers otherwise block a window opened
+    // after the asynchronous server reservation returns.
+    const opened = window.open("about:blank", "jc-dialer", "width=385,height=665,location=no");
+    if (!opened) { setCallGuardError("Allow the JustCall pop-up, then try again."); return; }
+    void reserveDial(n).then(() => popOutDialer(n, opened)).catch((error) => {
+      opened.close(); setCallGuardError(error?.message || "Could not check this call. Do not dial yet.");
+    });
+  };
+  view.callGuardError = callGuardError;
+  view.sharedCall = sharedCalls[init.leadId];
   view.copyNum = (n: string) => { try { navigator.clipboard.writeText(n); } catch { /* copy by hand */ } };
 
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
@@ -840,6 +858,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     caseSummary={<CaseSummary answerSnapshot={snapshot} claimantName={engine.props.callerName || ""} saveBad={!!view.saveBad} />}
     preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
     focusLines={focusLines} phones={phones} leadId={init.leadId} claimId={init.claimId} onDialState={setDialState}
+    sharedCall={sharedCalls[init.leadId]} sharedCallError={sharedCallError} onReserveDial={reserveDial}
     story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />;
   return (
     <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ws === "ipad" ? " cc-ipad-on" : ""}${sideOn && commandCollapsed ? " cc-command-collapsed" : ""}`}>

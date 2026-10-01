@@ -24,8 +24,9 @@ export function e164(raw: string): string {
 }
 
 /** The JustCall dialer in its own window, with the number filled in. */
-export function popOutDialer(number?: string) {
+export function popOutDialer(number?: string, opened?: Window | null) {
   const url = number ? `${JC_DIALER}?numbers=${encodeURIComponent(e164(number))}` : JC_DIALER;
+  if (opened) { opened.location.href = url; return; }
   window.open(url, "jc-dialer", "width=385,height=665,location=no");
 }
 

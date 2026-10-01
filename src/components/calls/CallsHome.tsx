@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { APP_KINDS } from "@/lib/mva-call/links";
 import { DESK_TABS, type DeskTab, type DeskQueues, type DeskRow } from "@/lib/mva-call/desk-types";
+import { useCallPresence } from "./useCallPresence";
 
 export type HomeRow = DeskRow;
 export interface HomeData {
@@ -112,6 +113,8 @@ export default function CallsHome({ data }: { data: HomeData }) {
 
   const lists: Record<Tab, HomeRow[]> = { ...data.queues, texts: data.texts };
   const rows = lists[tab];
+  const visibleIds = (results !== null ? results : rows).map((r: any) => String(r.id || ""));
+  const { presence: liveCalls, error: liveError } = useCallPresence(visibleIds);
   const dueNow = useMemo(() => data.queues.due.length + data.queues.callbacks.filter((r) => r.due && Date.parse(r.due) <= now).length, [data.queues.due, data.queues.callbacks, now]);
 
   async function startCall() {
@@ -183,6 +186,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
         </nav>
       )}
       <main className="cc-main" style={{ gap: 12 }}>
+        {liveError && <div className="cc-cue cc-red" role="status">{liveError}</div>}
         {results === null && tab === "due" && <div className="cc-due-head">CALL NOW <span>{rows.length} due</span></div>}
         {results === null && tab === "wait" && <div className="cc-cue" style={{ marginTop: 0 }}>Not yet due. The next call time appears on each file.</div>}
         {results === null && tab === "review" && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>These files need a manager or call-history check before another scheduled attempt. They remain visible here.</div>}
@@ -213,7 +217,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
               <div className="cc-grp">
                 {results.map((r) => (
                   <a key={r.id} className="cc-lrow" href={`/app/${r.id}`}>
-                    <span className="cc-lrow-main"><span className="cc-lrow-n">{r.claimant_name || "No name yet"}</span><span className="cc-lrow-s">{[fmtPhone(r.phone), r.lead_no, r.campaign].filter(Boolean).join("  ")}</span><span className="cc-lrow-s">Calls: {r.call_count == null ? "unverified" : r.call_count} · Last call: {r.last_call_at ? clock(r.last_call_at) : "none verified"}</span></span>
+                    <span className="cc-lrow-main"><span className="cc-lrow-n">{r.claimant_name || "No name yet"}</span><span className="cc-lrow-s">{[fmtPhone(r.phone), r.lead_no, r.campaign].filter(Boolean).join("  ")}</span>{liveCalls[r.id] && <span className="cc-lrow-s cc-live-call">{liveCalls[r.id].agent} {liveCalls[r.id].state === "connected" ? "is talking to this client" : liveCalls[r.id].state === "ringing" ? "is calling this client" : "is starting a call"}</span>}<span className="cc-lrow-s">Calls: {r.call_count == null ? "unverified" : r.call_count} · Last call: {r.last_call_at ? clock(r.last_call_at) : "none verified"}</span></span>
                     <span className="cc-lrow-t">{r.archived_at ? "Archived" : statusText(r.status)}</span>
                   </a>
                 ))}
@@ -234,6 +238,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
                   <span className="cc-lrow-main">
                     <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}{r.outreach?.badge === "new" && <span className="cc-dial-badge cc-new-badge">New</span>}{r.outreach?.overdue && <span className="cc-dial-badge cc-overdue-badge">Overdue</span>}</span>
                     <span className="cc-lrow-s">{[r.name ? fmtPhone(r.phone) : "", r.sub].filter(Boolean).join("  ")}</span>
+                    {liveCalls[r.id] && <span className="cc-lrow-s cc-live-call">{liveCalls[r.id].agent} {liveCalls[r.id].state === "connected" ? "is talking to this client" : liveCalls[r.id].state === "ringing" ? "is calling this client" : "is starting a call"}</span>}
                     {tab !== "texts" && <span className="cc-lrow-s">{`Calls: ${r.callCount == null ? "unverified" : r.callCount} · Last call: ${r.lastCallAt ? clock(r.lastCallAt) : "none verified"}`}</span>}
                     {r.outreach && <span className={`cc-lrow-s${r.outreach.stage === "review" ? " cc-red" : ""}`}>{r.outreach.reason}{r.outreach.dueAt ? ` · Due ${leadClock(r.outreach.dueAt, r.outreach.zone)} (client time)` : ""}</span>}
                     {r.outreach?.textPrompt && <span className="cc-lrow-s cc-text-reminder">{r.outreach.textAfterCall ? `After call #${r.outreach.nextAttempt}` : `Text step ${r.outreach.textStep} is due`}: text only with verified permission and no opt-out. Suggested: “Hi {String(r.name || "there").split(" ")[0]}, this is the Turnbull Moak & Pendergrass intake team. Please call us when convenient. Reply STOP to opt out.”</span>}

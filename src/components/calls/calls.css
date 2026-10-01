@@ -210,6 +210,7 @@ a.cc-menu-b{text-decoration:none;color:#16324F;font-weight:500}
 .cc-lrow-main{display:flex;flex-direction:column;gap:2px;min-width:0}
 .cc-lrow-n{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cc-lrow-s{font-size:14px;color:#6D6D72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-live-call{color:#9A3412;font-weight:700;white-space:normal}
 .cc-lrow-t{font-size:13px;color:#8E8E93;text-align:right;white-space:nowrap;line-height:1.35;flex-shrink:0}
 .cc-lrow-t b{font-weight:600;color:#16324F}
 .cc-lrow-t.cc-late{color:#C0392F;font-weight:600}

@@ -9,6 +9,7 @@ import FileStatusControl from "@/components/FileStatusControl";
 import { SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
+import type { LiveCall } from "./useCallPresence";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
 import { splitUsAddress, joinUsAddress, mailColumnsFrom } from "@/lib/us-address";
 
@@ -24,12 +25,15 @@ export interface PreviewInfo {
 
 const PHASE_LABEL: Record<string, string> = { open: "Open", story: "Story", body: "Injury", car: "Car", money: "Money", send: "Send", file: "File", close: "Close" };
 
-export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, caseSummary, onDialState, onCollapse, panelId }: {
+export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, focusLines, phones, leadId, claimId, story, summary, caseSummary, onDialState, onCollapse, panelId, sharedCall, sharedCallError, onReserveDial }: {
   v: any;
   onCollapse?: () => void;
   panelId?: string;
   /** The JustCall dialer in the Phone tab: on a call, ringing, ready. */
   onDialState?: (s: DialerState) => void;
+  sharedCall?: LiveCall;
+  sharedCallError?: string;
+  onReserveDial: (phone: string) => Promise<void>;
   /** The Full Intake workspace: next best action, what's missing, the live summary. */
   summary?: ReactNode;
   /** The current intake facts, displayed once in the case file. */
@@ -49,6 +53,8 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   // The dialer stays loaded once opened, so switching tabs never drops a call.
   const [phoneOn, setPhoneOn] = useState(false);
   const [dialState, setDialState] = useState<DialerState>("loading");
+  const [dialGuardError, setDialGuardError] = useState("");
+  const [dialBusy, setDialBusy] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [correctionFor, setCorrectionFor] = useState<string | null>(null);
   // File contents unmount when another tool opens. Keep unsaved notes above
@@ -110,6 +116,9 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
       {tab === "tools" && <Tools v={v} story={story} />}
       {phoneOn && (
         <div className="cc-side-b cc-side-phone" hidden={tab !== "phone"}>
+          {sharedCall && <div className="cc-stop" role="status">{sharedCall.agent} {sharedCall.state === "connected" ? "is talking to this client" : sharedCall.state === "ringing" ? "is calling this client" : "is starting a call to this client"}.</div>}
+          {sharedCallError && <div className="cc-cue cc-red" role="status">{sharedCallError}</div>}
+          {dialGuardError && <div className="cc-cue cc-red" role="alert">{dialGuardError}</div>}
           <div className="cc-grp">
             {phones.map((p) => (
               <div key={p.kind + p.number} className="cc-chk">
@@ -117,7 +126,12 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
                 <span className="cc-chk-v">{p.pretty}</span>
                 <span className="cc-phone-acts">
                   {p.kind === "caller"
-                    ? <button className="cc-chip cc-sm cc-go-chip" onClick={() => dialer.current?.dial(p.number)}>Call</button>
+                    ? <button className="cc-chip cc-sm cc-go-chip" disabled={dialBusy} onClick={() => {
+                      setDialBusy(true); setDialGuardError("");
+                      void onReserveDial(p.number).then(() => dialer.current?.dial(p.number)).catch((error) => {
+                        setDialGuardError(error?.message || "Could not check this call. Do not dial yet.");
+                      }).finally(() => setDialBusy(false));
+                    }}>{dialBusy ? "Checking" : "Call"}</button>
                     : <button className="cc-chip cc-sm" onClick={() => { try { navigator.clipboard.writeText(p.number); } catch { /* copy by hand */ } }}>Copy</button>}
                 </span>
               </div>
@@ -132,7 +146,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
           </div>
           <JustCallDialer ref={dialer} onState={(st) => { setDialState(st); onDialState?.(st); }} />
           <div className="cc-ret-bar">
-            <button className="cc-chip cc-sm" onClick={() => popOutDialer(phones.find((p) => p.kind === "caller")?.number)}>Pop out</button>
+            <button className="cc-chip cc-sm" onClick={() => popOutDialer()}>Open separate dialer</button>
             <span className="cc-cue" style={{ marginTop: 0 }}>Leaving this page ends a call in this box. Pop it out for a long call or a 3-way.</span>
           </div>
         </div>
