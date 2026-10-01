@@ -40,7 +40,7 @@ export function validateNetflyCallClose(value: NetflyCallClose): string | null {
 // this extraction display-only; the agent explicitly records any confirmed
 // or corrected value in the separate fields below.
 export const NETFLY_HANDOFF_LABELS = [
-  "Client/Driver", "Accident Date", "Location", "Case #", "Passengers",
+  "Client/Driver", "Client Phone", "Client Email", "Accident Date", "Location", "Case #", "Passengers",
   "Airbags", "Accident Summary", "Insurance", "Injuries & Treatment",
   "Representation", "Next Steps",
 ] as const;
@@ -64,6 +64,21 @@ export function parseNetflyHandoff(note: string): { label: string; value: string
     }
   }
   return NETFLY_HANDOFF_LABELS.filter((label) => values.has(label)).map((label) => ({ label, value: values.get(label)! }));
+}
+
+// The handoff is read back, not asked again. Keep missing facts in the call
+// path and leave the long-form catalog available only for corrections.
+export function netflyMissingHandoffQuestions(rows: { label: string; value: string }[]): string[] {
+  const has = (label: string) => rows.some((row) => row.label === label && row.value.trim().length > 0);
+  const result: string[] = [];
+  if (!has("Accident Date")) result.push("accident_date");
+  if (!has("Location")) result.push("accident_city", "accident_state", "road");
+  if (!has("Accident Summary")) result.push("incident_story", "fault");
+  if (!has("Case #")) result.push("police_report");
+  if (!has("Passengers")) result.push("passengers", "passenger_details");
+  if (!has("Injuries & Treatment")) result.push("treated_injuries");
+  if (!has("Representation")) result.push("other_lawyer_signed");
+  return result;
 }
 
 export type NetflyField = {

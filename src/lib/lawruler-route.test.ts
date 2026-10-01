@@ -119,6 +119,19 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     assert.equal(h.database.tables.case_documents.length, 1);
     assert.equal(h.database.tables.claims[0].answers.netfly_secondary.handoffs.length, 1);
   });
+  await t('NETFLY transfer can arrive before the live transfer supplies a callback number', async () => {
+    const h = harness('');
+    Object.assign(h.database.tables.campaigns[0], { name: 'NETFLY ONTAKE', path: 'secondary', esign_required: false });
+    h.database.tables.leads[0].external_id = 'other-source';
+    const form = new FormData();
+    form.set('LeadID', '264972'); form.set('CaseType', 'NETFLY ONTAKE');
+    form.set('ClientName', 'Synthetic Person');
+    form.set('NetflyHandoffNote', 'Client/Driver: Synthetic Person\nAccident Date: 09/04/2026\nAccident Summary: Rear-ended while stopped.');
+    form.set('retainer', new Blob([`%PDF-1.4\n${'synthetic evidence '.repeat(8)}\n%%EOF`], { type: 'application/pdf' }), 'signed.pdf');
+    await h.POST(new Request('https://synthetic.invalid/api/webhooks/lawruler', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form }));
+    assert.equal(h.ingests(), 1, 'a missing client phone or email must not block a signed transfer with exact LawRuler identity');
+    assert.equal(h.ingestOptions[0].holdOutreach, true);
+  });
   await t('conflicting NETFLY and Motel campaign markers cannot cross-route a transfer', async () => {
     const h = harness('');
     const r = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', campaign: 'motel6' }));
