@@ -11,7 +11,6 @@ import { TMP_MVA_PACKETS, type Packet } from "@/lib/esign-packets/tmp-mva";
 import { notifySigned, signedNoticeDue } from "@/lib/notify-signed";
 import { resolveSigningMatter, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "./signing-matter";
 import { ensureClientSignedSnapshot } from "./client-signed";
-import { NETFLY_CAMPAIGN } from "@/lib/netfly-ontake";
 
 // Persisted with the signature transition so a crash or failed claim write
 // cannot leave a signed agreement permanently disconnected from its matter.
@@ -139,19 +138,6 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
     return row.status;
   }
   row = fresh.data;
-  // NETFLY begins with an externally signed retainer. An exceptional
-  // corrected DocuSeal packet may return here, but it must never enter the
-  // acquisition status/drip or acquisition signed-notification flow.
-  let netflyCorrection = false;
-  if (row.campaign_id) {
-    const campaign = await admin.from("campaigns").select("name, firm_id, path, esign_required, firms(slug)").eq("id", row.campaign_id).maybeSingle();
-    if (campaign.error || !campaign.data || campaign.data.firm_id !== row.firm_id) {
-      if (opts.strict) throw new Error("Could not verify the agreement campaign before synchronization.");
-      return row.status;
-    }
-    netflyCorrection = campaign.data.name === NETFLY_CAMPAIGN && campaign.data.path === "secondary" &&
-      campaign.data.esign_required === false && (campaign.data.firms as any)?.slug === "tmp";
-  }
   // A voided agreement stays voided: a late DocuSeal event never brings it
   // back or signs the matter with it (Brett, Sep 28).
   if (row.status === "voided" || row.voided_at) return "voided";
@@ -163,8 +149,8 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
   // (failed send, crash after claiming) retries on ANY later sync, not only
   // the first signed transition (Astra round 5). notifySigned claims the
   // marker atomically; the provider's bounded idempotency window protects retries.
-  if (!netflyCorrection) await recoverSignedTransition(admin, row);
-  if (!netflyCorrection && ["signed", "completed"].includes(row.status) && signedNoticeDue(row)) {
+  await recoverSignedTransition(admin, row);
+  if (["signed", "completed"].includes(row.status) && signedNoticeDue(row)) {
     await notifySigned(admin, row, opts.origin);
   }
   if (row.status === "completed") {
@@ -221,7 +207,7 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
     }
   }
 
-  if (!netflyCorrection && (firstSigned || String(row.error || "").includes(TRANSITION_PENDING))) patch.error = pendingError(patch.error ?? row.error);
+  if (firstSigned || String(row.error || "").includes(TRANSITION_PENDING)) patch.error = pendingError(patch.error ?? row.error);
 
   // Only the request that actually moves the row does the side effects.
   const { data: moved, error } = await admin.from("esign_submissions").update(patch)
@@ -247,7 +233,7 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
 
   if (firstSigned) {
     if (next === "signed") await ensureClientSignedSnapshot(admin, { ...row, ...patch });
-    const recovered = netflyCorrection || await recoverSignedTransition(admin, { ...row, ...patch });
+    const recovered = await recoverSignedTransition(admin, { ...row, ...patch });
     if (!recovered) {
       await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: "ClaimReach", category: "retainer",
         description: "The agreement is signed, but its case status still needs recovery. The next agreement check will retry.", meta: { submission_id: row.submission_id } });
@@ -255,7 +241,7 @@ export async function syncSubmission(admin: any, row: any, opts: { actorName?: s
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: row.signer_name || "Client", category: "retainer",
       description: `${row.signer_name || "The client"} signed the agreement (DocuSeal).`, meta: { submission_id: row.submission_id } });
     // Tell the team. Once per agreement, never blocks the signing.
-    if (!netflyCorrection) await notifySigned(admin, { ...row, ...patch }, opts.origin);
+    await notifySigned(admin, { ...row, ...patch }, opts.origin);
   }
   if (next === "completed") {
     await recordAudit({ firm_id: row.firm_id, lead_id: row.lead_id, actor_name: opts.actorName || "DocuSeal", category: "retainer",
