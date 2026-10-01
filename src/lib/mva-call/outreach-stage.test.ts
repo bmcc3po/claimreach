@@ -44,7 +44,10 @@ assert.equal(place(missed(10), null, 1, new Date("2026-09-30T13:00:00Z")).stage,
 assert.equal(place(missed(10)).stage, "wait");
 assert.equal(place(missed(1), null, 1, new Date("2026-09-29T14:20:00Z")).badge, "overdue");
 assert.equal(place(missed(1), null, 1, new Date("2026-09-29T14:02:01Z")).badge, "overdue");
-assert.equal(place({ ...missed(2), answered_dials: 1, unanswered_dials: 1 }).stage, "review");
+assert.equal(place({ ...missed(2), answered_dials: 1, unanswered_dials: 1 }, null, 1,
+  new Date("2026-09-29T14:20:00Z")).stage, "due");
+assert.equal(place({ ...missed(2), answered_dials: 1, unanswered_dials: 1 }, null, 1,
+  new Date("2026-09-29T14:03:00Z")).stage, "wait");
 assert.equal(place({ ...missed(2), unverified_dials: 1, unanswered_dials: 1 }).stage, "review");
 assert.equal(place({ ...missed(2), local_zone: null }).stage, "review");
 assert.equal(place({ ...missed(2), shared_phone: true }).stage, "review");
