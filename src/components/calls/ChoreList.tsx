@@ -17,6 +17,7 @@ import IntakeQuestion, { AgreementRecipient } from "./IntakeQuestion";
 import PlaceField from "./PlaceField";
 import { OPEN_LINE, OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 import { DobField, SsnField } from "./SsnDob";
+import { SsnRefusal } from "./SsnRefusal";
 import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 
@@ -65,6 +66,7 @@ function IdentityFields({ v }: { v: any }) {
     <div className="ch-q">
       <div className="ch-q-h"><span className="ch-q-l">Social Security number</span></div>
       <SsnField cls="ch" value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(m: string) => v.f.ssnMode.set({ target: { value: m } })} onChange={(t: string) => v.f.ssn.set({ target: { value: t } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} />
+      <SsnRefusal v={v} />
     </div>
   </>);
 }
@@ -113,7 +115,6 @@ function Retainer({ v }: { v: any }) {
         {(v.sendSteps || []).map((st: any, i: number) => <li key={i}><span>{st.label}</span><b className={/done/.test(st.cls) ? "ch-step-done" : undefined}>{stepWord(st.cls)}</b></li>)}
       </ul>
       {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
-      {v.canVoid && <button type="button" className="ch-btn ch-line ch-void" style={{ marginTop: 10 }} onClick={v.voidAgreement}>{v.voidLabel}</button>}
       {v.canReplace && <details className="ch-q"><summary className="ch-btn ch-line">Correct this agreement</summary><div className="ch-note">The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</div><AgreementChoice v={v} />{!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="ch-btn ch-send" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
     </div>
     {v.notSigned && (<>
@@ -250,7 +251,7 @@ export default function ChoreList({ v, sectionActions = true, scrollSections = t
                 </button>
               : <button type="button" className="ch-btn ch-finish" onClick={ch.finish.go}>Finish the call</button>}
           </div>}
-          {sectionActions && !r.next && ch.finish.ask && <div className="ch-note ch-note-bad ch-finish-ask" role="alert">{ch.finish.askText}</div>}
+          {sectionActions && !r.next && ch.finish.ask && <div className="ch-note ch-note-bad ch-finish-ask" role="alert"><strong>{ch.finish.askText}</strong><ul>{(ch.finish.missing || []).map((item: any) => <li key={item.label}><button type="button" className="ch-missing-link" onClick={item.go}>{item.label} →</button></li>)}</ul></div>}
         </section>
       ))}
     </div>

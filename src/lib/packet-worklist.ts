@@ -1,3 +1,5 @@
+import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
+
 export type PacketRow = {
   leadId: string;
   claimId: string | null;
@@ -7,6 +9,9 @@ export type PacketRow = {
   firm: string;
   signedAt: string;
   deliveredAt: string | null;
+  returnEndsAt: string | null;
+  returnDaysLeft: number | null;
+  readyToBill: boolean;
   agent: string;
   archived: boolean;
   stage: "ready" | "qa" | "finish" | "held" | "delivered";
@@ -21,6 +26,8 @@ type Input = {
   users: any[];
   firms: any[];
   deliveries: any[];
+  campaigns?: any[];
+  ownerEmail?: string | null;
 };
 
 export function packetWorklist(input: Input): PacketRow[] {
@@ -29,13 +36,13 @@ export function packetWorklist(input: Input): PacketRow[] {
   const byCall = new Map(input.calls.map((r) => [r.id, r]));
   const byUser = new Map(input.users.map((r) => [r.id, r]));
   const byFirm = new Map(input.firms.map((r) => [r.id, r]));
+  const byCampaign = new Map((input.campaigns || []).map((r) => [r.id, r]));
   const claimCount = new Map<string, number>();
   for (const claim of input.claims) claimCount.set(claim.lead_id, (claimCount.get(claim.lead_id) || 0) + 1);
-  const sentByMatter = new Map<string, any>();
+  const sentByMatter = new Map<string, any[]>();
   for (const delivery of input.deliveries.filter((d) => d.ok === true)) {
     const key = delivery.claim_id || delivery.lead_id;
-    const prior = sentByMatter.get(key);
-    if (!prior || delivery.created_at < prior.created_at) sentByMatter.set(key, delivery);
+    sentByMatter.set(key, [...(sentByMatter.get(key) || []), delivery]);
   }
   const byMatter = new Map<string, any[]>();
   for (const row of input.submissions) {
@@ -59,14 +66,21 @@ export function packetWorklist(input: Input): PacketRow[] {
     const call = byCall.get(row.call_id);
     const sender = byUser.get(row.sent_by);
     const firm = byFirm.get(claim?.firm_id || lead.firm_id);
-    const delivery = sentByMatter.get(row.claim_id || row.lead_id);
+    const deliveryHistory = sentByMatter.get(row.claim_id || row.lead_id) || [];
     const legacySent = claim?.firm_sent_at || (claimCount.get(row.lead_id) === 1 && lead.firm_sent_at);
-    const deliveredAt = delivery?.created_at || legacySent || null;
+    const configuredFirmEmail = byCampaign.get(claim?.campaign_id)?.firm_email;
+    const deliveredAt = input.campaigns
+      ? confirmedFirmDeliveryAt(deliveryHistory, configuredFirmEmail, input.ownerEmail)
+      : deliveryHistory.map((item) => item.created_at).sort()[0] || legacySent || null;
+    const window = returnWindow(deliveredAt);
+    const ownerOnly = !!legacySent && !deliveredAt;
+    const recipientHeld = !!input.campaigns && (!configuredFirmEmail ||
+      String(configuredFirmEmail).trim().toLowerCase() === String(input.ownerEmail || "").trim().toLowerCase());
     const held = !!row.replacement_requested_at || group[0].id !== row.id;
     const packetComplete = row.status === "completed" && !!row.agent_reviewed_at && !!row.completed_pdf_path && !!row.cert_pdf_path;
     // The firm delivery endpoint requires signed_approved. A complete PDF is
     // still awaiting QA when the claim remains signed_grievous/signed_qa.
-    const stage = deliveredAt ? "delivered" : held ? "held" : !packetComplete ? "finish" : claim?.status === "signed_approved" ? "ready" : "qa";
+    const stage = deliveredAt ? "delivered" : held || ownerOnly || recipientHeld ? "held" : !packetComplete ? "finish" : ["signed_approved", "delivered", "retained"].includes(claim?.status) ? "ready" : "qa";
     rows.push({
       leadId: row.lead_id,
       claimId: row.claim_id || null,
@@ -76,10 +90,13 @@ export function packetWorklist(input: Input): PacketRow[] {
       firm: firm?.name || "Firm not mapped",
       signedAt: row.signed_at,
       deliveredAt,
+      returnEndsAt: window?.endsAt ?? null,
+      returnDaysLeft: window?.daysLeft ?? null,
+      readyToBill: window?.cleared ?? false,
       agent: call?.agent_name || sender?.full_name || "Unassigned",
       archived: !!lead.archived_at,
       stage,
-      stageLabel: stage === "delivered" ? "Sent to firm" : stage === "held" ? "Correction held" : stage === "ready" ? "Ready to send" : stage === "qa" ? claim ? "Awaiting QA approval" : "Link case for QA" : "Finish signed packet",
+      stageLabel: stage === "delivered" ? window?.cleared ? "Return window cleared · billing review" : `Firm return window · ${window?.daysLeft ?? 7}d left` : ownerOnly ? "Firm delivery not verified" : recipientHeld ? "Firm email needs configuration" : stage === "held" ? "Correction held" : stage === "ready" ? "Ready to send" : stage === "qa" ? claim ? "Awaiting file review" : "Link case for QA" : "Finish signed packet",
     });
   }
   return rows.sort((a, b) => b.signedAt.localeCompare(a.signedAt));

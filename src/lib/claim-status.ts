@@ -104,6 +104,8 @@ export async function setClaimStatusForLeads(opts: {
   expectedUpdatedAt?: string;
   /** Historical reconciliation is not a new signing or a reason to contact anyone. */
   historical?: boolean;
+  /** A human-confirmed handoff sends only after its separate final action. */
+  suppressAutoDelivery?: boolean;
 }, deps: StatusDeps = {}): Promise<SetStatusResult> {
   const db = deps.db ?? supabaseAdmin();
   const audit = deps.audit ?? (async (row: any) => { const { recordAudit } = await import("@/lib/audit"); await recordAudit(row); });
@@ -230,7 +232,7 @@ export async function setClaimStatusForLeads(opts: {
       // Auto firm delivery for THIS matter (guarded per claim; respects the
       // campaign master switch). A failed or held send cannot undo an already
       // saved QA decision, but the caller must see that handoff needs attention.
-      if (def.unlocks_firm === true && !opts.historical) {
+      if (def.unlocks_firm === true && !opts.historical && !opts.suppressAutoDelivery) {
         try {
           const result = await deliver({ leadId, claimId: String(c.id), triggeredBy: "auto", actorName: opts.actorName ?? "System" });
           if (!result?.ok) deliveryWarnings.push(`Firm handoff for matter ${c.id} needs attention: ${result?.error || "the delivery result was not confirmed"}`);

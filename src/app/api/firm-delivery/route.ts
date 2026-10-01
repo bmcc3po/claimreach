@@ -6,6 +6,7 @@ import { gateUser } from "@/lib/gate";
 import { isInternalRole } from "@/lib/permissions";
 import { readFirmDispatch } from "@/lib/firm-delivery-dispatch";
 import { recordAudit } from "@/lib/audit";
+import { confirmedFirmDeliveryAt } from "@/lib/firm-delivery-state";
 export const runtime = "edge";
 
 const uuid = (x: any) => String(x || "").replace(/[^0-9a-f-]/gi, "");
@@ -43,15 +44,26 @@ export async function GET(req: NextRequest) {
   const firm = lead.firm_id ? await sb.from("firms").select("name").eq("id", lead.firm_id).maybeSingle() : { data: null, error: null };
   if (config.error || firm.error) return NextResponse.json({ error: "Could not read the delivery recipient. Refresh before sending." }, { status: 500 });
   if (config.data?.firm_id && config.data.firm_id !== lead.firm_id) return NextResponse.json({ error: "This matter's campaign belongs to a different firm." }, { status: 409 });
+  const { data: owners, error: ownerErr } = await sb.from("app_users").select("email").eq("role", "owner").eq("active", true);
+  if (ownerErr) return NextResponse.json({ error: "Could not verify the owner recipient." }, { status: 500 });
+  const ownerEmail = (owners ?? []).map((row: any) => String(row.email || "").toLowerCase()).find((email: string) => email === "bmc@innovativeintake.com") ?? null;
+  const confirmedAt = confirmedFirmDeliveryAt(history ?? [], config.data?.firm_email, ownerEmail);
+  const { data: latestQa, error: qaErr } = await sb.from("qa_reviews").select("decision, reviewer")
+    .eq("claim_id", m.claim.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (qaErr) return NextResponse.json({ error: "Could not verify the signed-file QA decision." }, { status: 500 });
   return NextResponse.json({
     claim_id: m.claim.id,
     firm_sent_at: st.state.sentAt,
+    confirmed_firm_sent_at: confirmedAt,
+    prior_owner_only: !!st.state.sentAt && !confirmedAt && (history ?? []).some((row: any) => row.ok === true && String(row.to_email || "").toLowerCase() === ownerEmail),
     firm_send_result: st.state.result,
     legacy: st.state.legacy,
     history: history ?? [],
     dispatch: dispatch.row,
     can_reconcile: ["owner", "admin"].includes(g.role),
-    delivery: { firm: firm.data?.name ?? null, campaign: config.data?.name ?? null, to: config.data?.firm_email ?? null, cc: config.data?.firm_cc ?? null, auto_on: config.data?.firm_delivery_on === true },
+    qa_approved: latestQa?.decision === "approve" && (g.role !== "agent" || latestQa.reviewer === g.id)
+      && ["signed_approved", "delivered", "retained"].includes(String(m.claim.status || "")),
+    delivery: { firm: firm.data?.name ?? null, campaign: config.data?.name ?? null, to: config.data?.firm_email ?? null, cc: config.data?.firm_cc ?? null, owner_email: ownerEmail, auto_on: config.data?.firm_delivery_on === true },
   });
 }
 
@@ -74,6 +86,19 @@ export async function POST(req: NextRequest) {
   const matter = await resolveMatter(sb, leadId, { claimId: uuid(b?.claim_id) || null, campaignId: leadRow.campaign_id ?? null, authoritativeDb: supabaseAdmin() });
   if (!matter.ok) return NextResponse.json({ error: matter.error }, { status: matter.status });
   if (matter.claim.firm_id && matter.claim.firm_id !== leadRow.firm_id) return NextResponse.json({ error: "This matter and file belong to different firms." }, { status: 409 });
+  if (g.role === "agent" && b?.include_owner !== true) return NextResponse.json({ error: "Use the final handoff to send the complete packet to Brett and the firm together." }, { status: 403 });
+  if (g.role === "agent") {
+    const [{ data: ownCall, error: callErr }, { data: latestQa, error: qaErr }] = await Promise.all([
+      sb.from("intake_calls").select("id").eq("lead_id", leadId).eq("claim_id", matter.claim.id)
+        .eq("agent_id", g.id).eq("disposition", "signed").not("ended_at", "is", null).limit(1).maybeSingle(),
+      sb.from("qa_reviews").select("reviewer, decision").eq("claim_id", matter.claim.id)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    if (callErr || qaErr) return NextResponse.json({ error: "Could not verify the completed call and QA review. Nothing was emailed." }, { status: 503 });
+    if (!ownCall || latestQa?.reviewer !== g.id || latestQa?.decision !== "approve") {
+      return NextResponse.json({ error: "End and disposition your signed call, then approve your own file review before sending. Nothing was emailed." }, { status: 409 });
+    }
+  }
 
   if (b.op === "reconcile") {
     if (!["owner", "admin"].includes(g.role)) return NextResponse.json({ error: "Only an owner or admin can reconcile a delivery." }, { status: 403 });
@@ -95,14 +120,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, reconciled: true, delivered: b.delivered, message: "Delivery outcome recorded. No email was sent by this action." });
   }
 
+  let correctedOwnerOnly = false;
+  if (b?.include_owner === true) {
+    const admin = supabaseAdmin();
+    const [{ data: config }, { data: owners }, { data: history, error: historyError }] = await Promise.all([
+      admin.from("campaigns").select("firm_email").eq("id", matter.claim.campaign_id).maybeSingle(),
+      admin.from("app_users").select("email").eq("role", "owner").eq("active", true),
+      admin.from("firm_deliveries").select("ok, to_email, cc_email, created_at").eq("claim_id", matter.claim.id).order("created_at", { ascending: false }),
+    ]);
+    if (historyError) return NextResponse.json({ error: "Could not verify prior delivery; nothing was resent." }, { status: 503 });
+    const ownerEmail = (owners ?? []).map((row: any) => String(row.email || "").toLowerCase()).find((address: string) => address === "bmc@innovativeintake.com") || null;
+    if (ownerEmail && !confirmedFirmDeliveryAt(history ?? [], config?.firm_email, ownerEmail)) {
+      correctedOwnerOnly = (history ?? []).some((row: any) => row.ok === true && String(row.to_email || "").toLowerCase() === ownerEmail);
+    }
+  }
+  if (b?.force && g.role === "agent") return NextResponse.json({ error: "Agents cannot force a resend." }, { status: 403 });
   const res = await deliverLeadToFirm({
     leadId,
     claimId: matter.claim.id,
     triggeredBy: "manual",
     actorName: g.name || "User",
-    force: !!b?.force,
+    force: correctedOwnerOnly || !!b?.force,
     expectedTo: typeof b?.expected_to === "string" ? b.expected_to : undefined,
     expectedCc: Array.isArray(b?.expected_cc) ? b.expected_cc : undefined,
+    includeOwner: b?.include_owner === true,
+    additionalRecipients: Array.isArray(b?.additional_recipients) ? b.additional_recipients.map(String) : [],
   });
   if (!res.ok && !res.skipped) return NextResponse.json(res, { status: res.ambiguous ? 409 : 400 });
   return NextResponse.json(res);

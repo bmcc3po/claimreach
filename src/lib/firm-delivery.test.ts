@@ -678,8 +678,8 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
       { label: "unsigned", patch: { status: "sent" }, match: /not complete/ },
       { label: "voided", patch: { status: "voided" }, match: /voided/ },
       { label: "wrong person", patch: { injured_name: "Another Person" }, match: /file now names/ },
-      { label: "missing primary pointer", patch: { completed_pdf_path: null }, match: /not complete in storage/ },
-      { label: "missing primary bytes", missing: `${FIRM}/signed-ds-5001.pdf`, match: /not complete in storage/ },
+      { label: "missing primary pointer", patch: { completed_pdf_path: null }, match: /No signed agreement is stored|not complete in storage/ },
+      { label: "missing primary bytes", missing: `${FIRM}/signed-ds-5001.pdf`, match: /No signed agreement is stored|not complete in storage/ },
       { label: "partial packet", patch: { doc_count: 2 }, match: /not complete in storage/ },
       { label: "missing certificate pointer", patch: { cert_pdf_path: null }, match: /certificate/ },
       { label: "missing certificate bytes", missing: `${FIRM}/cert-ds-5001.pdf`, match: /certificate/ },
@@ -695,12 +695,14 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     }
   });
 
-  await t("MVA verifies the packet but includes only the configured attachments", async () => {
+  await t("MVA always includes its intake and signed retainer despite disabled attachment switches", async () => {
     const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01", { attach_retainer: false, attach_certificate: false, attach_intake_csv: true })], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
     const d = deps(db, { loadBundle: async () => ({ lead: leadRow(), claim: claimRow("aaa1", "ca01"), caseType: "mva", answers: { city: "Houston" }, fields: [{ id: "city", kind: "text", label: "City" }] }) });
     const r = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
     assert.equal(r.ok, true, JSON.stringify(r));
-    assert.deepEqual(d.sent[0].attachments.map(a => a.filename), ["Pat_Doe_intake.csv"]);
+    assert.ok(d.sent[0].attachments.some((a) => a.filename === "Pat_Doe_intake.csv"));
+    assert.ok(d.sent[0].attachments.some((a) => a.filename.endsWith("_intake.pdf")));
+    assert.ok(d.sent[0].attachments.some((a) => a.filename.endsWith("_signed.pdf")));
   });
 
   await t("MVA never substitutes a sibling or legacy-only agreement when attachments are disabled", async () => {

@@ -31,6 +31,9 @@ export async function POST(req: NextRequest) {
   const v = validateDispo(raw);
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
   const d = v.value;
+  if (d.dispo === "signed" && d.notify.length) {
+    return NextResponse.json({ error: "Signed-call email has moved to the final firm-ready handoff. Refresh the call screen, save the disposition, then review and send the complete packet." }, { status: 409 });
+  }
   // The signed-call notice is for the active owners shown by the Desk. It is
   // not a second free-form case export path around /api/calls/email's export
   // permission. Check before changing status or closing the call.

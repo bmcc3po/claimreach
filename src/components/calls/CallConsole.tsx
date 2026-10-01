@@ -25,6 +25,8 @@ export interface ConsoleInit {
   /** The ONE matter this call works, pinned when the call opened (round 7). */
   claimId: string;
   callId: string | null;
+  /** Server-confirmed signed disposition; reopen at the unsent final handoff. */
+  signedDispoDone?: boolean;
   /** Raw canonical document, before the engine adds empty display defaults. */
   baseAnswers?: Record<string, any>;
   agreementId?: string | null;
@@ -355,11 +357,15 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         if (hold) { e().setState({ file: { ...e().state.file, error: hold } }); return; }
         const f = e().state.file;
         e().setState({ file: { ...f, error: "" } });
+        if (f.ssnRefused && f.ssn) {
+          e().setState({ file: { ...e().state.file, error: "Clear the SSN entry before recording a refusal." } });
+          return;
+        }
         if (!(await saveIdentityNow())) {
           e().setState({ file: { ...e().state.file, error: "The SSN entered on this screen did not save securely. Correct it before completing." } });
           return;
         }
-        post("/api/calls/esign/complete", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current, dob: e().state.file.dob, use_saved_identity: true })
+        post("/api/calls/esign/complete", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current, dob: e().state.file.dob, use_saved_identity: !e().state.file.ssnRefused, ssn_refused: !!e().state.file.ssnRefused })
           .then(() => { identitySavedDigits.current = ""; e().setState({ file: { ...e().state.file, agreement: "done", ssn: "", error: "" } }); })
           .catch((err) => e().setState({ file: { ...e().state.file, error: err.message } }));
       },
@@ -411,7 +417,9 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           return post("/api/calls/dispo", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current, dispo: d.pick, reasons: d.why,
           callback_at: at ? at.toISOString() : null, note: d.note,
-          notify: d.pick === "signed" ? d.notify.filter((n: any) => n.on).map((n: any) => n.how) : [],
+          // The disposition records the call. The complete packet is sent
+          // once, after the agent's final review in the next step.
+          notify: [],
           });
         }).then((r) => {
           const note = r.email_error ? `Saved. The email did not send: ${r.email_error}` : "";
@@ -429,6 +437,9 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       },
     };
     eng.current = new CallEngine({ ...init.props, esign: { ...init.props.esign, sendGate: "checking", sendAttempt: null, paxSendAttempts: {} }, startedAt: init.startedAt }, api);
+    if (init.signedDispoDone) {
+      eng.current.setState({ dispo: { ...eng.current.state.dispo, open: true, pick: "signed", saved: true } });
+    }
     // The call opens in All questions on the first render. Retired layout
     // preferences are mapped there below; the engine still understands their
     // historical states so saved answers never need migration.

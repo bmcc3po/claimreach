@@ -21,8 +21,6 @@ export default function SignedInlineReview({ v }: { v: any }) {
   const [opened, setOpened] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [voiding, setVoiding] = useState(false);
-  const [reason, setReason] = useState("");
   const leadId = String(v.leadId || "");
   const claimId = String(v.claimId || "");
   const load = useCallback(async () => {
@@ -62,19 +60,6 @@ export default function SignedInlineReview({ v }: { v: any }) {
     } catch (e: any) { setError(e.message || "The signed-copy review did not save."); }
     finally { setBusy(false); }
   };
-  const voidAgreement = async () => {
-    if (!agreement || !agreement.can_void || reason.trim().length < 3 || busy) return;
-    setBusy(true); setError("");
-    try {
-      const r = await fetch("/api/calls/esign/void", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, id: agreement.id, reason: reason.trim() }) });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok || data.error) throw new Error(data.error || "The agreement did not void.");
-      setVoiding(false); setReason(""); setOpened(null);
-      window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, claimId, pax: agreement.pax } }));
-      await load();
-    } catch (e: any) { setError(e.message || "The agreement did not void."); }
-    finally { setBusy(false); }
-  };
   const previewUrl = agreement?.status === "signed" ? agreement.client_signed_url : agreement?.status === "completed" ? agreement.signed_url : null;
   const reviewable = agreement?.status === "signed" && !agreement.replacement_requested_at;
   return <section className="signed-inline" aria-label="Review signed retainer">
@@ -84,8 +69,6 @@ export default function SignedInlineReview({ v }: { v: any }) {
       {reviewable && !agreement.agent_reviewed_at && <button type="button" className="signed-inline-approve" disabled={!previewUrl || opened !== agreement.id || busy} onClick={review}>{busy ? "Saving review…" : "Approve signed copy"}</button>}
       {agreement.agent_reviewed_at && <p className="signed-inline-done" role="status">✓ Signed copy reviewed. Continue the office step below.</p>}
       {agreement.replacement_requested_at && <p className="signed-inline-error" role="status">Correction requested. Firm delivery is held for supervisor review.</p>}
-      {agreement.can_void && !voiding && <button type="button" className="signed-inline-secondary" onClick={() => setVoiding(true)}>Void signed agreement</button>}
-      {voiding && <div className="signed-inline-void"><label htmlFor="signed-inline-void-reason">Reason to void</label><textarea id="signed-inline-void-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Describe the error" rows={2} /><div><button type="button" onClick={() => { setVoiding(false); setReason(""); }}>Cancel</button><button type="button" disabled={busy || reason.trim().length < 3} onClick={voidAgreement}>{busy ? "Voiding…" : "Confirm void"}</button></div><small>The original signed copy stays in file history.</small></div>}
       {!agreement.can_void && !agreement.replacement_requested_at && v.canReplace && <button type="button" className="signed-inline-secondary" onClick={() => v.jumpTo("send")}>Report error / correct agreement here</button>}
     </>}
     {!!error && <p className="signed-inline-error" role="alert">{error}</p>}

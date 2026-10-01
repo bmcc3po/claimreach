@@ -9,6 +9,7 @@
 .packet-tabs span{display:inline-block;min-width:27px;margin-left:5px;padding:2px 6px;border-radius:7px;background:#e5edf7;font-size:13px}
 .packet-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:20px 0}
 .packet-metrics.needs{grid-template-columns:repeat(4,minmax(0,1fr))}
+.packet-week-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
 .packet-metrics>div{display:grid;gap:2px;padding:18px 20px;background:#fff;border:1px solid #ced9e5;border-radius:13px}
 .packet-metrics strong{font-size:30px;line-height:1;color:#143f73}
 .packet-metrics span{color:#53677c;font-size:14px;font-weight:600}

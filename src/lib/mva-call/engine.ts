@@ -317,7 +317,7 @@ export class CallEngine {
       body: { pain: [], painNote: '', seen: [], providers: [], done: {}, last: null, firstAt: null, lastAt: null, stretch: null, willing: null, work: null, exchanged: null, coverage: null, uim: null, check: null, rep: null, repUnhappy: null, repKind: null, focus: null },
       car: { justMe: false, people: [] },
       send: { via: 'Text', status: agreementSendStatus(this.props.esign.status), client: this.props.callerName || '', phone: this.props.callerPhone || '', email: this.props.callerEmail || '', error: '', who: 'Same as signer', injured: '', nvVariant: 'tiered', nvReason: '' },
-      file: { step: 'agreement', dob: '', ssn: '', ssnMode: null, agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
+      file: { step: 'agreement', dob: '', ssn: '', ssnMode: null, ssnRefused: false, agreement: 'open', addr: '', dl: '', ecName: '', ecPhone: '', ecRel: null, carrier: 'Pick one', report: '', vYear: 'Year', vMake: '', vModel: '', pax: Object.assign({}, this.props.esign.pax) }
     };
     if (saved && typeof saved === 'object') {
       ['phase', 'free', 'bare', 'visited'].forEach((k) => { if (saved[k] != null) s[k] = saved[k]; });
@@ -1484,7 +1484,7 @@ export class CallEngine {
       var words: any = { done: 'DONE', now: 'DO THIS NOW', needs: 'NEEDS AN ANSWER', todo: 'NOT STARTED' };
       var fin = rows.filter((r) => r.finished).length, left = rows.length - fin;
       var many = (n: any) => n + (n === 1 ? ' section' : ' sections');
-      var unfinished = rows.map((r, i) => (r.finished ? '' : (i + 1) + '. ' + r.label)).filter(Boolean);
+      var unfinished = rows.map((r, i) => ({ ...r, n: i + 1 })).filter((r) => !r.finished);
       chore = {
         rows: rows.map((r, i) => {
           var stt = r.finished ? 'done' : i === nowI ? 'now' : seenMap[r.id] ? 'needs' : 'todo';
@@ -1502,7 +1502,9 @@ export class CallEngine {
         nextText: nowI >= 0 ? 'Next section: ' + rows[nowI].label : 'Every section is finished.',
         finish: {
           ask: !!fi.finishAsk && unfinished.length > 0,
-          askText: 'Not finished yet: ' + unfinished.join(', ') + '. Press Finish the call again to end it anyway.',
+          askText: 'Not finished yet. Open each missing section below, or press Finish the call again to end it anyway.',
+          missing: unfinished.map((r) => ({ label: r.n + '. ' + r.label,
+            go: () => this.setFi({ sec: r.id, edit: null, flash: null, target: null, finishAsk: false, jump: (this.state.fi.jump || 0) + 1 }) })),
           go: () => {
             if (unfinished.length && !this.state.fi.finishAsk) return this.setFi({ finishAsk: true });
             this.setFi({ finishAsk: false });
@@ -1717,13 +1719,12 @@ export class CallEngine {
     })();
     var whenText = d.when === 'Pick a time' ? atText : d.when;
     var saveLabel = !dd ? 'Pick how it ended' : (needWhy && !d.why.length) ? 'Pick a reason' : (dd.needWhen && !whenText) ? 'Pick a time' : 'Save the call';
-    var emailed = d.notify.filter((n) => n.on).map((n) => n.who);
     var dispoSummary = dd ? [{ k: 'Dispo', v: dd.label }] : [];
     if (d.why.length) dispoSummary.push({ k: 'Why', v: d.why.map((k: string) => ((dd && dd.why ? dd.why : []).find((r: any) => r.key === k) || { label: k }).label).join(', ') });
     if (dd && dd.when && whenText) dispoSummary.push({ k: dd.whenHead, v: whenText });
-    if (d.pick === 'signed') dispoSummary.push({ k: 'Emailed', v: emailed.length ? emailed.join(', ') : 'Nobody' });
+    if (d.pick === 'signed') dispoSummary.push({ k: 'Firm packet', v: 'Not sent yet — review and confirm below' });
     if (String(d.note || '').trim()) dispoSummary.push({ k: 'Note', v: d.note });
-    var savedNote = d.pick === 'signed' ? (emailed.length ? 'Case emailed to ' + emailed.join(', ') + '.' : 'Saved to the file.')
+    var savedNote = d.pick === 'signed' ? 'Call saved. Review your file and send the complete packet below.'
       : d.pick === 'dnc' ? 'The number is off every list.'
       : (dd && dd.when && whenText) ? 'On the call back list for ' + (d.when === 'Pick a time' ? whenText : whenText.toLowerCase()) + '.'
       : 'Logged for reports.';
@@ -1933,6 +1934,8 @@ export class CallEngine {
       sendLive: s.send.status !== 'ready',
       notSigned: s.send.status !== 'signed',
       signed: s.send.status === 'signed',
+      agreementStatus: s.send.status,
+      fileAgreementDone: s.file.agreement === 'done',
       sendSteps: this.stepsFor(s.send.status),
       agreement: currentContract?.label || contract.label || 'Needs where the wreck happened',
       currentAgreement: currentContract,
@@ -1990,6 +1993,8 @@ export class CallEngine {
       })),
       fsAgreement: fs || s.file.step === 'agreement', fsInfo: fs || s.file.step === 'info', fsCrash: fs || s.file.step === 'crash', fsPax: (fs && hurtPax.length > 0) || s.file.step === 'pax',
       agreementOpen: s.file.agreement === 'open',
+      ssnRefused: !!s.file.ssnRefused,
+      refuseSsn: () => this.setState({ file: { ...this.state.file, ssnRefused: !this.state.file.ssnRefused, ssn: '' } }),
       agreementClosed: s.file.agreement !== 'open',
       // Parked is a pause, not a wall: the agent (or QA in the morning) can
       // reopen it and finish (Astra audit, Sep 27: parked hid Complete with

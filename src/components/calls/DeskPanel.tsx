@@ -105,7 +105,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
       {tab === "summary" && !!summary && <div className="cc-side-b ws-side-b">{summary}</div>}
       {tab === "know" && <Knowledge v={v} phase={phase} fill={fill} focusLines={focusLines} />}
       {tab === "texts" && <Texts v={v} />}
-      {tab === "retainer" && <Retainer v={v} preview={preview} correctionOpen={correctionFor === claimId} onCorrectionToggle={(open) => setCorrectionFor(open ? claimId : null)} />}
+      {tab === "retainer" && <><Retainer v={v} preview={preview} correctionOpen={correctionFor === claimId} onCorrectionToggle={(open) => setCorrectionFor(open ? claimId : null)} /><AgreementActions leadId={leadId} claimId={claimId} /></>}
       {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} canOpenClassic={v.agentRole === "owner"} caseSummary={caseSummary} noteDraft={noteDraft} updateNoteDraft={updateNoteDraft} sendHoldNotice={v.sendHoldNotice || ""} reconcileActions={v.reconcileActions || []} reconcileBusy={!!v.reconcileBusy} reconcileMessage={v.reconcileMessage || ""} onFinishOffice={v.reviewAgreement} beforeQaResubmit={v.beforeQaResubmit} onCorrect={() => { setCorrectionFor(claimId); setTab("retainer"); }} />}
       {tab === "tools" && <Tools v={v} story={story} />}
       {phoneOn && (
@@ -315,7 +315,6 @@ function Texts({ v }: { v: any }) {
         ))}
         {!!v.canResend && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div>}
         {!!v.canReplace && <div className="cc-cue">To correct this agreement, open Agreement, preview the new contract, and report the error.</div>}
-        {!!v.canVoid && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button className="cc-chip" onClick={v.voidAgreement}>{v.voidLabel}</button></div>}
         {!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{ marginTop: 0 }}>{v.textError}</div></div>}
         <div ref={end} />
       </div>
@@ -336,7 +335,6 @@ function Retainer({ v, preview, correctionOpen, onCorrectionToggle }: { v: any; 
     {!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>Signing actions paused</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
     <div className="cc-agreement-current"><span>{v.currentAgreement ? "Contract already sent" : "Sending agreement"}</span><strong>{v.currentAgreement?.label || "Preparing the selected contract…"}</strong></div>
     {v.canReplace && <details open={correctionOpen} onToggle={(event) => onCorrectionToggle(event.currentTarget.open)}><summary className="cc-chip">Correct this agreement</summary><p className="cc-cue">The original stays in File history. Select and preview the corrected agreement, then report the error and send the replacement. A client-signed original is held for supervisor review before firm delivery.</p><AgreementChoice v={v} />{preview.href && <a className="cc-btn" href={preview.href} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn" disabled={!preview.href || missing > 0 || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
-    {v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>{v.voidLabel}</button>}
     {v.hasSendError && <div className="cc-cue cc-red" role="status">{v.sendError}</div>}
     {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review agreement actions</button>}
   </div>;
@@ -375,6 +373,58 @@ function Retainer({ v, preview, correctionOpen, onCorrectionToggle }: { v: any; 
       )}
     </div>
   );
+}
+
+function AgreementActions({ leadId, claimId }: { leadId: string; claimId: string }) {
+  const [agreements, setAgreements] = useState<any[]>([]);
+  const [target, setTarget] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const load = async () => {
+    try {
+      const query = new URLSearchParams({ lead_id: leadId, claim_id: claimId });
+      const response = await fetch(`/api/calls/file?${query}`, { cache: "no-store" });
+      const body = await response.json();
+      if (!response.ok || body.error) throw new Error(body.error || "Agreement actions did not load.");
+      setAgreements((body.agreements || []).filter((agreement: any) => agreement.can_void));
+      setError("");
+    } catch (cause: any) { setError(cause.message || "Agreement actions did not load."); }
+  };
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leadId, claimId]);
+  useEffect(() => {
+    const refresh = () => { void load(); };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("cr:esign-reconciled", refresh);
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("cr:esign-reconciled", refresh); };
+  }, [leadId, claimId]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!agreements.length && !error) return null;
+  const active = agreements.find((agreement) => agreement.id === target);
+  const voidAgreement = async () => {
+    if (!active || reason.trim().length < 3 || busy) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/calls/esign/void", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, id: active.id, reason: reason.trim() }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body.error) throw new Error(body.error || "The agreement was not voided.");
+      setTarget(null); setReason("");
+      await load();
+      window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, claimId, pax: active.pax } }));
+    } catch (cause: any) { setError(cause.message || "The agreement was not voided."); }
+    finally { setBusy(false); }
+  };
+  return <div className="cc-side-b cc-side-ret"><details className="cc-card"><summary>Agreement actions · owner/admin</summary>
+    <p className="cc-cue">Use only to correct a signed or sent agreement. The original and audit history stay on file.</p>
+    {agreements.map((agreement) => <div key={agreement.id} className="cc-card">
+      <div className="cc-cue">{agreement.name || agreement.signer || "Agreement"} · {agreement.status}</div>
+      {target === agreement.id ? <>
+        <label className="cc-cue" htmlFor={`void-reason-${agreement.id}`}>Reason to void</label>
+        <textarea id={`void-reason-${agreement.id}`} className="cc-area" rows={2} value={reason} onChange={(event) => setReason(event.target.value)} />
+        <div className="cc-chips cc-list"><button type="button" className="cc-chip cc-sm" onClick={() => { setTarget(null); setReason(""); }}>Cancel</button><button type="button" className="cc-chip cc-sm" disabled={busy || reason.trim().length < 3} onClick={() => void voidAgreement()}>{busy ? "Voiding…" : "Confirm void"}</button></div>
+      </> : <button type="button" className="cc-chip cc-sm" onClick={() => { setTarget(agreement.id); setReason(""); }}>Void this agreement</button>}
+    </div>)}
+    {error && <p className="cc-cue cc-red" role="alert">{error}</p>}
+  </details></div>;
 }
 
 function LeadCard({ lead }: { lead: { from: string; said: string; tags: string[] } | null }) {
@@ -549,9 +599,6 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, caseSummary, noteDraft
   const noteInput = useRef<HTMLTextAreaElement | null>(null);
   const { body: note, scope, saving } = noteDraft;
   const [openedSignedPreview, setOpenedSignedPreview] = useState<string | null>(null);
-  const [voidTarget, setVoidTarget] = useState<string | null>(null);
-  const [voidReason, setVoidReason] = useState("");
-  const [voidBusy, setVoidBusy] = useState(false);
   const [qaBusy, setQaBusy] = useState(false);
   const [qaMessage, setQaMessage] = useState("");
   const qaRequest = useRef<{ review: string; id: string } | null>(null);
@@ -603,20 +650,6 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, caseSummary, noteDraft
       await load();
     } catch (e: any) { setErr(e.message || "The matter was not resubmitted."); }
     finally { qaInFlight.current = false; setQaBusy(false); }
-  };
-  // Owner/admin-only server action. The reason is collected inline because
-  // browser-embedded desks may suppress native prompt dialogs.
-  const voidOne = async (a: any) => {
-    const why = voidReason.trim();
-    if (why.length < 3 || voidBusy) return;
-    setVoidBusy(true);
-    try {
-      const r = await fetch("/api/calls/esign/void", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, id: a.id, reason: why.trim() }) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.error) throw new Error(j.error || "The agreement did not void.");
-      setVoidTarget(null); setVoidReason(""); await load();
-      try { window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, claimId, pax: a.pax } })); } catch { /* no console on this page */ }
-    } catch (e: any) { setErr(e.message); } finally { setVoidBusy(false); }
   };
   const reviewOne = async (a: any) => {
     if (openedSignedPreview !== a.id) return;
@@ -685,14 +718,6 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, caseSummary, noteDraft
               {a.error && a.status !== "voided" && <div className="cc-cue cc-red">{a.error}</div>}
               {a.replacement_requested_at && !a.voided && <div className="cc-cue cc-red" role="status">Supervisor review required since {fmtWhen(a.replacement_requested_at)}. {a.replacement_requested_by || "An agent"} reported: {a.replacement_reason}. The original signed evidence stays on file; firm delivery is held.</div>}
               {a.client_signed_url && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><a className="cc-chip cc-sm" href={a.client_signed_url} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedSignedPreview(a.id)}>{a.status === "voided" ? "Original client-signed preview (voided)" : "View client-signed preview"}</a><span className="cc-cue">{a.status === "voided" ? "Historical signed evidence is preserved." : "Client signed; office signer and final certificate are pending. Inspect this preview before finishing or correcting."}</span>{a.status === "signed" && !a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" disabled={openedSignedPreview !== a.id} onClick={() => reviewOne(a)}>I reviewed this signed copy</button>}{a.agent_reviewed_at && <span className="cc-cue">Reviewed {fmtWhen(a.agent_reviewed_at)} by {a.agent_reviewed_by || "staff"}</span>}{a.status === "signed" && a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" onClick={onCorrect}>Report error / send corrected agreement</button>}</div>}
-              {a.can_void && <div style={{ marginTop: 8 }}>
-                {voidTarget === a.id ? <div className="cc-card">
-                  <label htmlFor={`void-reason-${a.id}`} className="cc-cue">Reason to void this agreement</label>
-                  {(a.status === "completed" || a.status === "signed") && <div className="cc-cue cc-red">The original signed evidence stays in the file history.</div>}
-                  <textarea id={`void-reason-${a.id}`} className="cc-area" rows={2} value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="Describe the error and why this agreement must be voided" />
-                  <div className="cc-chips cc-list"><button type="button" className="cc-chip cc-sm" disabled={voidBusy} onClick={() => { setVoidTarget(null); setVoidReason(""); }}>Cancel</button><button type="button" className="cc-chip cc-sm" disabled={voidBusy || voidReason.trim().length < 3} onClick={() => void voidOne(a)}>{voidBusy ? "Voiding" : "Confirm void"}</button></div>
-                </div> : <div className="cc-chips cc-list"><button type="button" className="cc-chip cc-sm" onClick={() => { setVoidTarget(a.id); setVoidReason(""); }}>{a.replacement_requested_at && !a.voided ? "Owner/admin: resolve review by voiding original" : a.status === "completed" || a.status === "signed" ? "Void the signed agreement" : "Void"}</button></div>}
-              </div>}
             </div>
           ))}
         </div>
@@ -774,7 +799,7 @@ function FirmHandoff({ leadId, claimId, hasSignedPacket, awaitingOfficeSigner }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, claimId]);
   const dispatchPending = ["sending", "uncertain"].includes(state?.dispatch?.state);
-  const sent = !!state?.firm_sent_at;
+  const sent = !!state?.confirmed_firm_sent_at;
   const send = async () => {
     const delivery = state?.delivery;
     if (!hasSignedPacket || sent || dispatchPending || !delivery?.to || !delivery?.firm || busy) return;
@@ -799,13 +824,13 @@ function FirmHandoff({ leadId, claimId, hasSignedPacket, awaitingOfficeSigner }:
       : !state ? <div className="cc-cue">Checking this matter's delivery state…</div>
       : <>
         <div className="cc-cue">{state.delivery?.firm || "Firm not configured"}{state.delivery?.to ? ` · ${state.delivery.to}` : " · recipient missing"}</div>
-        {sent ? <div className="cc-cue">Sent {fmtWhen(state.firm_sent_at)}. The App will not resend this matter.</div>
+        {sent ? <div className="cc-cue">Sent to the firm {fmtWhen(state.confirmed_firm_sent_at)}.</div>
+          : state.prior_owner_only ? <div className="cc-cue cc-red">Earlier delivery reached Brett only. The firm has not received this packet. Finish the handoff in the center after the call.</div>
           : dispatchPending ? <div className="cc-cue cc-red">The last delivery outcome needs owner review. Do not resend.</div>
           : !hasSignedPacket ? <div className="cc-cue">{awaitingOfficeSigner
             ? "The client signed. Check DOB and securely saved SSN in Retainer, then complete the office step. The signed PDF and audit trail must be stored before delivery."
             : "A completed signed agreement and audit trail are required before handoff."}</div>
-          : <><div className="cc-cue">Review the signed agreement and audit trail above, then send this matter once.</div>
-            <button type="button" className="cc-btn cc-full" disabled={busy || !state.delivery?.to || !state.delivery?.firm} onClick={() => void send()}>{busy ? "Sending…" : "Send signed packet to firm"}</button></>}
+          : <div className="cc-cue">After the call disposition, review your file and send the complete packet from the final step in the center intake panel.</div>}
       </>}
     {message && <div role="status" className="cc-cue">{message}</div>}
   </div>;

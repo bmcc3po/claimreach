@@ -81,7 +81,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   const campaignId = claim.campaign_id ?? (singleMatter ? lead.campaign_id : null);
   try { await authoritativeDb.from("leads").update({ first_opened_at: new Date().toISOString(), first_opened_by: user.id }).eq("id", lead.id).is("first_opened_at", null); } catch {}
 
-  const [{ data: firm }, liveRes, mainRes, reasonsRes, dqRes, ownersRes, tplRes, campRes, extraRes, lastRes, routeRes] = await Promise.all([
+  const [{ data: firm }, liveRes, mainRes, reasonsRes, dqRes, ownersRes, tplRes, campRes, extraRes, lastRes, routeRes, signedDispoRes] = await Promise.all([
     sb.from("firms").select("name, slug").eq("id", lead.firm_id).maybeSingle(),
     // Pick up this agent's own open call on this file only if it was touched in
     // the last 30 minutes (a refresh, a dropped signal). Anything older is a new
@@ -101,10 +101,13 @@ export default async function CallPage({ params, searchParams }: { params: Promi
     sb.from("intake_calls").select("answers").eq("lead_id", lead.id).or(matterRowsFilter(matter)).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     // Firm lines for a 3-way: routing rules on this firm with a transfer number.
     sb.from("routing_rules").select("destination_name, transfer_number, case_type").eq("firm_id", lead.firm_id).eq("active", true).not("transfer_number", "is", null),
+    sb.from("intake_calls").select("id").eq("lead_id", lead.id).eq("claim_id", claim.id).eq("agent_id", me.id)
+      .eq("disposition", "signed").not("ended_at", "is", null).order("ended_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const threeWay = (routeRes.data ?? [])
     .filter((r: any) => !r.case_type || r.case_type === claim.claim_type)
     .map((r: any) => ({ label: r.destination_name || "Firm line", number: String(r.transfer_number) }));
+  if (signedDispoRes.error) throw new Error("Could not check whether this signed call already reached the final handoff. Refresh before continuing.");
   let extra: any = extraRes.data;
   if (extraRes.error) {
     const { data } = await sb.from("leads").select("case_description, marketing_source, lawruler_ref_no").eq("id", lead.id).maybeSingle();
@@ -185,6 +188,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
       leadId: lead.id,
       claimId: claim.id,
       callId: liveRes.data?.id ?? null,
+      signedDispoDone: !!signedDispoRes.data && !liveRes.data,
       baseAnswers: saved || {},
       agreementId: mainRes.row?.id ?? null,
       emergency: emergency.row ? { needsResign: emergencySupersedes(mainRes.row, emergency.row), status: emergency.row.status } : null,

@@ -39,12 +39,11 @@ function fakeFetch(answer: { status: number; body: any }, seen: any[]) {
     }
   });
 
-  await t("packets are v3 so the empty v2 templates are replaced on the next send", () => {
-    // TX, FL and OTHER went to v3 to replace the empty v2 templates. The two
-    // Nevada packets were born correct as v1 (Sep 28).
+  await t("new packet versions make patient SSN optional after explicit refusal", () => {
     for (const [k, p] of Object.entries(TMP_MVA_PACKETS)) {
-      const ver = k.startsWith("NV") ? "v1" : "v3";
+      const ver = k.startsWith("NV") ? "v2" : "v4";
       assert.match(p.name, new RegExp(` ${ver}$`)); assert.match(p.external_id, new RegExp(`-${ver}$`));
+      assert.equal(p.fields.find((field) => field.name === "Patient SSN")?.required, false);
     }
   });
 

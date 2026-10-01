@@ -292,12 +292,53 @@ export function IxFoot({ v }: { v: any }) {
 export function WsLeft({ v }: { v: any }) {
   const fi = v.fi;
   const missing = fi.missing || [];
+  const [fileStep, setFileStep] = useState<{ reviewed: boolean; complete: boolean; qa: boolean; sentAt: string | null; error: boolean }>({ reviewed: false, complete: false, qa: false, sentAt: null, error: false });
+  useEffect(() => {
+    if (!v.leadId || !v.claimId || !["signed", "completed"].includes(v.agreementStatus)) return;
+    let live = true;
+    const refresh = async () => {
+      try {
+        const query = new URLSearchParams({ lead_id: v.leadId, claim_id: v.claimId });
+        const [fileResponse, deliveryResponse] = await Promise.all([
+          fetch(`/api/calls/file?${query}`, { cache: "no-store" }),
+          v.dispo?.saved ? fetch(`/api/firm-delivery?${query}`, { cache: "no-store" }) : Promise.resolve(null),
+        ]);
+        const file = await fileResponse.json().catch(() => ({}));
+        const delivery = deliveryResponse ? await deliveryResponse.json().catch(() => ({})) : null;
+        if (!fileResponse.ok || file.error || (deliveryResponse && (!deliveryResponse.ok || delivery?.error))) throw new Error("file state unavailable");
+        const agreement = (file.agreements || []).find((item: any) => item.pax == null);
+        if (live) setFileStep({ reviewed: !!agreement?.agent_reviewed_at, complete: agreement?.status === "completed", qa: !!delivery?.qa_approved,
+          sentAt: delivery?.confirmed_firm_sent_at || null, error: false });
+      } catch { if (live) setFileStep((old) => ({ ...old, error: true })); }
+    };
+    const onChange = () => { void refresh(); };
+    void refresh();
+    window.addEventListener("focus", onChange);
+    window.addEventListener("cr:agreement-reviewed", onChange);
+    window.addEventListener("cr:esign-reconciled", onChange);
+    window.addEventListener("cr:firm-handoff", onChange);
+    return () => { live = false; window.removeEventListener("focus", onChange); window.removeEventListener("cr:agreement-reviewed", onChange);
+      window.removeEventListener("cr:esign-reconciled", onChange); window.removeEventListener("cr:firm-handoff", onChange); };
+  }, [v.leadId, v.claimId, v.agreementStatus, v.dispo?.saved]);
+  const guide = (() => {
+    if (fileStep.error && v.dispo?.saved) return { label: "CHECK DELIVERY STATUS", note: "The file status could not be verified. Refresh before another send.", go: () => window.dispatchEvent(new Event("cr:firm-handoff")), tone: "hold" };
+    if (fileStep.sentAt) return { label: "SENT TO FIRM", note: `Confirmed ${new Date(fileStep.sentAt).toLocaleString()}. The seven-day return clock is running.`, tone: "done" };
+    if (v.dispo?.saved && v.dispo?.isSigned) return fileStep.qa
+      ? { label: "SEND TO FIRM", note: "Your file review passed. Confirm the recipients and send the complete packet in the center.", go: v.openDispo, tone: "urgent" }
+      : { label: "QA YOUR FILE", note: "Open the intake and completed signed packet, then check your work in the center.", go: v.openDispo, tone: "urgent" };
+    if (v.agreementStatus === "signed" && !fileStep.reviewed) return { label: "REVIEW SIGNATURE", note: "Open the client-signed retainer in the center and approve the copy before the office step.", go: () => v.jumpTo("file"), tone: "urgent" };
+    if (v.agreementStatus === "signed" && !fileStep.complete) return { label: "COMPLETE RETAINER", note: "Collect DOB and SSN, or record that the client refused SSN. Finish the office signer step.", go: () => v.jumpTo("file"), tone: "urgent" };
+    if (missing.length) return { label: `ASK: ${String(missing[0].label).replace(/^\d+\.\s*/, "").toUpperCase()}`, note: "Capture this answer, then the guide moves forward.", go: missing[0].go, tone: "ask" };
+    if (v.agreementStatus === "completed") return { label: "END & DISPOSITION CALL", note: "The signed packet is complete. Close the call before reviewing the file for delivery.", go: v.openDispo, tone: "urgent" };
+    if (["sent", "opened", "sending"].includes(v.agreementStatus)) return { label: "WAIT FOR SIGNATURE", note: "The agreement is out. Confirm when the signed copy comes back.", tone: "wait" };
+    return { label: "SEND AGREEMENT", note: "Finish the intake and send the correct state packet from the center.", go: () => v.jumpTo("send"), tone: "ask" };
+  })();
   const missingItem = (m: any) => (v.fullView || v.choreView || v.formView || v.stepView || v.guidedQuestions)
     ? <button key={m.id} type="button" className="ws-miss-b" onClick={m.go}>{m.label}</button>
     : <span key={m.id} className="ws-miss-b ws-miss-t">{m.label}</span>;
   return (
     <aside className="ws-left" aria-label="Intake review">
-      <div className="ws-review-heading"><Icon name="shield" size={22} /><div><strong>Intake review</strong><span>Checks &amp; missing answers</span></div></div>
+      <div className="ws-review-heading"><Icon name="shield" size={22} /><div><strong>Call guide</strong><span>What to do next</span></div></div>
       <section className="ws-caller ws-review-identity">
         <a className="ws-back" href="/app">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>All calls
@@ -325,6 +366,13 @@ export function WsLeft({ v }: { v: any }) {
           </button>
           <button type="button" className="ws-btn ws-end" onClick={v.openDispo}>End call</button>
         </div>
+      </section>
+
+      <section className={`ws-next-guide ws-next-${guide.tone}`} aria-label="Next action">
+        <span className="ws-next-kicker">NEXT</span>
+        <strong>{guide.label}</strong>
+        <p>{guide.note}</p>
+        {guide.go && <button type="button" onClick={guide.go}>Go to this step <Chevron /></button>}
       </section>
 
       <section className="ws-block ws-review-checks">
