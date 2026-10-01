@@ -64,7 +64,10 @@ export function placeOutreach(summary: DialSummary | null, firstDialedAt: string
   if (total === 0 && firstDialedAt) return review("A first dial is recorded, but its call history is unavailable.");
   if (summary.unverified_dials > 0 || summary.unanswered_dials + summary.answered_dials !== total)
     return review("An outbound call lacks a verified no-answer or answer result.");
-  if (summary.answered_dials > 0) return review("A call was answered. Record the next action or callback.");
+  // A provider's "answered" flag means the line connected, not that our agent
+  // spoke with the client. A real conversation is routed by the agent's file
+  // disposition (callback, e-sign, signed, DQ), outside this attempt planner.
+  // Keep connected attempts in the dial count and cadence until then.
   if (summary.dial_times.length !== total || (total > 0 && !lastCallAt)) return review("Call timestamps are incomplete.");
 
   const zone = summary.local_zone;
