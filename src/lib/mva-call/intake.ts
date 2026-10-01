@@ -20,7 +20,7 @@ export interface IntakeSection {
 
 export const INTAKE_SECTIONS: IntakeSection[] = [
   { id: "incident", label: "Incident", questions: ["city", "when", "seat", "fault", "police", "report"] },
-  { id: "injury", label: "Injury", questions: ["pain", "work"] },
+  { id: "injury", label: "Injury", questions: ["pain"] },
   { id: "treatment", label: "Treatment", questions: ["seen", "providers", "firstAt", "lastAt", "stretch", "willing"] },
   { id: "insurance", label: "Insurance", questions: ["carrier", "exchanged", "coverage", "uim", "check", "rep"] },
   { id: "vehicle", label: "Vehicle", questions: ["people", "car"] },
@@ -30,7 +30,7 @@ export const INTAKE_SECTIONS: IntakeSection[] = [
 /** The order a guided call asks in. "Next unanswered" walks this list. */
 export const INTAKE_SEQUENCE = [
   "city", "when", "seat", "fault", "police",
-  "pain", "seen", "firstAt", "lastAt", "stretch", "willing", "work",
+  "pain", "seen", "firstAt", "lastAt", "stretch", "willing",
   "exchanged", "coverage", "uim", "check", "rep",
   "people",
 ];

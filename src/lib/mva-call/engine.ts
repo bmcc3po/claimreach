@@ -125,7 +125,6 @@ export const BODYQ: any[] = [
   { key: 'lastAt', label: 'Last seen', date: true, line: "When were you last seen for it?", cue: 'More than 30 days ago is a gap. Flag it, do not close it.', opts: ['Today', 'Yesterday', 'Not sure'] },
   { key: 'stretch', label: 'Month with no visit', line: "Has there been a stretch of more than a month where you didn't see anybody for it?", cue: 'Yes is a gap. Flag it, do not close it.', opts: ['Yes', 'No', 'Not sure'] },
   { key: 'willing', label: 'Will treat', line: "If we get you in with somebody local this week, are you able to go?", soonLine: "Can you get in today or tomorrow?", cue: 'The single best predictor of whether the file survives.', opts: ['Yes', 'Maybe', 'No'] },
-  { key: 'work', label: 'Missed work', line: "Have you had to miss any work over this?", cue: '', opts: ['Yes', 'No', 'Not working'] },
   { key: 'exchanged', label: 'Exchanged info', line: "Did you and the other driver exchange information out there?", cue: 'Never ask "did the other driver have insurance."', opts: ['Yes', 'No', 'Police handled it', 'Hit and run'] },
   { key: 'coverage', label: 'Their coverage', line: "And do you carry full coverage on your own car, or just liability?", cue: '', opts: ['Full coverage', 'Just liability', 'No insurance', 'Not sure'] },
   { key: 'uim', label: 'UM/UIM', line: "Do you have uninsured or underinsured motorist coverage on your own policy?", cue: 'Most people do not know. Not sure is not a no. Keep going.', opts: ['Yes', 'No', 'Not sure'] },
@@ -477,7 +476,7 @@ export class CallEngine {
     var gaps = (pairs: any) => pairs.filter((x) => !x[1]).map((x) => x[0]);
     var live = BODYQ.filter((q) => this.applies(b, q));
     var open = (keys: any) => live.filter((q) => keys.indexOf(q.key) >= 0 && !this.answered(b, q)).map((q) => q.key);
-    var injKeys = ['pain', 'seen', 'firstAt', 'lastAt', 'stretch', 'willing', 'work'], covKeys = ['exchanged', 'coverage', 'uim', 'check', 'rep'];
+    var injKeys = ['pain', 'seen', 'firstAt', 'lastAt', 'stretch', 'willing'], covKeys = ['exchanged', 'coverage', 'uim', 'check', 'rep'];
     var touched = (keys: any) => keys.some((k) => Array.isArray(b[k]) ? b[k].length > 0 : b[k] != null);
     var sec = {
       story: { missing: gaps([['fault', st.fault], ['seat', st.seat && (st.seat !== 'Other' || st.seatOther)], ['police', st.police], ['when', st.when && (st.when !== 'Pick a date' || st.date)], ['city', st.city]]),
@@ -600,8 +599,9 @@ export class CallEngine {
   //   willing: not seen, a gap, a not sure, or under 5 days left
   applies(b: any, q: any) {
     var days = this.daysAgo();
-    if (q.key === 'firstAt') return this.seenYes(b) && (days == null || days > 30);
-    if (q.key === 'lastAt') return this.seenYes(b) && (days == null || days >= 25);
+    // Visit details follow a positive treatment answer. Saved dates survive if
+    // the client later corrects that answer to "Not yet".
+    if (q.key === 'firstAt' || q.key === 'lastAt') return this.seenYes(b);
     if (q.key === 'stretch') {
       if (!this.seenYes(b)) return false;
       var fa = this.visitNo(b, 'firstAt'), la = this.visitNo(b, 'lastAt'), c = this.crashNo();
@@ -879,7 +879,7 @@ export class CallEngine {
     rows.push(I('City, State', 'story', 'city', 'City, State'));
 
     rows.push(G('injury', 'Injury'));
-    ['pain', 'seen', 'firstAt', 'lastAt', 'stretch', 'willing', 'work'].forEach((k) => {
+    ['pain', 'seen', 'firstAt', 'lastAt', 'stretch', 'willing'].forEach((k) => {
       if (!this.applies(b, byKey(k))) return;
       rows.push(Q(k));
       if (byKey(k).date) rows.push(D(k));
@@ -1203,8 +1203,8 @@ export class CallEngine {
       return { id: id, label: fact.label, ask: fact.ask, applies: true, answered: fact.done, optional: false, value: fv, tone: id === 'fault' && st.fault === 'Caller' ? 'bad' : '' };
     }
     var one = (label: any, answered: any, value: any, applies?: any) => ({ id: id, label: label, ask: '', applies: applies !== false, answered: !!answered, optional: optional, value: answered ? value : '', tone: '' });
-    if (id === 'report') return one('Report number', String(f.report || '').trim(), String(f.report || '').trim());
-    if (id === 'providers') { var pv = (b.providers || []).filter(Boolean); return one('Where the PNC was seen', pv.length, pv.join(', '), this.seenYes(b) || pv.length > 0); }
+    if (id === 'report') return one('Report number', String(f.report || '').trim(), String(f.report || '').trim(), st.police === 'Came out');
+    if (id === 'providers') { var pv = (b.providers || []).filter(Boolean); return one('Where the PNC was seen', pv.length, pv.join(', '), this.seenYes(b)); }
     if (id === 'carrier') return one("Other driver's insurance", f.carrier && f.carrier !== 'Pick one', f.carrier);
     if (id === 'people') {
       var ok = car.justMe || (car.people.length > 0 && car.people.every((p) => p.age && p.hurt));

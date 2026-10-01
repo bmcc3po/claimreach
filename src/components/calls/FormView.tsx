@@ -12,6 +12,7 @@ import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, OPEN_LINE, MONEY, SEND_LIN
 import PlaceField from "./PlaceField";
 import { DobField, SsnField } from "./SsnDob";
 import AgreementChoice from "./AgreementChoice";
+import InlineSignedReview from "./InlineSignedReview";
 
 // Plain radio buttons (checkboxes for a pick-several question), like the
 // firm report: no pills (Brett, Sep 28).
@@ -95,12 +96,12 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
         </>))}
       </div>
     )}
+    {v.signed && <InlineSignedReview v={v} />}
     <div className="sf-rows">
       {!v.sendReady && <IdentityRows v={v} />}
       {row("Finish the agreement", (<>
         {v.agreementOpen && (
           <div className="sf-addrow">
-            {v.signed && v.openFile && <button type="button" className="sf-btn sf-line" onClick={v.openFile}>Review client-signed PDF in File</button>}
             <button type="button" className="sf-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
             <button type="button" className="sf-btn sf-line" onClick={v.leaveForQa}>Finish later</button>
           </div>

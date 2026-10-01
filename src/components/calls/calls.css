@@ -2013,3 +2013,37 @@ div.ws-row{cursor:default}
   .iq-guided .fi-q-edit { padding: 14px; }
   .iq-question .fi-car { grid-template-columns: 1fr; }
 }
+
+/* The header can fold on desktop as well as phone. The slim handle stays visible. */
+.cc-app.ix.ix-narrow .ix-top-handle{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;padding:5px 8px;border:0;border-top:1px solid var(--x-line);background:transparent;color:var(--x-navy);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.cc-app.ix.ix-narrow .ix-top-handle-label{flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-app.ix.ix-narrow .ix-top-handle-status{color:var(--x-sub);font-weight:600}
+.cc-app.ix.ix-narrow .ix-top-handle .ix-top-grip{display:none}
+.cc-app.ix.ix-narrow .ix-top-handle>svg{transform:rotate(-90deg)}
+.cc-app.ix.ix-narrow .ix-top-handle[aria-expanded="false"]>svg{transform:rotate(90deg)}
+.cc-app.ix.ws .ix-top-handle{display:flex;align-items:center;gap:8px;align-self:flex-end;min-height:34px;padding:4px 10px;border:1px solid var(--x-line2);border-radius:9px;background:#f4f7fc;color:var(--x-navy);font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.cc-app.ix.ws .ix-top-handle .ix-top-grip{display:none}
+.cc-app.ix.ws .ix-top-handle>svg{transform:rotate(-90deg)}
+.cc-app.ix.ws .ix-top-handle[aria-expanded="false"]>svg{transform:rotate(90deg)}
+.cc-app.ix>.cc-top.ix-top.ix-phone-top-collapsed .ix-top-content{display:none}
+.cc-app.ix.ws>.cc-top.ix-top.ix-phone-top-collapsed{padding:5px 16px}
+.cc-app.ix.ws .ix-top-save-alert{display:block;color:var(--x-red);font-size:13px;font-weight:650}
+
+.inline-signed-review{display:grid;gap:12px;width:100%;box-sizing:border-box;margin:12px 0;padding:18px;border:1.5px solid #a8bfdd;border-left:5px solid #1b4b86;border-radius:13px;background:#f3f7fd;color:#102c50}
+.inline-signed-review-head{display:flex;gap:12px;align-items:flex-start}
+.inline-signed-review-head strong{font-size:17px}
+.inline-signed-review-head p{margin:5px 0 0;font-size:14px;line-height:1.45;color:#385572}
+.inline-signed-review-number{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#1b4b86;color:white;font-weight:750}
+.inline-signed-review-actions{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.inline-signed-review-actions button,.inline-signed-review-save{min-height:44px;padding:8px 14px;border:0;border-radius:9px;background:#173a71;color:white;font:inherit;font-size:14px;font-weight:750;cursor:pointer}
+.inline-signed-review-actions a{color:#184c8d;font-size:14px;font-weight:700;text-decoration:underline}
+.inline-signed-review-document{min-width:0}
+.inline-signed-review-document iframe{display:block;width:100%;height:min(65vh,720px);box-sizing:border-box;border:1px solid #abc2de;border-radius:9px;background:white}
+.inline-signed-review-document p{margin:5px 0 0;font-size:12px;color:#526780}
+.inline-signed-review-confirm{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.4;font-weight:650}
+.inline-signed-review-confirm input{flex:none;width:20px;height:20px;margin:0}
+.inline-signed-review-save{justify-self:start}
+.inline-signed-review-save:disabled{background:#afbdd0;cursor:default}
+.inline-signed-review-done{margin:0;padding:10px 12px;border-radius:8px;background:#e4f5e9;color:#126236;font-size:14px;font-weight:700}
+.inline-signed-review-error{margin:0;color:#a32920;font-size:14px;font-weight:650}
+.inline-signed-review-refresh{justify-self:start;min-height:36px;padding:4px 0;border:0;background:transparent;color:#1b4b86;font:inherit;font-size:13px;font-weight:700;text-decoration:underline;cursor:pointer}

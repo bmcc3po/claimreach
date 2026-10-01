@@ -335,13 +335,30 @@ t("gap: a month with no visit is a gap; a date before the wreck is refused", () 
   assert.ok(!e.answered(e.state.body, BODYQ_BY("firstAt")));
 });
 
-t("gap: a fresh wreck she was seen for asks no dates", () => {
+t("gap: a fresh wreck still asks visit dates after treatment is confirmed", () => {
   const e = crashAgo(10);
   e.setState({ body: { ...e.state.body, pain: ["Neck"], done: { pain: true }, seen: ["Urgent care"] } });
   e.setState({ body: { ...e.state.body, done: { ...e.state.body.done, seen: true } } });
   const keys = liveKeys(e);
-  assert.ok(!keys.includes("firstAt") && !keys.includes("lastAt") && !keys.includes("stretch"));
+  assert.ok(keys.includes("firstAt") && keys.includes("lastAt") && !keys.includes("stretch"));
+  e.setState({ body: { ...e.state.body, firstAt: "same", lastAt: isoAgo(1) } });
   assert.ok(light(e, "Gap").includes("ok"));
+});
+
+t("conditional followups hide without discarding earlier answers", () => {
+  const e = mk();
+  e.setState({
+    story: { ...e.state.story, police: "No" },
+    body: { ...e.state.body, seen: ["Not yet"], firstAt: "same", lastAt: isoAgo(1), providers: ["Synthetic clinic"], work: "Yes" },
+    file: { ...e.state.file, report: "SYNTHETIC-REPORT" },
+  });
+  const ids = () => e.renderVals().fi.sections.flatMap((s: any) => s.questions.map((q: any) => q.id));
+  for (const id of ["work", "report", "providers", "firstAt", "lastAt"]) assert.ok(!ids().includes(id), id);
+  assert.equal(e.persistable().body.work, "Yes");
+  assert.equal(e.persistable().file.report, "SYNTHETIC-REPORT");
+  e.setState({ story: { ...e.state.story, police: "Came out" }, body: { ...e.state.body, seen: ["ER"] } });
+  for (const id of ["report", "providers", "firstAt", "lastAt"]) assert.ok(ids().includes(id), id);
+  assert.ok(!ids().includes("work"));
 });
 
 // ---- Story as one list ----
@@ -429,7 +446,7 @@ t("full intake: the caller's story, captured out of order", () => {
   assert.equal(e.state.file.carrier, "State Farm");
   // Glance: what's captured, what's left behind, what's untouched.
   assert.equal(fiSec(e, "incident").status, "missing");
-  assert.equal(fiSec(e, "treatment").status, "done");
+  assert.equal(fiSec(e, "treatment").status, "missing"); // dates are due once seen is yes
   assert.equal(fiSec(e, "vehicle").status, "empty");
   assert.ok(/Sunrise Hospital/.test(fiSec(e, "treatment").summary));
   assert.equal(fiSec(e, "insurance").summary, "State Farm");
@@ -478,8 +495,7 @@ t("full intake: a multi-pick stays open, a single pick closes, answers can be ch
   fiQ(e, "pain").edit();
   fiTap(e, "pain", "Chest");
   assert.deepEqual(e.state.body.pain, ["Head", "Chest"]);
-  fiTap(e, "work", "No");
-  assert.equal(fiQ(e, "work").editing, false);
+  assert.ok(!fiOf(e).sections.flatMap((s: any) => s.questions).some((q: any) => q.id === "work"));
 });
 
 t("full intake: a quick note lands in the call notes with the time", () => {
@@ -610,9 +626,9 @@ t("full intake: the missing list and the next question agree", () => {
   assert.equal(fi.missing[0].id, "city");
   assert.equal(fi.next.label, "Next: " + fi.missing[0].label);
   assert.ok(fi.next.ask.length > 0);
-  fi.missing.find((m: any) => m.id === "work").go();
-  assert.equal(fiOf(e).openSec, "injury");
-  assert.equal(fiQ(e, "work").flash, true);
+  fi.missing.find((m: any) => m.id === "seen").go();
+  assert.equal(fiOf(e).openSec, "treatment");
+  assert.equal(fiQ(e, "seen").flash, true);
 });
 
 // ---- Conversation and Quick Capture: one question at a time ----
@@ -661,15 +677,15 @@ t("quick capture: same answers as Full Intake, and switching lands on the same q
   oneTap(e, "Head"); oneOf(e).q.done();
   oneTap(e, "ER"); oneOf(e).q.done();
   const at = oneOf(e).q.id;
-  assert.equal(at, "work"); // a wreck yesterday skips the visit dates; next in call order is missed work
+  assert.equal(at, "firstAt"); // a positive treatment answer exposes the visit details
   e.setView("full");
-  assert.equal(fiOf(e).openSec, "injury");
+  assert.equal(fiOf(e).openSec, "treatment");
   assert.deepEqual(e.state.body.seen, ["ER"]);
   e.setView("convo");
   assert.equal(oneOf(e).q.id, at);
   // The missing list on the side jumps the one-question views too.
-  fiOf(e).missing.find((m: any) => m.id === "work").go();
-  assert.equal(oneOf(e).q.id, "work");
+  fiOf(e).missing.find((m: any) => m.id === "firstAt").go();
+  assert.equal(oneOf(e).q.id, "firstAt");
 });
 
 t("conversation: when every question is answered, the way on is How we work", () => {

@@ -18,7 +18,7 @@ const call = {
   car: { justMe: true, people: [] }, file: { carrier: "State Farm", report: "TEST-REPORT", vYear: "2022", vMake: "Toyota", vModel: "Camry", ssn: "000001234", addr: "10 Test St, Houston, TX", dl: "SYNTHETIC-DL" },
 };
 const claim = { id: "bbb2", lead_id: lead.id, firm_id: "firm", campaign_id: "campaign-B", campaign: "MVA campaign", claim_type: "mva", answers: { mva_call: call } };
-const bundle: IntakeBundle = { lead, claim, answers: claim.answers, caseType: "mva", fields: [] };
+const bundle: IntakeBundle = { lead, claim, answers: claim.answers, caseType: "mva", fields: [], agentName: "Synthetic Intake Agent" };
 
 function db(rows: Record<string, any[]>) {
   return { from(table: string) {
@@ -28,7 +28,7 @@ function db(rows: Record<string, any[]>) {
       const matches = (rows[table] ?? []).filter((r) => filters.every((f) => f(r)));
       return { data: selection.head ? null : matches, error: null, count: selection.count === "exact" ? matches.length : null };
     };
-    const q: any = { select: (_columns?: string, options?: typeof selection) => { selection = options ?? {}; return q; }, eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; }, order: () => q,
+    const q: any = { select: (_columns?: string, options?: typeof selection) => { selection = options ?? {}; return q; }, eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; }, order: () => q, limit: () => q,
       maybeSingle: async () => ({ data: (rows[table] ?? []).find((r) => filters.every((f) => f(r))) ?? null, error: null }),
       then: (a: any, b: any) => Promise.resolve(result()).then(a, b) };
     return q;
@@ -66,12 +66,14 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>)
   await t("MVA questions/answers reuse the existing call report and never dump SSN", () => {
     assert.deepEqual(intakeSections(bundle), caseReport({ ...lead, campaign: claim.campaign }, call).sections);
     const csv = buildIntakeCsvSingle(bundle);
+    assert.match(csv, /"Intake agent"/); assert.match(csv, /"Synthetic Intake Agent"/);
     for (const value of ["Houston, TX", "Neck, Back", "MVA_ONLY_SENTINEL", "MVA campaign", "State Farm", "TEST-REPORT", "2022", "Toyota", "Camry"]) assert.ok(csv.includes(value), value);
     assert.ok(!csv.includes("000001234")); assert.ok(!csv.includes("Sibling campaign"));
   });
   await t("actual PDF bytes include nested MVA values and exclude SSN", async () => {
     const text = await pdfText(await buildIntakePdf(bundle));
     assert.match(text, /Houston, TX/); assert.match(text, /Neck, Back/); assert.match(text, /MVA_ONLY_SENTINEL/);
+    assert.match(text, /Intake agent: Synthetic Intake Agent/);
     for (const value of ["State Farm", "TEST-REPORT", "2022", "Toyota", "Camry"]) assert.ok(text.includes(value), value);
     assert.ok(!text.includes("000001234"));
   });
@@ -97,11 +99,21 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>)
     const html = buildIntakeEmailHtml({ ...bundle, answers: { mva_call: { ...call, story: { ...call.story, text: "Crash <script>alert(1)</script>" } } } });
     assert.match(html, /Crash &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.match(html, /Houston, TX/);
+    assert.match(html, /Intake agent:<\/strong> Synthetic Intake Agent/);
     assert.ok(!html.includes("000001234"));
   });
   await t("generic form choice labels and lead fallback remain intact", () => {
     const csv = buildIntakeCsvSingle({ ...bundle, caseType: "other", answers: { answer: "yes_code" }, fields: [{ id: "answer", kind: "select", label: "Question", choices: [{ value: "yes_code", label: "Spoken yes" }] }, { id: "phone", kind: "phone", label: "Phone" }] });
     assert.match(csv, /Spoken yes/); assert.match(csv, /2025550142/); assert.ok(!csv.includes("MVA_ONLY_SENTINEL"));
+  });
+  await t("intake agent comes from the assigned staff record, then this matter's call", async () => {
+    const assigned = await loadIntakeBundle(db({ leads: [{ ...lead, intake_agent_id: "staff-1" }], claims: [claim], app_users: [{ id: "staff-1", full_name: "Assigned Agent" }], intake_calls: [{ lead_id: lead.id, claim_id: claim.id, agent_name: "Later Call Agent" }] }), lead.id, claim.id);
+    assert.equal(assigned?.agentName, "Assigned Agent");
+    const fromCall = await loadIntakeBundle(db({ leads: [lead], claims: [claim], intake_calls: [
+      { lead_id: lead.id, claim_id: "sibling", agent_name: "Wrong Matter Agent" },
+      { lead_id: lead.id, claim_id: claim.id, agent_name: "This Matter Agent" },
+    ] }), lead.id, claim.id);
+    assert.equal(fromCall?.agentName, "This Matter Agent");
   });
   await t("PDF route pins named claim B and reads nested MVA through session only", async () => {
     const sb = db({ leads: [lead], claims: [{ ...claim, id: "aaa1", campaign: "Wrong", campaign_id: "campaign-A", answers: { sibling: true } }, claim] });

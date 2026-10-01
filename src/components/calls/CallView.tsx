@@ -14,6 +14,7 @@ import { GuidedIntake } from "./OneQuestion";
 import IntakeQuestion, { AgreementRecipient, QuestionControl } from "./IntakeQuestion";
 import { DobField, SsnField } from "./SsnDob";
 import AgreementChoice from "./AgreementChoice";
+import InlineSignedReview from "./InlineSignedReview";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
@@ -69,6 +70,7 @@ export default function CallView({ v }: { v: any }) {
 {!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>{v.sendHoldNotice.startsWith("Send outcome unconfirmed") ? "Send outcome unconfirmed" : "Signing actions paused"}</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
 {!!v.nameReview && <div className="cc-stop" role="status"><p>{v.nameReview}</p>{v.canUseRecordName && <button type="button" className="cc-btn" onClick={v.useRecordName}>{v.canReplace ? "Use corrected PNC name" : "Use PNC name"}</button>}{v.canVoid && <button type="button" className="cc-btn" onClick={v.voidAgreement}>Void incorrect agreement</button>}{v.canReplace && <button type="button" className="cc-btn" onClick={() => v.jumpTo("send")}>Review corrected agreement below</button>}</div>}
 {!!v.emergencyNotice && <div className="cc-stop" role="status"><p>{v.emergencyNotice}</p>{v.prepareResign && <button type="button" className="cc-btn" onClick={v.prepareResign}>Prepare DocuSeal re-sign</button>}</div>}
+{v.signed && !v.choreView && !v.formView && !v.showSend && !(v.showFile && v.fsAgreement) && <InlineSignedReview v={v} />}
 {!!(v.choreView) && <ChoreList v={v} />}
 {!!v.stepView && <StepByStep v={v} />}
 {!!(v.formView) && <FormView v={v} />}
@@ -361,6 +363,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.sendLive) && (<>
 {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
 <div className="cc-steps">{(v.sendSteps || []).map((st: any, i32: number) => (<Fragment key={i32}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div>
+{v.signed && <InlineSignedReview v={v} />}
 {v.canReplace && <details className="cc-card"><summary className="cc-card-h">Correct this agreement</summary><p className="cc-cue">The original stays in history. If the client signed it, the supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn cc-full" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
 {!!(v.notSigned) && (<>
 <div className="cc-say">
@@ -400,9 +403,9 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-card">
 <span className="cc-card-h">Finish the agreement</span>
 <div className="cc-cue" style={{marginTop: "0"}}>These print on the HIPAA pages as the patient's. For a child, it's the child's.</div>
+{v.signed && !v.showSend && <InlineSignedReview v={v} />}
 <IdentityFields v={v} />
 {!!(v.agreementOpen) && (<>
-{v.signed && v.openFile && <button type="button" className="cc-btn cc-soft" onClick={v.openFile}>Review client-signed PDF in File</button>}
 <button className="cc-btn cc-full" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
 <button className="cc-btn cc-soft" onClick={v.leaveForQa}>Finish later</button>
 </>)}
@@ -429,7 +432,7 @@ export default function CallView({ v }: { v: any }) {
   const q = v.fi.sections.flatMap((s: any) => s.questions).find((q: any) => q.id === id);
   return q ? <IntakeQuestion key={id} q={q} v={v} presentation="guided" /> : null;
 })}
-<div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">Missed work</span><span className="cc-done-v">{v.missedWork}</span></div>
+{v.missedWork !== 'Not asked' && <div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">Missed work (previously recorded)</span><span className="cc-done-v">{v.missedWork}</span></div>}
 </div>
 </>)}
 {!!(v.fsPax) && (<>

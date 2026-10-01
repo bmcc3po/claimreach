@@ -45,7 +45,7 @@ function Chevron() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>;
 }
 
-/** Phone header folds as one unit. Keep its children mounted across every view and size. */
+/** The call header folds as one unit in every view and screen size. */
 export function IxTop({ v }: { v: any }) {
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
@@ -58,7 +58,7 @@ export function IxTop({ v }: { v: any }) {
         {!v.ws && <IxHead v={v} />}
         <IxBar v={v} />
       </div>
-      {!v.ws && <>
+      <>
         <button type="button" className="ix-top-handle" aria-expanded={!collapsed} aria-controls={contentId}
           aria-label={collapsed ? `Show call header for ${v.callerName}` : "Hide call header"}
           title={collapsed ? "Tap or pull down to show the header" : "Tap or swipe up to hide the header"}
@@ -92,7 +92,7 @@ export function IxTop({ v }: { v: any }) {
           <Chevron />
         </button>
         {collapsed && v.saveBad && <div className="ix-top-save-alert" role="status">{v.saveError || "Not saved. Retrying."}</div>}
-      </>}
+      </>
     </div>
   );
 }
