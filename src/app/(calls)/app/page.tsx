@@ -9,7 +9,7 @@ import { loadMvaAcquisitionHolds, type MvaAcquisitionSignal } from "@/lib/lawrul
 import { buildDeskQueues, readDeskRows } from "@/lib/mva-call/desk-queue";
 import type { DialSummary } from "@/lib/mva-call/outreach-stage";
 import { localDateKey } from "@/lib/mva-call/outreach-followup";
-import { inferMailTimeZone } from "@/lib/mail-time-zone";
+import { outreachZone } from "@/lib/mva-call/outreach-stage";
 import type { StatusDef } from "@/lib/statuses";
 import Link from "next/link";
 import CallsHome, { type HomeData, type HomeRow } from "@/components/calls/CallsHome";
@@ -45,7 +45,7 @@ export default async function AppHomePage() {
     ? campaigns.filter((c: any) => packetsFor((firmById.get(c.firm_id) as any)?.slug, c.case_type)) : [];
   const [leadRes, tplRes, textRes] = await Promise.all([
     campIds.length ? readDeskRows(() => sb.from("leads")
-      .select("id, firm_id, external_id, archived_at, lead_no, claimant_name, phone, campaign_id, campaign, created_at, last_called_at, first_dialed_at, signed_at, marketing_source, mail_state, mail_zip, client_time_zone, perm_call, perm_text, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, created_at, updated_at)")
+      .select("id, firm_id, external_id, archived_at, lead_no, claimant_name, phone, campaign_id, campaign, created_at, last_called_at, first_dialed_at, signed_at, marketing_source, incident_state, vendor_fields, client_time_zone, perm_call, perm_text, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, created_at, updated_at)")
       .in("campaign_id", campIds).is("archived_at", null)) : { data: [], error: null },
     setupCamps.length ? sb.from("esign_templates").select("campaign_id, key").in("campaign_id", setupCamps.map((c: any) => c.id)).eq("provider", "docuseal") : { data: [], error: null },
     // Messages remain reachable outside the six work queues, including replies
@@ -75,7 +75,11 @@ export default async function AppHomePage() {
     if (dialRes.error) notes.push("Dial history could not be verified. Outreach files are held for review, not labeled never called.");
     else for (const row of dialRes.data ?? []) {
       const lead = allLeads.get(row.lead_id);
-      const zone = row.local_zone || (!lead?.client_time_zone ? inferMailTimeZone(lead?.mail_state, lead?.mail_zip) : null);
+      // A verified zone wins. Otherwise use the marketer's accident state;
+      // when absent, use a recognized phone area code. Never use the server's
+      // Pacific day or assume an unknown area code is Central.
+      const marketerState = lead?.incident_state || lead?.vendor_fields?.incident_state || lead?.vendor_fields?.accident_state;
+      const zone = row.local_zone || outreachZone(lead?.client_time_zone, marketerState, lead?.phone);
       let dialsToday = row.dials_today;
       if (zone && !row.local_zone) {
         const today = localDateKey(new Date(), zone);

@@ -629,7 +629,7 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-grp">
 {(v.dispo.summary || []).map((r: any, i49: number) => (<Fragment key={i49}><div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">{r.k}</span><span className="cc-done-v">{r.v}</span></div></Fragment>))}
 </div>
-{v.dispo.isSigned && <FinalHandoff leadId={v.leadId} claimId={v.claimId} onNext={v.dispo.nextCall} />}
+{v.dispo.isSigned && <FinalHandoff leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.dispo.back(); item.go(); } }))} onNext={v.dispo.nextCall} />}
 </>)}
 {!!v.dispo.hasError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.dispo.error}</div></div>}
 </div>

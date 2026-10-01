@@ -567,7 +567,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     const sentAnswers = applyAnswerDelta(baseView, sentView, baseAnswers);
     let acknowledged = false;
     try {
-      const d = await post("/api/calls/save", { lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, base_answers: baseAnswers, answers: sentAnswers, mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
+      const d = await post("/api/calls/save", { lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, post_call_correction: !!engine.state.dispo.saved, base_answers: baseAnswers, answers: sentAnswers, mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
       callId.current = d.call_id || callId.current;
       const canonical = isAnswerObject(d.answers) ? d.answers : sentAnswers;
       // The acknowledgement may contain an import or another screen's unrelated
@@ -660,7 +660,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       if (saveBlocked.current) return;
       const snap = JSON.stringify(engine.persistable());
       if (snap === lastSaved.current) return;
-      const body = JSON.stringify({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, base_answers: answerBase.current, answers: applyAnswerDelta(JSON.parse(lastSaved.current), JSON.parse(snap), answerBase.current) });
+      const body = JSON.stringify({ lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, post_call_correction: !!engine.state.dispo.saved, base_answers: answerBase.current, answers: applyAnswerDelta(JSON.parse(lastSaved.current), JSON.parse(snap), answerBase.current) });
       try { navigator.sendBeacon("/api/calls/save", body); } catch { /* the debounced save already tried */ }
     };
     const onHide = () => { if (document.visibilityState === "hidden") flush(); };

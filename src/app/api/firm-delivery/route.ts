@@ -7,6 +7,7 @@ import { isInternalRole } from "@/lib/permissions";
 import { readFirmDispatch } from "@/lib/firm-delivery-dispatch";
 import { recordAudit } from "@/lib/audit";
 import { confirmedFirmDeliveryAt } from "@/lib/firm-delivery-state";
+import { missingRequiredMvaIntake } from "@/lib/mva-call/intake-readiness";
 export const runtime = "edge";
 
 const uuid = (x: any) => String(x || "").replace(/[^0-9a-f-]/gi, "");
@@ -88,16 +89,19 @@ export async function POST(req: NextRequest) {
   if (matter.claim.firm_id && matter.claim.firm_id !== leadRow.firm_id) return NextResponse.json({ error: "This matter and file belong to different firms." }, { status: 409 });
   if (g.role === "agent" && b?.include_owner !== true) return NextResponse.json({ error: "Use the final handoff to send the complete packet to Brett and the firm together." }, { status: 403 });
   if (g.role === "agent") {
-    const [{ data: ownCall, error: callErr }, { data: latestQa, error: qaErr }] = await Promise.all([
+    const [{ data: ownCall, error: callErr }, { data: latestQa, error: qaErr }, { data: savedClaim, error: answerErr }] = await Promise.all([
       sb.from("intake_calls").select("id").eq("lead_id", leadId).eq("claim_id", matter.claim.id)
         .eq("agent_id", g.id).eq("disposition", "signed").not("ended_at", "is", null).limit(1).maybeSingle(),
       sb.from("qa_reviews").select("reviewer, decision").eq("claim_id", matter.claim.id)
         .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      sb.from("claims").select("answers").eq("id", matter.claim.id).eq("lead_id", leadId).maybeSingle(),
     ]);
-    if (callErr || qaErr) return NextResponse.json({ error: "Could not verify the completed call and QA review. Nothing was emailed." }, { status: 503 });
+    if (callErr || qaErr || answerErr || !savedClaim) return NextResponse.json({ error: "Could not verify the completed call, intake answers and QA review. Nothing was emailed." }, { status: 503 });
     if (!ownCall || latestQa?.reviewer !== g.id || latestQa?.decision !== "approve") {
       return NextResponse.json({ error: "End and disposition your signed call, then approve your own file review before sending. Nothing was emailed." }, { status: 409 });
     }
+    const missing = missingRequiredMvaIntake(savedClaim.answers?.mva_call);
+    if (missing.length) return NextResponse.json({ error: `Required intake answers remain: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? `, and ${missing.length - 5} more` : ""}. Nothing was emailed.`, missing }, { status: 409 });
   }
 
   if (b.op === "reconcile") {

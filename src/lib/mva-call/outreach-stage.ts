@@ -1,4 +1,18 @@
 import { nextOngoingCall, nextPermittedCall, nextWeekdayOpening, nextThreePerDayWindowAfter, localDateKey } from "./outreach-followup";
+import { normalizeTimeZone } from "../mail-time-zone";
+import { knownTimezoneFromPhone } from "../m6-cadence";
+import { STATE_TZ, stateCodeOf } from "./state";
+
+/** Lead-local zone for the manual MVA call queue. Explicitly verified zone,
+ * then marketer incident state, then a recognized phone area code. */
+export function outreachZone(verified: string | null | undefined, incidentState: string | null | undefined,
+  phone: string | null | undefined): string | null {
+  const incident = stateCodeOf(incidentState);
+  // A generic "Mountain" label cannot distinguish Arizona's no-DST clock.
+  const explicit = String(verified || "").trim();
+  return (explicit === "Mountain" ? null : normalizeTimeZone(explicit))
+    || (incident ? STATE_TZ[incident] : null) || knownTimezoneFromPhone(phone);
+}
 
 /** A manual call queue preview. No call, text, or alert is dispatched here. */
 export type OutreachStage = "due" | "wait" | "review";

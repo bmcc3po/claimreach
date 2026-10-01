@@ -16,7 +16,7 @@ const email = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 const returnEnd = (sentAt: string) => new Date(Date.parse(sentAt) + 7 * 86400000);
 
 /** The only post-call firm handoff in Desk. Status always comes from the server. */
-export default function FinalHandoff({ leadId, claimId, onNext }: { leadId: string; claimId: string; onNext?: () => void }) {
+export default function FinalHandoff({ leadId, claimId, missing, onNext }: { leadId: string; claimId: string; missing: { label: string; go: () => void }[]; onNext?: () => void }) {
   const [state, setState] = useState<DeliveryState | null>(null);
   const [checks, setChecks] = useState([false, false, false]);
   const [extra, setExtra] = useState("");
@@ -55,6 +55,7 @@ export default function FinalHandoff({ leadId, claimId, onNext }: { leadId: stri
 
   async function send() {
     if (!state || sentAt || pending || !recipientsReady || busy) return;
+    if (missing.length) { setError("Complete the required intake answers before marking this file ready."); return; }
     if (!checks.every(Boolean) || !openedIntake || !openedPacket || !packetUrl) { setError("Open both PDFs and check all three review items before marking this file ready."); return; }
     if (extras.length > 3 || extras.some((address) => !email.test(address))) { setError("Enter up to three valid additional email addresses."); return; }
     const people = [firm, owner, ...cc, ...extras].filter(Boolean);
@@ -88,6 +89,7 @@ export default function FinalHandoff({ leadId, claimId, onNext }: { leadId: stri
     {loading && <p>Checking this file’s delivery record…</p>}
     {sentAt ? <div role="status"><strong>Delivered {new Date(sentAt).toLocaleString()}.</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${returnEnd(sentAt).toLocaleString()}.` : "Seven-day return window cleared. Ready for billing review."}</p><p>Delivered to {state?.delivery?.to}; Brett received a copy.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Next call</button>}</div> : state && <>
       <p>The call is dispositioned. Review your own file, then send its two required PDFs together.</p>
+      {missing.length > 0 && <div className="final-handoff-error" role="alert"><strong>Intake incomplete: {missing.length} required answer{missing.length === 1 ? "" : "s"} missing.</strong><p>Finish these before the file can go to the firm.</p><ul>{missing.map((item, index) => <li key={`${item.label}-${index}`}><button type="button" onClick={item.go}>{item.label} ↗</button></li>)}</ul></div>}
       <ol><li><a href={`/api/export/intake-pdf?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedIntake(true)}>Open the intake PDF ↗</a></li><li>{packetUrl ? <a href={packetUrl} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedPacket(true)}>Open the completed signed retainer and HIPAA/HITECH packet ↗</a> : <strong>The completed signed packet is not available yet.</strong>}</li></ol>
       {[
         "I checked the intake answers and contact details.",
@@ -99,7 +101,7 @@ export default function FinalHandoff({ leadId, claimId, onNext }: { leadId: stri
       <label className="final-handoff-extra">Additional email addresses (optional)<input type="text" value={extra} onChange={(event) => setExtra(event.target.value)} placeholder="name@example.com, second@example.com" /></label>
       {!recipientsReady && <p className="final-handoff-error" role="alert">Firm delivery is held: the configured firm address is {firm === owner ? "Brett’s address" : "missing"}. Set the separate Turnbull delivery address first.</p>}
       {pending && <p className="final-handoff-error" role="alert">The last delivery outcome needs owner review. Do not retry it.</p>}
-      <button type="button" className="final-handoff-send" disabled={busy || pending || !recipientsReady} onClick={() => void send()}>{busy ? "Confirming and sending…" : "FILE IS READY FOR FIRM — SEND PACKET"}</button>
+      <button type="button" className="final-handoff-send" disabled={busy || pending || !recipientsReady || missing.length > 0} onClick={() => void send()}>{busy ? "Confirming and sending…" : "FILE IS READY FOR FIRM — SEND PACKET"}</button>
     </>}
     {error && <p className="final-handoff-error" role="alert">{error}</p>}
   </section>;
