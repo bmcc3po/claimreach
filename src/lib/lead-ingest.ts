@@ -190,6 +190,8 @@ export async function ingestLead(admin: any, opts: {
   marketerName?: string | null;
   /** Explicit historical recovery must not publish a new-live-lead event. */
   historical?: boolean;
+  /** Secondary signed transfers are never eligible for acquisition outreach. */
+  holdOutreach?: boolean;
 }): Promise<IngestResult> {
   const { lead: n, campaign: camp, via } = opts;
   const firmId = camp.firm_id;
@@ -266,6 +268,7 @@ export async function ingestLead(admin: any, opts: {
     const ins: Record<string, any> = {
       firm_id: firmId, campaign_id: camp.id, campaign: camp.name, case_type: camp.case_type,
       external_id: lrId, origin: via, source_system: via,
+      ...(opts.holdOutreach ? { perm_call: false, perm_text: false, perm_email: false } : {}),
     };
     for (const [k, v] of Object.entries(want)) if (v != null && v !== "") ins[k] = v;
     const { data: minted } = await admin.rpc("mint_lead_no", { p_firm: firmId });

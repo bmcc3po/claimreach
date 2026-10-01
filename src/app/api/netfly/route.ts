@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { netflyContext, netflyMatter } from "@/lib/netfly-server";
-import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, netflyFlags } from "@/lib/netfly-ontake";
+import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, netflyFlags, validateNetflyCallClose, type NetflyCallClose } from "@/lib/netfly-ontake";
 import { parseDob } from "@/lib/mva-call/server";
 import { mailColumnsFrom } from "@/lib/us-address";
+import { packetShort } from "@/lib/mva-call/esign";
 import { normPhone } from "@/lib/comms";
 export const runtime = "edge";
 
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
     const { data } = await ctx.db.storage.from("case-docs").createSignedUrl(doc.storage_path, 300);
     return { id: doc.id, file_name: doc.file_name, created_at: doc.created_at, uploaded_by_name: doc.uploaded_by_name, url: data?.signedUrl ?? null };
   }));
-  return NextResponse.json({ file: matter.lead, canReview: ctx.actor.can("intake.qa"), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
+  return NextResponse.json({ file: matter.lead, canReview: ctx.actor.can("intake.fill"), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
     answers: (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] ?? {}, retainer: safeDocs });
 }
 
@@ -48,7 +49,10 @@ export async function POST(req: NextRequest) {
     if (name.length < 2) return fail("Enter the client's name.", 400);
     const phone = String(body.phone || "").trim().slice(0, 40);
     const email = String(body.email || "").trim().slice(0, 254);
+    const sourceNote = String(body.source_note || "").trim();
+    if (sourceNote.length > 20000) return fail("The NETFLY handoff note is too long (20,000 characters maximum).", 400);
     if (body.op === "start_call") {
+      if (sourceNote) return fail("Add NETFLY's handoff note on the signed-transfer file.", 400);
       const normalized = normPhone(phone);
       if (normalized.length === 10) {
         const { data: existing, error: existingError } = await ctx.db.from("leads").select("id, lead_no, claimant_name")
@@ -84,13 +88,136 @@ export async function POST(req: NextRequest) {
     const { error: claimError } = await ctx.db.from("claims").insert({
       firm_id: ctx.campaign.firm_id, lead_id: lead.id, campaign_id: ctx.campaign.id,
       campaign: NETFLY_CAMPAIGN, claim_type: "mva", status: "new",
-      answers: { [NETFLY_ANSWER_KEY]: { version: 1, fields: prefill, review: { status: "in_progress" } } },
+      answers: { [NETFLY_ANSWER_KEY]: { version: 1, fields: prefill, review: { status: "in_progress" },
+        handoffs: sourceNote ? [{ note: sourceNote, at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name, channel: "staff_entered" }] : [] } },
     });
     if (claimError) {
       await ctx.db.from("leads").update({ archived_at: new Date().toISOString(), archived_by: ctx.actor.id }).eq("id", lead.id);
       return fail(`The matter could not be created. The partial lead was archived: ${claimError.message}`, 503);
     }
     return NextResponse.json({ file: lead });
+  }
+  if (body?.op === "handoff") {
+    if (!ctx.actor.can("intake.fill")) return fail("This account cannot record a handoff.", 403);
+    const note = String(body.note || "").trim();
+    if (note.length < 10 || note.length > 20000) return fail("Paste the NETFLY note (10 to 20,000 characters).", 400);
+    const matter = await netflyMatter(ctx, String(body.file || ""));
+    if (!matter) return fail("NETFLY file not found.", 404);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: current, error: readError } = await ctx.db.from("claims").select("answers, updated_at")
+        .eq("id", matter.claim.id).eq("campaign_id", ctx.campaign.id).single();
+      if (readError || !current) return fail("Could not check the latest handoff.", 503);
+      const all = current.answers && typeof current.answers === "object" ? current.answers as Record<string, any> : {};
+      const netfly = all[NETFLY_ANSWER_KEY] && typeof all[NETFLY_ANSWER_KEY] === "object" ? all[NETFLY_ANSWER_KEY] : {};
+      const handoffs: any[] = Array.isArray(netfly.handoffs) ? netfly.handoffs : [];
+      if (handoffs.at(-1)?.note === note) return NextResponse.json({ ok: true, already_saved: true });
+      if (handoffs.length >= 20) return fail("This handoff has too many revisions. Ask a supervisor to review the file.", 409);
+      const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, handoffs: [...handoffs,
+        { note, at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name, channel: "staff_entered" }],
+        review: { ...(netfly.review || {}), status: "in_progress" } } };
+      const { data: saved, error: saveError } = await ctx.db.from("claims")
+        .update({ answers: next, updated_at: new Date().toISOString() })
+        .eq("id", matter.claim.id).eq("campaign_id", ctx.campaign.id).eq("updated_at", current.updated_at)
+        .select("id").maybeSingle();
+      if (saveError) return fail(`Handoff was not saved: ${saveError.message}`, 503);
+      if (saved) {
+        const audit = await ctx.db.from("audit_log").insert({ firm_id: ctx.campaign.firm_id, lead_id: matter.lead.id,
+          claim_id: matter.claim.id, actor: ctx.actor.id, actor_name: ctx.actor.name, category: "intake",
+          description: handoffs.length ? "NETFLY handoff correction appended" : "NETFLY handoff note recorded",
+          meta: { revision: handoffs.length + 1, length: note.length } });
+        if (audit.error) return fail("Handoff saved, but its audit record failed. Refresh and notify a supervisor.", 503);
+        return NextResponse.json({ ok: true, revisions: handoffs.length + 1 });
+      }
+    }
+    return fail("This file changed while saving the handoff. Retry.", 409);
+  }
+  if (body?.op === "verify_handoff") {
+    if (!ctx.actor.can("intake.fill")) return fail("This account cannot verify a handoff.", 403);
+    const status = String(body.status || "");
+    if (!["matches", "changes_recorded"].includes(status)) return fail("Choose whether the NETFLY handoff matches the client's account.", 400);
+    const note = String(body.note || "").trim().slice(0, 2000);
+    if (status === "changes_recorded" && note.length < 5) return fail("Record what changed before marking the handoff checked.", 400);
+    const matter = await netflyMatter(ctx, String(body.file || ""));
+    if (!matter) return fail("NETFLY file not found.", 404);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: current, error: readError } = await ctx.db.from("claims").select("answers, updated_at")
+        .eq("id", matter.claim.id).eq("campaign_id", ctx.campaign.id).single();
+      if (readError || !current) return fail("Could not check the latest handoff.", 503);
+      const all = current.answers && typeof current.answers === "object" ? current.answers as Record<string, any> : {};
+      const netfly = all[NETFLY_ANSWER_KEY] && typeof all[NETFLY_ANSWER_KEY] === "object" ? all[NETFLY_ANSWER_KEY] : {};
+      const handoffs: any[] = Array.isArray(netfly.handoffs) ? netfly.handoffs : [];
+      if (!handoffs.length) return fail("Add NETFLY's original handoff note before verifying it.", 400);
+      const verification = { status, note, source_revision: handoffs.length, at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
+      const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, handoff_verification: verification } };
+      const { data: saved, error: saveError } = await ctx.db.from("claims")
+        .update({ answers: next, updated_at: new Date().toISOString() })
+        .eq("id", matter.claim.id).eq("campaign_id", ctx.campaign.id).eq("updated_at", current.updated_at)
+        .select("id").maybeSingle();
+      if (saveError) return fail(`Handoff verification was not saved: ${saveError.message}`, 503);
+      if (saved) {
+        const audit = await ctx.db.from("audit_log").insert({ firm_id: ctx.campaign.firm_id, lead_id: matter.lead.id,
+          claim_id: matter.claim.id, actor: ctx.actor.id, actor_name: ctx.actor.name, category: "intake",
+          description: `NETFLY handoff checked with client: ${status}`, meta: { source_revision: handoffs.length, note_length: note.length } });
+        if (audit.error) return fail("Verification saved, but its audit record failed. Refresh and notify a supervisor.", 503);
+        return NextResponse.json({ ok: true, verification });
+      }
+    }
+    return fail("This file changed while checking the handoff. Retry.", 409);
+  }
+  if (body?.op === "call_close") {
+    if (!ctx.actor.can("intake.fill")) return fail("This account cannot record a NETFLY call.", 403);
+    const call: NetflyCallClose = {
+      completion: String(body.completion || "").slice(0, 40) as NetflyCallClose["completion"],
+      disposition: String(body.disposition || "").slice(0, 40) as NetflyCallClose["disposition"],
+      dq_reason_key: String(body.dq_reason_key || "").slice(0, 80),
+      assessment_reason: String(body.assessment_reason || "").trim().slice(0, 2000),
+      transfer_destination: String(body.transfer_destination || "").trim().slice(0, 160),
+      transfer_outcome: String(body.transfer_outcome || "").slice(0, 40) as NetflyCallClose["transfer_outcome"],
+      transfer_note: String(body.transfer_note || "").trim().slice(0, 2000),
+      client_notified_48_business_hours: body.client_notified_48_business_hours === true,
+    };
+    if (call.disposition !== "appears_dq") call.dq_reason_key = "";
+    if (call.disposition !== "appears_qualified") {
+      call.transfer_destination = "";
+      call.transfer_outcome = "not_attempted";
+      call.transfer_note = "";
+      call.client_notified_48_business_hours = false;
+    }
+    const invalid = validateNetflyCallClose(call);
+    if (invalid) return fail(invalid, 400);
+    const matter = await netflyMatter(ctx, String(body.file || ""));
+    if (!matter) return fail("NETFLY file not found.", 404);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: current, error: readError } = await ctx.db.from("claims").select("answers, updated_at")
+        .eq("id", matter.claim.id).eq("campaign_id", ctx.campaign.id).single();
+      if (readError || !current) return fail("Could not check the latest NETFLY call.", 503);
+      const all = current.answers && typeof current.answers === "object" ? current.answers as Record<string, any> : {};
+      const netfly = all[NETFLY_ANSWER_KEY] && typeof all[NETFLY_ANSWER_KEY] === "object" ? all[NETFLY_ANSWER_KEY] : {};
+      const handoffs = Array.isArray(netfly.handoffs) ? netfly.handoffs : [];
+      if (!handoffs.length) return fail("Add NETFLY's handoff note before closing the welcome call.", 400);
+      const recorded = { ...call, source_revision: handoffs.length,
+        followup_required: call.completion === "incomplete" || call.disposition !== "appears_qualified" || call.transfer_outcome !== "connected",
+        at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
+      const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, call_close: recorded } };
+      const { data: saved, error: saveError } = await ctx.db.from("claims")
+        .update({ answers: next, updated_at: new Date().toISOString() })
+        .eq("id", matter.claim.id).eq("campaign_id", ctx.campaign.id).eq("updated_at", current.updated_at)
+        .select("id").maybeSingle();
+      if (saveError) return fail(`Call result was not saved: ${saveError.message}`, 503);
+      if (saved) {
+        const audit = await ctx.db.from("audit_log").insert({ firm_id: ctx.campaign.firm_id, lead_id: matter.lead.id,
+          claim_id: matter.claim.id, actor: ctx.actor.id, actor_name: ctx.actor.name, category: "intake",
+          description: "NETFLY ontake completion and call outcome recorded",
+          meta: { completion: call.completion, disposition: call.disposition, dq_reason_key: call.dq_reason_key,
+            assessment_reason: call.assessment_reason,
+            transfer_outcome: call.transfer_outcome, transfer_destination: call.transfer_destination,
+            transfer_note: call.transfer_note, client_notified_48_business_hours: call.client_notified_48_business_hours,
+            source_revision: handoffs.length } });
+        if (audit.error) return fail("Call result saved, but its audit record failed. Refresh and notify a supervisor.", 503);
+        return NextResponse.json({ ok: true, call_close: recorded });
+      }
+    }
+    return fail("This file changed while recording the call. Retry.", 409);
   }
   if (body?.op === "answer") {
     if (!ctx.actor.can("intake.fill")) return fail("This account cannot fill an intake.", 403);
@@ -137,9 +264,43 @@ export async function POST(req: NextRequest) {
   if (body?.op === "review") {
     const status = String(body.status || "");
     if (!["ready_for_review", "needs_supervisor", "retainer_reviewed", "correction_needed"].includes(status)) return fail("Invalid review action.", 400);
-    if (!ctx.actor.can(status === "retainer_reviewed" ? "intake.qa" : "intake.fill")) return fail("This account cannot record that review action.", 403);
+    // The agent who speaks with the client must be able to inspect and mark
+    // the signed PDF reviewed. Formal QA remains a separate downstream step.
+    if (!ctx.actor.can("intake.fill")) return fail("This account cannot record that review action.", 403);
     const matter = await netflyMatter(ctx, String(body.file || ""));
     if (!matter) return fail("NETFLY file not found.", 404);
+    if (status === "retainer_reviewed" && (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.review?.status === "correction_needed")
+      return fail("The original is flagged for correction. Review and complete the corrected agreement instead.", 409);
+    let corrected: boolean | null = null;
+    if (["ready_for_review", "retainer_reviewed"].includes(status)) {
+      const result = await ctx.db.from("esign_submissions").select("id,status,agent_reviewed_at,completed_pdf_path,cert_pdf_path,doc_count,submission_id,firm_id")
+        .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id)
+        .eq("lead_id", matter.lead.id).eq("claim_id", matter.claim.id)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (result.error) return fail("Could not check the corrected agreement. Refresh and retry.", 503);
+      if (status === "retainer_reviewed" && result.data) return fail("A corrected agreement is already on this file. Review that signed packet instead.", 409);
+      if (result.data) corrected = result.data.status === "completed" && !!result.data.agent_reviewed_at && !(await packetShort(ctx.db, result.data));
+    }
+    if (status === "ready_for_review") {
+      const saved = (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] || {};
+      if ((saved.review?.status === "correction_needed" || corrected !== null) && !corrected)
+        return fail("The corrected agreement must be client-signed, agent-reviewed, office-completed, and stored before QA.", 409);
+      const handoffs = Array.isArray(saved.handoffs) ? saved.handoffs : [];
+      if (!handoffs.length || saved.handoff_verification?.source_revision !== handoffs.length)
+        return fail("Check the latest NETFLY handoff with the client before sending this file to review.", 400);
+      if (saved.call_close?.source_revision !== handoffs.length)
+        return fail("Record ontake completion and the call outcome before sending this file to review.", 400);
+      if (validateNetflyCallClose(saved.call_close as NetflyCallClose))
+        return fail("Update the NETFLY call closeout with completion and outcome before review.", 400);
+      if (saved.call_close?.completion !== "complete" || saved.call_close?.disposition === "callback_to_finish")
+        return fail("This ontake is not complete. Keep it open for the callback instead of sending it to review.", 400);
+      const { data: docs, error: docsError } = await ctx.db.from("case_documents").select("id")
+        .eq("firm_id", ctx.campaign.firm_id).eq("lead_id", matter.lead.id).eq("claim_id", matter.claim.id)
+        .eq("doc_type", "netfly_signed_retainer").order("created_at", { ascending: false }).limit(1);
+      if (docsError || !docs?.length) return fail("Upload the original signed PDF before sending this file to review.", 400);
+      if (!corrected && saved.review?.retainer_reviewed_document_id !== docs[0].id)
+        return fail("Review the latest uploaded signed PDF before sending this file to review.", 400);
+    }
     const documentId = String(body.document_id || "");
     if (["retainer_reviewed", "correction_needed"].includes(status)) {
       const { data: doc } = await ctx.db.from("case_documents").select("id").eq("id", documentId)
@@ -150,7 +311,10 @@ export async function POST(req: NextRequest) {
     if (status === "correction_needed" && note.length < 5) return fail("Record what is wrong with the original retainer.", 400);
     const all = matter.claim.answers && typeof matter.claim.answers === "object" ? matter.claim.answers as Record<string, any> : {};
     const old = all[NETFLY_ANSWER_KEY] || {};
+    if (status === "correction_needed" && old.review?.retainer_reviewed_document_id !== documentId)
+      return fail("Open and mark the signed PDF reviewed before flagging a correction.", 409);
     const review = { ...(old.review || {}), status, note, document_id: documentId || old.review?.document_id || null,
+      retainer_reviewed_document_id: status === "retainer_reviewed" ? documentId : status === "correction_needed" ? null : old.review?.retainer_reviewed_document_id || null,
       at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
     const { data: updated, error } = await ctx.db.from("claims").update({
       answers: { ...all, [NETFLY_ANSWER_KEY]: { ...old, review } }, updated_at: new Date().toISOString(),
