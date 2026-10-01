@@ -12,11 +12,12 @@ export function normPhone(p?: string | null): string {
 // no-answer lane. Never infer one from a zero/absent duration.
 export function providerCallResult(raw: unknown): "answered" | "unanswered" | "busy" | "voicemail" | "failed" | null {
   const value = String(raw ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (value === "answered" || value === "connected") return "answered";
-  if (value === "unanswered" || value === "no_answer") return "unanswered";
+  // Sales Dialer returns longer result names than the standard dialer.
+  if (["answered", "connected", "outgoing_answered_call", "outgoing_human_answered", "call.answered"].includes(value)) return "answered";
+  if (["unanswered", "no_answer", "outgoing_unanswered_call", "call.unanswered"].includes(value)) return "unanswered";
   if (value === "busy") return "busy";
-  if (value === "voicemail") return "voicemail";
-  if (value === "failed") return "failed";
+  if (value === "voicemail" || value === "outgoing_machine_answered") return "voicemail";
+  if (["failed", "outgoing_failed_call", "outgoing_restricted_call", "outgoing_blocked_call", "outgoing_cancelled_call", "outgoing_abandoned_call"].includes(value)) return "failed";
   return null;
 }
 

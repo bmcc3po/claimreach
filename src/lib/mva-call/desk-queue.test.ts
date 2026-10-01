@@ -17,6 +17,13 @@ function test(name: string, run: () => void) { run(); passed++; console.log("ok"
 test("due and waiting lead the work queues", () => {
   assert.deepEqual(DESK_TABS.map(row => row[1]), ["CALL NOW", "WAIT TO CALL", "CALLBACK SCHEDULED", "SENT ESIGN", "SIGNED ESIGN", "WIP", "NEEDS REVIEW"]);
 });
+test("a do-not-call flag holds outreach without hiding the file or a sent agreement", () => {
+  const stopped = { ...lead("stopped"), perm_call: false }, sent = { ...lead("sent", "esign_sent"), perm_call: false };
+  const queues = classify([stopped, sent], [], [agreement(sent)]);
+  assert.equal(queues.due.length, 0);
+  assert.equal(queues.review[0].tag, "Do not call");
+  assert.equal(queues.sent[0].id, "sent");
+});
 test("one matter appears in exactly one queue", () => {
   const fresh = lead("fresh"), calling = lead("calling", "contacting"), callback = lead("callback", "contacting"), sent = lead("sent", "esign_sent"), signed = lead("signed", "signed_grievous"), wip = lead("wip", "signed_wip");
   const queues = classify([fresh, calling, callback, sent, signed, wip], [call(callback, { disposition: "callback", callback_at: recent })], [agreement(sent), agreement(signed, { status: "signed", signed_at: old })]);

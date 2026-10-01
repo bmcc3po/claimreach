@@ -5,23 +5,32 @@ alter table public.communications
   add column if not exists provider_call_result text
   check (provider_call_result in ('answered', 'unanswered', 'busy', 'voicemail', 'failed'));
 
--- Existing call.completed webhooks are the only historical source here with
--- an explicit call_info.type. Match by provider call SID; leave unmatched or
--- ambiguous older records unclassified rather than inventing a no-answer.
+-- Completed standard and Sales Dialer webhooks carry an explicit result.
+-- Match by provider call SID; leave other older records unclassified rather
+-- than inventing a no-answer from duration or a preliminary event.
 with provider_results as (
   select distinct on (payload->'data'->>'call_sid')
     payload->'data'->>'call_sid' as call_sid,
     case lower(replace(coalesce(payload->'data'->'call_info'->>'type', ''), ' ', '_'))
       when 'answered' then 'answered'
+      when 'outgoing_answered_call' then 'answered'
+      when 'outgoing_human_answered' then 'answered'
       when 'unanswered' then 'unanswered'
       when 'no_answer' then 'unanswered'
+      when 'outgoing_unanswered_call' then 'unanswered'
       when 'busy' then 'busy'
       when 'voicemail' then 'voicemail'
+      when 'outgoing_machine_answered' then 'voicemail'
       when 'failed' then 'failed'
+      when 'outgoing_failed_call' then 'failed'
+      when 'outgoing_restricted_call' then 'failed'
+      when 'outgoing_blocked_call' then 'failed'
+      when 'outgoing_cancelled_call' then 'failed'
+      when 'outgoing_abandoned_call' then 'failed'
       else null
     end as result
   from public.webhook_events
-  where event_type = 'justcall.call.completed'
+  where event_type in ('justcall.call.completed', 'justcall.sd.call_completed')
     and payload->'data'->>'call_sid' is not null
   order by payload->'data'->>'call_sid', created_at desc
 )

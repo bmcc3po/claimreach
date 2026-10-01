@@ -94,6 +94,7 @@ export function placeOutreach(summary: DialSummary | null, firstDialedAt: string
       : total === 6 || (total >= 7 && !sentAfter(summary.dial_times[6])) ? 2 : null;
     return { ...common, stage: isDue ? "due" : "wait", badge: total === 0 ? "new" : overdue ? "overdue" : isDue ? "due" : "wait", overdue,
       reason: total === 0 ? "First call" : total < 10 ? `Day 1 · call ${nextAttempt} of 10` : total < 15 ? `Day 2 · call ${nextAttempt} of 15` : `Follow-up · call ${total - 14} of 15`,
-      dueAt: due.toISOString(), nextAttempt, textPrompt: textStep !== null, textStep, textAfterCall: total === 2 || total === 6 };
+      dueAt: due.toISOString(), nextAttempt, textPrompt: textStep !== null, textStep,
+      textAfterCall: (total === 2 && textStep === 1) || (total === 6 && textStep === 2) };
   } catch { return review("The lead-local call time could not be resolved."); }
 }
