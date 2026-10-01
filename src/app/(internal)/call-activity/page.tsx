@@ -2,8 +2,8 @@ export const runtime = "edge";
 
 import { redirect } from "next/navigation";
 import { authUser } from "@/lib/auth-user";
-import { supabaseServer } from "@/lib/supabase-server";
-import { linkedCallActivity } from "@/lib/call-activity";
+import { supabaseAdmin, supabaseServer } from "@/lib/supabase-server";
+import { justcallInboundOutcomes, linkedCallActivity } from "@/lib/call-activity";
 import { mondayOf, pacificDay, shiftWeek } from "@/lib/packet-worklist";
 import CallActivityView from "@/components/CallActivityView";
 
@@ -26,7 +26,7 @@ export default async function CallActivityPage({ searchParams }: { searchParams:
   // provider event cannot be credited to an agent's case or callback.
   for (let offset = 0; offset < 5000; offset += 500) {
     const { data, error } = await sb.from("communications")
-      .select("id,lead_id,channel,direction,agent_name,occurred_at,duration_sec")
+      .select("id,lead_id,call_sid,channel,direction,agent_name,occurred_at,duration_sec")
       .eq("channel", "call").not("lead_id", "is", null)
       .gte("occurred_at", after).lt("occurred_at", before)
       .order("occurred_at", { ascending: false }).range(offset, offset + 499);
@@ -41,6 +41,23 @@ export default async function CallActivityPage({ searchParams }: { searchParams:
     .gte("callback_at", after).lt("callback_at", before)
     .order("callback_at", { ascending: true }).limit(1000);
   if (callbackError) throw new Error(`Could not load scheduled callbacks: ${callbackError.message}`);
+  // JustCall's completed event carries an explicit inbound type (answered,
+  // missed, voicemail). Read it only after the owner gate above and expose
+  // only the derived outcome, never the raw event payload, to the page.
+  const providerEvents: any[] = [];
+  let outcomesIncomplete = false;
+  const admin = supabaseAdmin();
+  for (let offset = 0; offset < 5000; offset += 500) {
+    const { data, error } = await admin.from("webhook_events")
+      .select("event_type,status,payload,created_at")
+      .eq("event_type", "justcall.call.completed")
+      .gte("created_at", after).lt("created_at", before)
+      .order("created_at", { ascending: true }).range(offset, offset + 499);
+    if (error) { outcomesIncomplete = true; break; }
+    providerEvents.push(...(data || []));
+    if ((data || []).length < 500) break;
+    if (offset === 4500) outcomesIncomplete = true;
+  }
   const ids = [...new Set([...comms.map((row) => row.lead_id), ...(callbacks || []).map((row) => row.lead_id)].filter(Boolean))];
   const leads: any[] = [];
   for (let i = 0; i < ids.length; i += 100) {
@@ -55,6 +72,6 @@ export default async function CallActivityPage({ searchParams }: { searchParams:
       return { id: row.id, leadNo: lead?.lead_no || "File", claimant: lead?.claimant_name || "Name missing",
         agent: row.agent_name || "Agent not recorded", callbackAt: row.callback_at, status: row.status || "" };
     });
-  return <CallActivityView monday={monday} rows={linkedCallActivity(comms, leads, monday)} callbacks={callbackRows}
-    truncated={truncated} callbacksTruncated={(callbacks || []).length === 1000} />;
+  return <CallActivityView monday={monday} rows={linkedCallActivity(comms, leads, monday, justcallInboundOutcomes(providerEvents))} callbacks={callbackRows}
+    truncated={truncated} callbacksTruncated={(callbacks || []).length === 1000} outcomesIncomplete={outcomesIncomplete} />;
 }
