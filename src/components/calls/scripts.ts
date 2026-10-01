@@ -34,7 +34,7 @@ export const NO_DEAD_AIR = [
   "And if you're hurting, we can get you in with somebody local just to get looked at, no cost to you out of pocket. That's up to you, nobody's making you go anywhere.",
 ];
 
-export const SIGNED = { label: "Signed. Say", line: "Perfect, I've got that back on my end. Thank you.", cue: "Review the client-signed copy and finish the office step before sending the file to the firm." };
+export const SIGNED = { label: "Signed. Say", line: "Perfect, I've got that back on my end. Thank you. Let me just make sure it came back correctly.", cue: "Open the signed retainer below, approve the copy or flag a problem, then finish the office step." };
 
 export const closeLines = (_first: string, _firm: string) => [
   "Perfect, you're all set with the agreement. I'm getting your file ready for your team now so they can get started. A couple things and I'll let you go. You're going to hear these reminders again because they're important:",

@@ -146,17 +146,18 @@ function LeadWorkspaceRecord({
             </>) : null}
           </div>
         </div>
-        <div className="lf-acts">
+        <div className="lf-status-row">
+          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+        </div>
+        <div className="lf-acts" aria-label="Main file actions">
           {headerActions}
-          {canTools && appCall && <a className="cl-btn cl-sm" href={appCall.href}>Resume intake</a>}
+          {canTools && appCall && <a className="cl-btn lf-primary-action" href={appCall.href}>Resume intake</a>}
           {fileMayExportPdf(fence) && (
-            <a className="cl-btn cl-ghost cl-sm" href={`/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${activeClaimId || ""}`} target="_blank" rel="noopener noreferrer" title="Download this matter's full intake as a PDF">Export PDF</a>
+            <a className="cl-btn cl-ghost lf-primary-action" href={`/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${activeClaimId || ""}`} target="_blank" rel="noopener noreferrer" title="Download this matter's full intake as a PDF">Export intake PDF</a>
           )}
           {canTools && ["owner", "admin", "manager", "qa", "agent"].includes(lead.current_user_role || "") && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
-          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
-          {canTools && <LockFileButton lead={lead} />}
-          {canTools && <FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} />}
         </div>
+        {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
       </div>
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
@@ -506,15 +507,15 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   }
   const unresolved = ["sending", "uncertain"].includes(dispatch?.state);
 
-  const label = busy ? "Sending…" : state.sentAt ? "Resend to firm" : "Send to firm";
+  const label = busy ? "Sending…" : state.sentAt ? "Already sent to firm" : "Send signed packet to firm";
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <button className="cl-btn cl-sm" onClick={() => send(false)} disabled={busy || !loaded || unresolved}
+    <span className="lf-send-action">
+      <button className="cl-btn lf-primary-action lf-send-button" onClick={() => send(false)} disabled={busy || !loaded || unresolved || !!state.sentAt}
         title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString()}` : "Email the firm this matter's documents"}>
         {label}
       </button>
       {unresolved && <span className="muted" role="status">Delivery outcome needs review.{canReconcile && <><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(true)}>Record delivered</button><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(false)}>Record not delivered</button></>}</span>}
-      {msg && <span className="muted" style={{ fontSize: 11.5 }}>{msg}</span>}
+      {msg && <span className="lf-send-message" role="status">{msg}</span>}
     </span>
   );
 }

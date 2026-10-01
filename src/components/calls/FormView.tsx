@@ -12,6 +12,7 @@ import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, OPEN_LINE, MONEY, SEND_LIN
 import PlaceField from "./PlaceField";
 import { DobField, SsnField } from "./SsnDob";
 import AgreementChoice from "./AgreementChoice";
+import SignedInlineReview from "./SignedInlineReview";
 
 // Plain radio buttons (checkboxes for a pick-several question), like the
 // firm report: no pills (Brett, Sep 28).
@@ -100,7 +101,6 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
       {row("Finish the agreement", (<>
         {v.agreementOpen && (
           <div className="sf-addrow">
-            {v.signed && v.openFile && <button type="button" className="sf-btn sf-line" onClick={v.openFile}>Review client-signed PDF in File</button>}
             <button type="button" className="sf-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
             <button type="button" className="sf-btn sf-line" onClick={v.leaveForQa}>Finish later</button>
           </div>
@@ -169,6 +169,7 @@ export default function FormView({ v }: { v: any }) {
           {r.id === "incident" && <div className="iq-script"><div className="iq-field-label">{OPEN_TONE}</div><p>{openGreeting(v.callerFirst)}</p><p>{openLine(v.callerFirst, v.agentFirst, v.firmSpoken)}</p><div className="iq-cue">{OPEN_CUE} Then stop talking. {OPEN_LINE.cue}</div></div>}
           {r.id === "retainer" ? (<>
             {v.sendReady ? <div className="iq-script"><div className="iq-field-label">{MONEY.label}</div><p>{MONEY.line}</p><div className="iq-cue">{MONEY.cue}</div><p>{SEND_LINE}</p></div> : v.notSigned ? <div className="iq-script"><div className="iq-field-label">{STAY.label}</div><p>{STAY.line}</p>{walkThrough(v.firmSpoken).map((line: string, i: number) => <p key={i}>{line}</p>)}<div className="iq-cue">{NO_DEAD_AIR.map((line: string, i: number) => <p key={i}>{line}</p>)}</div></div> : <div className="iq-script"><div className="iq-field-label">{SIGNED.label}</div><p>{SIGNED.line}</p><div className="iq-cue">{SIGNED.cue}</div></div>}
+            {v.signed && <SignedInlineReview v={v} />}
             {v.sendReady && <SendBlock v={v} where={where} />}
             {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
             {v.canReplace && <details className="sf-rows"><summary className="sf-btn sf-line">Correct this agreement</summary><div className="sf-row"><span className="sf-l">Correction</span><div className="sf-c"><p>The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="sf-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="sf-btn sf-go" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></div></div></details>}

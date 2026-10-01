@@ -1,0 +1,72 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import type { PacketRow } from "@/lib/packet-worklist";
+import { pacificDay, shiftWeek } from "@/lib/packet-worklist";
+import "./packet-worklist.css";
+
+type View = "needs" | "week";
+
+function escapeCsv(value: unknown): string {
+  const text = String(value ?? "");
+  // A claimant name or campaign can start with spreadsheet formula syntax.
+  const safe = /^[\s]*[=+@-]/.test(text) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
+}
+
+function downloadCsv(rows: PacketRow[], label: string) {
+  const header = ["File", "Client", "Case", "Firm", "Agent", "Signed", "Sent to firm", "Status", "Archived"];
+  const csv = [header, ...rows.map((r) => [r.leadNo, r.name, r.campaign, r.firm, r.agent, r.signedAt, r.deliveredAt || "", r.stageLabel, r.archived ? "Yes" : "No"])].map((line) => line.map(escapeCsv).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `claimreach-${label}.csv`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function formatDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+}
+
+export default function PacketWorklist({ rows, monday, truncated }: { rows: PacketRow[]; monday: string; truncated: boolean }) {
+  const [view, setView] = useState<View>("needs");
+  const [query, setQuery] = useState("");
+  const nextMonday = shiftWeek(monday, 1);
+  const sunday = new Date(Date.parse(`${nextMonday}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  const pending = useMemo(() => rows.filter((r) => r.stage !== "delivered"), [rows]);
+  const week = useMemo(() => rows.filter((r) => {
+    const day = pacificDay(r.signedAt);
+    return day >= monday && day < nextMonday;
+  }), [rows, monday, nextMonday]);
+  const source = view === "needs" ? pending : week;
+  const filtered = source.filter((r) => `${r.name} ${r.leadNo} ${r.agent} ${r.campaign} ${r.firm}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const ready = pending.filter((r) => r.stage === "ready").length;
+  const finish = pending.filter((r) => r.stage === "finish").length;
+  const held = pending.filter((r) => r.stage === "held").length;
+  const deliveredWeek = week.filter((r) => r.stage === "delivered").length;
+  const agentCounts = [...new Set(week.map((r) => r.agent))].map((agent) => ({ agent, signed: week.filter((r) => r.agent === agent).length, delivered: week.filter((r) => r.agent === agent && r.stage === "delivered").length })).sort((a, b) => b.signed - a.signed || a.agent.localeCompare(b.agent));
+
+  return <main className="packet-page">
+    <div className="packet-heading"><div><p className="packet-kicker">Operator worklist</p><h1>Signed packets</h1><p>Review what needs to reach the firm, then use the weekly count for billing and commission review.</p></div></div>
+    {truncated && <p className="packet-warning" role="alert">This list reached its 3,000-submission read limit. Older packets may be missing; do not use this export as a complete billing ledger.</p>}
+    <div className="packet-tabs" role="tablist" aria-label="Signed packet views">
+      <button type="button" role="tab" aria-selected={view === "needs"} className={view === "needs" ? "active" : ""} onClick={() => setView("needs")}>Needs delivery <span>{pending.length}</span></button>
+      <button type="button" role="tab" aria-selected={view === "week"} className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Signed this week <span>{week.length}</span></button>
+    </div>
+    {view === "needs" ? <div className="packet-metrics" aria-label="Packets needing action"><div><strong>{ready}</strong><span>Ready to send</span></div><div><strong>{finish}</strong><span>Finish packet</span></div><div><strong>{held}</strong><span>Correction held</span></div></div> : <><div className="packet-week"><Link href={`/packets?week=${shiftWeek(monday, -1)}`} aria-label="Previous week">←</Link><strong>{monday} to {sunday}</strong><Link href={`/packets?week=${shiftWeek(monday, 1)}`} aria-label="Next week">→</Link></div><div className="packet-metrics"><div><strong>{week.length}</strong><span>Signed this week</span></div><div><strong>{deliveredWeek}</strong><span>Sent to firm</span></div><div><strong>{week.length - deliveredWeek}</strong><span>Still pending</span></div></div></>}
+    <div className="packet-toolbar"><label>Find a packet<input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, file, agent, case or firm" /></label><button type="button" onClick={() => downloadCsv(filtered, view === "needs" ? "needs-delivery" : `signed-week-${monday}`)}>Export visible CSV</button></div>
+    <div className="packet-list" role="list">
+      {filtered.length ? filtered.map((r) => <Link role="listitem" className="packet-row" href={`/leads/${encodeURIComponent(r.leadNo)}${r.claimId ? `?claim=${encodeURIComponent(r.claimId)}` : ""}`} key={`${r.leadId}:${r.claimId || "lead"}`}>
+        <span className="packet-person"><strong>{r.name}</strong><small>{r.leadNo} · {r.campaign}{r.archived ? " · Archived" : ""}</small></span>
+        <span className="packet-context"><strong>{r.agent}</strong><small>{r.firm}</small></span>
+        <span className="packet-date"><strong>Signed {formatDate(r.signedAt)}</strong><small>{r.deliveredAt ? `Sent ${formatDate(r.deliveredAt)}` : "Not sent to firm"}</small></span>
+        <span className={`packet-stage ${r.stage}`}>{r.stageLabel}</span><span className="packet-arrow" aria-hidden="true">›</span>
+      </Link>) : <p className="packet-empty">{query ? "No packets match that search." : view === "needs" ? "No signed packets need delivery." : "No signed packets in this week."}</p>}
+    </div>
+    {view === "week" && <section className="packet-agent-counts"><h2>By intake agent</h2><p>Counts are attributed to the linked intake call when available; otherwise the agreement sender. Confirm commission rules before paying.</p><div className="packet-agent-head"><span>Agent</span><span>Signed</span><span>Sent</span></div>{agentCounts.map((r) => <div className="packet-agent-row" key={r.agent}><strong>{r.agent}</strong><span>{r.signed}</span><span>{r.delivered}</span></div>)}</section>}
+    <p className="packet-scope">This view counts primary INNO MVA DocuSeal packets. NETFLY original uploads and other case types are separate. “Sent” requires a successful firm delivery record or a legacy firm-sent timestamp.</p>
+  </main>;
+}

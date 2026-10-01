@@ -23,6 +23,8 @@ const STAFF_GROUPS: NavGroup[] = [
     { href: "/dashboard", icon: "home", label: "Dashboard" },
     { href: "/leads", icon: "files", label: "Leads" },
     { href: "/signed", icon: "signed", label: "Signed" },
+    { href: "/packets", icon: "files", label: "Packets & billing" },
+    { href: "/call-activity", icon: "chart", label: "Call activity" },
     { href: "/queue", icon: "queue", label: "My queue" },
     { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true },
   ]},

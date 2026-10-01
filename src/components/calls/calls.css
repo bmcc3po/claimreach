@@ -1614,6 +1614,27 @@ div.ws-row{cursor:default}
 .cc-app.ix .cc-say .cc-cue.cc-red{color:#FFB4AB}
 .cc-app.ix .cc-say .cc-tone{background:rgba(255,255,255,0.12);color:#CFE0FF;font-weight:600}
 .cc-app.ix .cc-say.cc-say-win{background:linear-gradient(135deg,#0F6B3A,#15803D)}
+
+/* Signed-copy review is an on-call action, directly beneath the spoken line. */
+.signed-inline{display:grid;gap:10px;padding:18px;border:2px solid #24558c;border-radius:16px;background:#f7fbff;color:#10253f;margin:10px 0 18px;box-shadow:0 6px 18px rgba(18,55,98,.1)}
+.ch .signed-inline{grid-column:1/-1}
+.signed-inline-title{font-size:20px;line-height:1.2;color:#113c70}
+.signed-inline p{margin:0;line-height:1.4}
+.signed-inline-preview,.signed-inline-approve{display:block;width:100%;padding:14px 16px;border-radius:11px;text-align:center;font-size:16px;font-weight:750;text-decoration:none}
+.signed-inline-preview{background:#17477f;color:#fff!important}
+.signed-inline-approve{border:0;background:#118044;color:#fff;cursor:pointer}
+.signed-inline-approve:disabled{background:#cad5df;color:#4a5968;cursor:not-allowed}
+.signed-inline-secondary,.signed-inline-refresh{border:1px solid #9cb0c7;background:#fff;color:#234362;border-radius:9px;padding:10px 12px;font-weight:650;cursor:pointer}
+.signed-inline-refresh{justify-self:start;font-size:13px;padding:7px 10px}
+.signed-inline-done{color:#11703c;font-weight:750}
+.signed-inline-error{color:#b42318;font-weight:700}
+.signed-inline-void{display:grid;gap:8px;padding:12px;border:1px solid #ca7373;border-radius:10px;background:#fff8f8}
+.signed-inline-void textarea{width:100%;border:1px solid #aab7c5;border-radius:8px;padding:10px;color:#14253a;background:#fff}
+.signed-inline-void>div{display:flex;gap:8px}
+.signed-inline-void button{padding:9px 12px;border:1px solid #aab7c5;border-radius:8px;background:#fff;cursor:pointer}
+.signed-inline-void button:last-child{background:#b42318;border-color:#b42318;color:#fff}
+.signed-inline-void button:disabled{opacity:.5;cursor:not-allowed}
+.signed-inline-void small{color:#5e6c7d}
 .cc-app.ix .cc-card,.cc-app.ix .cc-agr,.cc-app.ix .cc-leadline,.cc-app.ix .cc-chips.cc-list,.cc-app.ix .cc-flist,.cc-app.ix .cc-rb{box-shadow:0 0 0 1px var(--x-line),0 1px 2px rgba(16,24,40,0.04)}
 .cc-app.ix .cc-card{border-radius:14px}
 .cc-app.ix .cc-card-h{color:var(--x-ink);font-weight:700;font-size:16px}

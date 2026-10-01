@@ -565,6 +565,15 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, caseSummary, noteDraft
     } catch (e: any) { setErr(e.message); }
   };
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leadId, claimId]);
+  useEffect(() => {
+    const refresh = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.leadId === leadId && detail.claimId === claimId) void load();
+    };
+    window.addEventListener("cr:agreement-reviewed", refresh);
+    window.addEventListener("cr:voided", refresh);
+    return () => { window.removeEventListener("cr:agreement-reviewed", refresh); window.removeEventListener("cr:voided", refresh); };
+  }, [leadId, claimId]); // eslint-disable-line react-hooks/exhaustive-deps
   const addNote = async () => {
     const body = note.trim();
     if (!body || saving) return;
