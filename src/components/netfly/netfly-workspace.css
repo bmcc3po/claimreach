@@ -1,0 +1,89 @@
+/* Shared intake shape: review rail, working form, Command center. */
+.nf-workspace{max-width:none;padding:16px 18px 60px}
+.nf-workspace .nf-head{max-width:1800px;width:100%;margin:0 auto 14px;align-items:center}
+.nf-workspace .nf-head h1{font-size:25px;margin:3px 0}
+.nf-workspace-grid{max-width:1800px;margin:auto;display:grid;grid-template-columns:190px minmax(0,1fr) 280px;gap:12px;align-items:start}
+.nf-review-rail,.nf-command{background:#f4f7fc;border:1px solid #d4dfec;border-radius:14px;padding:12px;min-width:0}
+.nf-review-rail{position:sticky;top:12px}
+.nf-rail-title,.nf-command-head{display:flex;flex-direction:column;gap:2px;padding:5px 5px 12px}
+.nf-rail-title strong,.nf-command-head strong{font-size:16px;color:#102c50}
+.nf-rail-title span,.nf-command-head span{font-size:12px;color:#5b6f88}
+.nf-rail-card{display:grid;gap:6px;background:#fff;border:1px solid #d8e3ef;border-radius:12px;padding:13px;margin-bottom:10px;overflow-wrap:anywhere}
+.nf-rail-card strong{color:#102c50}
+.nf-rail-card span,.nf-rail-card a{font-size:13px;color:#526781}
+.nf-rail-progress{font-size:12px;line-height:1.5;color:#315786;padding:8px 3px 12px}
+.nf-rail-steps{display:grid;gap:6px}
+.nf-rail-steps button{border:1px solid #d1dfed;background:#fff;border-radius:9px;padding:10px;text-align:left;color:#28445e;font-weight:650;cursor:pointer}
+.nf-rail-steps button.active{background:#173a71;border-color:#173a71;color:#fff}
+.nf-workspace-body{min-width:0}
+.nf-view-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#fff;border:1px solid #d4dfec;border-radius:13px;padding:12px 14px;margin-bottom:14px}
+.nf-view-bar>div:first-child{display:grid;gap:3px}
+.nf-view-bar strong{color:#102c50}
+.nf-view-bar span{font-size:12px;color:#60738a}
+.nf-view-actions{display:flex;align-items:center;gap:8px}
+.nf-view-tabs,.nf-command-tabs{display:flex;gap:5px}
+.nf-view-tabs button,.nf-command-tabs button{border:1px solid #d0ddec;border-radius:9px;background:#f4f7fc;color:#27466b;padding:9px 10px;font-weight:700;cursor:pointer;white-space:nowrap}
+.nf-view-tabs button.active,.nf-command-tabs button.active{background:#173a71;border-color:#173a71;color:#fff}
+.nf-command{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.nf-command-head{position:relative}
+.nf-command-close{display:none}
+.nf-command-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:8px}
+.nf-command-more{grid-column:1/-1;display:flex;align-items:center;gap:8px;color:#315786;font-size:12px;font-weight:700}
+.nf-command-more select{min-width:0;flex:1;padding:7px 8px;border:1px solid #cbd9e9;border-radius:8px;background:#fff;color:#173a71;font:inherit}
+.nf-question-label{font-weight:750;line-height:1.35}
+.nf-choice-group{display:grid;gap:5px}
+.nf-options-binary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.nf-options-binary button{min-height:44px;text-align:left}
+.nf-unknown{justify-self:start;border:0;background:transparent;color:#315786;padding:7px 2px;font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+.nf-unknown.selected{color:#173a71;text-decoration:underline}
+.nf-command-content .nf-panel{padding:14px;box-shadow:none}
+.nf-command-content .nf-panel h2{font-size:18px}
+.nf-command-content .nf-retainer{display:block;padding:13px;margin-bottom:12px}
+.nf-command-content .nf-retainer .nf-actions{margin-top:12px}
+.nf-command-content .nf-source-grid,.nf-command-content .nf-questions{grid-template-columns:1fr}
+.nf-command-content .nf-source-heading{display:block}
+.nf-command-content .nf-source-time{white-space:normal}
+.nf-command-content .nf-review .nf-actions{display:grid}
+.nf-command-content .nf-review .nf-actions button{width:100%}
+.nf-command-content .nf-emergency .nf-questions{grid-template-columns:1fr}
+.nf-workspace-body .nf-steps{position:static;background:transparent}
+.nf-workspace-body .nf-step-card .nf-intake{margin-bottom:14px}
+.nf-all-steps .nf-step-card{margin-bottom:12px}
+.nf-step-card{scroll-margin-top:80px}
+.nf-all-steps .nf-question-current,.nf-all-steps .nf-question:focus-within{border-color:#315DA4;background:#f3f7fd;box-shadow:0 3px 12px rgba(26,65,115,.12)}
+.nf-all-steps .nf-section-head{border-bottom:1px solid #d6e2ef;padding-bottom:8px}
+.nf-command-toggle{display:none}
+@media(max-width:1250px){.nf-workspace-grid{grid-template-columns:175px minmax(0,1fr) 270px}.nf-view-bar{display:grid}.nf-view-actions{justify-content:space-between}.nf-view-tabs{flex-wrap:wrap}}
+@media(max-width:1000px){.nf-workspace-grid{grid-template-columns:185px minmax(0,1fr)}.nf-command{display:none}.nf-command.nf-command-open{display:block;position:fixed;inset:0 0 0 auto;width:min(410px,100vw);max-height:100vh;z-index:100;border-radius:0;box-shadow:-15px 0 45px #142b4850;overflow:auto}.nf-command-toggle,.nf-command-close{display:inline-flex}.nf-command-close{position:absolute;right:2px;top:0;border:1px solid #ccd9ea;border-radius:9px;background:#fff;width:36px;height:36px;align-items:center;justify-content:center;font-size:24px;cursor:pointer}}
+@media(max-width:700px){.nf-workspace{padding:12px 10px 80px}.nf-workspace-grid{display:block}.nf-review-rail{position:static;margin-bottom:12px}.nf-rail-steps{display:flex;overflow:auto}.nf-rail-steps button{flex:none;white-space:nowrap}.nf-rail-card{display:none}.nf-view-bar{position:sticky;top:0;z-index:5}.nf-view-actions{display:grid;grid-template-columns:minmax(0,1fr) auto}.nf-view-tabs{display:flex;overflow:auto}.nf-view-tabs button{font-size:12px;padding:8px}.nf-command-toggle{font-size:12px;padding:8px}.nf-workspace .nf-head{display:block}.nf-workspace .nf-head h1{font-size:21px}.nf-workspace-body .nf-steps{overflow:auto}.nf-workspace-body .nf-steps button{min-width:120px}}
+.nf-header-toggle{flex:none;min-height:38px;padding:7px 10px;border:1px solid #cbd9e9;border-radius:9px;background:#f4f7fc;color:#173a71;font:inherit;font-size:12px;font-weight:750;cursor:pointer}
+.nf-view-bar-collapsed{padding:6px 12px;margin-bottom:8px}
+.nf-view-bar-collapsed .nf-header-toggle{margin-left:auto}
+.nf-inline-retainer{display:grid;gap:10px;margin:16px 0;padding:18px;border:1.5px solid #a9c2df;border-left:5px solid #1c4e87;border-radius:12px;background:#f3f7fd}
+.nf-inline-retainer h3{margin:0;color:#123866;font-size:18px}
+.nf-inline-retainer p{margin:0;line-height:1.45}
+.nf-inline-retainer .nf-actions{display:flex;flex-wrap:wrap;gap:9px}
+.nf-inline-retainer .nf-pdf-preview iframe{height:min(65vh,720px)}
+.nf-inline-confirm{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:700;line-height:1.4}
+.nf-inline-confirm input{flex:none;width:20px;height:20px;margin:0}
+.nf-finish-call{margin-top:22px;padding:16px;border:1px solid #bdd1e8;border-radius:12px;background:#f3f7fd}
+.nf-finish-call strong{color:#123866;font-size:17px}
+/* The global iOS theme paints native fields dark even inside NETFLY's light cards. */
+.nf-page{color-scheme:light}
+.nf-page .nf-question input,.nf-page .nf-question textarea,
+.nf-page .nf-call-label input,.nf-page .nf-call-label textarea,
+.nf-page .nf-form input,.nf-page .nf-form textarea,
+.nf-page .nf-source-input,.nf-page .nf-review textarea,
+.nf-page .nf-command-more select,.nf-page .nf-emergency select{
+  background:#fff!important;color:#17283d!important;-webkit-text-fill-color:#17283d;
+  border:1px solid #bdcce0!important;box-shadow:none!important;
+}
+.nf-page input::placeholder,.nf-page textarea::placeholder{color:#697d94;opacity:1}
+.nf-page .nf-question label,.nf-page .nf-question-label{color:#233a56}
+.nf-dq-overlay{position:fixed;inset:0;background:#10223888;z-index:120;display:flex;align-items:center;justify-content:center;padding:16px}
+.nf-dq-dialog{border:1px solid #a9bdd8;border-radius:16px;padding:22px;width:min(92vw,420px);color:#142338;background:#fff;box-shadow:0 20px 70px #14233844}
+.nf-dq-dialog h3{margin:0 0 8px}.nf-dq-dialog p{line-height:1.45}
+.nf-dq-dialog select{width:100%;min-height:44px;margin:12px 0;border:1px solid #bdcce0;border-radius:10px;background:#fff!important;color:#17283d!important;padding:9px}
+.nf-closeout{border:1px solid #bbcee5;background:#f7faff;border-radius:12px;padding:16px;display:grid;gap:12px}
+.nf-closeout>strong{color:#123866}
+@media(max-width:700px){.nf-view-bar{display:flex;flex-wrap:wrap}.nf-view-bar .nf-view-actions{order:3;width:100%}.nf-view-bar-collapsed{flex-wrap:nowrap}.nf-inline-retainer{padding:14px}}

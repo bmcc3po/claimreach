@@ -1918,9 +1918,9 @@ div.ws-row{cursor:default}
 .cc-command-collapsed .cc-app.ix.ws.ch-mode .ch-page>.ch-sec{max-width:none}
 /* Light cell edges separate the questions while the section stays one card. */
 .cc-app.ix.ch-mode .ch-grid{gap:10px;align-items:stretch}
-.cc-app.ix.ch-mode .ch-grid>.ch-q:not(.ch-wide){padding:12px;border:1px solid #E6EBF2;border-radius:9px;background:#FCFDFE}
+.cc-app.ix.ch-mode .ch-grid>.ch-q:not(.ch-wide){padding:12px;border:1px solid #C8D5E5;border-radius:9px;background:#FCFDFE}
 /* Insurance has six short questions; keep all six as equal cells. */
-.cc-app.ix.ch-mode #ch-sec-insurance .ch-grid>.ch-q.ch-wide{grid-column:auto;padding:12px;border:1px solid #E6EBF2;border-radius:9px;background:#FCFDFE}
+.cc-app.ix.ch-mode #ch-sec-insurance .ch-grid>.ch-q.ch-wide{grid-column:auto;padding:12px;border:1px solid #C8D5E5;border-radius:9px;background:#FCFDFE}
 /* On phones, each question needs a distinct boundary as the grid stacks. */
 @media(max-width:600px){
   .cc-app.ix.ix-narrow.ch-mode .ch-grid{gap:14px}

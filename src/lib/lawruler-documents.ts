@@ -39,7 +39,10 @@ export function validateLawRulerOriginal(file: LrOriginal, scope: LrDocumentScop
   const entries = Array.isArray(manifest) ? manifest.filter((m: any) => m?.name === name) : [];
   if (entries.length > 1) throw new Error('The attachment manifest repeats this filename.');
   const entry = entries[0];
-  if (vendor && vendor !== scope.vendorId) throw new Error('The filename names a different LawRuler lead.');
+  // NETFLY's uploaded DocuSeal filename often contains a submission number,
+  // not a LawRuler lead ID. The authenticated, single-document NETFLY event
+  // binds it through the server-created manifest and still requires review.
+  if (scope.caseType !== 'netfly_signed_retainer' && vendor && vendor !== scope.vendorId) throw new Error('The filename names a different LawRuler lead.');
   if (!vendor && (!entry || String(entry.lead_id) !== scope.vendorId)) throw new Error('An unnumbered attachment needs a matching attachment_manifest lead_id.');
   if (entry && (String(entry.lead_id) !== scope.vendorId || (entry.claim_id && entry.claim_id !== scope.claimId))) throw new Error('The attachment manifest names a different lead or matter.');
   const bytes = new Uint8Array(file.bytes);
@@ -49,7 +52,7 @@ export function validateLawRulerOriginal(file: LrOriginal, scope: LrDocumentScop
     if (!start.startsWith('%PDF-') || !new TextDecoder().decode(bytes.slice(-2048)).includes('%%EOF')) throw new Error('The attachment is not a complete PDF.');
     // Motel's established IntakeForm PDF is the secondary interview. Preserve
     // that document category while all campaigns share immutable storage.
-    docType = /retain|agreement|contract/i.test(name) ? 'retainer' : /intakeform/i.test(name) ? (scope.caseType === 'motel_trafficking' ? 'secondary_interview' : 'intake') : 'other'; contentType = 'application/pdf';
+    docType = scope.caseType === 'netfly_signed_retainer' ? 'netfly_signed_retainer' : /retain|agreement|contract/i.test(name) ? 'retainer' : /intakeform/i.test(name) ? (scope.caseType === 'motel_trafficking' ? 'secondary_interview' : 'intake') : 'other'; contentType = 'application/pdf';
   } else if (/\.csv$/i.test(name)) {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     if (text.includes('\0') || !text.includes(',') || !/[\r\n]/.test(text)) throw new Error('The attachment is not a valid text CSV.');

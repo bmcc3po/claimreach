@@ -14,6 +14,8 @@ import * as m6 from './m6';
 import * as webhooks from './webhooks';
 import * as standard from './standard-fields';
 import * as mvaSync from './lawruler-mva-sync';
+import * as netflySync from './lawruler-netfly';
+import * as netflyOntake from './netfly-ontake';
 import { DEFAULT_STATUSES } from './statuses';
 const F = '11111111-1111-4111-8111-111111111111', L = '22222222-2222-4222-8222-222222222222', C = '33333333-3333-4333-8333-333333333333';
 function harness(route: string, role = 'owner') {
@@ -34,6 +36,7 @@ function harness(route: string, role = 'owner') {
     '@/lib/supabase-server': { supabaseServer: async () => ({}), supabaseAdmin: () => { adminCalls++; return database; } },
     '@/lib/mva-call/server': { requireStaff: async () => role === 'none' ? null : { id: 'synthetic-owner', role: role === 'owner-denied' ? 'owner' : role, can: (key: string) => !(role === 'owner-denied' && key === 'claims.status') } },
     '@/lib/lawruler-recovery': recovery, '@/lib/lawruler-recovery-apply': apply, '@/lib/lawruler-documents': originals, '@/lib/lawruler-mva-sync': mvaSync,
+    '@/lib/lawruler-netfly': netflySync, '@/lib/netfly-ontake': netflyOntake,
     '@/lib/lead-ingest': { ...ingest, ingestLead: async (_db: any, options: any) => { ingests++; ingestOptions.push(options); return { ok: true, lead_id: L, lead_no: 'TEST-1' }; } },
     '@/lib/lawruler-status': lrStatus, '@/lib/claim-status': { ...status, setClaimStatusForLeads: async (options: any) => { statusWrites.push(options); return { ok: true }; } }, '@/lib/us-address': address, '@/lib/m6': m6, '@/lib/webhooks': webhooks,
   };
@@ -82,6 +85,46 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     const h = harness(''); const r = await h.POST(req({ LeadID: '264972', CaseType: 'TMP MVA', Status: 'Legacy signed', 'Signed Contracts Received': 'Yes' }));
     assert.equal(r.status, 200); assert.equal(h.ingests(), 1); assert.equal(r.body.claim_id, C); assert.equal(r.body.status_reconciliation, 'review_required');
     assert.equal(h.database.tables.lead_activity[0].meta.claim_id, C); assert.equal(h.database.tables.claims[0].status, 'new'); assert.equal(h.database.tables.esign_agreements, undefined);
+  });
+  await t('NETFLY LawRuler transfer requires original PDF and stores it with the unchanged handoff note', async () => {
+    const h = harness('');
+    Object.assign(h.database.tables.campaigns[0], { name: 'NETFLY ONTAKE', path: 'secondary', esign_required: false });
+    Object.assign(h.database.tables.leads[0], { campaign_id: 'mva', case_type: 'mva' });
+    Object.assign(h.database.tables.claims[0], { answers: {}, updated_at: '2026-09-30T00:00:00.000Z' });
+    const missing = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', NetflyHandoffNote: 'Client/Driver: Synthetic Person' }));
+    assert.equal(missing.status, 422);
+    assert.equal(h.ingests(), 0);
+    const objects = new Map<string, ArrayBuffer>();
+    (h.database as any).storage = { from: () => ({
+      upload: async (path: string, bytes: ArrayBuffer) => { if (objects.has(path)) return { error: { message: 'already exists', statusCode: '409' } }; objects.set(path, bytes); return { error: null }; },
+      download: async (path: string) => ({ data: objects.has(path) ? new Blob([objects.get(path)!]) : null, error: null }),
+    }) };
+    const note = 'Client/Driver: Synthetic Person\nAccident Date: 09/04/2026\nAccident Summary: Rear ended while stopped.';
+    const send = () => { const form = new FormData();
+      form.set('LeadID', '264972'); form.set('CaseType', 'NETFLY ONTAKE'); form.set('NetflyHandoffNote', note);
+      // DocuSeal's number in the filename is a submission ID, not LawRuler's LeadID.
+      form.set('retainer', new Blob([`%PDF-1.4\n${'synthetic evidence '.repeat(8)}\n%%EOF`], { type: 'application/pdf' }), 'signed-11738202.pdf');
+      return new Request('https://synthetic.invalid/api/webhooks/lawruler', { method: 'POST', headers: { 'x-lr-secret': 'offline-secret' }, body: form }); };
+    const first = await h.POST(send());
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.equal(h.ingestOptions[0].historical, true);
+    assert.equal(h.ingestOptions[0].holdOutreach, true);
+    assert.equal(h.database.tables.leads[0].perm_text, false);
+    assert.equal(h.database.tables.case_documents[0].doc_type, 'netfly_signed_retainer');
+    assert.equal(h.database.tables.claims[0].answers.netfly_secondary.handoffs[0].note, note.replace(/\n/g, '\r\n'));
+    assert.equal(h.database.tables.claims[0].status, 'new');
+    assert.equal(first.body.communications_triggered, false);
+    const retry = await h.POST(send());
+    assert.equal(retry.status, 200, JSON.stringify(retry.body));
+    assert.equal(h.database.tables.case_documents.length, 1);
+    assert.equal(h.database.tables.claims[0].answers.netfly_secondary.handoffs.length, 1);
+  });
+  await t('conflicting NETFLY and Motel campaign markers cannot cross-route a transfer', async () => {
+    const h = harness('');
+    const r = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', campaign: 'motel6' }));
+    assert.equal(r.status, 422);
+    assert.equal(h.ingests(), 0);
+    assert.equal(h.database.ops.length, 0);
   });
   await t('actual INNO orchestrator holds vendor-reported signing for evidence review without acquisition fanout', async () => {
     const h = innoHarness(); const r = await h.POST(req({ LeadID: '264972', CaseType: 'INNO MVA', Status: 'Signed e-Sign' }));

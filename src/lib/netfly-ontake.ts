@@ -3,6 +3,68 @@
 export const NETFLY_CAMPAIGN = "NETFLY ONTAKE";
 export const NETFLY_ANSWER_KEY = "netfly_secondary";
 export const NETFLY_RETAINER_TYPE = "netfly_signed_retainer";
+export const NETFLY_COMPLETIONS = ["complete", "incomplete"] as const;
+export const NETFLY_DISPOSITIONS = ["appears_qualified", "appears_dq", "callback_to_finish", "client_remorse"] as const;
+export const NETFLY_DQ_REASONS = ["sol", "diagnosis", "already_rep", "criteria", "prior_signup", "location", "duplicate", "other"] as const;
+export const NETFLY_TRANSFER_OUTCOMES = ["connected", "attempted_no_answer", "client_declined", "not_attempted"] as const;
+export type NetflyCallClose = {
+  completion: (typeof NETFLY_COMPLETIONS)[number];
+  disposition: (typeof NETFLY_DISPOSITIONS)[number];
+  dq_reason_key: string;
+  assessment_reason: string;
+  transfer_destination: string;
+  transfer_outcome: (typeof NETFLY_TRANSFER_OUTCOMES)[number];
+  transfer_note: string;
+  client_notified_48_business_hours: boolean;
+};
+export function validateNetflyCallClose(value: NetflyCallClose): string | null {
+  if (!NETFLY_COMPLETIONS.includes(value.completion)) return "Choose whether the ontake is complete.";
+  if (!NETFLY_DISPOSITIONS.includes(value.disposition)) return "Choose the call outcome.";
+  if (value.disposition === "appears_qualified" && value.completion !== "complete") return "Finish the ontake before marking it appears to qualify.";
+  if (value.disposition === "callback_to_finish" && value.completion !== "incomplete") return "A callback to finish requires an incomplete ontake.";
+  if (value.disposition === "appears_dq" && !NETFLY_DQ_REASONS.includes(value.dq_reason_key as typeof NETFLY_DQ_REASONS[number])) return "Choose a DQ reason for supervisor review.";
+  if (["appears_dq", "callback_to_finish", "client_remorse"].includes(value.disposition) && value.assessment_reason.trim().length < 5)
+    return "Briefly explain this outcome and the next step.";
+  if (value.disposition !== "appears_qualified") return null;
+  if (!NETFLY_TRANSFER_OUTCOMES.includes(value.transfer_outcome)) return "Record what happened with the case-manager introduction.";
+  if (["connected", "attempted_no_answer"].includes(value.transfer_outcome) && !value.transfer_destination.trim())
+    return "Record the case-manager number or queue you actually called.";
+  if (value.transfer_outcome === "not_attempted" && value.transfer_note.trim().length < 5)
+    return "Explain why the transfer was not attempted.";
+  if (value.transfer_outcome === "client_declined" && !value.client_notified_48_business_hours)
+    return "Tell the client their case manager will call within 48 business hours, then confirm it here.";
+  return null;
+}
+
+// NETFLY's original handoff is evidence, not an agent-confirmed answer. Keep
+// this extraction display-only; the agent explicitly records any confirmed
+// or corrected value in the separate fields below.
+export const NETFLY_HANDOFF_LABELS = [
+  "Client/Driver", "Accident Date", "Location", "Case #", "Passengers",
+  "Airbags", "Accident Summary", "Insurance", "Injuries & Treatment",
+  "Representation", "Next Steps",
+] as const;
+
+export function parseNetflyHandoff(note: string): { label: string; value: string }[] {
+  const headings = new Map(NETFLY_HANDOFF_LABELS.map((label) => [label.toLowerCase(), label]));
+  const values = new Map<string, string>();
+  let current: string | null = null;
+  for (const raw of note.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const match = /^([^:]{2,40}):\s*(.*)$/.exec(line);
+    const heading = match ? headings.get(match[1].trim().toLowerCase()) : undefined;
+    if (heading) {
+      current = heading;
+      values.set(heading, match![2].trim());
+    } else if (match) {
+      current = null;
+    } else if (current) {
+      values.set(current, `${values.get(current) || ""} ${line}`.trim());
+    }
+  }
+  return NETFLY_HANDOFF_LABELS.filter((label) => values.has(label)).map((label) => ({ label, value: values.get(label)! }));
+}
 
 export type NetflyField = {
   id: string;
@@ -18,7 +80,7 @@ const yn = (id: string, label: string, extra: Partial<NetflyField> = {}): Netfly
 const txt = (id: string, label: string, extra: Partial<NetflyField> = {}): NetflyField => ({ id, label, kind: "text", ...extra });
 
 export const NETFLY_SECTIONS: NetflySection[] = [
-  { id: "care", title: "1. Welcome & medical care", script: "Hi, my name is [your name] from Turnbull, Moak & Pendergrass. It's great to meet you. Let me be the first to welcome you to the firm. I'd like to gather a few more details about your case and answer any questions. Most importantly, have you seen a doctor yet to get checked out?", fields: [
+  { id: "care", title: "1. Welcome to the firm", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you! I just wanted to jump on the phone to welcome you to the firm. I'm going to verify a few things, gather some brief additional details, and then we'll talk about next steps.", fields: [
     yn("seen_doctor", "Have you seen a doctor yet?"),
     txt("first_provider", "Where did you go?", { when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_provider_address", "First provider address", { when: { id: "seen_doctor", is: "Yes" } }),
@@ -39,7 +101,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
     txt("dob", "Date of birth", { kind: "date" }), txt("mailing_address", "Mailing address"),
     txt("confirmed_email", "Best email", { kind: "email" }), txt("confirmed_phone", "Best number", { kind: "tel" }),
   ] },
-  { id: "accident", title: "3. The accident & passengers", script: "I have the city, state and rough month and year from NETFLY. Let me confirm the exact details with you.", fields: [
+  { id: "accident", title: "3. The accident & passengers", script: "I have the city, state and approximate date on your file. Let me confirm the exact details with you.", fields: [
     txt("accident_city", "What city did this happen in?"), txt("accident_state", "What state?"),
     txt("accident_month_year", "Rough month and year from NETFLY"), txt("accident_date", "Exact accident date, if known", { kind: "date" }),
     txt("road", "What road or intersection was it on?"),

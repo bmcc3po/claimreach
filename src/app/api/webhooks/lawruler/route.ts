@@ -8,6 +8,8 @@ import { mapLawRulerStatus, shouldApplyLr } from "@/lib/lawruler-status";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { LR_MAX_BODY_BYTES, recordLawRulerSource, resolveLawRulerMatter, storeLawRulerOriginals, validateLawRulerOriginal } from "@/lib/lawruler-documents";
 import { hasRemoteLawRulerOriginal, syncLawRulerMva } from "@/lib/lawruler-mva-sync";
+import { syncLawRulerNetfly, validateNetflyLawRulerPayload } from "@/lib/lawruler-netfly";
+import { NETFLY_CAMPAIGN, NETFLY_RETAINER_TYPE } from "@/lib/netfly-ontake";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -170,6 +172,11 @@ export async function POST(req: NextRequest) {
   if (Object.prototype.hasOwnProperty.call(fields, "recovery_mode") && recoveryMode !== "historical") return NextResponse.json({ error: "The supported recovery_mode is historical. Omit it for an ordinary live webhook.", saved: false }, { status: 400 });
   const historical = recoveryMode === "historical";
   const innoMva = String(normalizeLead(fields).caseType || '').trim().toLowerCase() === 'inno mva';
+  const netflyInbound = String(normalizeLead(fields).caseType || '').trim().toLowerCase() === NETFLY_CAMPAIGN.toLowerCase();
+  const explicitCampaign = clean(fields.campaign);
+  if ((netflyInbound && explicitCampaign && explicitCampaign.toLowerCase() !== NETFLY_CAMPAIGN.toLowerCase()) ||
+      (explicitCampaign?.toLowerCase() === NETFLY_CAMPAIGN.toLowerCase() && !netflyInbound))
+    return NextResponse.json({ error: "NETFLY requires matching CaseType and campaign values of NETFLY ONTAKE.", saved: false }, { status: 422 });
   // Original URLs need an approved host/transport contract. Never fetch a URL
   // from an incoming payload with service credentials or call it recovered.
   if (!innoMva && hasRemoteLawRulerOriginal(fields)) return NextResponse.json({ error: "Remote original URLs are not imported. Supply PDF/CSV multipart originals with matching LawRuler identity; an allowlisted URL transport must be configured separately.", saved: false, attachments_complete: false }, { status: 422 });
@@ -184,7 +191,7 @@ export async function POST(req: NextRequest) {
   };
   // Medical PRESIGN answers belong on the protected matter, not duplicated in
   // generic webhook logs. Retain the body keys for operational diagnostics.
-  const envelope = { content_type: rawNote, field_keys: Object.keys(fields), fields: innoMva ? { LeadID: normalizeLead(fields).leadId, CaseType: 'INNO MVA', Status: normalizeLead(fields).status } : redact(fields), attachments: manifest };
+  const envelope = { content_type: rawNote, field_keys: Object.keys(fields), fields: innoMva || netflyInbound ? { LeadID: normalizeLead(fields).leadId, CaseType: innoMva ? 'INNO MVA' : NETFLY_CAMPAIGN, Status: normalizeLead(fields).status } : redact(fields), attachments: manifest };
   const logId = await log(admin, null, "received", 200, envelope, null);
 
   // LawRuler's Test button sends each mapped field as its own placeholder
@@ -210,6 +217,12 @@ export async function POST(req: NextRequest) {
     const camps = await loadCampaigns(admin);
     const camp = chooseCampaign(norm.caseType, camps);
     if (camp) {
+      if (camp.name === NETFLY_CAMPAIGN && !netflyInbound) return NextResponse.json({ error: "NETFLY requires the exact CaseType NETFLY ONTAKE; an MVA fallback cannot create a secondary intake.", saved: false }, { status: 422 });
+      if (netflyInbound) {
+        const configured = await admin.from("campaigns").select("id,firm_id,case_type,path,active,esign_required,firms(slug)").eq("id", camp.id).single();
+        if (configured.error || !configured.data || configured.data.case_type !== "mva" || configured.data.path !== "secondary" || configured.data.esign_required !== false || configured.data.active !== true || (configured.data.firms as any)?.slug !== "tmp")
+          return NextResponse.json({ error: "NETFLY secondary campaign is not safely configured.", saved: false }, { status: 503 });
+      }
       if (!norm.leadId || !/^\d{1,30}$/.test(norm.leadId)) return NextResponse.json({ error: "Supply the numeric LawRuler LeadID." }, { status: 400 });
       if (!camps.some(c => c.active && c.name.toLowerCase() === (norm.caseType || "").trim().toLowerCase()) && camps.filter(c => c.active && c.firm_id === camp.firm_id && c.case_type === camp.case_type).length > 1) return NextResponse.json({ error: "More than one campaign matches this case type. Supply its exact campaign name." }, { status: 409 });
       // Do not allow the ingest helper's first-match behavior to choose between
@@ -225,16 +238,46 @@ export async function POST(req: NextRequest) {
         const existingMatter = await resolveLawRulerMatter(admin, { firmId: camp.firm_id, leadId: targets.data[0].id, campaignId: camp.id, campaignName: camp.name, caseType: camp.case_type, claimId: clean(fields.claim_id) });
         if (!existingMatter.ok) return NextResponse.json({ error: existingMatter.error, saved: false }, { status: existingMatter.status });
       }
+      if (netflyInbound) {
+        if (!targets.data?.length && !(norm.name || [norm.first, norm.last].filter(Boolean).join(" ")).trim())
+          return NextResponse.json({ error: "Map the NETFLY client's name before posting.", saved: false }, { status: 422 });
+        if (!targets.data?.length && !norm.phone && !norm.email)
+          return NextResponse.json({ error: "Map a callback phone or email for the NETFLY welcome call.", saved: false }, { status: 422 });
+        const invalid = validateNetflyLawRulerPayload(fields, files, !targets.data?.length);
+        if (invalid) return NextResponse.json({ error: invalid, saved: false, attachments_complete: false }, { status: 422 });
+        if (!files.length && targets.data?.[0]) {
+          const prior = await admin.from("case_documents").select("id").eq("firm_id", camp.firm_id).eq("lead_id", targets.data[0].id)
+            .eq("doc_type", NETFLY_RETAINER_TYPE).limit(1);
+          if (prior.error || !prior.data?.length) return NextResponse.json({ error: "No signed NETFLY retainer is on the matched file. Repost it as a PDF.", saved: false, attachments_complete: false }, { status: 422 });
+        }
+      }
       // An externally worked/signed record is recovery, even on its first
       // arrival here. It must not publish a new-lead acquisition event.
-      const externalUpdate = innoMva && !/^new lead(?: \(default\))?$/i.test(norm.status || '');
-      const r = await ingestLead(admin, { lead: norm, campaign: camp, via: "lawruler", historical: historical || externalUpdate });
+      const externalUpdate = netflyInbound || (innoMva && !/^new lead(?: \(default\))?$/i.test(norm.status || ''));
+      const r = await ingestLead(admin, { lead: norm, campaign: camp, via: "lawruler", historical: historical || externalUpdate, holdOutreach: netflyInbound });
       await log(admin, camp.firm_id, r.ok ? "received" : "failed", r.ok ? 200 : (r.status || 500),
         { vendor_lead_id: norm.leadId, lead_no: r.lead_no ?? null, created: !!r.created, campaign: camp.name }, r.error ?? null);
       if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status || 500 });
       const matter = await resolveLawRulerMatter(admin, { firmId: camp.firm_id, leadId: r.lead_id!, campaignId: camp.id, campaignName: camp.name, caseType: camp.case_type, claimId: clean(fields.claim_id) });
       if (!matter.ok) return NextResponse.json({ error: matter.error, lead_saved: true, lead_id: r.lead_id, attachments_complete: false }, { status: matter.status });
       const scope = { firmId: camp.firm_id, leadId: r.lead_id!, claimId: matter.claim.id, vendorId: norm.leadId!, caseType: camp.case_type };
+      if (netflyInbound) {
+        try {
+          const held = await admin.from("leads").update({ perm_call: false, perm_text: false, perm_email: false, marketing_source: "NETFLY" })
+            .eq("id", r.lead_id!).eq("firm_id", camp.firm_id).eq("campaign_id", camp.id);
+          if (held.error) throw new Error(`NETFLY communications hold failed: ${held.error.message}`);
+          const sync = await syncLawRulerNetfly(admin, scope, fields, files);
+          return NextResponse.json({ ok: true, lead_saved: true, lead_id: r.lead_id, claim_id: matter.claim.id,
+            lead_no: r.lead_no, created: r.created, updated: !r.created, campaign: NETFLY_CAMPAIGN,
+            ...sync, attachments_complete: true, status_reconciliation: "signed_original_needs_review",
+            communications_triggered: false, log_id: logId });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "NETFLY source sync failed.";
+          await log(admin, camp.firm_id, "failed", 500, { lead_id: r.lead_id, claim_id: matter.claim.id }, message);
+          return NextResponse.json({ error: message, lead_saved: true, lead_id: r.lead_id,
+            claim_id: matter.claim.id, attachments_complete: false, retry_required: true }, { status: 500 });
+        }
+      }
       if (innoMva && camp.name.trim().toLowerCase() === 'inno mva' && camp.case_type === 'mva') {
         try {
           const sync = await syncLawRulerMva(admin, { ...scope, campaignId: camp.id }, fields, files, historical);
