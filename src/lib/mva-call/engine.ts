@@ -1544,7 +1544,7 @@ export class CallEngine {
       bookmarks: sections.map((x) => ({ id: x.id, label: x.label, status: x.status, on: x.open,
         go: () => this.setFi({ sec: x.id, edit: null, target: null, cq: this.fiNext(x.id) || INTAKE_SEQUENCE.find((id) => sectionOf(id) === x.id && this.fiInfo(id).applies) || this.state.fi.cq, jump: (this.state.fi.jump || 0) + 1 }) })),
       progress: { done: doneN, total: total, pct: total ? Math.round((doneN / total) * 100) : 0, text: doneN + ' of ' + total },
-      jump: fi.jump || 0, target: fi.target, openSec: fi.sec,
+      jump: fi.jump || 0, target: fi.target, openSec: fi.sec, currentQuestion: seqLive.includes(fi.cq) ? fi.cq : nextId,
       next: nextId ? {
         label: 'Next: ' + this.fiInfo(nextId).label,
         ask: this.fiInfo(nextId).ask, sec: sectionOf(nextId),
@@ -1574,7 +1574,7 @@ export class CallEngine {
         }
       },
       lead: pre.lead,
-      viewLabel: s.view === 'steps' ? 'Step by step' : s.view === 'form' ? 'Simple form' : allOpen ? 'All questions' : s.view === 'convo' ? 'Conversation' : s.view === 'quick' ? 'Quick Capture' : 'Collapsible'
+      viewLabel: s.view === 'steps' ? 'Training Mode' : s.view === 'form' ? 'Simple form' : allOpen ? 'All questions' : s.view === 'convo' ? 'Conversation' : s.view === 'quick' ? 'Quick Capture' : 'Collapsible'
     };
   }
 
@@ -1826,10 +1826,10 @@ export class CallEngine {
       // Three views while the agents try them (Brett, Sep 27): Guided, one step
       // at a time; Collapsible, every section on one page, one open at a time;
       // All questions, the whole intake open as one numbered form.
-      modeLabel: ({ qa: 'Q&A', full: 'Collapsible', chore: 'All questions', form: 'Simple form', steps: 'Step by step', convo: 'Conversation', quick: 'Quick Capture' } as any)[s.view] || 'Guided',
+      modeLabel: ({ qa: 'Q&A', full: 'Collapsible', chore: 'All questions', form: 'Simple form', steps: 'Training Mode', convo: 'Conversation', quick: 'Quick Capture' } as any)[s.view] || 'Guided',
       modeMenuOpen: !!s.modeMenu,
       toggleModeMenu: () => this.setState({ modeMenu: !this.state.modeMenu }),
-      modes: [['All questions', 'chore'], ['Simple form', 'form'], ['Step by step', 'steps']].map((m) => ({
+      modes: [['All questions', 'chore'], ['Simple form', 'form'], ['Training Mode', 'steps']].map((m) => ({
         key: m[1],
         label: m[0],
         on: s.view === m[1],

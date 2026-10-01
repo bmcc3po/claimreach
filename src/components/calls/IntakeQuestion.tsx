@@ -103,7 +103,7 @@ export default function IntakeQuestion({ q, v, presentation = "full" }: { q: any
   if (collapsed) return <button type="button" {...attrs} className={`fi-q fi-q-row${q.flash ? " fi-flash" : ""}`} onClick={q.edit} aria-expanded={false}><span className="fi-q-k">{label}</span><span className={`fi-q-v${q.tone ? " fi-tone-" + q.tone : ""}`}>{q.value}</span></button>;
   const details = <QuestionDetails q={q} v={v} presentation={presentation} />;
   if (presentation === "form") return <div {...attrs} className={`sf-row iq-question${!q.answered && !q.optional ? " sf-need" : ""}`}><div className="sf-l">{label}{q.tone === "bad" && <span className="iq-warning">Problem</span>}</div><div className="sf-c">{details}</div></div>;
-  return <div {...attrs} className={presentation === "chore" ? `ch-q iq-question${q.c.kind === "people" || q.c.kind === "notes" || q.rep ? " ch-wide" : ""}` : `fi-q fi-q-edit iq-question${q.flash ? " fi-flash" : ""}`}>
+  return <div {...attrs} className={presentation === "chore" ? `ch-q iq-question${q.c.kind === "people" || q.c.kind === "notes" || q.rep ? " ch-wide" : ""}${v.fi?.currentQuestion === q.id ? " ch-q-current" : ""}` : `fi-q fi-q-edit iq-question${q.flash ? " fi-flash" : ""}`}>
     <div className={presentation === "chore" ? "ch-q-h" : "fi-q-h"}><span className={presentation === "chore" ? "ch-q-l" : "fi-q-k"}>{label}</span>{q.tone === "bad" && <span className="iq-warning">Problem</span>}{presentation === "full" && q.answered && <button type="button" className="fi-q-done" onClick={q.edit}>Done</button>}</div>
     {details}
   </div>;

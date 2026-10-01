@@ -24,5 +24,7 @@ export function stepIndexForPosition(section: string | null, question: string | 
 }
 
 export function savedCallView(preference: string | null): 'chore' | 'form' | 'steps' {
-  return preference === 'form' || preference === 'steps' ? preference : 'chore';
+  // Training Mode is a deliberate per-call choice. Old "Step by step" device
+  // preferences must not reopen the next call with the full form hidden.
+  return preference === 'form' ? preference : 'chore';
 }

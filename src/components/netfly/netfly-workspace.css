@@ -49,6 +49,8 @@
 .nf-workspace-body .nf-steps{position:static;background:transparent}
 .nf-workspace-body .nf-step-card .nf-intake{margin-bottom:14px}
 .nf-all-steps .nf-step-card{margin-bottom:12px}
+.nf-step-card{scroll-margin-top:80px}
+.nf-all-steps .nf-question-current,.nf-all-steps .nf-question:focus-within{border-color:#315DA4;background:#f3f7fd;box-shadow:0 3px 12px rgba(26,65,115,.12)}
 .nf-all-steps .nf-section-head{border-bottom:1px solid #d6e2ef;padding-bottom:8px}
 .nf-command-toggle{display:none}
 @media(max-width:1250px){.nf-workspace-grid{grid-template-columns:175px minmax(0,1fr) 270px}.nf-view-bar{display:grid}.nf-view-actions{justify-content:space-between}.nf-view-tabs{flex-wrap:wrap}}

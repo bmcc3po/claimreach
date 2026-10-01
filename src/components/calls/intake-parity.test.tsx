@@ -221,7 +221,7 @@ test('stage back/next, view switching and device restore keep answers and split 
   e.renderVals().fi.step.items[4].go();
   e.setView('form'); e.setView('steps');
   assert.equal(e.renderVals().fi.step.id, 'retainer', 'stale passenger question never hides Retainer');
-  assert.equal(savedCallView('steps'), 'steps'); assert.equal(savedCallView('form'), 'form');
+  assert.equal(savedCallView('steps'), 'chore'); assert.equal(savedCallView('form'), 'form');
   assert.equal(savedCallView('guided'), 'chore'); assert.equal(savedCallView(null), 'chore');
 });
 

@@ -38,7 +38,7 @@ export default function StepByStep({ v }: { v: any }) {
 
   return <div className="step-intake" data-intake-step={step.id}>
     <header className="step-intake-heading">
-      <span className="step-intake-count">Step {step.number} of {step.total}</span>
+      <span className="step-intake-count">Training Mode · Step {step.number} of {step.total}</span>
       <h1 ref={heading} tabIndex={-1}>{step.label}</h1>
       <details ref={jump} className="step-intake-jump">
         <summary>Jump to another call step</summary>

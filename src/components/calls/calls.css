@@ -1921,6 +1921,9 @@ div.ws-row{cursor:default}
 /* Light cell edges separate the questions while the section stays one card. */
 .cc-app.ix.ch-mode .ch-grid{gap:10px;align-items:stretch}
 .cc-app.ix.ch-mode .ch-grid>.ch-q:not(.ch-wide){padding:12px;border:1px solid #E6EBF2;border-radius:9px;background:#FCFDFE}
+/* All questions stays open. A quiet navy edge marks the question in use. */
+.cc-app.ix.ix-chore .ch-grid>.iq-question.ch-q-current,
+.cc-app.ix.ix-chore .ch-grid>.iq-question:focus-within{outline:2px solid #315DA4;outline-offset:0;background:#F3F7FD;box-shadow:0 3px 12px rgba(26,65,115,.12);border-radius:9px}
 /* Insurance has six short questions; keep all six as equal cells. */
 .cc-app.ix.ch-mode #ch-sec-insurance .ch-grid>.ch-q.ch-wide{grid-column:auto;padding:12px;border:1px solid #E6EBF2;border-radius:9px;background:#FCFDFE}
 /* On phones, each question needs a distinct boundary as the grid stacks. */

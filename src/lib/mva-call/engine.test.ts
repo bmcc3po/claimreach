@@ -892,11 +892,11 @@ t("a completed primary re-sign can resume ordinary office completion", () => {
   assert.equal(calls.length, before + 1); assert.equal(calls[calls.length - 1], "completeAgreement");
 });
 
-t("agent view picker offers All questions, Simple form and Step by step without changing answers", () => {
+t("agent view picker offers All questions, Simple form and Training Mode without changing answers", () => {
   const e = mk();
   e.setState({ story: { ...e.state.story, city: "Las Vegas, NV" } });
   const before = e.state.story.city;
-  assert.deepEqual(e.renderVals().modes.map((mode: any) => mode.label), ["All questions", "Simple form", "Step by step"]);
+  assert.deepEqual(e.renderVals().modes.map((mode: any) => mode.label), ["All questions", "Simple form", "Training Mode"]);
   e.setView("chore");
   e.setView("form");
   e.setView("steps");
