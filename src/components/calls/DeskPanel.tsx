@@ -63,8 +63,8 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   const moreButton = useRef<HTMLButtonElement | null>(null);
   const dialer = useRef<JustCallDialerHandle | null>(null);
   useEffect(() => { if (tab === "phone") setPhoneOn(true); }, [tab]);
-  const primaryTabs: [DeskTab, string][] = [["file", "File"], ["texts", "Texts"], ["retainer", "Agreement"]];
-  const secondaryTabs: [DeskTab, string][] = [["phone", "Phone"], ["know", "Scripts"], ["tools", "Tools"], ...(summary ? [["summary", "Helper"] as [DeskTab, string]] : [])];
+  const primaryTabs: [DeskTab, string][] = [["file", "File"], ["texts", "Texts"]];
+  const secondaryTabs: [DeskTab, string][] = [["retainer", "Agreement"], ["phone", "Phone"], ["know", "Scripts"], ["tools", "Tools"], ...(summary ? [["summary", "Helper"] as [DeskTab, string]] : [])];
   const activeSecondary = secondaryTabs.find(([key]) => key === tab)?.[1];
   const callActive = dialState === "on-call" || dialState === "ringing";
   const tabButton = ([key, label]: [DeskTab, string]) => (

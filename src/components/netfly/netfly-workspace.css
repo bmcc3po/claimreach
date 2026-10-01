@@ -2,7 +2,7 @@
 .nf-workspace{max-width:none;padding:16px 18px 60px}
 .nf-workspace .nf-head{max-width:1800px;width:100%;margin:0 auto 14px;align-items:center}
 .nf-workspace .nf-head h1{font-size:25px;margin:3px 0}
-.nf-workspace-grid{max-width:1800px;margin:auto;display:grid;grid-template-columns:230px minmax(0,1fr) 350px;gap:14px;align-items:start}
+.nf-workspace-grid{max-width:1800px;margin:auto;display:grid;grid-template-columns:190px minmax(0,1fr) 280px;gap:12px;align-items:start}
 .nf-review-rail,.nf-command{background:#f4f7fc;border:1px solid #d4dfec;border-radius:14px;padding:12px;min-width:0}
 .nf-review-rail{position:sticky;top:12px}
 .nf-rail-title,.nf-command-head{display:flex;flex-direction:column;gap:2px;padding:5px 5px 12px}
@@ -11,6 +11,7 @@
 .nf-rail-card{display:grid;gap:6px;background:#fff;border:1px solid #d8e3ef;border-radius:12px;padding:13px;margin-bottom:10px;overflow-wrap:anywhere}
 .nf-rail-card strong{color:#102c50}
 .nf-rail-card span,.nf-rail-card a{font-size:13px;color:#526781}
+.nf-rail-progress{font-size:12px;line-height:1.5;color:#315786;padding:8px 3px 12px}
 .nf-rail-steps{display:grid;gap:6px}
 .nf-rail-steps button{border:1px solid #d1dfed;background:#fff;border-radius:9px;padding:10px;text-align:left;color:#28445e;font-weight:650;cursor:pointer}
 .nf-rail-steps button.active{background:#173a71;border-color:#173a71;color:#fff}
@@ -26,7 +27,9 @@
 .nf-command{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
 .nf-command-head{position:relative}
 .nf-command-close{display:none}
-.nf-command-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:12px}
+.nf-command-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:8px}
+.nf-command-more{grid-column:1/-1;display:flex;align-items:center;gap:8px;color:#315786;font-size:12px;font-weight:700}
+.nf-command-more select{min-width:0;flex:1;padding:7px 8px;border:1px solid #cbd9e9;border-radius:8px;background:#fff;color:#173a71;font:inherit}
 .nf-command-content .nf-panel{padding:14px;box-shadow:none}
 .nf-command-content .nf-panel h2{font-size:18px}
 .nf-command-content .nf-retainer{display:block;padding:13px;margin-bottom:12px}
@@ -42,7 +45,7 @@
 .nf-all-steps .nf-step-card{margin-bottom:12px}
 .nf-all-steps .nf-section-head{border-bottom:1px solid #d6e2ef;padding-bottom:8px}
 .nf-command-toggle{display:none}
-@media(max-width:1250px){.nf-workspace-grid{grid-template-columns:195px minmax(0,1fr) 310px}.nf-view-bar{display:grid}.nf-view-actions{justify-content:space-between}.nf-view-tabs{flex-wrap:wrap}}
+@media(max-width:1250px){.nf-workspace-grid{grid-template-columns:175px minmax(0,1fr) 270px}.nf-view-bar{display:grid}.nf-view-actions{justify-content:space-between}.nf-view-tabs{flex-wrap:wrap}}
 @media(max-width:1000px){.nf-workspace-grid{grid-template-columns:185px minmax(0,1fr)}.nf-command{display:none}.nf-command.nf-command-open{display:block;position:fixed;inset:0 0 0 auto;width:min(410px,100vw);max-height:100vh;z-index:100;border-radius:0;box-shadow:-15px 0 45px #142b4850;overflow:auto}.nf-command-toggle,.nf-command-close{display:inline-flex}.nf-command-close{position:absolute;right:2px;top:0;border:1px solid #ccd9ea;border-radius:9px;background:#fff;width:36px;height:36px;align-items:center;justify-content:center;font-size:24px;cursor:pointer}}
 @media(max-width:700px){.nf-workspace{padding:12px 10px 80px}.nf-workspace-grid{display:block}.nf-review-rail{position:static;margin-bottom:12px}.nf-rail-steps{display:flex;overflow:auto}.nf-rail-steps button{flex:none;white-space:nowrap}.nf-rail-card{display:none}.nf-view-bar{position:sticky;top:0;z-index:5}.nf-view-actions{display:grid;grid-template-columns:minmax(0,1fr) auto}.nf-view-tabs{display:flex;overflow:auto}.nf-view-tabs button{font-size:12px;padding:8px}.nf-command-toggle{font-size:12px;padding:8px}.nf-workspace .nf-head{display:block}.nf-workspace .nf-head h1{font-size:21px}.nf-workspace-body .nf-steps{overflow:auto}.nf-workspace-body .nf-steps button{min-width:120px}}
 .nf-header-toggle{flex:none;min-height:38px;padding:7px 10px;border:1px solid #cbd9e9;border-radius:9px;background:#f4f7fc;color:#173a71;font:inherit;font-size:12px;font-weight:750;cursor:pointer}

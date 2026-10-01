@@ -758,16 +758,9 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     document.addEventListener("keydown", keys);
     return () => { document.removeEventListener("keydown", keys); previous?.focus(); };
   }, [sideOn, utilityOpen]);
-  // Entering Send brings up the agreement preview. Merely reopening the file
-  // or resizing the screen keeps the case file (or the agent's chosen tab).
+  // The agreement preview and signed review now follow the call inline.
+  // Keep the agent's utility tab in place as the call enters signing.
   const phase = s.phase;
-  const previousPhase = useRef(phase);
-  useEffect(() => {
-    const enteredSend = previousPhase.current !== phase && phase === "send";
-    previousPhase.current = phase;
-    if (sideOn && !commandCollapsed && enteredSend && init.canPreview) setDeskTabState("retainer");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideOn, commandCollapsed, phase]);
 
   const preview = previewInfo(engine.state, init, engine.props.esign.templateKeys ?? []);
   const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
@@ -819,8 +812,6 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     view.openRetainer = () => openUtility("retainer");
     view.onPreview = (ev: any) => { ev.preventDefault(); openUtility("retainer"); };
   }
-  // Slide the divider to give the call or the panel more room. Remembered per
-  // computer; double-click puts it back.
   const deskRef = useRef<HTMLDivElement | null>(null);
   const wasCommandCollapsed = useRef(commandCollapsed);
   useEffect(() => {
@@ -829,66 +820,6 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     wasCommandCollapsed.current = commandCollapsed;
   }, [sideOn, commandCollapsed]);
   const collapseCommand = () => { deskTextsOpen.current = false; setCommandCollapsed(true); };
-  const DEFAULT_W = 900;
-  // The width is saved under a new name since the call got its own left rail;
-  // old saved widths were sized for the phone layout.
-  const W_KEY = "cr-desk-call-w2";
-  const setCallW = (w: number | null, save = false) => {
-    const el = deskRef.current;
-    if (!el) return;
-    if (w == null) el.style.removeProperty("--call-w");
-    else {
-      // The panel keeps at least 360px (its column minimum) plus the 10px bar.
-      const max = el.getBoundingClientRect().width - 372;
-      const px = Math.round(Math.max(460, Math.min(max, w)));
-      el.style.setProperty("--call-w", `${px}px`);
-      if (save) { try { localStorage.setItem(W_KEY, String(px)); } catch { /* private mode */ } }
-      return;
-    }
-    if (save) { try { localStorage.removeItem(W_KEY); } catch { /* private mode */ } }
-  };
-  useEffect(() => {
-    if (!deskOn || ws) return;
-    try { const w = Number(localStorage.getItem(W_KEY)); if (w > 0) setCallW(w); } catch { /* none saved */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deskOn, ws]);
-  // Wide enough, the call gets a left rail (caller, checks, steps) and the
-  // question gets the middle. Narrow, it keeps the phone layout.
-  useEffect(() => {
-    const el = deskRef.current;
-    const app = el?.querySelector(".cc-app") as HTMLElement | null;
-    if (!deskOn || ws || !el || !app || typeof ResizeObserver === "undefined") { el?.classList.remove("cc-rail"); return; }
-    const ro = new ResizeObserver(() => el.classList.toggle("cc-rail", app.getBoundingClientRect().width >= 760));
-    ro.observe(app);
-    return () => { ro.disconnect(); el.classList.remove("cc-rail"); };
-  }, [deskOn, ws]);
-  const startSlide = (ev: React.PointerEvent<HTMLDivElement>) => {
-    const el = deskRef.current;
-    if (!el) return;
-    ev.preventDefault();
-    const handle = ev.currentTarget;
-    handle.setPointerCapture(ev.pointerId);
-    el.classList.add("cc-sliding");
-    const left = el.getBoundingClientRect().left;
-    let last = 0;
-    const move = (e: PointerEvent) => { last = e.clientX - left; setCallW(last); };
-    const up = () => {
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", up);
-      handle.removeEventListener("pointercancel", up);
-      el.classList.remove("cc-sliding");
-      if (last) setCallW(last, true);
-    };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", up);
-    handle.addEventListener("pointercancel", up);
-  };
-  const nudgeSlide = (ev: React.KeyboardEvent<HTMLDivElement>) => {
-    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
-    ev.preventDefault();
-    const cur = deskRef.current?.querySelector(".cc-app")?.getBoundingClientRect().width || DEFAULT_W;
-    setCallW(cur + (ev.key === "ArrowRight" ? 32 : -32), true);
-  };
 
   // Numbers for the dialer: the PNC's number first, then the firm lines for a 3-way.
   const herPhone = String(engine.state.send.phone || init.props.callerPhone || "").trim();
@@ -913,11 +844,6 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   return (
     <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ws === "ipad" ? " cc-ipad-on" : ""}${sideOn && commandCollapsed ? " cc-command-collapsed" : ""}`}>
       <CallView v={view} />
-      {deskOn && !ws && (
-        <div className="cc-split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the call and the panel" tabIndex={0}
-          title="Drag to resize. Double-click to reset."
-          onPointerDown={startSlide} onKeyDown={nudgeSlide} onDoubleClick={() => setCallW(null, true)} />
-      )}
       {/* Keep one host and keyed panel through rotation and phone close/reopen.
           File drafts and the dialer iframe belong to this matter, not its layout. */}
       <div id={commandPanelId} ref={utilityRef} className={sideOn ? "cc-panel-host" : "cc-utility-dialog"} style={!panelVisible ? { display: "none" } : sideOn ? { display: "contents" } : { position: "fixed", inset: 0, zIndex: 90, background: "white", overflow: "auto" }} role={!sideOn && utilityOpen ? "dialog" : undefined} aria-modal={!sideOn && utilityOpen ? true : undefined} aria-label="Command center">

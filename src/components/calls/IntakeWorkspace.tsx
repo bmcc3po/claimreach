@@ -329,6 +329,8 @@ export function WsLeft({ v }: { v: any }) {
 
       <section className="ws-block ws-review-checks">
         <div className="ws-h">Qualification checks <span className={`ws-count${fi.lights.bad ? " ws-count-bad" : ""}`}>{fi.lights.bad ? "Problem" : fi.lights.text}</span></div>
+        <details className="ws-check-details" open={fi.lights.bad || undefined}>
+          <summary>{fi.lights.bad ? "Review the qualification issue" : "Show all checks"}</summary>
         <div className="ws-lights">
           {fi.lights.rows.map((r: any, i: number) => (
             <div key={i} className={`ws-light ws-l-${r.state || "none"}`}>
@@ -336,6 +338,7 @@ export function WsLeft({ v }: { v: any }) {
             </div>
           ))}
         </div>
+        </details>
       </section>
 
       <section className="ws-block ws-review-missing">
