@@ -9,7 +9,7 @@ export type PacketRow = {
   deliveredAt: string | null;
   agent: string;
   archived: boolean;
-  stage: "ready" | "finish" | "held" | "delivered";
+  stage: "ready" | "qa" | "finish" | "held" | "delivered";
   stageLabel: string;
 };
 
@@ -63,8 +63,10 @@ export function packetWorklist(input: Input): PacketRow[] {
     const legacySent = claim?.firm_sent_at || (claimCount.get(row.lead_id) === 1 && lead.firm_sent_at);
     const deliveredAt = delivery?.created_at || legacySent || null;
     const held = !!row.replacement_requested_at || group[0].id !== row.id;
-    const ready = row.status === "completed" && !!row.agent_reviewed_at && !!row.completed_pdf_path && !!row.cert_pdf_path;
-    const stage = deliveredAt ? "delivered" : held ? "held" : ready ? "ready" : "finish";
+    const packetComplete = row.status === "completed" && !!row.agent_reviewed_at && !!row.completed_pdf_path && !!row.cert_pdf_path;
+    // The firm delivery endpoint requires signed_approved. A complete PDF is
+    // still awaiting QA when the claim remains signed_grievous/signed_qa.
+    const stage = deliveredAt ? "delivered" : held ? "held" : !packetComplete ? "finish" : claim?.status === "signed_approved" ? "ready" : "qa";
     rows.push({
       leadId: row.lead_id,
       claimId: row.claim_id || null,
@@ -77,7 +79,7 @@ export function packetWorklist(input: Input): PacketRow[] {
       agent: call?.agent_name || sender?.full_name || "Unassigned",
       archived: !!lead.archived_at,
       stage,
-      stageLabel: stage === "delivered" ? "Sent to firm" : stage === "held" ? "Correction held" : stage === "ready" ? "Ready to send" : "Finish signed packet",
+      stageLabel: stage === "delivered" ? "Sent to firm" : stage === "held" ? "Correction held" : stage === "ready" ? "Ready to send" : stage === "qa" ? claim ? "Awaiting QA approval" : "Link case for QA" : "Finish signed packet",
     });
   }
   return rows.sort((a, b) => b.signedAt.localeCompare(a.signedAt));
