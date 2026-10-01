@@ -1,13 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField } from "@/lib/netfly-ontake";
+import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
 import { DEFAULT_DQ_REASONS } from "@/lib/statuses";
 import "./netfly.css";
 import "./netfly-workspace.css";
 
 type Handoff = { note: string; at: string; by_name?: string; channel?: string };
-type Detail = { file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string }; answers: { fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; handoff_verification?: { status: string; note: string; source_revision: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
+type Detail = { file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string }; actor_id: string; live_call: NetflyLiveCall | null; answers: { fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; handoff_verification?: { status: string; note: string; source_revision: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
 
 const VERIFY_STEPS = [
   { title: "1. Welcome to the firm", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you! I just wanted to jump on the phone to welcome you to the firm. I'm going to verify a few things, gather some brief additional details, and then we'll talk about next steps.", fields: ["seen_doctor", "first_provider", "first_visit", "ambulance", "treated_injuries", "other_pain", "still_treating", "current_provider", "last_appointment", "next_appointment"] },
@@ -43,11 +43,36 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [callCloseDirty, setCallCloseDirty] = useState(false);
   const [callCloseBusy, setCallCloseBusy] = useState(false);
   const [dqDialogOpen, setDqDialogOpen] = useState(false);
+  const [liveCall, setLiveCall] = useState<NetflyLiveCall | null>(null);
+  const [presenceBusy, setPresenceBusy] = useState(false);
   async function load(forceCall = false) {
-    try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setDetail(d); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { setCallClose(d.answers?.call_close ? { ...emptyCallClose, ...d.answers.call_close } : emptyCallClose); setCallCloseDirty(false); } }
+    try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setDetail(d); setLiveCall(d.live_call || null); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { setCallClose(d.answers?.call_close ? { ...emptyCallClose, ...d.answers.call_close } : emptyCallClose); setCallCloseDirty(false); } }
     catch (e: any) { setError(e.message || "NETFLY file did not load."); }
   }
   useEffect(() => { void load(); }, [fileKey]);
+  useEffect(() => {
+    let mounted = true;
+    async function refresh() {
+      try {
+        const own = liveCall?.by === detail?.actor_id && !!activeNetflyCall(liveCall);
+        const response = own
+          ? await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "call_presence", file: fileKey, action: "refresh" }) })
+          : await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error);
+        if (mounted) setLiveCall(body.live_call || null);
+      } catch (error: any) { if (mounted) { setLiveCall(null); setError(error.message || "Could not refresh call status."); } }
+    }
+    const timer = window.setInterval(() => void refresh(), 20_000);
+    return () => { mounted = false; window.clearInterval(timer); };
+  }, [fileKey, detail?.actor_id, liveCall?.by]);
+  async function markCall(action: "start" | "end") {
+    setPresenceBusy(true); setError("");
+    try { const response = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "call_presence", file: fileKey, action }) });
+      const body = await response.json(); if (!response.ok) throw new Error(body.error); setLiveCall(body.live_call || null); }
+    catch (error: any) { setError(error.message || "Call status did not save."); }
+    finally { setPresenceBusy(false); }
+  }
   async function save(id: string, value: string) {
     setSaveState(`Saving ${id}…`); setError("");
     try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "answer", file: fileKey, field: id, value }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setSaveState("Saved"); }
@@ -186,6 +211,10 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   };
   return <main className="nf-page nf-workspace">
     <div className="nf-head"><div><Link href="/app/netfly" className="nf-back">← NETFLY files</Link><p className="nf-eyebrow">Signed transfer · {detail.file.lead_no}</p><h1>{detail.file.claimant_name}</h1><p>{detail.file.phone || "No phone"} · {detail.file.email || "No email"}</p></div><span className="nf-progress">Welcome &amp; verify</span></div>
+    <div className="nf-live-status" role="status"><strong>{activeNetflyCall(liveCall) ? `On phone · ${liveCall!.by_name}` : "No agent marked on the phone"}</strong>
+      {detail.canReview && (!activeNetflyCall(liveCall) ? <button type="button" className="nf-primary" disabled={presenceBusy} onClick={() => void markCall("start")}>I’m speaking with this client</button>
+        : liveCall?.by === detail.actor_id ? <button type="button" className="nf-secondary" disabled={presenceBusy} onClick={() => void markCall("end")}>I’m off the call</button> : null)}</div>
+    {(!latest || !handoffs.length) && <div className="nf-alert" role="status"><strong>Partial NETFLY file</strong><p>{!handoffs.length ? "NETFLY handoff note missing. " : ""}{!latest ? "Signed retainer PDF missing. " : ""}The file is held from review until both arrive.</p></div>}
     {error && <div className="nf-alert" role="alert">{error}</div>}
     {flags.length > 0 && <div className="nf-alert"><strong>Supervisor attention</strong>{flags.map((flag) => <p key={flag}>{flag}</p>)}<p>Finish the file and flag it. Do not auto-decline.</p></div>}
     <div className="nf-workspace-grid">

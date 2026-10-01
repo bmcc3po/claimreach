@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { netflyContext, netflyMatter } from "@/lib/netfly-server";
-import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, netflyFlags, validateNetflyCallClose, type NetflyCallClose } from "@/lib/netfly-ontake";
+import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, activeNetflyCall, netflyFlags, validateNetflyCallClose, type NetflyCallClose } from "@/lib/netfly-ontake";
 import { parseDob } from "@/lib/mva-call/server";
 import { mailColumnsFrom } from "@/lib/us-address";
 import { packetShort } from "@/lib/mva-call/esign";
@@ -15,11 +15,30 @@ export async function GET(req: NextRequest) {
   const key = new URL(req.url).searchParams.get("file");
   if (!key) {
     const { data, error } = await ctx.db.from("leads")
-      .select("id, lead_no, claimant_name, phone, created_at, claims(id, answers, status)")
+      .select("id, lead_no, claimant_name, phone, created_at")
       .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).is("archived_at", null)
       .order("created_at", { ascending: false }).limit(150);
     if (error) return fail("Could not load NETFLY files.", 503);
-    return NextResponse.json({ files: data ?? [] });
+    const ids = (data ?? []).map(row => row.id);
+    const claims = ids.length ? await ctx.db.from("claims").select("id, lead_id, answers, status")
+      .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).in("lead_id", ids) : { data: [], error: null };
+    if (claims.error) return fail("Could not load NETFLY matters. Refresh the queue.", 503);
+    const claimsByLead = new Map<string, typeof claims.data>();
+    for (const claim of claims.data ?? []) claimsByLead.set(claim.lead_id, [...(claimsByLead.get(claim.lead_id) ?? []), claim]);
+    const documents = ids.length ? await ctx.db.from("case_documents").select("lead_id, claim_id")
+      .eq("firm_id", ctx.campaign.firm_id).eq("doc_type", "netfly_signed_retainer").in("lead_id", ids) : { data: [], error: null };
+    if (documents.error) return fail("Could not check NETFLY signed PDFs. Refresh the queue.", 503);
+    const documentKeys = new Set((documents.data ?? []).map(doc => `${doc.lead_id}:${doc.claim_id}`));
+    if ([...claimsByLead.values()].some(rows => rows.length !== 1)) return fail("A NETFLY file has ambiguous matters. Supervisor review needed.", 409);
+    return NextResponse.json({ files: (data ?? []).map(row => {
+      const claim = claimsByLead.get(row.id)?.[0];
+      const saved = (claim?.answers as any)?.[NETFLY_ANSWER_KEY];
+      const missing_source = [
+        ...(!Array.isArray(saved?.handoffs) || !saved.handoffs.length ? ["handoff_note"] : []),
+        ...(!documentKeys.has(`${row.id}:${claim?.id}`) ? ["signed_retainer_pdf"] : []),
+      ];
+      return { ...row, claims: claim ? [claim] : [], missing_source, live_call: activeNetflyCall(saved?.live_call) };
+    }) });
   }
   const matter = await netflyMatter(ctx, key);
   if (!matter) return fail("NETFLY file not found.", 404);
@@ -34,7 +53,8 @@ export async function GET(req: NextRequest) {
     const { data } = await ctx.db.storage.from("case-docs").createSignedUrl(doc.storage_path, 300);
     return { id: doc.id, file_name: doc.file_name, created_at: doc.created_at, uploaded_by_name: doc.uploaded_by_name, url: data?.signedUrl ?? null };
   }));
-  return NextResponse.json({ file: matter.lead, canReview: ctx.actor.can("intake.fill"), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
+  return NextResponse.json({ file: matter.lead, actor_id: ctx.actor.id, live_call: activeNetflyCall((matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.live_call),
+    canReview: ctx.actor.can("intake.fill"), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
     answers: (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] ?? {}, retainer: safeDocs });
 }
 
@@ -43,6 +63,33 @@ export async function POST(req: NextRequest) {
   if (!ctx) return fail("NETFLY is unavailable to this account.", 403);
   let body: any;
   try { body = await req.json(); } catch { return fail("Invalid request.", 400); }
+  if (body?.op === "call_presence") {
+    if (!ctx.actor.can("intake.fill")) return fail("This account cannot mark a NETFLY call.", 403);
+    const action = String(body.action || "");
+    if (!["start", "refresh", "end"].includes(action)) return fail("Choose a call-presence action.", 400);
+    const matter = await netflyMatter(ctx, String(body.file || ""));
+    if (!matter) return fail("NETFLY file not found.", 404);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: current, error } = await ctx.db.from("claims").select("answers, updated_at")
+        .eq("id", matter.claim.id).eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).single();
+      if (error || !current) return fail("Could not check who is on this call.", 503);
+      const all = current.answers && typeof current.answers === "object" ? current.answers as Record<string, any> : {};
+      const saved = all[NETFLY_ANSWER_KEY] && typeof all[NETFLY_ANSWER_KEY] === "object" ? all[NETFLY_ANSWER_KEY] : {};
+      const active = activeNetflyCall(saved.live_call);
+      if (active && active.by !== ctx.actor.id && action !== "end") return fail(`${active.by_name} is already marked on the phone with this client.`, 409);
+      if (action === "end" && active?.by !== ctx.actor.id) return fail("Only the agent who started this call can clear its indicator.", 409);
+      if (action === "refresh" && active?.by !== ctx.actor.id) return fail("This call indicator expired. Start it again if you are still speaking with the client.", 409);
+      const live_call = action === "end" ? null : { by: ctx.actor.id, by_name: ctx.actor.name,
+        expires_at: new Date(Date.now() + 90_000).toISOString() };
+      const { data: updated, error: saveError } = await ctx.db.from("claims")
+        .update({ answers: { ...all, [NETFLY_ANSWER_KEY]: { ...saved, live_call } }, updated_at: new Date().toISOString() })
+        .eq("id", matter.claim.id).eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id)
+        .eq("updated_at", current.updated_at).select("id").maybeSingle();
+      if (saveError) return fail("Call indicator did not save. Retry.", 503);
+      if (updated) return NextResponse.json({ ok: true, live_call });
+    }
+    return fail("Another agent updated this call. Refresh and retry.", 409);
+  }
   if (body?.op === "create" || body?.op === "start_call") {
     if (!ctx.actor.can("leads.edit")) return fail("This account cannot add files.", 403);
     const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 160);
@@ -198,7 +245,9 @@ export async function POST(req: NextRequest) {
       const recorded = { ...call, source_revision: handoffs.length,
         followup_required: call.completion === "incomplete" || call.disposition !== "appears_qualified" || call.transfer_outcome !== "connected",
         at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name };
-      const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, call_close: recorded } };
+      const live = activeNetflyCall(netfly.live_call);
+      const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, call_close: recorded,
+        live_call: live?.by === ctx.actor.id ? null : netfly.live_call || null } };
       const { data: saved, error: saveError } = await ctx.db.from("claims")
         .update({ answers: next, updated_at: new Date().toISOString() })
         .eq("id", matter.claim.id).eq("campaign_id", ctx.campaign.id).eq("updated_at", current.updated_at)

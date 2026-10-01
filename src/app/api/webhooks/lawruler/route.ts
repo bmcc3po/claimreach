@@ -245,11 +245,6 @@ export async function POST(req: NextRequest) {
         // stable LawRuler LeadID binds the note and signed PDF until then.
         const invalid = validateNetflyLawRulerPayload(fields, files, !targets.data?.length);
         if (invalid) return NextResponse.json({ error: invalid, saved: false, attachments_complete: false }, { status: 422 });
-        if (!files.length && targets.data?.[0]) {
-          const prior = await admin.from("case_documents").select("id").eq("firm_id", camp.firm_id).eq("lead_id", targets.data[0].id)
-            .eq("doc_type", NETFLY_RETAINER_TYPE).limit(1);
-          if (prior.error || !prior.data?.length) return NextResponse.json({ error: "No signed NETFLY retainer is on the matched file. Repost it as a PDF.", saved: false, attachments_complete: false }, { status: 422 });
-        }
       }
       // An externally worked/signed record is recovery, even on its first
       // arrival here. It must not publish a new-lead acquisition event.
@@ -267,9 +262,18 @@ export async function POST(req: NextRequest) {
             .eq("id", r.lead_id!).eq("firm_id", camp.firm_id).eq("campaign_id", camp.id);
           if (held.error) throw new Error(`NETFLY communications hold failed: ${held.error.message}`);
           const sync = await syncLawRulerNetfly(admin, scope, fields, files);
+          const prior = await admin.from("case_documents").select("id").eq("firm_id", camp.firm_id).eq("lead_id", r.lead_id!)
+            .eq("claim_id", matter.claim.id).eq("doc_type", NETFLY_RETAINER_TYPE).limit(1);
+          if (prior.error) throw new Error(`NETFLY signed PDF could not be checked: ${prior.error.message}`);
+          const missing_source = [
+            ...(!sync.handoff_revisions ? ["handoff_note"] : []),
+            ...(!prior.data?.length ? ["signed_retainer_pdf"] : []),
+          ];
           return NextResponse.json({ ok: true, lead_saved: true, lead_id: r.lead_id, claim_id: matter.claim.id,
             lead_no: r.lead_no, created: r.created, updated: !r.created, campaign: NETFLY_CAMPAIGN,
-            ...sync, attachments_complete: true, status_reconciliation: "signed_original_needs_review",
+            ...sync, partial: missing_source.length > 0, missing_source,
+            attachments_complete: missing_source.length === 0,
+            status_reconciliation: missing_source.length ? "partial_needs_source" : "signed_original_needs_review",
             communications_triggered: false, log_id: logId });
         } catch (error) {
           const message = error instanceof Error ? error.message : "NETFLY source sync failed.";
