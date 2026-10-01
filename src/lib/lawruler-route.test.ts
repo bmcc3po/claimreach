@@ -86,20 +86,54 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     assert.equal(r.status, 200); assert.equal(h.ingests(), 1); assert.equal(r.body.claim_id, C); assert.equal(r.body.status_reconciliation, 'review_required');
     assert.equal(h.database.tables.lead_activity[0].meta.claim_id, C); assert.equal(h.database.tables.claims[0].status, 'new'); assert.equal(h.database.tables.esign_agreements, undefined);
   });
-  await t('NETFLY LawRuler transfer requires original PDF and stores it with the unchanged handoff note', async () => {
+  await t('NETFLY LawRuler transfer saves partial source, then completes with the original PDF and unchanged note', async () => {
+    assert.equal(netflySync.netflyHandoffNote({ NetflyHandoffNote: '{{default27}}-Case Description' }), '');
+    assert.equal(netflySync.netflyHandoffNote({ NetflyHandoffNote: '{{default27}}-Case Description', Summary: 'Client/Driver: Synthetic Person' }), 'Client/Driver: Synthetic Person');
+    assert.equal(ingest.normalizeLead({ Summary: 'Client/Driver: Synthetic Person' }).description, 'Client/Driver: Synthetic Person');
+    assert.equal(ingest.normalizeLead({ LeadProvider: 'Facebook', Hear: 'Netfly' }).channel, 'Facebook');
+    assert.equal(ingest.normalizeLead({ LeadProvider: 'Facebook', Hear: 'Netfly' }).marketer, 'Netfly');
+    assert.equal(ingest.normalizeLead({ Email1: 'synthetic@example.invalid' }).email, 'synthetic@example.invalid');
+    assert.deepEqual(netflySync.netflySourceFields({
+      LeadProvider: 'Facebook', Default41: '09/04/2026', Custom4148: 'Highway 70',
+      Custom4174: 'Kansas City', Custom4175: 'Missouri', Custom4149: 'SYN-123',
+      Custom4172: 'No', Custom4173: 'None', Custom4155: 'Synthetic rear-end event',
+      Custom4169: 'Head pain', Custom4170: 'No', Custom4171: 'Welcome call',
+    }), {
+      'Marketing source': 'Facebook', 'Accident date': '09/04/2026',
+      'Accident location': 'Highway 70', 'Accident city': 'Kansas City',
+      'Accident state': 'Missouri', 'Case number': 'SYN-123',
+      'Airbags deployed': 'No', 'Passengers': 'None',
+      'Accident narrative': 'Synthetic rear-end event', 'Injuries and treatment': 'Head pain',
+      'Current attorney': 'No', 'Next steps': 'Welcome call',
+    });
     const h = harness('');
     Object.assign(h.database.tables.campaigns[0], { name: 'NETFLY ONTAKE', path: 'secondary', esign_required: false });
     Object.assign(h.database.tables.leads[0], { external_id: 'other-source', campaign_id: 'mva', case_type: 'mva' });
     Object.assign(h.database.tables.claims[0], { answers: {}, updated_at: '2026-09-30T00:00:00.000Z' });
-    const missing = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', NetflyHandoffNote: 'Client/Driver: Synthetic Person' }));
-    assert.equal(missing.status, 422);
-    assert.equal(h.ingests(), 0);
+    const missing = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', FirstName: 'Synthetic', LastName: 'Person', LeadProvider: 'Facebook', CaseNumber: 'SYN-123', AccidentNarrative: 'Synthetic rear-end event.' }));
+    assert.equal(missing.status, 200, JSON.stringify(missing.body));
+    assert.equal(missing.body.partial, true);
+    assert.deepEqual(missing.body.missing_source, ['handoff_note', 'signed_retainer_pdf']);
+    assert.equal(missing.body.attachments_complete, false);
+    assert.equal(h.ingests(), 1);
+    assert.equal(h.ingestOptions[0].lead.channel, 'Facebook');
+    assert.equal(h.database.tables.leads[0].marketing_source, 'Facebook');
+    assert.deepEqual(h.database.tables.claims[0].answers.netfly_secondary.source_field_revisions[0].fields,
+      { 'Marketing source': 'Facebook', 'Case number': 'SYN-123', 'Accident narrative': 'Synthetic rear-end event.' });
+    assert.equal(h.database.tables.claims[0].status, 'new');
     const objects = new Map<string, ArrayBuffer>();
     (h.database as any).storage = { from: () => ({
       upload: async (path: string, bytes: ArrayBuffer) => { if (objects.has(path)) return { error: { message: 'already exists', statusCode: '409' } }; objects.set(path, bytes); return { error: null }; },
       download: async (path: string) => ({ data: objects.has(path) ? new Blob([objects.get(path)!]) : null, error: null }),
     }) };
     const note = 'Client/Driver: Synthetic Person\nAccident Date: 09/04/2026\nAccident Summary: Rear ended while stopped.';
+    const noteOnly = await h.POST(req({ LeadID: '264972', CaseType: 'NETFLY ONTAKE', FirstName: 'Synthetic', LastName: 'Person', Summary: note, AccidentState: 'Missouri' }));
+    assert.equal(noteOnly.status, 200, JSON.stringify(noteOnly.body));
+    assert.deepEqual(noteOnly.body.missing_source, ['signed_retainer_pdf']);
+    assert.equal(noteOnly.body.attachments_complete, false);
+    assert.equal(h.database.tables.claims[0].answers.netfly_secondary.source_field_revisions.length, 2);
+    assert.equal(h.database.tables.claims[0].answers.netfly_secondary.source_field_revisions[1].fields['Case number'], 'SYN-123');
+    assert.equal(h.database.tables.claims[0].answers.netfly_secondary.source_field_revisions[1].fields['Accident state'], 'Missouri');
     const send = () => { const form = new FormData();
       form.set('LeadID', '264972'); form.set('CaseType', 'NETFLY ONTAKE');
       form.set('FirstName', 'Synthetic'); form.set('LastName', 'Person'); form.set('NetflyHandoffNote', note);
@@ -113,13 +147,16 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     assert.equal(h.database.tables.leads[0].perm_text, false);
     assert.equal(h.database.tables.case_documents[0].doc_type, 'netfly_signed_retainer');
     assert.equal(h.ingestOptions[0].lead.phone, null);
-    assert.equal(h.database.tables.claims[0].answers.netfly_secondary.handoffs[0].note, note.replace(/\n/g, '\r\n'));
+    assert.equal(h.database.tables.claims[0].answers.netfly_secondary.handoffs[0].note, note);
     assert.equal(h.database.tables.claims[0].status, 'new');
     assert.equal(first.body.communications_triggered, false);
+    assert.equal(first.body.partial, false);
+    assert.equal(first.body.attachments_complete, true);
     const retry = await h.POST(send());
     assert.equal(retry.status, 200, JSON.stringify(retry.body));
     assert.equal(h.database.tables.case_documents.length, 1);
     assert.equal(h.database.tables.claims[0].answers.netfly_secondary.handoffs.length, 1);
+    assert.equal(h.database.tables.claims[0].answers.netfly_secondary.source_field_revisions.length, 2);
   });
   await t('conflicting NETFLY and Motel campaign markers cannot cross-route a transfer', async () => {
     const h = harness('');

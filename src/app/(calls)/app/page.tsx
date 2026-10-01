@@ -14,6 +14,7 @@ import type { StatusDef } from "@/lib/statuses";
 import Link from "next/link";
 import CallsHome, { type HomeData, type HomeRow } from "@/components/calls/CallsHome";
 import { netflyContext } from "@/lib/netfly-server";
+import NetflyDeskBanner from "@/components/netfly/NetflyDeskBanner";
 
 export default async function AppHomePage() {
   const sb = await supabaseServer();
@@ -121,6 +122,6 @@ export default async function AppHomePage() {
   const data: HomeData = { me: { name: me.full_name || "", role: me.role }, netflyAvailable,
     campaigns: campaigns.map((c: any) => ({ id: c.id, name: c.name, firm: (firmById.get(c.firm_id) as any)?.name || "", kind: c.case_type })),
     queues, texts, setup, notes };
-  return <>{netflyAvailable && <div style={{ maxWidth: 1120, margin: "14px auto 0", padding: "0 16px" }}><Link href="/app/netfly" style={{ display: "inline-flex", padding: "10px 14px", borderRadius: 10, background: "#173a71", color: "white", fontWeight: 700, textDecoration: "none" }}>NETFLY ONTAKE →</Link></div>}{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`${pilot ? "/app" : "/leads"}/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || "Open matter"}</Link>: {r.source_status || "Status missing"} - {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
+  return <>{netflyAvailable && <NetflyDeskBanner />}{reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>These source updates need an owner review. Held matters are excluded from acquisition calls.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`${pilot ? "/app" : "/leads"}/${r.lead_id}?claim=${r.claim_id}`}>{allLeads.get(r.lead_id)?.claimant_name || "Open matter"}</Link>: {r.source_status || "Status missing"} - {r.reason}</li>)}</ul></details>}<CallsHome data={data} /></>;
 }
 

@@ -3,6 +3,14 @@
 export const NETFLY_CAMPAIGN = "NETFLY ONTAKE";
 export const NETFLY_ANSWER_KEY = "netfly_secondary";
 export const NETFLY_RETAINER_TYPE = "netfly_signed_retainer";
+export type NetflyLiveCall = { by: string; by_name: string; expires_at: string };
+export function activeNetflyCall(value: unknown, now = Date.now()): NetflyLiveCall | null {
+  if (!value || typeof value !== "object") return null;
+  const call = value as Record<string, unknown>;
+  if (typeof call.by !== "string" || typeof call.by_name !== "string" || typeof call.expires_at !== "string") return null;
+  const expires = Date.parse(call.expires_at);
+  return Number.isFinite(expires) && expires > now ? call as NetflyLiveCall : null;
+}
 export const NETFLY_COMPLETIONS = ["complete", "incomplete"] as const;
 export const NETFLY_DISPOSITIONS = ["appears_qualified", "appears_dq", "callback_to_finish", "client_remorse"] as const;
 export const NETFLY_DQ_REASONS = ["sol", "diagnosis", "already_rep", "criteria", "prior_signup", "location", "duplicate", "other"] as const;
