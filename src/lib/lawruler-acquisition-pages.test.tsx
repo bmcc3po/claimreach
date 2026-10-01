@@ -11,6 +11,8 @@ import * as acquisition from './lawruler-mva-status';
 import * as signedReview from './mva-call/review-queue';
 import * as deskQueue from './mva-call/desk-queue';
 import * as deskLinks from './mva-call/links';
+import * as followup from './mva-call/outreach-followup';
+import * as mailZone from './mail-time-zone';
 
 const now = new Date().toISOString();
 const lead = (id: string, statuses: string[], kind = 'mva') => ({
@@ -41,6 +43,7 @@ function page(file: string, db: FakeDb) {
     '@/lib/mva-call/links': deskLinks, '@/lib/questionnaire': { STAGE_LABELS: { referral_received: 'Referral received' } },
     '@/lib/lawruler-mva-status': acquisition, '@/lib/mva-call/review-queue': signedReview, '@/lib/mva-call/desk-queue': deskQueue, '@/components/calls/CallsHome': { __esModule: true, default: 'calls-home' },
     '@/lib/statuses': statusModel, '@/lib/netfly-server': { netflyContext: async () => null },
+    '@/lib/mva-call/outreach-followup': followup, '@/lib/mail-time-zone': mailZone,
     '@/components/ui/StatusBadge': { __esModule: true, default: (props: any) => jsx.jsx('span', { children: props.status }) },
   };
   const exp: any = {}; new Function('require', 'exports', js)((name: string) => { assert.ok(name in mods, `Unexpected import ${name}`); return mods[name]; }, exp);
@@ -70,14 +73,14 @@ let count = 0; const test = async (name: string, fn: () => any) => { await fn();
     const signed = lead('signed', ['signed_grievous']), dq = lead('dq', ['dq']), open = lead('open', ['new']), db = fixture([signed, dq, open]);
     for (const file of [signed, dq, open]) callback(db, file, file.claims[0]);
     const data = findHome(await page('(calls)/app', db)());
-    assert.deepEqual(data.queues.callbacks.map((r: any) => r.id), ['open']); assert.equal(data.queues.new.length, 0);
+    assert.deepEqual(data.queues.callbacks.map((r: any) => r.id), ['open']); assert.equal(data.queues.due.length, 0);
     assert.deepEqual(data.queues.signed.map((r: any) => r.id), ['signed']); assert.equal(Object.values(data.queues).flat().length, 2);
   });
   await test('actual App page retains exact eligible sibling callback despite later closed sibling call', async () => {
     const file = lead('siblings', ['dq', 'contacting']), db = fixture([file]);
     callback(db, file, file.claims[1], new Date(Date.now() - 1000).toISOString()); callback(db, file, file.claims[0]);
     const data = findHome(await page('(calls)/app', db)());
-    assert.equal(data.queues.callbacks.length, 1); assert.equal(data.queues.callbacks[0].href, '/app/siblings?claim=siblings-claim1'); assert.equal(data.queues.calling.length, 0);
+    assert.equal(data.queues.callbacks.length, 1); assert.equal(data.queues.callbacks[0].href, '/app/siblings?claim=siblings-claim1'); assert.equal(data.queues.due.length, 0);
   });
   await test('actual App page exposes pending hold reason while omitting held and ambiguous callback work', async () => {
     const held = lead('held', ['new']), ambiguous = lead('ambiguous', ['new', 'new']), db = fixture([held, ambiguous]);
@@ -90,7 +93,7 @@ let count = 0; const test = async (name: string, fn: () => any) => { await fn();
     const file = lead('open', ['new']);
     for (const table of ['lead_activity', 'statuses', 'intake_calls', 'esign_submissions']) {
       const db = fixture([file]); callback(db, file, file.claims[0]); db.failOn = op => op.table === table ? 'offline' : null;
-      const data = findHome(await page('(calls)/app', db)()); assert.equal(data.queues.new.length, 0); assert.equal(data.queues.calling.length, 0); assert.equal(data.queues.callbacks.length, 0); assert.ok(data.notes.length > 0);
+      const data = findHome(await page('(calls)/app', db)()); assert.equal(data.queues.due.length, 0); assert.equal(data.queues.wait.length, 0); assert.equal(data.queues.callbacks.length, 0); assert.ok(data.notes.length > 0);
     }
   });
   await test('actual App page keeps an old reviewed client signature through office completion', async () => {

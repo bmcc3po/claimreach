@@ -50,6 +50,16 @@ export default async function LeadsPage() {
   }
   for (const l of leads ?? []) Object.assign(l, clockById[(l as any).id] ?? {});
 
+  // Provider dials, not intake autosaves, supply the visible count and time.
+  // A failed read is shown as unverified rather than a misleading zero.
+  const dialById: Record<string, { call_count: number | null; last_call_at: string | null }> = {};
+  for (let start = 0; start < ids.length; start += 100) {
+    const { data: dialRows } = await sb.from("cr_mva_dial_summary")
+      .select("lead_id, total_dials, last_call_at").in("lead_id", ids.slice(start, start + 100));
+    for (const row of dialRows ?? []) dialById[row.lead_id] = { call_count: row.total_dials, last_call_at: row.last_call_at };
+  }
+  for (const l of leads ?? []) Object.assign(l, dialById[(l as any).id] ?? { call_count: null, last_call_at: null });
+
   // Fetch claims separately so a join issue can't zero out the whole list.
   const claimsByLead: Record<string, any[]> = {};
   if (ids.length) {

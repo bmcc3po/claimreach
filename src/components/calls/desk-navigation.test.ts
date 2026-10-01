@@ -50,7 +50,7 @@ for (const role of ["agent", "qa", "manager", "admin", "owner"]) {
   if (role === "owner") assert.ok(hrefs.includes("/leads") && hrefs.includes("/signed") && hrefs.includes("/profile"));
   else {
     for (const href of hrefs) assert.ok(pilotStaffPageAllowed(new URL(href, "https://example.invalid").pathname), `${role}: ${href}`);
-    assert.ok(hrefs.includes("/app?tab=signed")); assert.ok(hrefs.includes("/app?tab=new"));
+    assert.ok(hrefs.includes("/app?tab=signed")); assert.ok(hrefs.includes("/app?tab=due"));
     assert.equal(hrefs.includes("/profile"), false);
     assert.ok(nodes(tree).some(n => n.type?.name === "SignOut"), "staff retain the existing account sign-out action");
   }
@@ -74,7 +74,7 @@ console.log("ok actual Desk navigation keeps every staff role on allowed routes;
 // Exercise the real queue-arrival effect; a signed link cannot silently open
 // the default callback/new queue. Unknown tab values keep the safe default.
 const Home = load("CallsHome.tsx");
-const data = { me: { name: "Synthetic", role: "agent" }, campaigns: [], queues: { new: [], calling: [], callbacks: [], sent: [], signed: [], wip: [] }, texts: [], setup: [], notes: [] };
+const data = { me: { name: "Synthetic", role: "agent" }, campaigns: [], queues: { due: [], wait: [], callbacks: [], sent: [], signed: [], wip: [], review: [] }, texts: [], setup: [], notes: [] };
 for (const tab of [...deskTypes.DESK_TABS.map(([key]) => key), "outside"]) {
   fakeWindow.location.search = `?tab=${tab}`;
   const instance = fresh(); render(instance, Home, { data });
@@ -82,9 +82,9 @@ for (const tab of [...deskTypes.DESK_TABS.map(([key]) => key), "outside"]) {
   const arrival = instance.effects.find(fn => fn.toString().includes("requestedTab")); assert.ok(arrival); arrival();
   const tree = render(instance, Home, { data });
   const selected = nodes(tree).find(n => n.type === "button" && n.props["aria-current"] === "page")!;
-  assert.equal(text(selected), deskTypes.DESK_TABS.find(([key]) => key === tab)?.[1] || "NEW");
+  assert.equal(text(selected), deskTypes.DESK_TABS.find(([key]) => key === tab)?.[1] || "WAIT TO CALL");
 }
-console.log("ok actual queue arrival selects all six requested queues and rejects unsupported tab values");
+console.log("ok actual queue arrival selects all seven requested queues and rejects unsupported tab values");
 
 // The top review button's actual CallConsole effect only reveals existing UI.
 const consoleSource = fs.readFileSync(path.join(__dirname, "CallConsole.tsx"), "utf8");

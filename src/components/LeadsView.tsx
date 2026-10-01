@@ -62,7 +62,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       });
       return {
         id: l.id, lead_no: l.lead_no, key: isFirm ? l.id : (l.lead_no || l.id), firm_ref: l.firm_ref_no ?? "",
-        name: l.claimant_name ?? "", phone: l.phone ?? "",
+        name: l.claimant_name ?? "", phone: l.phone ?? "", callCount: l.call_count, lastCallAt: l.last_call_at,
         loc: l.address ?? "", state: l.mail_state ?? l.state ?? "",
         city: l.mail_city ?? "", firm_id: l.firm_id ?? "", signed_at: l.signed_at ?? null,
         type: l.case_type ?? c.claim_type ?? "", campaign: c.campaign ?? l.campaign ?? "",
@@ -398,6 +398,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                       <div className="cl-cell">
                         <Link className="cl-t1" href={`${basePath}/${encodeURIComponent(r.key)}`} onClick={(e) => e.stopPropagation()} style={{ color: "var(--ink)", textDecoration: "none" }}>{r.name || "No name yet"}</Link>
                         <span className="cl-t2">{prettyPhone(r.phone) || "No phone"}</span>
+                        {!isFirm && r.callCount !== undefined && <span className="cl-t2">Calls: {r.callCount == null ? "unverified" : r.callCount} · Last call: {r.lastCallAt ? new Date(r.lastCallAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "none verified"}</span>}
                       </div>
                     </td>
                     <td className="cl-c-case">

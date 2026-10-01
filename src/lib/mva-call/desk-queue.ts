@@ -3,6 +3,7 @@ import { isSignedKey, resolveStatus, SIGNED_QA_RETURN_STATUS, type StatusDef } f
 import { agreementName } from "./agreement-names";
 import { paxParentId } from "../linked-files";
 import type { DeskTab, DeskRow, DeskQueues } from "./desk-types";
+import { placeOutreach, type DialSummary } from "./outreach-stage";
 const stamp = (row: any) => row?.created_at || row?.sent_at || row?.signed_at || "";
 
 /** Read every matching row; active work never ages out or falls behind a row limit. */
@@ -23,8 +24,9 @@ export async function readDeskRows(query: () => any): Promise<{ data: any[]; err
 export function buildDeskQueues(opts: {
   leads: any[]; calls: any[]; agreements: any[]; campaignIds: string[];
   statuses: StatusDef[]; holds: Map<string, MvaAcquisitionSignal>; acquisitionReady: boolean;
+  dialSummaries?: Map<string, DialSummary>;
 }): DeskQueues {
-  const queues: DeskQueues = { new: [], calling: [], callbacks: [], sent: [], signed: [], wip: [] };
+  const queues: DeskQueues = { due: [], wait: [], callbacks: [], sent: [], signed: [], wip: [], review: [] };
   const allowed = new Set(opts.campaignIds);
   for (const lead of opts.leads) {
     if (!lead?.id || lead.archived_at) continue;
@@ -48,9 +50,11 @@ export function buildDeskQueues(opts: {
       const newest = matterAgreements[0];
       const active = newest && !newest.voided_at && !newest.replacement_requested_at && ["sent", "opened", "signed", "completed"].includes(newest.status) ? newest : null;
       const latestCall = matterCalls[0];
+      const summary = opts.dialSummaries?.get(lead.id);
       const row: DeskRow = { id: lead.id, claimId: claim.id, name: lead.claimant_name, phone: lead.phone,
         sub: [lead.marketing_source, claim.campaign || lead.campaign].filter(Boolean).join(", "),
-        at: claim.updated_at || lead.last_called_at || lead.created_at, href: `/app/${lead.id}?claim=${claim.id}` };
+        at: claim.updated_at || lead.last_called_at || lead.created_at, href: `/app/${lead.id}?claim=${claim.id}`,
+        callCount: summary?.total_dials ?? null, lastCallAt: summary?.last_call_at ?? null };
       let bucket: DeskTab;
       if (claim.status === SIGNED_QA_RETURN_STATUS) {
         bucket = "wip"; row.tag = "QA returned"; row.sub = "Signed file returned by QA for corrections";
@@ -71,16 +75,19 @@ export function buildDeskQueues(opts: {
         } else if (latestCall?.disposition === "callback" && latestCall.callback_at) {
           bucket = "callbacks"; row.tag = "Call back"; row.due = latestCall.callback_at; row.at = latestCall.callback_at;
           row.sub = [latestCall.reason, latestCall.agent_name].filter(Boolean).join(", ");
-        } else if (claim.status === "new" && !latestCall && !(lead.claims.length === 1 && lead.last_called_at)) {
-          bucket = "new"; row.tag = "New";
         } else {
-          bucket = "calling"; row.tag = "Continue calling"; row.at = latestCall?.created_at || row.at;
+          const matters = (lead.claims || []).filter((c: any) => c.firm_id === lead.firm_id && c.campaign_id === claim.campaign_id && c.claim_type === "mva");
+          row.outreach = placeOutreach(summary ?? null, lead.first_dialed_at ?? null, matters.length, lead.created_at);
+          bucket = row.outreach.stage;
+          row.tag = row.outreach.overdue ? "Overdue" : row.outreach.badge === "new" ? "New" : row.outreach.stage === "review" ? "Review" : row.outreach.stage === "wait" ? "Not yet due" : "Call now";
+          row.due = row.outreach.dueAt;
+          row.at = row.outreach.dueAt || latestCall?.created_at || row.at;
         }
       }
       queues[bucket].push(row);
     }
   }
-  for (const [key, rows] of Object.entries(queues)) rows.sort((a, b) => key === "callbacks"
+  for (const [key, rows] of Object.entries(queues)) rows.sort((a, b) => ["callbacks", "due", "wait"].includes(key)
     ? String(a.due || "").localeCompare(String(b.due || "")) : String(b.at || "").localeCompare(String(a.at || "")));
   return queues;
 }

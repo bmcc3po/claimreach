@@ -50,7 +50,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
   const links = [
     { href: "/dashboard", icon: "home", label: "Dashboard" },
     { href: "/app", icon: "mobile", label: "Desk" },
-    { href: owner ? "/leads" : "/app?tab=new", icon: "files", label: owner ? "Leads" : "New leads" },
+    { href: owner ? "/leads" : "/app?tab=due", icon: "files", label: owner ? "Leads" : "Calls due" },
     { href: owner ? "/signed" : "/app?tab=signed", icon: "signed", label: "Signed" },
     { href: "/queue", icon: "queue", label: "My queue" },
   ];
