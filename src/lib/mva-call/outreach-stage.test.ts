@@ -16,6 +16,8 @@ assert.equal(outreachZone(null, null, "7025550100"), "America/Los_Angeles");
 assert.equal(outreachZone(null, null, "9845550100"), "America/New_York");
 assert.equal(outreachZone(null, null, "6015550100"), "America/Chicago");
 assert.equal(outreachZone(null, null, "6025550100"), "America/Phoenix");
+assert.equal(outreachZone(null, null, "4235550100"), "America/New_York");
+assert.equal(outreachZone(null, null, "9015550100"), "America/Chicago");
 assert.equal(outreachZone("Mountain", "Arizona", "6025550100"), "America/Phoenix");
 assert.equal(outreachZone("America/Chicago", "Nevada", "7025550100"), "America/Chicago");
 assert.equal(outreachZone(null, null, "0005550100"), null);
