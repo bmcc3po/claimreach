@@ -66,7 +66,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   }
 
   const { data: activity } = await sb.from("lead_activity")
-    .select("kind, body, created_at").eq("lead_id", id)
+    .select("kind, body, created_at, meta").eq("lead_id", id)
     .order("created_at", { ascending: false });
 
   // Properties for each claim, grouped by claim_id.
