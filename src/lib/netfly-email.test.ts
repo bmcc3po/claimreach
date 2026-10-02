@@ -68,7 +68,7 @@ async function main() {
   assert.equal(receiveAllowed({ ...email, to: ['netfly@innovativeintake.com'], received_for: ['netfly@example.resend.app'] }, 'netfly@example.resend.app', ['netflydigital.com']), null);
   const payload = '%PDF-1.7\n' + 'synthetic '.repeat(20) + '\n%%EOF';
   const calls: { url: string; init?: RequestInit }[] = [];
-  const fetcher = (async (url: any, init?: RequestInit) => { calls.push({ url: String(url), init });
+  const fetcher = (async (url: any, init?: RequestInit) => { assert.equal(init?.cache, undefined, "Cloudflare native fetch rejects Request.cache"); calls.push({ url: String(url), init });
     return String(url).startsWith('https://api.resend.com/') ? Response.json({ download_url: 'https://inbound-cdn.resend.com/email/attachment?signature=test', size: payload.length }) : new Response(payload); }) as typeof fetch;
   assert.equal((await receivedPdf('email-1', 'pdf-1', 'test-key', fetcher)).length, payload.length);
   assert.equal((calls[1].init?.headers as any)?.Authorization, undefined, 'API credential never goes to attachment CDN');
@@ -98,3 +98,4 @@ async function main() {
   console.log('NETFLY email parser, signature, recipient, PDF and blank-field import tests passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
+

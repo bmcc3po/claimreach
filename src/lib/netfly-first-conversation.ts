@@ -1,17 +1,33 @@
-// One active welcome-call order, using the existing saved question IDs.
+// One conversational welcome-call order, using the saved question registry.
 export const NETFLY_WELCOME_STEPS = [
-  { title: "1. Welcome & contact", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Welcome to the firm! Let me confirm how to reach you and see how we can help.", fields: ["contact_accuracy", "confirmed_name", "confirmed_phone", "confirmed_email", "mailing_address"] },
-  { title: "2. Care & treatment", script: "How are you doing? Have you been able to get checked out?", fields: ["seen_doctor", "first_provider", "first_visit", "care_today", "care_today_setting", "care_today_plan", "health_insured", "health_carrier"] },
-  { title: "3. Fill in the gaps", script: "I have your first intake here. Let's fill in anything we're missing.", fields: ["accident_date", "accident_city", "accident_state", "road", "incident_story", "police_came", "police_report", "police_department", "passengers", "passenger_details", "totaled", "drivable", "insurance_info_available", "auto_carrier", "other_insurer", "insurance_claim_number"] },
-  { title: "4. Wrap up", script: "Thanks so much for your patience. We'll get your case entered into the system and call you back within 24 to 48 hours. If you need us, call (205) 831-5040.", fields: ["final_notes"] },
+  { title: "1. Welcome & feeling better", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. I'm so sorry to hear about the accident. We're here to help you through this. I'd like to gather a few brief details so we can help get your treatment moving and get you on the road to recovery.", fields: ["seen_doctor", "first_provider", "first_visit", "care_today", "care_today_setting", "care_today_plan", "health_insured", "health_carrier", "ambulance", "contact_accuracy", "confirmed_name", "confirmed_phone", "confirmed_email", "mailing_address"] },
+  { title: "2. A little about the accident", script: "I have the information you already shared. Let me check a couple of things while we get your care lined up.", fields: ["accident_date", "accident_city", "accident_state", "road", "police_came", "police_report", "police_department", "treatment_location", "treatment_area", "photo_request_permission", "incident_story"] },
+  { title: "3. What works for you", script: "Thank you—that helps. Just a few last things so the team can make this easier for you.", fields: ["insurance_info_available", "auto_carrier", "other_insurer", "insurer_contact", "insurance_claim_number", "treatment_time", "treatment_days", "treatment_availability", "passengers", "passenger_details", "totaled", "drivable", "towed"] },
+  { title: "4. You're in good hands", script: "Perfect, [first name]. Thank you for your patience. A couple of things and I'll let you go. You're going to hear these reminders again because they're important.", fields: ["client_questions"] },
   { title: "After call: review & documents", script: "", fields: [] },
 ] as const;
 
-// Keep useful detail available without making the first call a second intake.
+// Additional detail is available if the client brings it up. Care preferences,
+// insurance contact, photos and the welcoming guidance stay in the main call.
 export const NETFLY_FOLLOWUP_FIELDS: Record<number, readonly string[]> = {
-  1: ["ambulance", "treated_injuries", "treatment_location", "treatment_area", "treatment_time", "treatment_days", "treatment_availability", "treatment_barrier"],
-  2: ["auto_policy", "other_policy", "other_claim", "insurer_contact", "insurance_notes", "photos"],
+  0: ["treated_injuries", "treatment_barrier"],
+  2: ["auto_policy", "other_policy", "other_claim", "insurance_notes", "photos"],
 };
+export const NETFLY_CLOSING_REMINDERS = [
+  "If the other driver's insurance company calls you, you don't have to talk to them. Give them our number and we'll take it from there.",
+  "Stay off social media about the accident—no posts, pictures, or updates about how you're feeling.",
+  "The most important thing is getting yourself healthy. You focus on your treatment; the firm will focus on everything else.",
+  "We'll get your case entered and call you back within 24–48 hours. If you need anything in the meantime, please don't hesitate to call our office at (205) 831-5040.",
+] as const;
+export const netflyWelcomeStepFor = (id: string) => Math.max(0, NETFLY_WELCOME_STEPS.findIndex(step => (step.fields as readonly string[]).includes(id)));
+
+export function netflyCareGuidance(values: Record<string, string>): string {
+  if (values.care_today === "No" || values.care_today === "Not sure")
+    return "No worries. I'll see whether we can arrange a virtual visit as a starting point. Let me note what would work for you.";
+  if (values.seen_doctor === "No")
+    return "No problem. We only get one body, so let's help you get checked as soon as possible. Would you be able to go to the ER today, or urgent care if that's easier?";
+  return values.seen_doctor === "Yes" ? "I'm glad you were able to get checked. Let's make sure the team knows what care you still need." : "Let's help you get the care you need.";
+}
 
 export const NETFLY_FIRST_CALL_SOURCE_LABELS: Record<string, string> = {
   accident_date: "Accident Date", incident_story: "Accident Summary", police_report: "Case #",
@@ -84,5 +100,6 @@ export function netflyFirstConversationReview(
     insurance.status = "missing"; insurance.detail = "Get an insurer name from either side";
   }
   rows.push(insurance);
-  return rows;
+  return rows.map(row => ({ ...row, step: netflyWelcomeStepFor(row.id) }));
 }
+

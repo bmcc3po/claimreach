@@ -12,10 +12,11 @@ export function relayConfig() {
   };
 }
 
-export async function callRelayDirect(system: string, user: string) {
+export async function callRelayDirect(system: string, user: string, signal?: AbortSignal) {
   const secret = process.env.MAVERICK_RELAY_SECRET;
   if (!secret) return { answer: "", error: "no_secret" };
   const r = await fetch(RELAY_URL, {
+    signal,
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Maverick-Secret": secret },
     body: JSON.stringify({ system, user, temperature: 0.3 }),
@@ -25,24 +26,25 @@ export async function callRelayDirect(system: string, user: string) {
   return { answer: d.answer ?? d.text ?? "" };
 }
 
-export async function callProxy(system: string, user: string) {
+export async function callProxy(system: string, user: string, signal?: AbortSignal) {
   if (!PROXY_URL) return { answer: "", error: "no_proxy" };
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (process.env.CR_AI_GATE) headers["X-CR-Secret"] = process.env.CR_AI_GATE;
-  const r = await fetch(PROXY_URL, { method: "POST", headers, body: JSON.stringify({ system, user }) });
+  const r = await fetch(PROXY_URL, { signal, method: "POST", headers, body: JSON.stringify({ system, user }) });
   if (!r.ok) return { answer: "", error: `proxy_${r.status}` };
   const d: any = await r.json();
   return { answer: d.answer ?? "" };
 }
 
-export async function askRelay(system: string, user: string): Promise<string> {
+export async function askRelay(system: string, user: string, signal?: AbortSignal): Promise<string> {
   try {
-    const d = await callRelayDirect(system, user);
+    const d = await callRelayDirect(system, user, signal);
     if (d.answer) return d.answer;
   } catch { /* edge couldn't reach .ts.net */ }
   try {
-    const d = await callProxy(system, user);
+    const d = await callProxy(system, user, signal);
     if (d.answer) return d.answer;
   } catch { /* both failed */ }
   return "";
 }
+

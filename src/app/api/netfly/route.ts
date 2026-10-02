@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       original_email_url = signed.data?.signedUrl || null;
     }
   }
-  return NextResponse.json({ file: matter.lead, original_email_url, actor_id: ctx.actor.id, live_call: activeNetflyCall((matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.live_call),
+  return NextResponse.json({ file: matter.lead, original_email_url, actor_id: ctx.actor.id, actor_name: ctx.actor.name, live_call: activeNetflyCall((matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.live_call),
     canReview: ctx.actor.can("intake.fill"), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
     answers: (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] ?? {}, retainer: safeDocs });
 }
@@ -386,3 +386,4 @@ export async function POST(req: NextRequest) {
   }
   return fail("Unknown NETFLY action.", 400);
 }
+

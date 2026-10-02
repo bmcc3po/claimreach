@@ -60,12 +60,12 @@ const txt = (id: string, label: string, extra: Partial<NetflyField> = {}): Netfl
 
 export const NETFLY_SECTIONS: NetflySection[] = [
   { id: "care", title: "1. Welcome to the firm", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you! I just wanted to jump on the phone to welcome you to the firm. I'm going to verify a few things, gather some brief additional details, and then we'll talk about next steps.", fields: [
-    yn("seen_doctor", "Have you been able to get checked out yet?", { hint: "Include the ER, urgent care, or a doctor." }),
+    yn("seen_doctor", "I know you may have already told us—have you had any treatment yet?", { hint: "Include the ER, urgent care, or a doctor." }),
     txt("first_provider", "Where did you go?", { hint: "Facility or provider name and city.", when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_provider_address", "First provider address", { when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_provider_phone", "First provider phone", { kind: "tel", when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_visit", "When was your first visit?", { kind: "date", when: { id: "seen_doctor", is: "Yes" } }),
-    yn("ambulance", "Did an ambulance take you from the scene?"),
+    yn("ambulance", "Did an ambulance take you from the scene?", { when: { id: "seen_doctor", is: "Yes" } }),
     txt("treated_injuries", "What injuries are they treating you for?", { kind: "long", when: { id: "seen_doctor", is: "Yes" } }),
     txt("other_pain", "Anywhere else you're still feeling it?", { kind: "long" }),
     yn("still_treating", "Are you still going to the doctor?", { when: { id: "seen_doctor", is: "Yes" } }),
@@ -103,7 +103,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
   ] },
   { id: "vehicle", title: "5. Vehicle, pictures & witnesses", fields: [
     txt("own_vehicle", "Your vehicle: year, make, model"), txt("damage", "What would I have seen standing five feet from it?", { kind: "long" }),
-    yn("drivable", "Was it drivable?"), yn("totaled", "Was it totaled?"), txt("estimate", "Repair estimate, if any"),
+    yn("drivable", "Is your car still drivable?"), yn("totaled", "Have they said the car is totaled?"), yn("towed", "Was it towed?"), txt("estimate", "Repair estimate, if any"),
     yn("photos", "Do you have pictures or video?"), yn("witnesses", "Were there witnesses?"),
     txt("witness_details", "Witness names and numbers", { kind: "long", when: { id: "witnesses", is: "Yes" } }),
   ] },
@@ -132,13 +132,14 @@ export const NETFLY_SECTIONS: NetflySection[] = [
 // The welcome call is a short case-manager workup. Keep the original NETFLY
 // questionnaire above as an archive of earlier answers, not the call script.
 export const NETFLY_CASE_MANAGER_FIELDS: NetflyField[] = [
+  { id: "photo_request_permission", label: "After we hang up, may I text you so you can send pictures of your driver’s license and auto and health insurance cards?", hint: "They don’t need to be perfect—just readable. It’s okay if an item isn’t available.", kind: "choice", choices: ["Yes", "No", "Ask me later"] },
   { id: "contact_accuracy", label: "Let me read back your contact details. Does everything sound right?", hint: "Confirm name, phone, email and address; ask only for corrections or missing details.", kind: "choice", choices: ["Yes", "Needs correction"] },
   { id: "insurance_info_available", label: "Do you have your insurance details handy, or the other driver's?", kind: "choice", choices: ["Client's insurance", "Other driver's insurance", "Both", "No details available yet"] },
   { id: "care_today", label: "Would you be able to get checked out today?", kind: "choice", choices: ["Yes", "No", "Already in care", "Not sure"] },
   { id: "care_today_setting", label: "Where can you be seen today?", kind: "choice", choices: ["Emergency room", "Urgent care", "Other provider", "Not sure"] },
   { id: "care_today_plan", label: "What would work better for you?", hint: "Note when they can go and anything they need help with.", kind: "long" },
   { id: "treatment_location", label: "Would treatment near home or work be easier?", kind: "choice", choices: ["Near home", "Near work", "Either", "Needs help deciding"] },
-  { id: "treatment_area", label: "What area would be convenient for you?", hint: "City, ZIP code, or neighborhood.", kind: "text" },
+  { id: "treatment_area", label: "And what ZIP code or area should we look near?", hint: "Use the home or work location they just chose.", kind: "text" },
   { id: "treatment_time", label: "What time of day works best?", kind: "choice", choices: ["Morning", "Afternoon", "Either"] },
   { id: "treatment_days", label: "Which days work best?", kind: "choice", choices: ["Weekdays", "Weekends", "Either"] },
   { id: "treatment_availability", label: "Any specific days or times to avoid or request?", kind: "text" },
@@ -160,3 +161,4 @@ export function netflyFlags(a: Record<string, string>): string[] {
   if (a.wants_cancel === "Yes") out.push("Cancellation requested — bring in supervisor");
   return out;
 }
+
