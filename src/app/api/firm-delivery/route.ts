@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
   if (qaErr) return NextResponse.json({ error: "Could not verify the signed-file QA decision." }, { status: 500 });
   return NextResponse.json({
     claim_id: m.claim.id,
+    claim_status: m.claim.status,
     firm_sent_at: st.state.sentAt,
     confirmed_firm_sent_at: confirmedAt,
     prior_owner_only: !!st.state.sentAt && !confirmedAt && (history ?? []).some((row: any) => row.ok === true && String(row.to_email || "").toLowerCase() === ownerEmail),

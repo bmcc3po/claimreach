@@ -14,6 +14,7 @@ import CaseDetails from "./CaseDetails";
 import CaseDocuments from "./CaseDocuments";
 import OwnerFirmDownload from "./calls/OwnerFirmDownload";
 import ImportedPacketHandoff from "./calls/ImportedPacketHandoff";
+import ExternalFirmDelivery from "./calls/ExternalFirmDelivery";
 import RetainerTab from "./RetainerTab";
 import NotesTab from "./NotesTab";
 import CommsTimeline from "./CommsTimeline";
@@ -162,6 +163,9 @@ function LeadWorkspaceRecord({
         {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
       </div>
       {activeClaimId && activeClaim?.claim_type === "mva" && ["owner", "admin"].includes(lead.current_user_role || "") && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+      {activeClaimId && activeClaim?.claim_type === "mva" && lead.current_user_role === "owner" && lead.source_system !== "lawruler" &&
+        ["signed_grievous", "signed_qa", "signed_wip", "signed_approved", "delivered"].includes(activeClaim.status) &&
+        <ExternalFirmDelivery key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
       {canTools && activeClaimId && activeClaim?.claim_type === "mva" && lead.source_system === "lawruler" && <ImportedPacketHandoff key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
