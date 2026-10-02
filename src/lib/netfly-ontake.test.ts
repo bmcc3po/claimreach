@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { NETFLY_ANSWER_KEY, NETFLY_SECTIONS, NETFLY_FIELD_IDS, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose } from "./netfly-ontake";
+import { NETFLY_ANSWER_KEY, NETFLY_SECTIONS, NETFLY_FIELDS, NETFLY_CASE_MANAGER_FIELDS, NETFLY_FIELD_IDS, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose } from "./netfly-ontake";
 
 assert.equal(NETFLY_ANSWER_KEY, "netfly_secondary");
 assert.equal(NETFLY_SECTIONS.length, 8);
-const all = NETFLY_SECTIONS.flatMap((section) => section.fields);
+const all = NETFLY_FIELDS;
 assert.equal(all.length, NETFLY_FIELD_IDS.size, "question keys must be unique");
+assert.ok(NETFLY_CASE_MANAGER_FIELDS.every((field) => !NETFLY_SECTIONS.some((section) => section.fields.some((old) => old.id === field.id))), "case-manager fields must preserve the legacy questionnaire");
 const seen = new Set<string>();
 for (const field of all) {
   if (field.when) assert.ok(seen.has(field.when.id), `${field.id} depends on a later question`);
@@ -17,7 +18,7 @@ assert.deepEqual(netflyFlags({ seen_doctor: "Not sure", fault: "Unclear" }), [])
 assert.ok(netflyFlags({ death: "Yes" })[0].includes("now"));
 assert.ok(netflyFlags({ hospital_days: "10 days" })[0].includes("now"));
 assert.ok(netflyFlags({ commercial_truck: "Yes", serious_injury: "Yes" })[0].includes("now"));
-assert.ok(netflyFlags({ seen_doctor: "No" }).some((item) => item.includes("No treatment")));
+assert.deepEqual(netflyFlags({ seen_doctor: "No" }), [], "no treatment yet needs a workup, not an automatic supervisor alarm");
 assert.ok(netflyFlags({ wants_cancel: "Yes" }).some((item) => item.includes("Cancellation")));
 const source = parseNetflyHandoff("Accident Intake Note – Turnbull Law\nClient/Driver: Sample Client\nAccident Date: 09/04/2026\nAccident Summary: First sentence.\nContinued detail.\nInsurance: Details were missing, but have now been obtained.\nNext Steps: Ready for welcome call.");
 assert.deepEqual(source.map((item) => item.label), ["Client/Driver", "Accident Date", "Accident Summary", "Insurance", "Next Steps"]);

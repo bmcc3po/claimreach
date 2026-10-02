@@ -92,4 +92,15 @@
 .nf-dq-dialog select{width:100%;min-height:44px;margin:12px 0;border:1px solid #bdcce0;border-radius:10px;background:#fff!important;color:#17283d!important;padding:9px}
 .nf-closeout{border:1px solid #bbcee5;background:#f7faff;border-radius:12px;padding:16px;display:grid;gap:12px}
 .nf-closeout>strong{color:#123866}
+.nf-workspace-tabs{display:flex;gap:8px;margin:0 0 12px;border-bottom:1px solid #bdcce0}
+.nf-workspace-tabs button{border:0;border-bottom:3px solid transparent;background:transparent;color:#435b78;padding:11px 15px;font:inherit;font-size:15px;font-weight:750;cursor:pointer}
+.nf-workspace-tabs button.active{border-bottom-color:#24599b;color:#153c70}
+.nf-archive{padding:20px!important}
+.nf-archive h2{margin:0 0 6px;font-size:21px}
+.nf-archive .nf-history{margin:10px 0}
+.nf-archive-answers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.nf-archive-answers>div{display:grid;gap:4px;border:1px solid #d2deeb;border-radius:9px;padding:10px;background:#fafcff}
+.nf-archive-answers strong{font-size:12px;color:#536b87}
+.nf-archive-answers span{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
+@media(max-width:700px){.nf-archive-answers{grid-template-columns:1fr}.nf-workspace-tabs button{font-size:14px}}
 @media(max-width:700px){.nf-view-bar{display:flex;flex-wrap:wrap}.nf-view-bar .nf-view-actions{order:3;width:100%}.nf-view-bar-collapsed{flex-wrap:nowrap}.nf-inline-retainer{padding:14px}}

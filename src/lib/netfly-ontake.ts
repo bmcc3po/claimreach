@@ -87,12 +87,12 @@ const txt = (id: string, label: string, extra: Partial<NetflyField> = {}): Netfl
 
 export const NETFLY_SECTIONS: NetflySection[] = [
   { id: "care", title: "1. Welcome to the firm", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you! I just wanted to jump on the phone to welcome you to the firm. I'm going to verify a few things, gather some brief additional details, and then we'll talk about next steps.", fields: [
-    yn("seen_doctor", "Have you seen a doctor yet?"),
-    txt("first_provider", "Where did you go?", { when: { id: "seen_doctor", is: "Yes" } }),
+    yn("seen_doctor", "Have you received medical care yet: ER, urgent care, or a doctor?"),
+    txt("first_provider", "Where have you received care so far?", { when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_provider_address", "First provider address", { when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_provider_phone", "First provider phone", { kind: "tel", when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_visit", "When was your first visit?", { kind: "date", when: { id: "seen_doctor", is: "Yes" } }),
-    yn("ambulance", "Did an ambulance take you from the scene?", { when: { id: "seen_doctor", is: "Yes" } }),
+    yn("ambulance", "Did an ambulance take you from the scene?"),
     txt("treated_injuries", "What injuries are they treating you for?", { kind: "long", when: { id: "seen_doctor", is: "Yes" } }),
     txt("other_pain", "Anywhere else you're still feeling it?", { kind: "long" }),
     yn("still_treating", "Are you still going to the doctor?", { when: { id: "seen_doctor", is: "Yes" } }),
@@ -103,7 +103,8 @@ export const NETFLY_SECTIONS: NetflySection[] = [
     txt("next_appointment", "When's your next appointment?", { kind: "date", when: { id: "still_treating", is: "Yes" } }),
   ] },
   { id: "contact", title: "2. Confirm their information", script: "Let me make sure we have everything right on our end. I'll read back your name and spell it. Is that right?", fields: [
-    txt("confirmed_name", "Client's correct full name"), yn("name_confirmed", "Is the name on the signed retainer correct?"),
+    yn("name_confirmed", "Is the name on the signed retainer correct?"),
+    txt("confirmed_name", "Client's correct full name", { when: { id: "name_confirmed", is: "No" } }),
     txt("dob", "Date of birth", { kind: "date" }), txt("mailing_address", "Mailing address"),
     txt("confirmed_email", "Best email", { kind: "email" }), txt("confirmed_phone", "Best number", { kind: "tel" }),
   ] },
@@ -155,12 +156,17 @@ export const NETFLY_SECTIONS: NetflySection[] = [
   ] },
 ];
 
-export const NETFLY_FIELDS = NETFLY_SECTIONS.flatMap((s) => s.fields);
+// The welcome call is a short case-manager workup. Keep the original NETFLY
+// questionnaire above as an archive of earlier answers, not the call script.
+export const NETFLY_CASE_MANAGER_FIELDS: NetflyField[] = [
+  { id: "treatment_location", label: "Would treatment near home or work be easier?", kind: "choice", choices: ["Near home", "Near work", "Either", "Needs help deciding"] },
+  { id: "treatment_barrier", label: "What is keeping you from getting or continuing care?", kind: "long" },
+];
+export const NETFLY_FIELDS = [...NETFLY_SECTIONS.flatMap((s) => s.fields), ...NETFLY_CASE_MANAGER_FIELDS];
 export const NETFLY_FIELD_IDS = new Set(NETFLY_FIELDS.map((f) => f.id));
 export function netflyFlags(a: Record<string, string>): string[] {
   const out: string[] = [];
   if (a.death === "Yes" || Number.parseInt(a.hospital_days || "", 10) >= 3 || (a.commercial_truck === "Yes" && a.serious_injury === "Yes")) out.push("Get a supervisor on the call now");
-  if (a.seen_doctor === "No") out.push("No treatment yet — supervisor review");
   if (a.fault === "Client" || a.ticket === "Yes") out.push("Fault or ticket — supervisor review");
   if (a.other_lawyer_talk === "Yes" || a.other_lawyer_signed === "Yes") out.push("Other attorney — supervisor review");
   if (a.recorded_statement === "Yes" || a.insurance_signed === "Yes") out.push("Insurer statement or signed papers — supervisor review");
