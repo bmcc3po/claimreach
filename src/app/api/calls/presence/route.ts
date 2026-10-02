@@ -57,11 +57,12 @@ export async function POST(req: NextRequest) {
     if (action !== "start" && active?.by !== ctx.actor.id) return fail("Your call indicator expired. Start it again if you are still speaking with this client.", 409);
     const live_call = action === "end" ? null : { by: ctx.actor.id, by_name: ctx.actor.name,
       expires_at: new Date(Date.now() + 90_000).toISOString() };
-    const { data: updated, error: saveError } = await db.from("claims")
+    let update = db.from("claims")
       .update({ answers: { ...answers, mva_live_call: live_call }, updated_at: new Date().toISOString() })
       .eq("id", ctx.matter.matter.claim.id).eq("lead_id", ctx.matter.lead.id)
-      .eq("firm_id", ctx.matter.lead.firm_id).eq("campaign_id", ctx.campaign.id)
-      .eq("updated_at", current.updated_at).select("id").maybeSingle();
+      .eq("firm_id", ctx.matter.lead.firm_id).eq("campaign_id", ctx.campaign.id);
+    update = current.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", current.updated_at);
+    const { data: updated, error: saveError } = await update.select("id").maybeSingle();
     if (saveError) return fail("Call indicator did not save. Retry.", 503);
     if (updated) return NextResponse.json({ actor_id: ctx.actor.id, live_call });
   }
