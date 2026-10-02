@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
 import { DEFAULT_DQ_REASONS } from "@/lib/statuses";
@@ -44,8 +44,11 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [dqDialogOpen, setDqDialogOpen] = useState(false);
   const [liveCall, setLiveCall] = useState<NetflyLiveCall | null>(null);
   const [presenceBusy, setPresenceBusy] = useState(false);
+  const liveCallRef = useRef<NetflyLiveCall | null>(null);
+  const actorRef = useRef("");
+  useEffect(() => { liveCallRef.current = liveCall; actorRef.current = detail?.actor_id || ""; }, [liveCall, detail?.actor_id]);
   async function load(forceCall = false) {
-    try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setDetail(d); setLiveCall(d.live_call || null); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { const saved = d.answers?.call_close; setCallClose(saved ? { ...emptyCallClose, ...saved, closeout_version: 2, callback_promised_24_48_hours: saved.closeout_version === 2 && saved.callback_promised_24_48_hours === true } : emptyCallClose); setCallCloseDirty(false); } }
+    try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); actorRef.current = d.actor_id; liveCallRef.current = d.live_call || null; setDetail(d); setLiveCall(d.live_call || null); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { const saved = d.answers?.call_close; setCallClose(saved ? { ...emptyCallClose, ...saved, closeout_version: 2, callback_promised_24_48_hours: saved.closeout_version === 2 && saved.callback_promised_24_48_hours === true } : emptyCallClose); setCallCloseDirty(false); } }
     catch (e: any) { setError(e.message || "NETFLY file did not load."); }
   }
   useEffect(() => { void load(); }, [fileKey]);
@@ -53,22 +56,23 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     let mounted = true;
     async function refresh() {
       try {
-        const own = liveCall?.by === detail?.actor_id && !!activeNetflyCall(liveCall);
+        const current = liveCallRef.current;
+        const own = !!current && current.by === actorRef.current && !!activeNetflyCall(current);
         const response = own
           ? await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "call_presence", file: fileKey, action: "refresh" }) })
           : await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" });
         const body = await response.json();
         if (!response.ok) throw new Error(body.error);
-        if (mounted) setLiveCall(body.live_call || null);
+        if (mounted) { liveCallRef.current = body.live_call || null; if (body.actor_id) actorRef.current = body.actor_id; setLiveCall(body.live_call || null); }
       } catch (error: any) { if (mounted) { setLiveCall(null); setError(error.message || "Could not refresh call status."); } }
     }
     const timer = window.setInterval(() => void refresh(), 20_000);
     return () => { mounted = false; window.clearInterval(timer); };
-  }, [fileKey, detail?.actor_id, liveCall?.by]);
+  }, [fileKey]);
   async function markCall(action: "start" | "end") {
     setPresenceBusy(true); setError("");
     try { const response = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "call_presence", file: fileKey, action }) });
-      const body = await response.json(); if (!response.ok) throw new Error(body.error); setLiveCall(body.live_call || null); }
+      const body = await response.json(); if (!response.ok) throw new Error(body.error); liveCallRef.current = body.live_call || null; setLiveCall(body.live_call || null); }
     catch (error: any) { setError(error.message || "Call status did not save."); }
     finally { setPresenceBusy(false); }
   }
