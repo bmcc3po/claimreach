@@ -50,6 +50,7 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
     </>;
     case "carrier": return <><input className={input} placeholder={c.query.ph} aria-label="Search insurance companies" value={c.query.value} onChange={c.query.set} />{choices(c.opts)}</>;
     case "people": return <>
+      {!review && <p className="iq-cue">Every passenger is their own file if they want representation. Capture their details here while you are on the phone.</p>}
       {choices([c.justMe])}<button type="button" className="fi-add" onClick={c.add}>+ Add a passenger</button>
       {(c.people || []).map((person: any, i: number) => <div key={person.id || i} className={`${p}-person iq-person`}>
         <div className="fi-addrow"><input className={input} placeholder="Passenger's name" aria-label="Passenger's name" value={person.name ?? ""} onChange={person.setName} /><button type="button" className="fi-add" onClick={person.remove}>Remove</button></div>
@@ -57,16 +58,19 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
         {field("Age", choices(choicesFromClasses(person.ages)))}
         {field("Hurt", choices(choicesFromClasses(person.hurts)))}
         {person.ownFile && <>
-          {!review && <div className="iq-cue">Every passenger is their own file and their own agreement.</div>}
-          {!person.minor && <>
-            {field("Their own cell", <input className={input} type="tel" inputMode="tel" aria-label={`${person.first}'s cell`} value={person.cell.value ?? ""} onChange={person.cell.set} />)}
-            {field("Their own email", <input className={input} type="email" inputMode="email" aria-label={`${person.first}'s email`} value={person.email.value ?? ""} onChange={person.email.set} />)}
-          </>}
-          {person.minor && !review && <div className="iq-cue">The parent or guardian signs. The child goes on the HIPAA pages.</div>}
           {field("Wants representation", choices(choicesFromClasses(person.wantsReps)))}
-          {field("Willing to treat", choices(choicesFromClasses(person.willings)))}
-          {field("Home address", choices(choicesFromClasses(person.sameAddrs)))}
-          {person.noRep && !review && <div className="iq-cue iq-warning">Nothing sends unless that changes.</div>}
+          {person.wantsRep === "Yes" && <div className="iq-passenger-next">
+            {!review && <strong>Collect these while they are on the phone. Their agreement and file are separate.</strong>}
+            {field("Date of birth (if available)", <input className={input} type="date" aria-label={`${person.first}'s date of birth`} value={person.dob.value ?? ""} onChange={person.dob.set} />)}
+            {!person.minor ? <>
+              {field("Their own cell", <input className={input} type="tel" inputMode="tel" aria-label={`${person.first}'s cell`} value={person.cell.value ?? ""} onChange={person.cell.set} />)}
+              {field("Their own email", <input className={input} type="email" inputMode="email" aria-label={`${person.first}'s email`} value={person.email.value ?? ""} onChange={person.email.set} />)}
+            </> : !review && <div className="iq-cue">The parent or guardian signs. The child goes on the HIPAA pages.</div>}
+            {field("Willing to treat", choices(choicesFromClasses(person.willings)))}
+            {field("Home address", choices(choicesFromClasses(person.sameAddrs)))}
+            {v.passengerLinks?.[person.id] ? <a className="iq-passenger-link" href={`/app/${v.passengerLinks[person.id]}`} target="_blank" rel="noopener noreferrer">Open {person.first}&apos;s file to finish the retainer and office step ↗</a> : !review && <div className="iq-cue">Send their agreement from the Retainer section after the caller signs. Then their file link appears here.</div>}
+          </div>}
+          {person.wantsRep === "No" && !review && <div className="iq-cue iq-warning">They declined representation. Do not send an agreement.</div>}
         </>}
       </div>)}
     </>;

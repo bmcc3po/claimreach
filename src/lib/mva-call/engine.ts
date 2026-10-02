@@ -1101,7 +1101,7 @@ export class CallEngine {
     if (hold) { this.setState({ file: { ...this.state.file, error: hold } }); return; }
     var p = this.state.car.people[i] || {};
     var minor = p.age === 'Under 18';
-    if (p.wantsRep === 'No') { this.setState({ file: Object.assign({}, this.state.file, { error: (p.name || 'This passenger') + ' said no to representation. Change it on the Car step if that changed.' }) }); return; }
+    if (p.wantsRep !== 'Yes') { this.setState({ file: Object.assign({}, this.state.file, { error: 'Confirm that ' + (p.name || 'this passenger') + ' wants representation on the Passengers step before sending their own agreement.' }) }); return; }
     if (!minor && this.state.send.via !== 'Email' && String(p.cell || '').replace(/\D/g, '').length < 10) {
       this.setState({ file: Object.assign({}, this.state.file, { error: 'Add ' + (p.name || 'the passenger') + "'s own cell first. Their agreement goes to their phone, never the caller's." }) });
       return;
@@ -1904,7 +1904,7 @@ export class CallEngine {
       bodyComplete: !q && (b.rep !== 'Yes' || this.repGood(b)),
       justMeCls: 'chip' + (s.car.justMe ? ' on' : ''),
       justMe: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }),
-      addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
+      addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, dob: '', cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
       people: s.car.people.map((p, i) => ({
         id: p.pid,
         title: p.name ? p.name : 'Passenger ' + (i + 1),
@@ -1916,6 +1916,8 @@ export class CallEngine {
         ages: ['Under 18', 'Adult'].map((r) => ({ label: r, cls: 'chip sm' + (p.age === r ? ' on' : ''), pick: () => this.setPerson(i, 'age', p.age === r ? null : r) })),
         hurts: ['Yes', 'No'].map((r) => ({ label: r, cls: 'chip sm' + (p.hurt === r ? ' on' : ''), pick: () => this.setPerson(i, 'hurt', p.hurt === r ? null : r) })),
         ownFile: p.hurt === 'Yes',
+        dob: { value: p.dob || '', set: (e: any) => this.setPerson(i, 'dob', String(e.target.value).slice(0, 10)) },
+        wantsRep: p.wantsRep,
         // A hurt passenger is their own PNC: their cell (their agreement
         // texts to THEIR phone, never the caller's), whether they want
         // representation, willing to treat, and whether they live at the
@@ -2023,11 +2025,12 @@ export class CallEngine {
         var callerDigits = String(this.props.callerPhone || '').replace(/\D/g, '').slice(-10);
         var shared = !minor && ((!byEmail && cellDigits.length >= 10 && cellDigits.slice(-10) === callerDigits)
           || (byEmail && String(x.p.email || '').toLowerCase() === String(this.props.callerEmail || '').toLowerCase() && !!x.p.email));
-        var noRep = x.p.wantsRep === 'No';
+        var noRep = x.p.wantsRep !== 'Yes';
         return {
+          id: x.p.pid || String(x.i),
           title: nm + (minor ? ', under 18' : ''),
           note: minor ? this.callerFirst() + ' signs as parent or guardian. ' + nm + ' goes on the HIPAA pages.'
-            : noRep ? nm + ' said no to representation. Nothing sends unless that changes on the Car step.'
+            : noRep ? 'Confirm that ' + nm + ' wants representation on the Passengers step before sending their agreement.'
             : byEmail ? nm + ' signs their own agreement. It goes to THEIR email' + (x.p.email ? ' (' + x.p.email + ')' : '') + ', never the caller\'s.'
             : nm + ' signs their own agreement. It goes to THEIR phone' + (cellDigits.length >= 10 ? ' (' + fmtPhone(x.p.cell) + ')' : '') + ', never the caller\'s.',
           button: 'Send ' + nm + "'s agreement",

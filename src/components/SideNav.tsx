@@ -15,7 +15,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Icon from "./ui/Icon";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; qaOnly?: boolean; staffOnly?: boolean; why?: string };
+type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; ownerOnly?: boolean; qaOnly?: boolean; staffOnly?: boolean; why?: string };
 type NavGroup = { id: string; label: string | null; items: NavItem[]; staffOnly?: boolean; folded?: boolean };
 
 const STAFF_GROUPS: NavGroup[] = [
@@ -23,7 +23,7 @@ const STAFF_GROUPS: NavGroup[] = [
     { href: "/dashboard", icon: "home", label: "Dashboard" },
     { href: "/leads", icon: "files", label: "Leads" },
     { href: "/signed", icon: "signed", label: "Signed" },
-    { href: "/packets", icon: "files", label: "Packets & billing" },
+    { href: "/packets", icon: "files", label: "Signed packets to firm", ownerOnly: true },
     { href: "/call-activity", icon: "chart", label: "Call activity" },
     { href: "/queue", icon: "queue", label: "My queue" },
     { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true },
@@ -154,6 +154,7 @@ export default function SideNav({
   }
 
   const allowed = (n: NavItem) => {
+    if (n.ownerOnly && role !== "owner") return false;
     if (n.adminOnly && !["owner", "admin"].includes(role)) return false;
     if (n.qaOnly && !["owner", "admin", "manager", "qa"].includes(role)) return false;
     if (n.staffOnly && role === "agent") return false;

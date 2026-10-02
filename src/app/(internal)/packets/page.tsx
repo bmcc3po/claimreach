@@ -55,5 +55,10 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   const firmIds = [...new Set([...leads.map((lead) => lead.firm_id), ...claims.map((claim) => claim.firm_id)].filter(Boolean))] as string[];
   const firms = await inChunks(sb, "firms", "id,name", "id", firmIds);
   const rows = packetWorklist({ submissions: submissions || [], leads, claims, calls, users, firms, deliveries, campaigns, ownerEmail });
-  return <PacketWorklist rows={rows} monday={monday} truncated={(submissions || []).length === 3000} />;
+  const externalResult = await sb.from("claims").select("id,lead_id,campaign,status").eq("status", "external_signed_review").limit(500);
+  if (externalResult.error) throw new Error(`Could not load imported signed files: ${externalResult.error.message}`);
+  const externalLeads = await inChunks(sb, "leads", "id,lead_no,claimant_name", "id", [...new Set((externalResult.data || []).map((claim: any) => claim.lead_id))]);
+  const externalNames = new Map(externalLeads.map((lead: any) => [lead.id, lead]));
+  const imported = (externalResult.data || []).map((claim: any) => ({ claimId: claim.id, leadNo: externalNames.get(claim.lead_id)?.lead_no || claim.lead_id, name: externalNames.get(claim.lead_id)?.claimant_name || "Name missing", campaign: claim.campaign || "INNO MVA" }));
+  return <PacketWorklist rows={rows} imported={imported} monday={monday} truncated={(submissions || []).length === 3000} />;
 }

@@ -1847,6 +1847,7 @@ div.ws-row{cursor:default}
 .cc-side .cc-btn.cc-agreement-review{width:100%;min-height:44px;padding:10px 14px;background:#14305C;color:#FFFFFF;font-size:15px;line-height:1.3}
 .cc-side .cc-btn.cc-agreement-review:hover{background:#1D4174}
 .cc-side .cc-btn.cc-agreement-review:focus-visible{outline:2px solid #2563EB;outline-offset:2px}
+.cc-side .cc-side-b.cc-side-ret-sent{flex:0 1 auto;max-height:55vh;overflow-y:auto}
 /* The iPad command panel stays beside CallView, so rotation cannot remount it. */
 .cc-desk.cc-ipad-on{display:grid;grid-template-columns:minmax(0,1fr) 336px;grid-template-rows:minmax(0,1fr);width:100%;height:100vh;height:100dvh;min-width:0;overflow:hidden}
 .cc-desk.cc-ipad-on>.cc-app{width:100%;height:100%;min-width:0;min-height:0;margin:0;box-shadow:none}
@@ -1958,6 +1959,18 @@ div.ws-row{cursor:default}
 .final-handoff-send:disabled{background:#97a7bc;cursor:not-allowed}
 .final-handoff-error{padding:10px 12px;border-left:4px solid #b54037;border-radius:4px;background:#fff2ed;color:#812d28;font-weight:650}
 .final-handoff-sent{border-color:#24815d;background:#edf8f2}
+.final-handoff-docs{display:grid;gap:10px;margin:16px 0 18px}
+.final-handoff-docs button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:58px;padding:13px 16px;border:2px solid #1d528f;border-radius:10px;background:#fff;color:#143866;text-align:left;font:inherit;font-size:16px;font-weight:750;cursor:pointer}
+.final-handoff-docs button span{flex:none;color:#1d528f;font-size:13px}
+.final-handoff-docs button:hover{background:#eaf2fc}
+.final-handoff-docs button:disabled{border-color:#b9c7d7;background:#f4f6f9;color:#67778a;cursor:not-allowed}
+.final-handoff-preview-backdrop{position:fixed;inset:0;z-index:300;background:#0c1e38bd;display:grid;place-items:center;padding:14px}
+.final-handoff-preview{display:flex;flex-direction:column;width:min(1100px,100%);height:min(90dvh,900px);background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 20px 70px #06142770}
+.final-handoff-preview-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #c5d4e7;color:#143866}
+.final-handoff-preview-head>div{display:flex;align-items:center;gap:10px}
+.final-handoff-preview-head a,.final-handoff-preview-head button{padding:9px 12px;border:1px solid #9db6d5;border-radius:8px;background:#f5f8fc;color:#143866;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+.final-handoff-preview iframe{flex:1;width:100%;border:0;background:#fff}
+@media(max-width:650px){.final-handoff-docs button{align-items:flex-start;flex-direction:column}.final-handoff-preview-head{align-items:flex-start;flex-direction:column}.final-handoff-preview-head>div{flex-wrap:wrap}}
 .sd-good{color:#15803D !important;font-weight:600}
 .sd-l4{display:flex;align-items:center;gap:8px}
 .sd-mask{font-family:"Geist Mono",ui-monospace,Menlo,monospace;font-size:16px;font-weight:700;color:#5F6F87;letter-spacing:0.06em;flex-shrink:0}
@@ -2064,6 +2077,9 @@ div.ws-row{cursor:default}
 .iq-field { margin-top: 12px; }
 .iq-field-label { margin: 6px 0; font-size: 13px; font-weight: 600; }
 .iq-person { margin-top: 12px; padding: 14px; border: 1px solid #dbe2eb; border-radius: 10px; min-width: 0; }
+.iq-passenger-next{margin-top:14px;padding:14px;border:2px solid #a8c1e1;border-radius:10px;background:#f3f7fd}
+.iq-passenger-next>strong{display:block;color:#143866;font-size:15px;line-height:1.45}
+.iq-passenger-link{display:block;margin-top:14px;padding:12px;border-radius:9px;background:#174b8b;color:#fff;font-weight:750;text-decoration:none;text-align:center}
 .iq-rep { margin-top: 12px; padding: 12px; background: #f6f8fb; border-radius: 8px; }
 .iq-script { margin-bottom: 16px; padding: 14px 16px; border: 1px solid #dbe2eb; background: #fff; border-radius: 10px; line-height: 1.5; }
 .iq-script p { margin: 6px 0; }

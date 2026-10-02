@@ -66,6 +66,10 @@
 .nf-inline-retainer .nf-pdf-preview iframe{height:min(65vh,720px)}
 .nf-inline-issue{margin:8px 0 0;border-color:#bd93a0;background:#fffafa}
 .nf-inline-issue textarea{width:100%;min-height:76px;margin:10px 0;border:1px solid #bccbe0;border-radius:9px;padding:11px;font:inherit;color:#142338;background:#fff}
+.nf-contact-readback{border:1.5px solid #a9c2df;border-radius:12px;background:#f4f8fd;padding:16px 18px;margin:12px 0 18px}
+.nf-contact-readback strong{display:block;color:#133e71;font-size:17px;margin-bottom:8px}
+.nf-contact-readback p{margin:5px 0;font-size:15px;line-height:1.45;overflow-wrap:anywhere}
+.nf-contact-readback .nf-muted{font-size:13px;margin-top:10px}
 .nf-handoff-inline{border:2px solid #9db7d7;background:#f7faff;border-radius:14px;padding:18px;margin:12px 0 22px}
 .nf-handoff-inline>strong{font-size:18px;color:#133e71}
 .nf-handoff-inline>p{line-height:1.45;margin:7px 0 0}

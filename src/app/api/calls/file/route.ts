@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
   const [esignRes, notesRaw, auditRes, docsRes, staffRes, statuses] = await Promise.all([
-    sb.from("esign_submissions").select("id, template_key, signer_name, injured_name, via, status, pax_index, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error, voided_at, void_reason, replacement_requested_at, replacement_requested_by, replacement_reason, replacement_of, agent_reviewed_at, agent_reviewed_by")
+    sb.from("esign_submissions").select("id, template_key, signer_name, injured_name, via, status, pax_index, doc_count, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error, voided_at, void_reason, replacement_requested_at, replacement_requested_by, replacement_reason, replacement_of, agent_reviewed_at, agent_reviewed_by")
       .eq("lead_id", leadId).or(matterRowsFilter(matter)).order("created_at", { ascending: false }).limit(20),
     loadFileNotes(sb, leadId, lead.firm_id, matter.claim.id),
     sb.from("audit_log").select("id, claim_id, created_at, actor_name, category, description, meta").eq("lead_id", leadId)
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
     send_check_error: pendingSend.ok ? null : pendingSend.error,
     imported,
     agreements: (esignRes.data ?? []).map((a: any) => ({
-      id: a.id, name: agreementName(a.template_key), signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status, pax: a.pax_index,
+      id: a.id, name: agreementName(a.template_key), signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status, pax: a.pax_index, doc_count: a.doc_count,
       voided: a.voided_at, void_reason: a.void_reason,
       replacement_requested_at: a.replacement_requested_at, replacement_reason: a.replacement_reason,
       replacement_requested_by: a.replacement_requested_by ? nameOf.get(a.replacement_requested_by) || "Staff" : null,

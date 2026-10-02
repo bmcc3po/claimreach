@@ -289,12 +289,14 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-chips cc-seg">{(p.hurts || []).map((c: any, i28: number) => (<Fragment key={i28}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
 {!!(p.ownFile) && (<>
 <span className="cc-tag">Own file and own agreement after {v.callerFirst} signs</span>
-{!p.minor && (<>
-<div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S OWN CELL</div>
-<input className="cc-field" type="tel" inputMode="tel" placeholder="Their agreement texts to THEIR phone" aria-label={`${p.first}'s cell`} value={p.cell.value ?? ""} onChange={p.cell.set} />
-</>)}
 <div className="cc-lab" style={{marginTop: "8px"}}>WANTS REPRESENTATION</div>
 <div className="cc-chips cc-seg">{(p.wantsReps || []).map((c: any, i28b: number) => (<Fragment key={i28b}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
+{p.wantsRep === "Yes" && <div className="iq-passenger-next"><strong>Collect this now, then finish their own agreement and file.</strong>
+<div className="cc-lab" style={{marginTop: "8px"}}>DATE OF BIRTH, IF AVAILABLE</div>
+<input className="cc-field" type="date" aria-label={`${p.first}'s date of birth`} value={p.dob.value ?? ""} onChange={p.dob.set} />
+{!p.minor && <><div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S OWN CELL</div><input className="cc-field" type="tel" inputMode="tel" placeholder="Their agreement texts to THEIR phone" aria-label={`${p.first}'s cell`} value={p.cell.value ?? ""} onChange={p.cell.set} /><div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S EMAIL</div><input className="cc-field" type="email" inputMode="email" aria-label={`${p.first}'s email`} value={p.email.value ?? ""} onChange={p.email.set} /></>}
+{v.passengerLinks?.[p.id] ? <a className="iq-passenger-link" href={`/app/${v.passengerLinks[p.id]}`} target="_blank" rel="noopener noreferrer">Open {p.first}&apos;s file to finish the retainer ↗</a> : <div className="cc-cue">Their file link appears here after their agreement is sent.</div>}
+</div>}
 <div className="cc-lab" style={{marginTop: "8px"}}>WILLING TO TREAT</div>
 <div className="cc-chips cc-seg">{(p.willings || []).map((c: any, i28c: number) => (<Fragment key={i28c}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
 <div className="cc-lab" style={{marginTop: "8px"}}>HOME ADDRESS</div>
@@ -461,6 +463,7 @@ That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passeng
 </label>)}
 {!!(p.ready) && (<><button className={cx("cc-btn cc-full" + (p.needCell ? " cc-soft" : ""))} onClick={p.send}>{p.button}</button></>)}
 {!!(p.live) && (<><div className="cc-steps">{(p.steps || []).map((st: any, i38: number) => (<Fragment key={i38}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div></>)}
+{v.passengerLinks?.[p.id] && <a className="iq-passenger-link" href={`/app/${v.passengerLinks[p.id]}`} target="_blank" rel="noopener noreferrer">Open {p.title}&apos;s file ↗</a>}
 </div>
 </Fragment>))}
 </>)}
@@ -632,7 +635,7 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-grp">
 {(v.dispo.summary || []).map((r: any, i49: number) => (<Fragment key={i49}><div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">{r.k}</span><span className="cc-done-v">{r.v}</span></div></Fragment>))}
 </div>
-{v.dispo.isSigned && <FinalHandoff leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} />}
+{v.dispo.isSigned && <FinalHandoff key={`${v.leadId}:${v.claimId}`} leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} canOverrideDownload={v.canOverrideDownload} />}
 </>)}
 {!!v.dispo.hasError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.dispo.error}</div></div>}
 </div>

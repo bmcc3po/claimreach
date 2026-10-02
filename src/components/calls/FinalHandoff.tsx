@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import OwnerFirmDownload from "./OwnerFirmDownload";
 
 type DeliveryState = {
   claim_id: string;
@@ -16,7 +17,7 @@ const email = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 const returnEnd = (sentAt: string) => new Date(Date.parse(sentAt) + 7 * 86400000);
 
 /** The only post-call firm handoff in Desk. Status always comes from the server. */
-export default function FinalHandoff({ leadId, claimId, missing, onNext }: { leadId: string; claimId: string; missing: { label: string; go: () => void }[]; onNext?: () => void }) {
+export default function FinalHandoff({ leadId, claimId, missing, onNext, canOverrideDownload = false }: { leadId: string; claimId: string; missing: { label: string; go: () => void }[]; onNext?: () => void; canOverrideDownload?: boolean }) {
   const [state, setState] = useState<DeliveryState | null>(null);
   const [checks, setChecks] = useState([false, false, false]);
   const [extra, setExtra] = useState("");
@@ -26,6 +27,7 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext }: { lea
   const [packetUrl, setPacketUrl] = useState<string | null>(null);
   const [openedIntake, setOpenedIntake] = useState(false);
   const [openedPacket, setOpenedPacket] = useState(false);
+  const [preview, setPreview] = useState<"intake" | "packet" | null>(null);
   const load = async () => {
     const q = new URLSearchParams({ lead_id: leadId, claim_id: claimId });
     const [r, fileResponse] = await Promise.all([
@@ -35,7 +37,7 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext }: { lea
     const [body, file] = await Promise.all([r.json().catch(() => ({})), fileResponse.json().catch(() => ({}))]);
     if (!r.ok || body.error || body.claim_id !== claimId) throw new Error(body.error || "Could not confirm this matter's delivery state.");
     if ((!fileResponse.ok || file.error) && !body.confirmed_firm_sent_at) throw new Error(file.error || "Could not load the signed packet for review.");
-    const agreement = (file.agreements || []).find((row: any) => row.pax == null);
+    const agreement = (file.agreements || []).find((row: any) => row.pax == null && !row.voided);
     setPacketUrl(agreement?.status === "completed" ? agreement.signed_url || null : null);
     setState(body);
     window.dispatchEvent(new CustomEvent("cr:firm-handoff", { detail: { leadId, claimId } }));
@@ -52,11 +54,20 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext }: { lea
   const pending = ["sending", "uncertain"].includes(state?.dispatch?.state || "");
   const sentAt = state?.confirmed_firm_sent_at;
   const daysLeft = sentAt ? Math.max(0, Math.ceil((returnEnd(sentAt).getTime() - Date.now()) / 86400000)) : null;
+  const intakeUrl = `/api/export/intake-pdf?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`;
+  const intakePreviewUrl = `${intakeUrl}&preview=1`;
+  const openPreview = (kind: "intake" | "packet") => {
+    setPreview(kind);
+    if (kind === "intake") setOpenedIntake(true);
+    else setOpenedPacket(true);
+    setError("");
+  };
 
   async function send() {
     if (!state || sentAt || pending || !recipientsReady || busy) return;
     if (missing.length) { setError("Complete the required intake answers before marking this file ready."); return; }
-    if (!checks.every(Boolean) || !openedIntake || !openedPacket || !packetUrl) { setError("Open both PDFs and check all three review items before marking this file ready."); return; }
+    if (!openedIntake || !openedPacket || !packetUrl) { setError("Review the intake PDF and the signed packet using the two buttons above."); return; }
+    if (!checks.every(Boolean)) { setError("Check all three review items before marking this file ready."); return; }
     if (extras.length > 3 || extras.some((address) => !email.test(address))) { setError("Enter up to three valid additional email addresses."); return; }
     const people = [firm, owner, ...cc, ...extras].filter(Boolean);
     if (!window.confirm(`Is this intake firm ready?\n\nSend the intake PDF and completed signed retainer/HIPAA/HITECH packet to:\n${people.join("\n")}\n\nThis starts the firm's 7-day return window only after delivery is confirmed.`)) return;
@@ -90,7 +101,7 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext }: { lea
     {sentAt ? <div role="status"><strong>Delivered {new Date(sentAt).toLocaleString()}.</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${returnEnd(sentAt).toLocaleString()}.` : "Seven-day return window cleared. Ready for billing review."}</p><p>Delivered to {state?.delivery?.to}; Brett received a copy.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Next call</button>}</div> : state && <>
       <p>The call is dispositioned. Review your own file, then send its two required PDFs together.</p>
       {missing.length > 0 && <div className="final-handoff-error" role="alert"><strong>Intake incomplete: {missing.length} required answer{missing.length === 1 ? "" : "s"} missing.</strong><p>Finish these before the file can go to the firm.</p><ul>{missing.map((item, index) => <li key={`${item.label}-${index}`}><button type="button" onClick={item.go}>{item.label} ↗</button></li>)}</ul></div>}
-      <ol><li><a href={`/api/export/intake-pdf?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedIntake(true)}>Open the intake PDF ↗</a></li><li>{packetUrl ? <a href={packetUrl} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedPacket(true)}>Open the completed signed retainer and HIPAA/HITECH packet ↗</a> : <strong>The completed signed packet is not available yet.</strong>}</li></ol>
+      <div className="final-handoff-docs" aria-label="Review the two PDFs before sending"><button type="button" onClick={() => openPreview("intake")}>1. Review intake PDF <span>{openedIntake ? "Opened ✓" : "Open PDF"}</span></button><button type="button" disabled={!packetUrl} onClick={() => openPreview("packet")}>2. Review signed retainer + HIPAA/HITECH <span>{!packetUrl ? "Packet pending" : openedPacket ? "Opened ✓" : "Open PDF"}</span></button></div>
       {[
         "I checked the intake answers and contact details.",
         "I opened and approved the client-signed agreement and completed the office step.",
@@ -104,5 +115,7 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext }: { lea
       <button type="button" className="final-handoff-send" disabled={busy || pending || !recipientsReady || missing.length > 0} onClick={() => void send()}>{busy ? "Confirming and sending…" : "FILE IS READY FOR FIRM — SEND PACKET"}</button>
     </>}
     {error && <p className="final-handoff-error" role="alert">{error}</p>}
+    {canOverrideDownload && <OwnerFirmDownload leadId={leadId} claimId={claimId} />}
+    {preview && <div className="final-handoff-preview-backdrop" role="presentation" onClick={() => setPreview(null)}><div className="final-handoff-preview" role="dialog" aria-modal="true" aria-label={preview === "intake" ? "Intake PDF" : "Signed retainer and HIPAA/HITECH packet"} onClick={(event) => event.stopPropagation()}><div className="final-handoff-preview-head"><strong>{preview === "intake" ? "Intake PDF" : "Signed retainer + HIPAA/HITECH"}</strong><div><a href={preview === "intake" ? intakePreviewUrl : packetUrl || "#"} target="_blank" rel="noopener noreferrer">Open in new tab ↗</a><button type="button" onClick={() => setPreview(null)}>Back to file review</button></div></div><iframe title={preview === "intake" ? "Intake PDF preview" : "Signed packet preview"} src={preview === "intake" ? intakePreviewUrl : packetUrl || undefined} /></div></div>}
   </section>;
 }

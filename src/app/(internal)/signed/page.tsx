@@ -85,6 +85,6 @@ export default async function LeadsPage() {
     (l) => isSignedClient(l, catalog, signedSubmissionIds)
   );
 
-  return <LeadsView leads={signedOnly} title="Signed" basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} statuses={statuses} dqReasons={dqReasons ?? []} />;
+  return <LeadsView leads={signedOnly} title="Signed" basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} />;
 }
 
