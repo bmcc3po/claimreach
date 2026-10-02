@@ -61,7 +61,7 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   if (sourceResult.error) throw new Error(`Could not load imported signed originals: ${sourceResult.error.message}`);
   const importedClaimIds = [...new Set((sourceResult.data || []).map((item: any) => item.meta?.claim_id).filter(Boolean))] as string[];
   const importedClaims = await inChunks(sb, "claims", "id,lead_id,firm_id,campaign,campaign_id,status,claim_type", "id", importedClaimIds);
-  const importedLeads = await inChunks(sb, "leads", "id,lead_no,claimant_name", "id", [...new Set(importedClaims.map((claim: any) => claim.lead_id))]);
+  const importedLeads = await inChunks(sb, "leads", "id,lead_no,claimant_name,archived_at", "id", [...new Set(importedClaims.map((claim: any) => claim.lead_id))]);
   const importedFirms = await inChunks(sb, "firms", "id,name", "id", [...new Set(importedClaims.map((claim: any) => claim.firm_id).filter(Boolean))]);
   const importedCampaigns = await inChunks(sb, "campaigns", "id,firm_email", "id", [...new Set(importedClaims.map((claim: any) => claim.campaign_id).filter(Boolean))]);
   const importedDeliveries = await inChunks(sb, "firm_deliveries", "claim_id,ok,to_email,cc_email,created_at", "claim_id", importedClaimIds);
@@ -74,9 +74,10 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
     const signedAt = originals.map((item: any) => item.meta?.source_signed_at).filter(Boolean).sort()[0] || null;
     const deliveredAt = confirmedFirmDeliveryAt(importedDeliveries.filter((delivery: any) => delivery.claim_id === claim.id), importedRecipients.get(claim.campaign_id), ownerEmail);
     const window = returnWindow(deliveredAt);
-    return { claimId: claim.id, leadNo: importedNames.get(claim.lead_id)?.lead_no || claim.lead_id,
+    return { leadId: claim.lead_id, claimId: claim.id, leadNo: importedNames.get(claim.lead_id)?.lead_no || claim.lead_id,
       name: importedNames.get(claim.lead_id)?.claimant_name || "Name missing", campaign: claim.campaign,
       firm: importedFirmNames.get(claim.firm_id) || "Firm not mapped",
+      archived: !!importedNames.get(claim.lead_id)?.archived_at,
       signedAt, deliveredAt, returnEndsAt: window?.endsAt || null, daysLeft: window?.daysLeft ?? null,
       cleared: window?.cleared || false, status: claim.status };
   });
