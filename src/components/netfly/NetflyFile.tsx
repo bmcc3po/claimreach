@@ -2,23 +2,16 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NetflyDocuments from "./NetflyDocuments";
-import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
+import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, NETFLY_UNAVAILABLE_IDS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
+import { NETFLY_WELCOME_STEPS as VERIFY_STEPS, NETFLY_FIRST_CALL_SOURCE_LABELS, netflyFirstCallSources, netflyFirstConversationReview } from "@/lib/netfly-first-conversation";
+import { joinUsAddress } from "@/lib/us-address";
 import { DEFAULT_DQ_REASONS } from "@/lib/statuses";
 import "./netfly.css";
 import "./netfly-workspace.css";
 
 type Handoff = { note: string; at: string; by_name?: string; channel?: string };
-type Detail = { file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string }; actor_id: string; live_call: NetflyLiveCall | null; answers: { fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; source_field_revisions?: { fields: Record<string, string>; at: string; source_id: string }[]; handoff_verification?: { status: string; note: string; source_revision: number; source_field_revision?: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; source_field_revision?: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
+type Detail = { file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string; mail_addr1?: string; mail_city?: string; mail_state?: string; mail_zip?: string }; actor_id: string; live_call: NetflyLiveCall | null; answers: { fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; source_field_revisions?: { fields: Record<string, string>; at: string; source_id: string }[]; handoff_verification?: { status: string; note: string; source_revision: number; source_field_revision?: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; source_field_revision?: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
 
-const VERIFY_STEPS = [
-  { title: "1. Welcome & contact", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you. I wanted to welcome you to the firm. I'll confirm your contact information, gather a few details for your case manager, and explain what happens next. If you need to reach Turnbull, the firm's number is (205) 831-5040.", fields: ["contact_accuracy", "confirmed_name", "confirmed_phone", "confirmed_email"] },
-  { title: "2. Accident & police", script: "I have the date and the account of what happened from your first intake. Let me confirm those with you, along with the police report or case number.", fields: ["accident_date", "incident_story", "police_report"] },
-  { title: "3. Vehicle & medical care", script: "Was the car totaled or unable to be driven? Have you received care already, including an ambulance? We recommend getting checked promptly. Can you be evaluated today?", fields: ["totaled", "drivable", "seen_doctor", "ambulance", "first_provider", "treated_injuries", "care_today", "care_today_setting", "care_today_plan"] },
-  { title: "4. Treatment plan", script: "Your case manager can help coordinate care. Would a location near home or work be easier? What days and times work for you? Do you have health insurance, and with which provider?", fields: ["treatment_location", "treatment_area", "treatment_time", "treatment_days", "treatment_availability", "health_insured", "health_carrier", "treatment_barrier"] },
-  { title: "5. Insurance & pictures", script: "Has any insurance company contacted you? Do you have a claim number or pictures that would help your case manager?", fields: ["insurer_contact", "insurance_notes", "insurance_claim_number", "photos"] },
-  { title: "6. Outcome & next steps", script: "Thanks so much for your patience. We'll get your case entered into the system and call you back within 24 to 48 hours.", fields: ["final_notes"] },
-  { title: "7. After call: review file", script: "", fields: [] },
-] as const;
 const verifyIds = new Set<string>(VERIFY_STEPS.flatMap((step) => [...step.fields]));
 const fieldById = new Map(NETFLY_FIELDS.map((field) => [field.id, field]));
 const emptyCallClose: NetflyCallClose = { closeout_version: 2, completion: "" as NetflyCallClose["completion"], disposition: "" as NetflyCallClose["disposition"], dq_reason_key: "", assessment_reason: "", transfer_destination: "", transfer_outcome: "not_attempted", transfer_note: "", client_notified_48_business_hours: false, callback_promised_24_48_hours: false };
@@ -86,7 +79,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "answer", file: fileKey, field: id, value }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); if (["confirmed_name", "confirmed_phone", "confirmed_email"].includes(id)) setDetail((old) => old ? { ...old, file: { ...old.file, [id === "confirmed_name" ? "claimant_name" : id === "confirmed_phone" ? "phone" : "email"]: value } } : old); setSaveState("Saved"); }
     catch (e: any) { setSaveState(""); setError(`${id}: ${e.message || "Save failed"}. Your answer remains on screen; retry before leaving.`); }
   }
-  const set = (id: string, value: string) => setValues((old) => ({ ...old, [id]: value }));
+  const set = (id: string, value: string) => setValues((old) => ({ ...old, [id]: value, ...(value.trim() && NETFLY_UNAVAILABLE_IDS.has(id) ? { [`${id}_unavailable`]: "" } : {}) }));
   async function upload(file: File) {
     setUploading(true); setError("");
     try { const fd = new FormData(); fd.append("file_key", fileKey); fd.append("file", file); const r = await fetch("/api/netfly/retainer", { method: "POST", body: fd }); const d = await r.json(); if (!r.ok) throw new Error(d.error); await load(); }
@@ -137,11 +130,19 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const handoffs = detail.answers.handoffs || [];
   const originalHandoff = handoffs[0];
   const latestHandoff = handoffs.at(-1);
-  const sourceRows = parseNetflyHandoff(latestHandoff?.note || "");
+  const sourceRows = netflyFirstCallSources(parseNetflyHandoff(latestHandoff?.note || ""), detail.answers.source_field_revisions?.at(-1)?.fields || {});
   const sourceFieldRevisions = detail.answers.source_field_revisions || [];
   const sourceFieldRows = Object.entries(sourceFieldRevisions.at(-1)?.fields || {});
   const checked = detail.answers.handoff_verification?.source_revision === handoffs.length &&
     (detail.answers.handoff_verification?.source_field_revision ?? 0) === sourceFieldRevisions.length && handoffs.length > 0;
+  const savedAddress = joinUsAddress({ street: detail.file.mail_addr1, city: detail.file.mail_city, state: detail.file.mail_state, zip: detail.file.mail_zip });
+  const address = values.mailing_address || savedAddress;
+  const firstConversation = netflyFirstConversationReview(values, { phone: detail.file.phone, email: detail.file.email, address }, checked ? sourceRows : []);
+  const firstConversationPending = firstConversation.filter((item) => item.status !== "captured");
+  function goToMinimum(step: number, id: string) {
+    setSection(step); setActiveQuestion(id); setShowIncidentCorrections(true);
+    window.setTimeout(() => { const target = document.getElementById(`nf-question-${id}`) || document.getElementById(`nf-step-${step}`); target?.scrollIntoView({ behavior: "smooth", block: "center" }); }, 0);
+  }
   const callRecorded = detail.answers.call_close?.closeout_version === 2 && detail.answers.call_close?.source_revision === handoffs.length &&
     (detail.answers.call_close?.source_field_revision ?? 0) === sourceFieldRevisions.length &&
     handoffs.length > 0 && !callCloseDirty && !validateNetflyCallClose(detail.answers.call_close);
@@ -150,15 +151,18 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     const sourceLabels = new Set(sourceRows.map((row) => row.label));
     const visible = current.fields.map((id) => fieldById.get(id)).filter((f): f is NetflyField => {
       if (!f || (f.when && !(stepIndex === 0 && f.id === "confirmed_name") && values[f.when.id] !== f.when.is)) return false;
-      if (stepIndex === 0 && ["confirmed_name", "confirmed_phone", "confirmed_email"].includes(f.id)) {
-        const existing = f.id === "confirmed_name" ? detail.file.claimant_name : f.id === "confirmed_phone" ? detail.file.phone : detail.file.email;
-        return values.contact_accuracy === "Needs correction" || !existing;
+      if (stepIndex === 0 && ["confirmed_name", "confirmed_phone", "confirmed_email", "mailing_address"].includes(f.id)) {
+        const existing = f.id === "confirmed_name" ? detail.file.claimant_name : f.id === "confirmed_phone" ? detail.file.phone : f.id === "confirmed_email" ? detail.file.email : savedAddress;
+        return values.contact_accuracy === "Needs correction" || !existing || !!values[`${f.id}_unavailable`];
       }
       if (stepIndex === 1 && !showIncidentCorrections && latestHandoff) {
         if (values[f.id]?.trim()) return true;
-        const label = f.id === "accident_date" ? "Accident Date" : f.id === "incident_story" ? "Accident Summary" : "Case #";
-        return !sourceLabels.has(label);
+        const label = NETFLY_FIRST_CALL_SOURCE_LABELS[f.id];
+        if (label && sourceLabels.has(label) && !values[`${f.id}_unavailable`]) return false;
       }
+      if (["police_report", "police_department"].includes(f.id) && values.police_came === "No" && !values[f.id]) return false;
+      if (["auto_carrier", "auto_policy"].includes(f.id)) return ["Client's insurance", "Both"].includes(values.insurance_info_available) || !!values[f.id];
+      if (["other_insurer", "other_policy", "other_claim"].includes(f.id)) return ["Other driver's insurance", "Both"].includes(values.insurance_info_available) || !!values[f.id];
       if (f.id === "care_today_setting") return values.care_today === "Yes";
       if (f.id === "care_today_plan") return values.care_today === "No" || values.care_today === "Not sure";
       if (f.id === "health_carrier") return values.health_insured === "Yes";
@@ -166,9 +170,10 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     });
     return <div key={current.title} id={`nf-step-${stepIndex}`} className="nf-step-card">
     <section className="nf-panel nf-intake"><div className="nf-section-head"><p className="nf-eyebrow">Case-manager welcome call · original intake preserved</p><h2>{current.title}</h2><span aria-live="polite">{saveState}</span></div>{(viewMode !== "simple" || stepIndex === 0 || stepIndex === 5) && current.script && <div className="nf-script"><strong>Say</strong><p>{current.script}</p></div>}
-      {stepIndex === 0 && <div className="nf-contact-readback"><strong>Confirm what we have</strong><p>Name: {detail.file.claimant_name || "Missing"}</p><p>Phone: {detail.file.phone || "Missing — add after the live transfer"}</p><p>Email: {detail.file.email || "Missing"}</p><p className="nf-muted">Ask for corrections only. The retainer was already signed.</p></div>}
-      {stepIndex === 1 && <div className="nf-handoff-inline"><strong>Confirm date of loss, what happened, and the police case number</strong><p>Use the first intake below as your starting point. Add only missing or corrected facts.</p>{sourceRows.length ? <><div className="nf-source-grid">{sourceRows.filter((row) => ["Accident Date", "Accident Summary", "Case #", "Location"].includes(row.label)).map((row) => <div className="nf-source-item" key={row.label}><strong>{row.label}</strong><p>{row.value}</p></div>)}</div><details className="nf-history"><summary>See the full original note</summary><div className="nf-source-grid">{sourceRows.map((row) => <div className="nf-source-item" key={row.label}><strong>{row.label}</strong><p>{row.value}</p></div>)}</div></details></> : latestHandoff ? <p className="nf-source-note">{latestHandoff.note}</p> : <p className="nf-alert">No handoff note is on this file. Add it in File before the call continues.</p>}{latestHandoff && <button type="button" className="nf-secondary" onClick={() => setShowIncidentCorrections((old) => !old)}>{showIncidentCorrections ? "Hide correction fields" : "Add or correct incident details"}</button>}{sourceFieldRows.length > 0 && <details className="nf-history"><summary>{sourceFieldRows.length} original LawRuler form answers</summary><div className="nf-source-grid">{sourceFieldRows.map(([label, value]) => <div className="nf-source-item" key={label}><strong>{label}</strong><p>{value}</p></div>)}</div></details>}</div>}
-      {visible.length > 0 && <div className="nf-questions">{visible.map((field) => <Question key={field.id} field={field} value={values[field.id] || ""} set={(value) => set(field.id, value)} save={(value) => save(field.id, value)} active={viewMode === "all" && activeQuestion === field.id} onEnter={() => setActiveQuestion(field.id)} />)}</div>}
+      {stepIndex === 0 && <div className="nf-contact-readback"><strong>Confirm what we have</strong><p>Name: {detail.file.claimant_name || "Missing"}</p><p>Phone: {detail.file.phone || "Missing — add after the live transfer"}</p><p>Email: {detail.file.email || "Missing"}</p><p>Address: {address || "Missing"}</p><p className="nf-muted">Confirm phone, email and full address. Ask for corrections or missing details.</p></div>}
+      {stepIndex === 1 && <div className="nf-handoff-inline"><strong>Confirm the wreck, police details and passengers</strong><p>Use the first intake below as your starting point. Add only missing or corrected facts.</p>{sourceRows.length ? <><div className="nf-source-grid">{sourceRows.filter((row) => ["Accident Date", "Accident Summary", "Case #", "Location", "Passengers"].includes(row.label)).map((row) => <div className="nf-source-item" key={row.label}><strong>{row.label}</strong><p>{row.value}</p></div>)}</div><details className="nf-history"><summary>See the full original note</summary><div className="nf-source-grid">{sourceRows.map((row) => <div className="nf-source-item" key={row.label}><strong>{row.label}</strong><p>{row.value}</p></div>)}</div></details></> : latestHandoff ? <p className="nf-source-note">{latestHandoff.note}</p> : <p className="nf-alert">No handoff note is on this file. Add it in File before the call continues.</p>}{latestHandoff && <button type="button" className="nf-secondary" onClick={() => setShowIncidentCorrections((old) => !old)}>{showIncidentCorrections ? "Hide correction fields" : "Add or correct incident details"}</button>}{sourceFieldRows.length > 0 && <details className="nf-history"><summary>{sourceFieldRows.length} original LawRuler form answers</summary><div className="nf-source-grid">{sourceFieldRows.map(([label, value]) => <div className="nf-source-item" key={label}><strong>{label}</strong><p>{value}</p></div>)}</div></details>}</div>}
+      {visible.length > 0 && <div className="nf-questions">{visible.map((field) => <Question key={field.id} field={field} value={values[field.id] || ""} set={(value) => set(field.id, value)} save={(value) => save(field.id, value)} unavailable={values[`${field.id}_unavailable`] === "Not available yet"} onUnavailable={NETFLY_UNAVAILABLE_IDS.has(field.id) ? () => { const id = `${field.id}_unavailable`; const next = values[id] ? "" : "Not available yet"; set(id, next); void save(id, next); } : undefined} active={viewMode === "all" && activeQuestion === field.id} onEnter={() => setActiveQuestion(field.id)} />)}</div>}
+      {stepIndex === 5 && <section className="nf-minimum-review" aria-label="First-conversation essentials"><h3>First-conversation essentials</h3>{firstConversationPending.length ? <><p>Finish what you can now. Anything unavailable stays listed for follow-up.</p><ul>{firstConversationPending.map((item) => <li key={item.id}><button type="button" onClick={() => goToMinimum(item.step, item.id)}>{item.label}<span>{item.detail} →</span></button></li>)}</ul></> : <p className="nf-saved">Contact, wreck and police details, treatment, insurance, and passengers are captured.</p>}</section>}
       {stepIndex === 1 && latestHandoff && <div className="nf-handoff-check"><strong>{checked ? `Checked with client · ${detail.answers.handoff_verification?.status === "matches" ? "details match" : "changes recorded"}` : "Confirm NETFLY's note with the client"}</strong><p className="nf-muted">The first intake stays intact. If the client corrects anything, describe it and record the corrected answer above.</p><textarea className="nf-source-input" value={verificationNote} onChange={(e) => setVerificationNote(e.target.value)} placeholder="What changed? Leave blank if the read-back matches." /><div className="nf-actions"><button className="nf-secondary" disabled={verificationBusy} onClick={() => void verifyHandoff("matches")}>Details match</button><button className="nf-primary" disabled={verificationBusy || verificationNote.trim().length < 5} onClick={() => void verifyHandoff("changes_recorded")}>Record changes</button></div></div>}
       {stepIndex === 2 && <div className="nf-care-prompt"><strong>Care today</strong><p>We recommend getting checked promptly. The ER is an option, or urgent care if the ER is not possible. For severe or worsening symptoms, call 911 or seek emergency care. Your case manager will use the plan you record above.</p></div>}
       {stepIndex === 4 && <NetflyDocuments fileKey={fileKey} canEdit={detail.canReview} />}
@@ -271,11 +276,12 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   </main>;
 }
 
-function Question({ field, value, set, save, active = false, onEnter }: { field: NetflyField; value: string; set: (v: string) => void; save: (v: string) => void; active?: boolean; onEnter?: () => void }) {
+function Question({ field, value, set, save, unavailable = false, onUnavailable, active = false, onEnter }: { field: NetflyField; value: string; set: (v: string) => void; save: (v: string) => void; unavailable?: boolean; onUnavailable?: () => void; active?: boolean; onEnter?: () => void }) {
   const binary = field.kind === "choice" && ["Yes", "No"].every((choice) => field.choices?.includes(choice)) && (field.choices || []).every((choice) => ["Yes", "No", "Not sure"].includes(choice));
   const choose = (choice: string) => { set(choice); save(choice); };
-  return <div className={`nf-question${active ? " nf-question-current" : ""}`} onFocusCapture={onEnter} onPointerDownCapture={onEnter}>{field.kind === "choice" ? <strong className="nf-question-label">{field.label}</strong> : <label htmlFor={`nf-${field.id}`}>{field.label}</label>}{field.hint && <p className="nf-muted">{field.hint}</p>}
+  return <div id={`nf-question-${field.id}`} className={`nf-question${active ? " nf-question-current" : ""}`} onFocusCapture={onEnter} onPointerDownCapture={onEnter}>{field.kind === "choice" ? <strong className="nf-question-label">{field.label}</strong> : <label htmlFor={`nf-${field.id}`}>{field.label}</label>}{field.hint && <p className="nf-muted">{field.hint}</p>}
     {field.kind === "choice" ? <div className={binary ? "nf-choice-group" : "nf-options"} role="group" aria-label={field.label}>{binary ? <><div className="nf-options nf-options-binary">{["Yes", "No"].map((choice) => <button key={choice} type="button" aria-pressed={value === choice} className={value === choice ? "selected" : ""} onClick={() => choose(choice)}>{choice}</button>)}</div>{field.choices?.includes("Not sure") && <button type="button" className={`nf-unknown${value === "Not sure" ? " selected" : ""}`} aria-pressed={value === "Not sure"} onClick={() => choose("Not sure")}>Not sure yet</button>}</> : (field.choices || []).map((choice) => <button key={choice} type="button" aria-pressed={value === choice} className={value === choice ? "selected" : ""} onClick={() => choose(choice)}>{choice}</button>)}</div>
     : field.kind === "long" ? <textarea id={`nf-${field.id}`} value={value} onChange={(e) => set(e.target.value)} onBlur={(e) => void save(e.target.value)} />
-    : <input id={`nf-${field.id}`} type={field.kind === "date" ? "date" : field.kind === "tel" ? "tel" : field.kind === "email" ? "email" : "text"} value={value} onChange={(e) => set(e.target.value)} onBlur={(e) => void save(e.target.value)} />}</div>;
+    : <input id={`nf-${field.id}`} type={field.kind === "date" ? "date" : field.kind === "tel" ? "tel" : field.kind === "email" ? "email" : "text"} value={value} onChange={(e) => set(e.target.value)} onBlur={(e) => void save(e.target.value)} />}
+    {onUnavailable && !value.trim() && <button type="button" className={`nf-unknown${unavailable ? " selected" : ""}`} aria-pressed={unavailable} onClick={onUnavailable}>{unavailable ? "Not available yet — follow up ✓" : "Not available yet"}</button>}</div>;
 }

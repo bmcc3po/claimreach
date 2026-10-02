@@ -88,7 +88,7 @@ const txt = (id: string, label: string, extra: Partial<NetflyField> = {}): Netfl
 export const NETFLY_SECTIONS: NetflySection[] = [
   { id: "care", title: "1. Welcome to the firm", script: "Hi, [first name], this is [your name] with Turnbull, Moak & Pendergrass. Great to meet you! I just wanted to jump on the phone to welcome you to the firm. I'm going to verify a few things, gather some brief additional details, and then we'll talk about next steps.", fields: [
     yn("seen_doctor", "Have you received medical care yet: ER, urgent care, or a doctor?"),
-    txt("first_provider", "Where have you received care so far?", { when: { id: "seen_doctor", is: "Yes" } }),
+    txt("first_provider", "Where were you treated? Facility or provider and city", { when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_provider_address", "First provider address", { when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_provider_phone", "First provider phone", { kind: "tel", when: { id: "seen_doctor", is: "Yes" } }),
     txt("first_visit", "When was your first visit?", { kind: "date", when: { id: "seen_doctor", is: "Yes" } }),
@@ -105,7 +105,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
   { id: "contact", title: "2. Confirm their information", script: "Let me make sure we have everything right on our end. I'll read back your name and spell it. Is that right?", fields: [
     yn("name_confirmed", "Is the name on the signed retainer correct?"),
     txt("confirmed_name", "Client's correct full name", { when: { id: "name_confirmed", is: "No" } }),
-    txt("dob", "Date of birth", { kind: "date" }), txt("mailing_address", "Mailing address"),
+    txt("dob", "Date of birth", { kind: "date" }), txt("mailing_address", "Client address: street, city, state and ZIP"),
     txt("confirmed_email", "Best email", { kind: "email" }), txt("confirmed_phone", "Best number", { kind: "tel" }),
   ] },
   { id: "accident", title: "3. The accident & passengers", script: "I have the city, state and approximate date on your file. Let me confirm the exact details with you.", fields: [
@@ -121,7 +121,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
   ] },
   { id: "police", title: "4. Police & the other driver", fields: [
     { id: "fault", label: "Who was at fault, as the client understands it?", kind: "choice", choices: ["Other driver", "Client", "Unclear", "Not sure"] },
-    yn("police_came", "Did the police come out?"), txt("police_department", "Which department?"), txt("police_report", "Report or case number"),
+    yn("police_came", "Did the police come out?"), txt("police_department", "Reporting agency / police department"), txt("police_report", "Wreck report or case number"),
     yn("ticket", "Did anyone get a ticket?"), txt("ticket_details", "Who got it, and what for?", { when: { id: "ticket", is: "Yes" } }),
     txt("other_driver", "Other driver's name"), txt("other_vehicle", "Their vehicle: year, make, model"),
     yn("company_vehicle", "Was it a work truck or company vehicle?"),
@@ -159,7 +159,8 @@ export const NETFLY_SECTIONS: NetflySection[] = [
 // The welcome call is a short case-manager workup. Keep the original NETFLY
 // questionnaire above as an archive of earlier answers, not the call script.
 export const NETFLY_CASE_MANAGER_FIELDS: NetflyField[] = [
-  { id: "contact_accuracy", label: "Are the name, phone and email we have correct?", kind: "choice", choices: ["Yes", "Needs correction"] },
+  { id: "contact_accuracy", label: "Are the name, phone, email and address we have correct?", kind: "choice", choices: ["Yes", "Needs correction"] },
+  { id: "insurance_info_available", label: "Whose auto insurance information does the client have?", kind: "choice", choices: ["Client's insurance", "Other driver's insurance", "Both", "No details available yet"] },
   { id: "care_today", label: "Can you be evaluated today?", kind: "choice", choices: ["Yes", "No", "Already in care", "Not sure"] },
   { id: "care_today_setting", label: "Where can you be seen today?", kind: "choice", choices: ["Emergency room", "Urgent care", "Other provider", "Not sure"] },
   { id: "care_today_plan", label: "If not today, what is the soonest care plan or obstacle?", kind: "long" },
@@ -171,7 +172,11 @@ export const NETFLY_CASE_MANAGER_FIELDS: NetflyField[] = [
   { id: "treatment_barrier", label: "What is keeping you from getting or continuing care?", kind: "long" },
   { id: "insurance_claim_number", label: "Claim number from any insurer, if known", kind: "text" },
 ];
-export const NETFLY_FIELDS = [...NETFLY_SECTIONS.flatMap((s) => s.fields), ...NETFLY_CASE_MANAGER_FIELDS];
+// An unavailable answer is recorded separately from the real value, so a
+// date, phone or email never gets filled with dummy data.
+export const NETFLY_UNAVAILABLE_IDS = new Set(["confirmed_phone", "confirmed_email", "mailing_address", "accident_date", "police_report", "police_department", "accident_city", "accident_state", "road", "first_visit", "first_provider", "auto_carrier", "other_insurer"]);
+const coreFields = [...NETFLY_SECTIONS.flatMap((s) => s.fields), ...NETFLY_CASE_MANAGER_FIELDS];
+export const NETFLY_FIELDS: NetflyField[] = [...coreFields, ...coreFields.filter((field) => NETFLY_UNAVAILABLE_IDS.has(field.id)).map((field): NetflyField => ({ id: `${field.id}_unavailable`, label: `${field.label} — availability`, kind: "choice", choices: ["Not available yet"] }))];
 export const NETFLY_FIELD_IDS = new Set(NETFLY_FIELDS.map((f) => f.id));
 export function netflyFlags(a: Record<string, string>): string[] {
   const out: string[] = [];

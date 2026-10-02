@@ -126,3 +126,11 @@
 .nf-collect-request label{display:flex;align-items:flex-start;gap:9px;font-weight:700;line-height:1.4}
 .nf-collect-request input{width:20px;height:20px;flex:none;margin:0}.nf-collect-request button{justify-self:start}
 @media(max-width:700px){.nf-collect{padding:13px}.nf-collect-grid{grid-template-columns:1fr}.nf-collect-head{display:grid}.nf-collect-upload{display:grid}.nf-collect-upload select{max-width:none;width:100%}}
+.nf-minimum-review{margin:20px 0;border-top:2px solid #315da4;padding-top:16px}
+.nf-minimum-review h3{font-size:20px;margin:0 0 8px;color:#123866}
+.nf-minimum-review p{line-height:1.5;margin:0 0 12px}
+.nf-minimum-review ul{list-style:none;padding:0;margin:0}
+.nf-minimum-review li{border-top:1px solid #bdcce0}
+.nf-minimum-review button{width:100%;display:flex;justify-content:space-between;gap:16px;text-align:left;border:0;background:transparent;color:#173e70;font:inherit;font-weight:700;padding:14px 0;cursor:pointer}
+.nf-minimum-review button span{font-weight:400;color:#805516}
+@media(max-width:700px){.nf-minimum-review button{display:grid;gap:5px}}
