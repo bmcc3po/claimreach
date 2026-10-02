@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import NetflyDocuments from "./NetflyDocuments";
 import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
 import { DEFAULT_DQ_REASONS } from "@/lib/statuses";
 import "./netfly.css";
@@ -170,6 +171,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       {visible.length > 0 && <div className="nf-questions">{visible.map((field) => <Question key={field.id} field={field} value={values[field.id] || ""} set={(value) => set(field.id, value)} save={(value) => save(field.id, value)} active={viewMode === "all" && activeQuestion === field.id} onEnter={() => setActiveQuestion(field.id)} />)}</div>}
       {stepIndex === 1 && latestHandoff && <div className="nf-handoff-check"><strong>{checked ? `Checked with client · ${detail.answers.handoff_verification?.status === "matches" ? "details match" : "changes recorded"}` : "Confirm NETFLY's note with the client"}</strong><p className="nf-muted">The first intake stays intact. If the client corrects anything, describe it and record the corrected answer above.</p><textarea className="nf-source-input" value={verificationNote} onChange={(e) => setVerificationNote(e.target.value)} placeholder="What changed? Leave blank if the read-back matches." /><div className="nf-actions"><button className="nf-secondary" disabled={verificationBusy} onClick={() => void verifyHandoff("matches")}>Details match</button><button className="nf-primary" disabled={verificationBusy || verificationNote.trim().length < 5} onClick={() => void verifyHandoff("changes_recorded")}>Record changes</button></div></div>}
       {stepIndex === 2 && values.seen_doctor === "No" && <div className="nf-care-prompt"><strong>Say before moving on</strong><p>We highly recommend getting checked at an ER or at least urgent care. Your health comes first. Please let your case manager know where you go.</p></div>}
+      {stepIndex === 4 && <NetflyDocuments fileKey={fileKey} canEdit={detail.canReview} />}
       {stepIndex === 5 && <div className="nf-call-block"><p className="nf-muted">Record completion and outcome separately. An apparent DQ stays on this signed file for supervisor review; it does not cancel representation.</p>
         <div className="nf-closeout"><strong>1. Is the ontake complete?</strong><div className="nf-options nf-options-binary" role="group" aria-label="Ontake completion">{[["complete", "Ontake complete"], ["incomplete", "Ontake not complete"]].map(([value, label]) => <button key={value} type="button" aria-pressed={callClose.completion === value} className={callClose.completion === value ? "selected" : ""} onClick={() => updateCallClose("completion", value as NetflyCallClose["completion"])}>{label}</button>)}</div></div>
         <div className="nf-closeout"><strong>2. What is the call outcome?</strong><div className="nf-options nf-options-binary" role="group" aria-label="NETFLY call outcome">
