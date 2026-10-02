@@ -14,7 +14,7 @@ const VERIFY_STEPS = [
   { title: "2. Accident & police report", script: "I have the accident date and what happened from your first intake. Let me read it back, then confirm the police report or case number for your case manager.", fields: ["accident_date", "incident_story", "police_report"] },
   { title: "3. Vehicle & care", script: "Was your car totaled or unable to be driven? And have you received any medical care yet, including an ambulance, ER, urgent care, or a doctor?", fields: ["totaled", "drivable", "seen_doctor", "ambulance", "first_provider", "treated_injuries"] },
   { title: "4. Treatment location", script: "Would treatment near home or work be easier? Let's capture the area that works for you and anything making treatment difficult.", fields: ["treatment_location", "treatment_area", "treatment_barrier"] },
-  { title: "5. Insurance & pictures", script: "Has any insurance company contacted you? Do you have a claim number and any pictures or video of the accident?", fields: ["insurer_contact", "insurance_notes", "other_claim", "photos"] },
+  { title: "5. Insurance & pictures", script: "Has any insurance company contacted you? Do you have a claim number and any pictures or video of the accident?", fields: ["insurer_contact", "insurance_notes", "insurance_claim_number", "photos"] },
   { title: "6. Outcome & next steps", script: "Before we finish, I'll make sure the case manager knows what is complete and what still needs follow-up. I don't make the final decision about your case.", fields: ["final_notes"] },
   { title: "7. Close & follow up", script: "Thanks so much for your patience. We're going to get your case entered into the system, and we'll call you back within 24 to 48 hours.", fields: [] },
 ] as const;

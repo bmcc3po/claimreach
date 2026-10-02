@@ -11,7 +11,7 @@ for (const field of all) {
   if (field.when) assert.ok(seen.has(field.when.id), `${field.id} depends on a later question`);
   seen.add(field.id);
 }
-for (const required of ["seen_doctor", "first_provider", "dob", "accident_date", "incident_story", "passenger_details", "death", "hospital_days", "police_report", "other_insurer", "damage", "um_uim", "recorded_statement", "days_missed", "other_lawyer_signed", "wants_cancel", "treatment_location", "treatment_area", "treatment_barrier"]) {
+for (const required of ["seen_doctor", "first_provider", "dob", "accident_date", "incident_story", "passenger_details", "death", "hospital_days", "police_report", "other_insurer", "damage", "um_uim", "recorded_statement", "days_missed", "other_lawyer_signed", "wants_cancel", "treatment_location", "treatment_area", "treatment_barrier", "insurance_claim_number"]) {
   assert.ok(NETFLY_FIELD_IDS.has(required), `source question missing: ${required}`);
 }
 assert.deepEqual(netflyFlags({ seen_doctor: "Not sure", fault: "Unclear" }), []);

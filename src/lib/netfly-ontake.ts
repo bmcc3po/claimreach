@@ -126,7 +126,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
     txt("other_driver", "Other driver's name"), txt("other_vehicle", "Their vehicle: year, make, model"),
     yn("company_vehicle", "Was it a work truck or company vehicle?"),
     yn("alcohol_drugs", "Did you see signs of drinking or drug use?"), yn("on_phone", "Did you see them on their phone?"),
-    txt("other_insurer", "Other driver's insurer"), txt("other_policy", "Policy number"), txt("other_claim", "Insurance claim number, if one exists"),
+    txt("other_insurer", "Other driver's insurer"), txt("other_policy", "Policy number"), txt("other_claim", "Other driver's claim number"),
   ] },
   { id: "vehicle", title: "5. Vehicle, pictures & witnesses", fields: [
     txt("own_vehicle", "Your vehicle: year, make, model"), txt("damage", "What would I have seen standing five feet from it?", { kind: "long" }),
@@ -162,6 +162,7 @@ export const NETFLY_CASE_MANAGER_FIELDS: NetflyField[] = [
   { id: "treatment_location", label: "Would treatment near home or work be easier?", kind: "choice", choices: ["Near home", "Near work", "Either", "Needs help deciding"] },
   { id: "treatment_area", label: "What city, ZIP code, or neighborhood would be convenient for treatment?", kind: "text" },
   { id: "treatment_barrier", label: "What is keeping you from getting or continuing care?", kind: "long" },
+  { id: "insurance_claim_number", label: "Claim number from any insurer, if known", kind: "text" },
 ];
 export const NETFLY_FIELDS = [...NETFLY_SECTIONS.flatMap((s) => s.fields), ...NETFLY_CASE_MANAGER_FIELDS];
 export const NETFLY_FIELD_IDS = new Set(NETFLY_FIELDS.map((f) => f.id));
