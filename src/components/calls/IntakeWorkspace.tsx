@@ -58,6 +58,13 @@ export function IxTop({ v }: { v: any }) {
         {!v.ws && <IxHead v={v} />}
         <IxBar v={v} />
       </div>
+      {v.showPresence && <div className={`cc-live-presence${v.liveCall ? " cc-live-active" : ""}`} role="status">
+        <strong>{v.liveCall ? `On phone · ${v.liveCall.by_name}` : "No agent marked on the phone"}</strong>
+        {v.liveCall?.by === v.presenceActorId
+          ? <button type="button" disabled={v.presenceBusy} onClick={() => v.markCall("end")}>I’m off the call</button>
+          : !v.liveCall && <button type="button" disabled={v.presenceBusy} onClick={() => v.markCall("start")}>I’m speaking with this client</button>}
+        {v.presenceError && <span className="cc-live-error">{v.presenceError}</span>}
+      </div>}
       {!v.ws && <>
         <button type="button" className="ix-top-handle" aria-expanded={!collapsed} aria-controls={contentId}
           aria-label={collapsed ? `Show call header for ${v.callerName}` : "Hide call header"}

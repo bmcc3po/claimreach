@@ -252,7 +252,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
                 <a className="cc-lrow" href={r.href || (r.id ? `/app/${r.id}` : "#")}
                   onClick={(ev) => { if (r.newPhone) { ev.preventDefault(); setPhone(r.newPhone); setName(""); setErr(""); setSheet(true); } }}>
                   <span className="cc-lrow-main">
-                    <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}{r.outreach?.badge === "new" && <span className="cc-dial-badge cc-new-badge">New</span>}{r.outreach?.overdue && <span className="cc-dial-badge cc-overdue-badge">Overdue</span>}</span>
+                    <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}{r.onPhoneBy && <span className="cc-dial-badge cc-phone-badge">On phone · {r.onPhoneBy}</span>}{r.outreach?.badge === "new" && <span className="cc-dial-badge cc-new-badge">New</span>}{r.outreach?.overdue && <span className="cc-dial-badge cc-overdue-badge">Overdue</span>}</span>
                     <span className="cc-lrow-s">{[r.name ? fmtPhone(r.phone) : "", r.sub].filter(Boolean).join("  ")}</span>
                     {tab !== "texts" && <span className="cc-lrow-s">{`Calls: ${r.callCount == null ? "unverified" : r.callCount} · Last call: ${r.lastCallAt ? clock(r.lastCallAt) : "none verified"}`}</span>}
                     {r.outreach && <span className={`cc-lrow-s${r.outreach.stage === "review" ? " cc-red" : ""}`}>{r.outreach.reason}{r.outreach.dueAt ? ` · Due ${leadClock(r.outreach.dueAt, r.outreach.zone)} (client time)` : ""}</span>}

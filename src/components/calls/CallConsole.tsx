@@ -19,6 +19,7 @@ import type { SendAttemptHold } from "@/lib/mva-call/replacement";
 import { savedCallView } from "@/lib/mva-call/step-layout";
 import { OPEN_DESK_FILE_EVENT } from "@/lib/mva-call/links";
 import { officeDateUS } from "@/lib/office-clock";
+import { activeCallPresence, type LiveCallPresence } from "@/lib/call-presence";
 
 export interface ConsoleInit {
   leadId: string;
@@ -124,6 +125,45 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
   // Only the JustCall dialer on this screen can say a call is live. Nothing else claims it.
   const [dialState, setDialState] = useState<string>("");
+  const [liveCall, setLiveCall] = useState<LiveCallPresence | null>(null);
+  const [presenceActorId, setPresenceActorId] = useState("");
+  const [presenceBusy, setPresenceBusy] = useState(false);
+  const [presenceError, setPresenceError] = useState("");
+  const liveCallRef = useRef<LiveCallPresence | null>(null);
+  const presenceActorRef = useRef("");
+  useEffect(() => { liveCallRef.current = liveCall; presenceActorRef.current = presenceActorId; }, [liveCall, presenceActorId]);
+  useEffect(() => {
+    if (init.props.campaign !== "INNO MVA") return;
+    let mounted = true;
+    const key = new URLSearchParams({ lead_id: init.leadId, claim_id: init.claimId });
+    async function refresh() {
+      try {
+        const current = liveCallRef.current;
+        const own = !!current && current.by === presenceActorRef.current && !!activeCallPresence(current);
+        const response = own
+          ? await fetch("/api/calls/presence", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: init.leadId, claim_id: init.claimId, action: "refresh" }) })
+          : await fetch(`/api/calls/presence?${key}`, { cache: "no-store" });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Could not check call status.");
+        if (mounted) { presenceActorRef.current = body.actor_id; liveCallRef.current = body.live_call || null; setPresenceActorId(body.actor_id); setLiveCall(body.live_call || null); setPresenceError(""); }
+      } catch (error: any) { if (mounted) { setLiveCall(null); setPresenceError(error.message || "Could not check call status."); } }
+    }
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 20_000);
+    return () => { mounted = false; window.clearInterval(timer); };
+  }, [init.leadId, init.claimId, init.props.campaign]);
+  async function markCall(action: "start" | "end") {
+    setPresenceBusy(true); setPresenceError("");
+    try {
+      const response = await fetch("/api/calls/presence", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_id: init.leadId, claim_id: init.claimId, action }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Call status did not save.");
+      presenceActorRef.current = body.actor_id; liveCallRef.current = body.live_call || null;
+      setPresenceActorId(body.actor_id); setLiveCall(body.live_call || null);
+    } catch (error: any) { setPresenceError(error.message || "Call status did not save."); }
+    finally { setPresenceBusy(false); }
+  }
   const deskTextsOpen = useRef(false);
   const setDeskTab = (t: DeskTab) => { setCommandCollapsed(false); deskTextsOpen.current = t === "texts"; setDeskTabState(t); if (t === "texts") eng.current?.setState({ textUnread: 0 }); };
 
@@ -782,7 +822,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   }, [sideOn, commandCollapsed, phase]);
 
   const preview = previewInfo(engine.state, init, engine.props.esign.templateKeys ?? []);
-  const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [] };
+  const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [],
+    showPresence: init.props.campaign === "INNO MVA", liveCall: activeCallPresence(liveCall, now), presenceActorId, presenceBusy, presenceError, markCall };
   const identity = identityInput();
   const identitySaved = !!identity.ssn && identitySavedDigits.current === identity.ssn && identityMeta.current?.mode === identity.mode;
   view.identityStatus = identityError
