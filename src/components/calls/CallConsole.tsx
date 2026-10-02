@@ -106,7 +106,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [wide, setWide] = useState(false);
   const [touch, setTouch] = useState(false);
   const [utilityOpen, setUtilityOpen] = useState(!!init.openReview);
-  const [commandCollapsed, setCommandCollapsed] = useState(false);
+  const [commandCollapsed, setCommandCollapsed] = useState(!init.openReview && !init.openText);
   const commandPanelId = useId();
   const utilityRef = useRef<HTMLDivElement | null>(null);
   // When the last autosave landed, for "Saved at 2:14 PM" (never shown after a failed write).
@@ -904,7 +904,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const deskRef = useRef<HTMLDivElement | null>(null);
   const wasCommandCollapsed = useRef(commandCollapsed);
   useEffect(() => {
-    if (sideOn && commandCollapsed) deskRef.current?.querySelector<HTMLButtonElement>(".ix-command-toggle")?.focus();
+    if (sideOn && commandCollapsed && !wasCommandCollapsed.current) deskRef.current?.querySelector<HTMLButtonElement>(".ix-command-toggle")?.focus();
     else if (sideOn && wasCommandCollapsed.current) utilityRef.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
     wasCommandCollapsed.current = commandCollapsed;
   }, [sideOn, commandCollapsed]);

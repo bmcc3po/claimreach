@@ -112,11 +112,11 @@ function Retainer({ v }: { v: any }) {
     {!!v.currentAgreement && <div className="cc-agreement-current ch-wide"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
     <div className="ch-q ch-wide">
       <div className="ch-q-h"><span className="ch-q-l">The agreement</span></div>
-      <ul className="ch-steps">
+      {v.signed ? <p className="ch-agreement-status">Client signature confirmed.</p> : <ul className="ch-steps">
         {(v.sendSteps || []).map((st: any, i: number) => <li key={i}><span>{st.label}</span><b className={/done/.test(st.cls) ? "ch-step-done" : undefined}>{stepWord(st.cls)}</b></li>)}
-      </ul>
+      </ul>}
       {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
-      {v.canReplace && <details className="ch-q"><summary className="ch-btn ch-line">Correct this agreement</summary><div className="ch-note">The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</div><AgreementChoice v={v} />{!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="ch-btn ch-send" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
+      {v.canReplace && !v.signed && <details className="ch-q"><summary className="ch-btn ch-line">Correct this agreement</summary><div className="ch-note">The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</div><AgreementChoice v={v} />{!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="ch-btn ch-send" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
     </div>
     <SignatureWaiting v={v} />
     {v.notSigned && (<>
@@ -131,7 +131,7 @@ function Retainer({ v }: { v: any }) {
       </div>
       {v.canResend && <div className="ch-wide"><button type="button" className="ch-btn ch-line" onClick={v.resendLink}>Send the link again</button></div>}
     </>)}
-    {v.signed && <><Say label={SIGNED.label} line={SIGNED.line} cue={SIGNED.cue} /><SignedInlineReview v={v} /></>}
+    {v.signed && <><Say label={SIGNED.label} line={SIGNED.line} /><SignedInlineReview v={v} /></>}
     {/* Identity stays editable after sending; completion still uses the
         signature/review lock supplied by the shared engine. */}
     <>
