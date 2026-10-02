@@ -13,6 +13,7 @@ import ContactInfo from "./ContactInfo";
 import CaseDetails from "./CaseDetails";
 import CaseDocuments from "./CaseDocuments";
 import OwnerFirmDownload from "./calls/OwnerFirmDownload";
+import ImportedPacketHandoff from "./calls/ImportedPacketHandoff";
 import RetainerTab from "./RetainerTab";
 import NotesTab from "./NotesTab";
 import CommsTimeline from "./CommsTimeline";
@@ -156,11 +157,12 @@ function LeadWorkspaceRecord({
           {fileMayExportPdf(fence) && (
             <a className="cl-btn cl-ghost lf-primary-action" href={`/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${activeClaimId || ""}`} target="_blank" rel="noopener noreferrer" title="Download this matter's full intake as a PDF">Export intake PDF</a>
           )}
-          {canTools && ["owner", "admin", "manager", "qa", "agent"].includes(lead.current_user_role || "") && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
+          {canTools && ["owner", "admin", "manager", "qa", "agent"].includes(lead.current_user_role || "") && !(activeClaim?.claim_type === "mva" && lead.source_system === "lawruler") && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
         </div>
         {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
       </div>
       {activeClaimId && activeClaim?.claim_type === "mva" && ["owner", "admin"].includes(lead.current_user_role || "") && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+      {canTools && activeClaimId && activeClaim?.claim_type === "mva" && lead.source_system === "lawruler" && <ImportedPacketHandoff key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
           {claims.map((c) => (

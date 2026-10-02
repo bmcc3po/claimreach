@@ -36,6 +36,7 @@ import { getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySup
 import { signingReleaseGate } from "@/lib/mva-call/replacement";
 import { beginFirmDispatch, finishFirmDispatch } from "@/lib/firm-delivery-dispatch";
 import { sameName, paxParentId } from "@/lib/linked-files";
+import { importedOriginals, verifiedImportedPdfs } from "@/lib/imported-packet";
 
 interface Attachment { filename: string; content: string; kind: string; } // content = base64
 
@@ -188,6 +189,8 @@ export async function deliverLeadToFirm(opts: {
   /** Final agent handoff: copy the active owner and refuse an owner-only firm address. */
   includeOwner?: boolean;
   additionalRecipients?: string[];
+  /** Only the authenticated imported-packet review route may request this path. */
+  importedPacket?: boolean;
 }, deps: DeliverDeps = {}): Promise<DeliverResult> {
   const db = deps.db ?? supabaseAdmin();
   const audit = deps.audit ?? (async (row: any) => { await recordAudit(row); });
@@ -370,11 +373,11 @@ export async function deliverLeadToFirm(opts: {
   }
 
   const wantRetainer = requirePrimary || cfg.attach_retainer !== false;
-  const wantCert = cfg.attach_certificate !== false;
+  const wantCert = !opts.importedPacket && cfg.attach_certificate !== false;
   // MVA delivery follows agent review of a primary-signed matter. Attachment
   // choices control the email contents, never whether the matter is ready.
   const checkPacket = requirePrimary || wantRetainer;
-  const checkCertificate = requirePrimary || wantCert;
+  const checkCertificate = !opts.importedPacket && (requirePrimary || wantCert);
 
   // An active provisional emergency supersedes older primary evidence for
   // every campaign, including campaigns that intentionally omit attachments.
@@ -394,7 +397,26 @@ export async function deliverLeadToFirm(opts: {
   const emergency = await getMatterEmergency(db, lead, res);
   if (!emergency.ok) return refuse(emergency.error);
   if (emergencySupersedes(d, emergency.row)) return refuse("This matter has a newer provisional emergency agreement. Complete the DocuSeal re-sign, or use an explicitly approved provisional delivery workflow before sending it to the firm.");
-  if (requirePrimary && !d) return refuse("No signed agreement is stored for this matter yet. MVA delivery requires its current completed DocuSeal packet and signing certificate.");
+  if (opts.importedPacket) {
+    if (cfg.name !== "INNO MVA" || !requirePrimary || !["signed_approved", "delivered", "retained"].includes(String(claim.status || ""))) return refuse("Imported packet handoff is unavailable for this matter.");
+    if (d) return refuse("This matter has a ClaimReach agreement. Use the normal completed-agreement handoff.");
+    try {
+      const originalRows = await importedOriginals(db, String(lead.firm_id || ""), lead.id, claim.id);
+      const verified = await verifiedImportedPdfs(db, originalRows);
+      const { data: review, error: reviewError } = await db.from("lead_activity").select("meta")
+        .eq("firm_id", lead.firm_id).eq("lead_id", lead.id).eq("meta->>source", "claimreach").eq("meta->>event", "imported_packet_review")
+        .eq("meta->>claim_id", claim.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (reviewError || !review?.meta || Object.keys(review.meta.document_hashes || {}).length !== verified.length
+        || verified.some(({ original }) => review.meta.document_hashes[original.id] !== original.hash)
+        || ["confirmed_intake", "confirmed_signature", "confirmed_hipaa_hitech", "confirmed_criteria"].some((key) => review.meta[key] !== true)) return refuse("The exact imported originals have not passed a recorded signed-packet review.");
+      let number = 0;
+      for (const { original, bytes } of verified) {
+        number++;
+        attachments.push({ filename: `${nameBase}_lawruler_original_${number}_${safeName(original.name)}.pdf`, content: toB64(bytes), kind: original.kind === "retainer" ? "retainer" : "supporting_pdf" });
+      }
+    } catch (e) { return refuse(`The imported packet could not be verified (${errText(e)}).`); }
+  }
+  if (requirePrimary && !d && !opts.importedPacket) return refuse("No signed agreement is stored for this matter yet. MVA delivery requires its current completed DocuSeal packet and signing certificate.");
 
   // The designated agreement (DocuSeal): the newest main agreement bound to
   // THIS matter, including voided/incomplete rows. A sibling's agreement, a voided
@@ -467,7 +489,7 @@ export async function deliverLeadToFirm(opts: {
   // a row counts for the file's sole matter, or, on a file with several,
   // only when its retainer was explicitly associated with this claim
   // (retainers.claim_id, migration 0108).
-  if ((wantRetainer || wantCert) && !selectedDocuSeal) {
+  if ((wantRetainer || wantCert) && !selectedDocuSeal && !opts.importedPacket) {
     const { data: docs, error: sdErr } = await db.from("signable_documents")
       .select("*").eq("lead_id", opts.leadId).order("created_at", { ascending: false }).order("packet_seq");
     if (sdErr) return refuse(`Could not read this file's older signed retainers (${sdErr.message}).`);

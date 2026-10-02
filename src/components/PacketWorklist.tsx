@@ -7,6 +7,8 @@ import { pacificDay, shiftWeek } from "@/lib/packet-worklist";
 import "./packet-worklist.css";
 
 type View = "needs" | "week";
+type ImportedRow = { claimId: string; leadNo: string; name: string; campaign: string; firm: string; signedAt: string | null;
+  deliveredAt: string | null; returnEndsAt: string | null; daysLeft: number | null; cleared: boolean; status: string };
 
 function escapeCsv(value: unknown): string {
   const text = String(value ?? "");
@@ -31,21 +33,31 @@ function formatDate(iso: string | null) {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 }
 
-export default function PacketWorklist({ rows, imported = [], monday, truncated }: { rows: PacketRow[]; imported?: { claimId: string; leadNo: string; name: string; campaign: string }[]; monday: string; truncated: boolean }) {
+export default function PacketWorklist({ rows, imported = [], monday, truncated }: { rows: PacketRow[]; imported?: ImportedRow[]; monday: string; truncated: boolean }) {
   const [view, setView] = useState<View>("needs");
   const [query, setQuery] = useState("");
   const nextMonday = shiftWeek(monday, 1);
   const sunday = new Date(Date.parse(`${nextMonday}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  const importedRows = useMemo<PacketRow[]>(() => imported.map((r) => ({
+    leadId: "", claimId: r.claimId, leadNo: r.leadNo, name: r.name, campaign: r.campaign, firm: r.firm,
+    signedAt: r.signedAt || "", deliveredAt: r.deliveredAt, returnEndsAt: r.returnEndsAt, returnDaysLeft: r.daysLeft,
+    readyToBill: r.cleared, agent: "Imported from LawRuler", archived: false,
+    stage: r.deliveredAt ? "delivered" : r.status === "signed_approved" ? "ready" : "qa",
+    stageLabel: r.deliveredAt ? r.cleared ? "Return window cleared · billing review" : `Firm return window · ${r.daysLeft ?? 7}d left` : r.status === "signed_approved" ? "Reviewed · not sent" : "Verify original · not sent",
+  })), [imported]);
   const pending = useMemo(() => rows.filter((r) => r.stage !== "delivered"), [rows]);
-  const week = useMemo(() => rows.filter((r) => {
-    const day = pacificDay(r.signedAt);
+  const pendingImported = importedRows.filter((r) => r.stage !== "delivered");
+  const week = useMemo(() => [...rows, ...importedRows].filter((r) => {
+    const basis = r.agent === "Imported from LawRuler" ? r.deliveredAt || r.signedAt : r.signedAt;
+    if (!basis) return false;
+    const day = pacificDay(basis);
     return day >= monday && day < nextMonday;
-  }), [rows, monday, nextMonday]);
+  }), [rows, importedRows, monday, nextMonday]);
   const source = view === "needs" ? pending : week;
   const filtered = source.filter((r) => `${r.name} ${r.leadNo} ${r.agent} ${r.campaign} ${r.firm}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const filteredImported = imported.filter((r) => `${r.name} ${r.leadNo} ${r.campaign}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const ready = pending.filter((r) => r.stage === "ready").length;
-  const qa = pending.filter((r) => r.stage === "qa").length;
+  const filteredImported = pendingImported.filter((r) => `${r.name} ${r.leadNo} ${r.campaign}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const ready = [...pending, ...pendingImported].filter((r) => r.stage === "ready").length;
+  const qa = [...pending, ...pendingImported].filter((r) => r.stage === "qa").length;
   const finish = pending.filter((r) => r.stage === "finish").length;
   const held = pending.filter((r) => r.stage === "held").length;
   const deliveredWeek = week.filter((r) => r.stage === "delivered").length;
@@ -55,14 +67,14 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
 
   return <main className="packet-page">
     <div className="packet-heading"><div><p className="packet-kicker">Operator worklist</p><h1>Signed packets</h1><p>Review what needs to reach the firm, then use the weekly count for billing and commission review.</p></div></div>
-    {truncated && <p className="packet-warning" role="alert">This list reached its 3,000-submission read limit. Older packets may be missing; do not use this export as a complete billing ledger.</p>}
+    {truncated && <p className="packet-warning" role="alert">This list reached a record read limit. Older packets may be missing; do not use this export as a complete billing ledger.</p>}
     <div className="packet-tabs" role="tablist" aria-label="Signed packet views">
-      <button type="button" role="tab" aria-selected={view === "needs"} className={view === "needs" ? "active" : ""} onClick={() => setView("needs")}>Needs action <span>{pending.length + imported.length}</span></button>
-      <button type="button" role="tab" aria-selected={view === "week"} className={view === "week" ? "active" : ""} onClick={() => setView("week")}>Signed this week <span>{week.length}</span></button>
+      <button type="button" role="tab" aria-selected={view === "needs"} className={view === "needs" ? "active" : ""} onClick={() => setView("needs")}>Needs action <span>{pending.length + pendingImported.length}</span></button>
+      <button type="button" role="tab" aria-selected={view === "week"} className={view === "week" ? "active" : ""} onClick={() => setView("week")}>This week <span>{week.length}</span></button>
     </div>
-    {view === "needs" ? <div className="packet-metrics needs" aria-label="Packets needing action"><div><strong>{ready}</strong><span>Ready to send</span></div><div><strong>{qa}</strong><span>Awaiting QA</span></div><div><strong>{finish}</strong><span>Finish packet</span></div><div><strong>{held}</strong><span>Held or unverified</span></div></div> : <><div className="packet-week"><Link href={`/packets?week=${shiftWeek(monday, -1)}`} aria-label="Previous week">←</Link><strong>{monday} to {sunday}</strong><Link href={`/packets?week=${shiftWeek(monday, 1)}`} aria-label="Next week">→</Link></div><div className="packet-metrics packet-week-metrics"><div><strong>{week.length}</strong><span>Signed this week</span></div><div><strong>{deliveredWeek}</strong><span>Verified sent to firm</span></div><div><strong>{returnOpen}</strong><span>In 7-day return window</span></div><div><strong>{billingReady}</strong><span>Window cleared · billing review</span></div></div></>}
-    <div className="packet-toolbar"><label>Find a packet<input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, file, agent, case or firm" /></label><button type="button" onClick={() => downloadCsv(filtered, view === "needs" ? "needs-delivery" : `signed-week-${monday}`)}>Export visible CSV</button></div>
-    {view === "needs" && filteredImported.length > 0 && <section className="packet-imported"><h2>LawRuler-reported signed files to verify <span>{filteredImported.length}</span></h2><p>Open each file to verify the original PDF and download available documents. LawRuler's status alone does not prove that the firm received the packet.</p><div className="packet-list" role="list">{filteredImported.map((row) => <Link role="listitem" className="packet-row" key={row.claimId} href={`/leads/${encodeURIComponent(row.leadNo)}?claim=${encodeURIComponent(row.claimId)}`}><span className="packet-person"><strong>{row.name}</strong><small>{row.leadNo} · {row.campaign}</small></span><span className="packet-stage held">Verify signed original</span><span className="packet-arrow" aria-hidden="true">›</span></Link>)}</div></section>}
+    {view === "needs" ? <div className="packet-metrics needs" aria-label="Packets needing action"><div><strong>{ready}</strong><span>Ready to send</span></div><div><strong>{qa}</strong><span>Awaiting QA</span></div><div><strong>{finish}</strong><span>Finish packet</span></div><div><strong>{held}</strong><span>Held or unverified</span></div></div> : <><div className="packet-week"><Link href={`/packets?week=${shiftWeek(monday, -1)}`} aria-label="Previous week">←</Link><strong>{monday} to {sunday}</strong><Link href={`/packets?week=${shiftWeek(monday, 1)}`} aria-label="Next week">→</Link></div><div className="packet-metrics packet-week-metrics"><div><strong>{week.length}</strong><span>Packets this week</span></div><div><strong>{deliveredWeek}</strong><span>Verified sent to firm</span></div><div><strong>{returnOpen}</strong><span>In 7-day return window</span></div><div><strong>{billingReady}</strong><span>Window cleared · billing review</span></div></div></>}
+    <div className="packet-toolbar"><label>Find a packet<input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, file, agent, case or firm" /></label><button type="button" onClick={() => downloadCsv(view === "needs" ? [...filteredImported, ...filtered] : filtered, view === "needs" ? "needs-delivery" : `signed-week-${monday}`)}>Export visible CSV</button></div>
+    {view === "needs" && filteredImported.length > 0 && <section className="packet-imported"><h2>Imported signed packets · not sent <span>{filteredImported.length}</span></h2><p>Open the file, inspect its original PDFs, and use the one firm-send action. A source status alone is not firm delivery.</p><div className="packet-list" role="list">{filteredImported.map((row) => <Link role="listitem" className="packet-row" key={row.claimId} href={`/leads/${encodeURIComponent(row.leadNo)}?claim=${encodeURIComponent(row.claimId || "")}`}><span className="packet-person"><strong>{row.name}</strong><small>{row.leadNo} · {row.campaign}</small></span><span className={`packet-stage ${row.stage}`}>{row.stageLabel}</span><span className="packet-arrow" aria-hidden="true">›</span></Link>)}</div></section>}
     {view === "needs" && filteredImported.length > 0 && <h2 className="packet-subheading">ClaimReach signed packets</h2>}
     <div className="packet-list" role="list">
       {filtered.length ? filtered.map((r) => <Link role="listitem" className="packet-row" href={`/leads/${encodeURIComponent(r.leadNo)}${r.claimId ? `?claim=${encodeURIComponent(r.claimId)}` : ""}`} key={`${r.leadId}:${r.claimId || "lead"}`}>
@@ -73,6 +85,6 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
       </Link>) : <p className="packet-empty">{query ? "No packets match that search." : view === "needs" ? "No signed packets need delivery." : "No signed packets in this week."}</p>}
     </div>
     {view === "week" && <section className="packet-agent-counts"><h2>By intake agent</h2><p>Counts are attributed to the linked intake call when available; otherwise the agreement sender. Confirm commission rules before paying.</p><div className="packet-agent-head"><span>Agent</span><span>Signed</span><span>Sent</span></div>{agentCounts.map((r) => <div className="packet-agent-row" key={r.agent}><strong>{r.agent}</strong><span>{r.signed}</span><span>{r.delivered}</span></div>)}</section>}
-    <p className="packet-scope">This view counts primary INNO MVA DocuSeal packets. NETFLY original uploads and other case types are separate. The seven-day clock starts only from a successful email to the configured firm address. A cleared window is ready for billing review, subject to any returned-file decision.</p>
+    <p className="packet-scope">This view counts primary INNO MVA DocuSeal packets and separately reviewed LawRuler originals. NETFLY original uploads and other case types are separate. The seven-day clock starts only from a successful email to the configured firm address. A cleared window is ready for billing review, subject to any returned-file decision.</p>
   </main>;
 }
