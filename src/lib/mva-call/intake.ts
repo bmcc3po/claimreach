@@ -9,7 +9,7 @@
 // the body questions, file.* and car.* where the answer already lives.
 // ============================================================================
 
-export type SectionId = "incident" | "injury" | "treatment" | "insurance" | "vehicle" | "notes";
+export type SectionId = "incident" | "injury" | "treatment" | "insurance" | "vehicle";
 
 export interface IntakeSection {
   id: SectionId;
@@ -19,12 +19,11 @@ export interface IntakeSection {
 }
 
 export const INTAKE_SECTIONS: IntakeSection[] = [
-  { id: "incident", label: "Incident", questions: ["city", "when", "seat", "fault", "police", "report"] },
+  { id: "incident", label: "Incident", questions: ["notes", "city", "when", "seat", "fault", "police", "report"] },
   { id: "injury", label: "Injury", questions: ["pain", "work"] },
   { id: "treatment", label: "Treatment", questions: ["seen", "providers", "firstAt", "lastAt", "stretch", "willing"] },
   { id: "insurance", label: "Insurance", questions: ["carrier", "exchanged", "coverage", "uim", "check", "rep"] },
   { id: "vehicle", label: "Vehicle", questions: ["people", "car"] },
-  { id: "notes", label: "Notes", questions: ["notes"] },
 ];
 
 /** The order a guided call asks in. "Next unanswered" walks this list. */

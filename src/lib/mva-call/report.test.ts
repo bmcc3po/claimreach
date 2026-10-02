@@ -27,7 +27,8 @@ t("the report reads every question as asked, with its answer", () => {
   assert.equal(q("Were you driving, or were you a passenger?")?.a, "Driver");
   assert.equal(q("Tell me about the pain you're dealing with from this.")?.a, "Neck, Back");
   assert.equal(q("Who was at fault")?.a, "Other driver");
-  assert.ok(r.sections.map((s) => s.title).join("|").startsWith("Client|Incident|Injury|Treatment|Insurance|Vehicle and passengers|Notes"));
+  assert.ok(r.sections.map((s) => s.title).join("|").startsWith("Client|Incident|Injury|Treatment|Insurance|Vehicle and passengers"));
+  assert.equal(r.sections.find((s) => s.id === "incident")?.rows[0].q, "Accident story (agent notes)");
   assert.equal(r.agreement.signed, true);
   assert.equal(r.agreement.hasPdf, true);
 });
@@ -59,7 +60,7 @@ t("an empty file still reads cleanly", () => {
   assert.equal(r.agreement.signed, false);
   assert.equal(r.agreement.line, "No agreement sent yet.");
   const incident = r.sections.find((s) => s.id === "incident")!;
-  assert.ok(incident.rows.every((row) => row.a === "Not answered" || row.q === "Report number"));
+  assert.ok(incident.rows.every((row) => row.a === "Not answered" || row.q === "Report number" || (row.q === "Accident story (agent notes)" && row.a === "None")));
 });
 
 console.log(passed, "passed");

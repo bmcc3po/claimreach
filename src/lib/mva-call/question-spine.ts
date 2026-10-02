@@ -5,7 +5,7 @@ import { INTAKE_SECTIONS, sectionOf } from './intake';
 export const QUESTION_ORDER = INTAKE_SECTIONS.flatMap(section => section.questions);
 export function questionPhase(id: string): 'story' | 'body' | 'car' {
   const section = sectionOf(id);
-  return section === 'incident' ? 'story' : section === 'vehicle' || section === 'notes' ? 'car' : 'body';
+  return section === 'incident' ? 'story' : section === 'vehicle' ? 'car' : 'body';
 }
 
 export const QUESTION_PATHS: Record<string, string[]> = {
