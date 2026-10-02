@@ -58,6 +58,7 @@ t("every engine-owned top-level property in CallView resolves", () => {
   const src = readFileSync(new URL("../../components/calls/CallView.tsx", import.meta.url), "utf8");
   const roots = new Set(Array.from(src.matchAll(/\bv\.([A-Za-z_]\w*)/g)).map((m) => m[1]));
   roots.delete("leadId"); // added by CallConsole, not the engine
+  roots.delete("claimId"); // added by CallConsole for the pinned matter
   roots.delete("previewHref"); // added by CallConsole
   roots.delete("onPreview"); // added by CallConsole
   roots.delete("phoneRows"); roots.delete("callOut"); roots.delete("copyNum"); // added by CallConsole
@@ -202,6 +203,20 @@ t("dispo: signed pre-picks Signed and lists Brett", () => {
   assert.equal(e.state.dispo.pick, "signed");
   assert.equal(v.dispo.notify[0].how, "bmc@innovativeintake.com");
   assert.ok(!v.dispo.cantSave);
+});
+
+t("saved signed disposition can move between answer review and final QA without changing answers", () => {
+  const e = mk({ esign: { status: "signed", configured: true, pax: {} } });
+  e.set('story', 'text', 'Stopped at a red light; struck from behind.');
+  const before = e.persistable().story.text;
+  e.openDispo(); e.setState({ dispo: { ...e.state.dispo, saved: true } });
+  e.renderVals().reviewIntake();
+  assert.equal(e.renderVals().postCallReview, true);
+  assert.equal(e.renderVals().dispoOpen, false);
+  e.renderVals().finishReview();
+  assert.equal(e.renderVals().postCallReview, false);
+  assert.equal(e.renderVals().dispoOpen, true);
+  assert.equal(e.persistable().story.text, before);
 });
 
 t("dispo: DNC saves with no reason", () => {
@@ -490,7 +505,8 @@ t("full intake: a quick note lands in the call notes with the time", () => {
   fiOf(e).quick.save();
   assert.ok(/^\d{1,2}:\d{2} (AM|PM): Witness at the gas station$/.test(e.state.story.text), e.state.story.text);
   assert.equal(fiOf(e).quick.open, false);
-  assert.equal(fiSec(e, "notes").status, "done");
+  assert.equal(fiQ(e, "notes").answered, true);
+  assert.equal(fiSec(e, "incident").questions[0].id, "notes");
 });
 
 t("full intake: a red light shows as a problem, nothing else does", () => {
@@ -507,16 +523,16 @@ t("full intake: a red light shows as a problem, nothing else does", () => {
 const chOf = (e: CallEngine) => fiOf(e).chore;
 const chRow = (e: CallEngine, id: string) => chOf(e).rows.find((r: any) => r.id === id);
 
-t("chorelist: seven numbered sections, plain statuses, same answers", () => {
+t("chorelist: story notes lead six numbered sections, with the same answers", () => {
   const e = mk();
   e.setState({ phase: "story" });
   e.setView("chore");
   const v = e.renderVals();
   assert.equal(v.choreView, true);
   assert.deepEqual(chOf(e).rows.map((r: any) => r.n + ". " + r.label),
-    ["1. Incident", "2. Injury", "3. Treatment", "4. Insurance", "5. Vehicle / Property", "6. Notes", "7. Retainer"]);
-  assert.deepEqual(chOf(e).rows.map((r: any) => r.statusText), ["DO THIS NOW", "NOT STARTED", "NOT STARTED", "NOT STARTED", "NOT STARTED", "NOT STARTED", "NOT STARTED"]);
-  assert.equal(chOf(e).progress.text, "0 sections finished, 7 sections left");
+    ["1. Incident", "2. Injury", "3. Treatment", "4. Insurance", "5. Vehicle / Property", "6. Retainer"]);
+  assert.deepEqual(chOf(e).rows.map((r: any) => r.statusText), ["DO THIS NOW", "NOT STARTED", "NOT STARTED", "NOT STARTED", "NOT STARTED", "NOT STARTED"]);
+  assert.equal(chOf(e).progress.text, "0 sections finished, 6 sections left");
   assert.equal(chOf(e).nextText, "Next section: Incident");
   // Every question is drawn with its answers showing, like paper.
   for (const s of fiOf(e).sections) for (const q of s.questions) assert.equal(q.editing, true, q.id);
@@ -526,7 +542,7 @@ t("chorelist: seven numbered sections, plain statuses, same answers", () => {
   fiTap(e, "seat", "Driver"); fiTap(e, "fault", "Other driver"); fiTap(e, "police", "No");
   assert.equal(e.state.story.fault, "Other driver");
   assert.equal(chRow(e, "incident").statusText, "DONE");
-  assert.equal(chOf(e).progress.text, "1 section finished, 6 sections left");
+  assert.equal(chOf(e).progress.text, "1 section finished, 5 sections left");
   assert.equal(chOf(e).nextText, "Next section: Injury");
   assert.equal(chRow(e, "injury").statusText, "DO THIS NOW");
 });
@@ -555,12 +571,13 @@ t("chorelist: moving on with blanks says NEEDS AN ANSWER; the agreement out is D
 t("chorelist: FINISH INTAKE says what is not finished, then ends the call", () => {
   const e = mk();
   e.setState({ phase: "story" }); e.setView("chore");
-  const last = chOf(e).rows[6];
+  const last = chOf(e).rows[5];
   assert.equal(last.next, null);
   chOf(e).finish.go();
   assert.equal(e.state.dispo.open, false);
   assert.ok(chOf(e).finish.ask);
-  assert.ok(/^Not finished yet: 1\. Incident, .*7\. Retainer\. Press Finish the call again/.test(chOf(e).finish.askText), chOf(e).finish.askText);
+  assert.ok(chOf(e).finish.askText.startsWith("Not finished yet."), chOf(e).finish.askText);
+  assert.equal(chOf(e).finish.missing.at(-1).label, "6. Retainer");
   chOf(e).finish.go();
   assert.equal(e.state.dispo.open, true);
 });

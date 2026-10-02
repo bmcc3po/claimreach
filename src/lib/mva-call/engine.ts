@@ -305,7 +305,7 @@ export class CallEngine {
 
   seed(saved: any) {
     var s = {
-      phase: 'open', free: false, bare: false, view: 'guided', modeMenu: false, visited: {}, sheet: false, reb: null, openRow: null, elapsed: 0, saved: false,
+      phase: 'open', free: false, bare: false, view: 'guided', postCallReview: false, modeMenu: false, visited: {}, sheet: false, reb: null, openRow: null, elapsed: 0, saved: false,
       // Full Intake screen state: the open section, the question being changed,
       // the one "Next" pointed at, the quick note. Never saved with the call.
       fi: { sec: 'incident', seen: { incident: true }, edit: null, flash: null, whenPick: false, quick: false, draft: '', lights: false, carrierQ: '', prov: '', jump: 0, target: null, finishAsk: false, cq: null, note: false },
@@ -1212,7 +1212,7 @@ export class CallEngine {
         optional: !car.justMe && car.people.length === 0, ask: 'Who else was in the car with you?' };
     }
     if (id === 'car') { var cv = [f.vYear !== 'Year' ? f.vYear : '', f.vMake, f.vModel].filter(Boolean).join(' '); return one('Their car', cv, cv); }
-    if (id === 'notes') { var nt = String(st.text || '').trim(); return one('Notes', nt, nt); }
+    if (id === 'notes') { var nt = String(st.text || '').trim(); return one('What happened? — agent notes', nt, nt); }
     return one(id, false, '');
   }
 
@@ -1311,7 +1311,7 @@ export class CallEngine {
       }
       if (id === 'people') return { kind: 'people', justMe: chip('Just them', s.car.justMe, pre.justMe), add: pre.addPerson, people: pre.people };
       if (id === 'car') return { kind: 'car', year: { value: f.vYear, set: (e: any) => this.set('file', 'vYear', e.target.value), options: pre.years }, make: { value: f.vMake || '', set: (e: any) => this.set('file', 'vMake', e.target.value) }, model: { value: f.vModel || '', set: (e: any) => this.set('file', 'vModel', e.target.value) } };
-      if (id === 'notes') return { kind: 'notes', field: { value: st.text || '', set: (e: any) => this.set('story', 'text', e.target.value), ph: 'Anything the PNC said worth keeping' } };
+      if (id === 'notes') return { kind: 'notes', field: { value: st.text || '', set: (e: any) => this.set('story', 'text', e.target.value), ph: 'Jot down the client’s account in your own words. This saves as you go.' } };
       return { kind: 'none' };
     };
 
@@ -2086,8 +2086,11 @@ export class CallEngine {
       voidLabel: s.send.status === 'signed' ? 'Void the signed agreement' : 'Void this agreement',
       voidAgreement: () => { if (this.api.voidAgreement) this.api.voidAgreement(); },
       dispoOpen: !!d.open,
+      postCallReview: !!s.postCallReview,
+      reviewIntake: () => this.setState({ postCallReview: true, dispo: { ...this.state.dispo, open: false } }),
+      finishReview: () => this.setState({ postCallReview: false, dispo: { ...this.state.dispo, open: true } }),
       dispo: {
-        back: () => this.set('dispo', 'open', false),
+        back: () => this.setState({ postCallReview: !!this.state.dispo.saved, dispo: { ...this.state.dispo, open: false } }),
         editing: !d.saved, saved: !!d.saved,
         opts: (() => {
           var shown = (d.list || !dd) ? this.dispos : [dd];

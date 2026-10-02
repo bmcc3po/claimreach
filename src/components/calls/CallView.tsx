@@ -593,7 +593,7 @@ function Dispo({ v }: { v: any }) {
 {!!(v.dispoOpen) && (<>
 <div className="cc-dsp" role="dialog" aria-label="Dispo">
 <div className="cc-dsp-n">
-<button className="cc-dsp-back" onClick={v.dispo.back}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>Call</button>
+<button className="cc-dsp-back" onClick={v.dispo.back}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>{v.dispo.saved ? "Review intake" : "Back to intake"}</button>
 <span className="cc-caller">Dispo</span>
 <span></span>
 </div>
@@ -627,17 +627,18 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-d-ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></div>
 <div className="cc-card-h">Dispo saved</div>
 <div className="cc-cue" style={{margin: "0"}}>{v.dispo.savedNote}</div>
+{v.dispo.isSigned && <button type="button" className="cc-btn cc-go" onClick={v.reviewIntake}>Review intake answers</button>}
 </div>
 <div className="cc-grp">
 {(v.dispo.summary || []).map((r: any, i49: number) => (<Fragment key={i49}><div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">{r.k}</span><span className="cc-done-v">{r.v}</span></div></Fragment>))}
 </div>
-{v.dispo.isSigned && <FinalHandoff leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.dispo.back(); item.go(); } }))} onNext={v.dispo.nextCall} />}
+{v.dispo.isSigned && <FinalHandoff leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} />}
 </>)}
 {!!v.dispo.hasError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.dispo.error}</div></div>}
 </div>
 <div className="cc-bar">
 {!!(v.dispo.editing) && (<><button className="cc-btn cc-go" disabled={!!v.dispo.cantSave} onClick={v.dispo.save}>{v.dispo.saveLabel}</button></>)}
-{!!(v.dispo.saved) && (<><button className="cc-btn cc-soft" style={{flex: "1"}} onClick={v.dispo.edit}>Edit</button><a className="cc-btn cc-soft" style={{flex: "1", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none"}} href={`/leads/${v.leadId}?classic=1`}>Open the file</a>{!v.dispo.isSigned && <button className="cc-btn cc-go" onClick={v.dispo.nextCall}>Next call</button>}</>)}
+{!!(v.dispo.saved) && (<><button className="cc-btn cc-soft" style={{flex: "1"}} onClick={v.dispo.edit}>Edit disposition</button>{v.dispo.isSigned ? <button className="cc-btn cc-soft" style={{flex: "1"}} onClick={v.reviewIntake}>Review intake</button> : <a className="cc-btn cc-soft" style={{flex: "1", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none"}} href={`/leads/${v.leadId}?classic=1`}>Open the file</a>}{!v.dispo.isSigned && <button className="cc-btn cc-go" onClick={v.dispo.nextCall}>Next call</button>}</>)}
 </div>
 </div>
 </>)}

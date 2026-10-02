@@ -19,7 +19,7 @@ export function IntakeChoices({ opts, presentation = "full", multi = false }: { 
   ))}</div>;
 }
 
-export function QuestionControl({ c, v, presentation = "full" }: { c: any; v: any; presentation?: IntakePresentation }) {
+export function QuestionControl({ c, v, presentation = "full", review = false }: { c: any; v: any; presentation?: IntakePresentation; review?: boolean }) {
   const p = presentation === "form" ? "sf" : presentation === "chore" ? "ch" : "fi";
   const input = `${p}-in`, area = `${input} ${p}-area`;
   const choices = (opts: any[], multi = false) => <IntakeChoices opts={opts} multi={multi} presentation={presentation} />;
@@ -30,12 +30,12 @@ export function QuestionControl({ c, v, presentation = "full" }: { c: any; v: an
       {choices(c.opts, c.kind === "multi")}
       {!!c.note && field(c.note.label, <textarea className={area} rows={3} placeholder={c.note.ph} aria-label={c.note.label} value={c.note.value ?? ""} onChange={c.note.set} />)}
       {!!c.other && <input className={input} placeholder={c.other.ph} aria-label={c.other.ph} value={c.other.value ?? ""} onChange={c.other.set} />}
-      {!!c.cue && <div className="iq-cue iq-warning">{c.cue}</div>}
+      {!review && !!c.cue && <div className="iq-cue iq-warning">{c.cue}</div>}
     </>;
     case "visit": return <>
       {choices(c.opts)}
       {field("Or the date", <input className={input} type="date" aria-label="Visit date" min={c.date.min || undefined} max={c.date.max || undefined} value={c.date.value ?? ""} onChange={c.date.set} />)}
-      {!!c.date.why && <div className="iq-cue iq-warning">{c.date.why}</div>}
+      {!review && !!c.date.why && <div className="iq-cue iq-warning">{c.date.why}</div>}
     </>;
     case "crashdate": return <>
       {choices(c.opts)}
@@ -43,7 +43,7 @@ export function QuestionControl({ c, v, presentation = "full" }: { c: any; v: an
     </>;
     case "where": return <WhereField value={c.where.value} agreement={v.agreement} onChange={c.where.set} onDone={c.where.done} />;
     case "text": return <input className={input} placeholder={c.field.ph} aria-label={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />;
-    case "notes": return <textarea className={area} rows={4} placeholder={c.field.ph} aria-label="Notes" value={c.field.value ?? ""} onChange={c.field.set} />;
+    case "notes": return <textarea className={area} rows={7} placeholder={review ? "No story notes captured" : c.field.ph} aria-label="Accident story notes" value={c.field.value ?? ""} onChange={c.field.set} />;
     case "providers": return <>
       {!!c.items.length && <div className="fi-chips">{c.items.map((it: any, i: number) => <span key={i} className="fi-tag">{it.label}<button type="button" aria-label={`Remove ${it.label}`} onClick={it.remove}>×</button></span>)}</div>}
       <div className="fi-addrow"><input className={input} placeholder={c.draft.ph} aria-label={c.draft.ph} value={c.draft.value} onChange={c.draft.set} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); c.add(); } }} /><button type="button" className="fi-add" onClick={c.add}>Add</button></div>
@@ -57,16 +57,16 @@ export function QuestionControl({ c, v, presentation = "full" }: { c: any; v: an
         {field("Age", choices(choicesFromClasses(person.ages)))}
         {field("Hurt", choices(choicesFromClasses(person.hurts)))}
         {person.ownFile && <>
-          <div className="iq-cue">Every passenger is their own file and their own agreement.</div>
+          {!review && <div className="iq-cue">Every passenger is their own file and their own agreement.</div>}
           {!person.minor && <>
             {field("Their own cell", <input className={input} type="tel" inputMode="tel" aria-label={`${person.first}'s cell`} value={person.cell.value ?? ""} onChange={person.cell.set} />)}
             {field("Their own email", <input className={input} type="email" inputMode="email" aria-label={`${person.first}'s email`} value={person.email.value ?? ""} onChange={person.email.set} />)}
           </>}
-          {person.minor && <div className="iq-cue">The parent or guardian signs. The child goes on the HIPAA pages.</div>}
+          {person.minor && !review && <div className="iq-cue">The parent or guardian signs. The child goes on the HIPAA pages.</div>}
           {field("Wants representation", choices(choicesFromClasses(person.wantsReps)))}
           {field("Willing to treat", choices(choicesFromClasses(person.willings)))}
           {field("Home address", choices(choicesFromClasses(person.sameAddrs)))}
-          {person.noRep && <div className="iq-cue iq-warning">Nothing sends unless that changes.</div>}
+          {person.noRep && !review && <div className="iq-cue iq-warning">Nothing sends unless that changes.</div>}
         </>}
       </div>)}
     </>;
@@ -79,28 +79,28 @@ export function QuestionControl({ c, v, presentation = "full" }: { c: any; v: an
   }
 }
 
-export function QuestionDetails({ q, v, presentation = "full" }: { q: any; v: any; presentation?: IntakePresentation }) {
+export function QuestionDetails({ q, v, presentation = "full", review = false }: { q: any; v: any; presentation?: IntakePresentation; review?: boolean }) {
   return <>
-    {!!q.ask && <div className="iq-ask">{q.ask}</div>}
-    {!!q.cue && <div className="iq-cue">{q.cue}</div>}
-    <QuestionControl c={q.c} v={v} presentation={presentation} />
-    {!!q.soreness && <div className="iq-cue iq-warning">{q.soreness}</div>}
+    {!review && !!q.ask && <div className="iq-ask">{q.ask}</div>}
+    {!review && !!q.cue && <div className="iq-cue">{q.cue}</div>}
+    <QuestionControl c={q.c} v={v} presentation={presentation} review={review} />
+    {!review && !!q.soreness && <div className="iq-cue iq-warning">{q.soreness}</div>}
     {q.rep && <div className="iq-rep">
-      <div className="iq-cue">{v.rep.head}. Do not go looking for it. The PNC has to be the one who says they&apos;re unhappy.</div>
+      {!review && <div className="iq-cue">{v.rep.head}. Do not go looking for it. The PNC has to be the one who says they&apos;re unhappy.</div>}
       <IntakeChoices opts={choicesFromClasses(v.rep.unhappy)} presentation={presentation} />
       {v.rep.isUnhappy && <IntakeChoices opts={choicesFromClasses(v.rep.kind)} presentation={presentation} />}
-      {v.rep.fender && <div className="iq-cue">The firm charges these back. Close it warm and let it go.</div>}
+      {v.rep.fender && !review && <div className="iq-cue">The firm charges these back. Close it warm and let it go.</div>}
     </div>}
   </>;
 }
 
-export default function IntakeQuestion({ q, v, presentation = "full" }: { q: any; v: any; presentation?: IntakePresentation }) {
+export default function IntakeQuestion({ q, v, presentation = "full", review = false }: { q: any; v: any; presentation?: IntakePresentation; review?: boolean }) {
   const prefix = presentation === "form" ? "sf" : presentation === "chore" ? "ch" : "fi";
   const collapsed = presentation === "full" && !q.editing;
   const label = <>{q.label}{q.optional && <span className="iq-optional"> (optional)</span>}</>;
   const attrs = { id: `${prefix}-q-${q.id}`, "data-question-id": q.id, "data-question-required": !q.optional, "data-question-tone": q.tone || "", onFocusCapture: q.focus, onPointerDownCapture: q.focus };
   if (collapsed) return <button type="button" {...attrs} className={`fi-q fi-q-row${q.flash ? " fi-flash" : ""}`} onClick={q.edit} aria-expanded={false}><span className="fi-q-k">{label}</span><span className={`fi-q-v${q.tone ? " fi-tone-" + q.tone : ""}`}>{q.value}</span></button>;
-  const details = <QuestionDetails q={q} v={v} presentation={presentation} />;
+  const details = <QuestionDetails q={q} v={v} presentation={presentation} review={review} />;
   if (presentation === "form") return <div {...attrs} className={`sf-row iq-question${!q.answered && !q.optional ? " sf-need" : ""}`}><div className="sf-l">{label}{q.tone === "bad" && <span className="iq-warning">Problem</span>}</div><div className="sf-c">{details}</div></div>;
   return <div {...attrs} className={presentation === "chore" ? `ch-q iq-question${q.c.kind === "people" || q.c.kind === "notes" || q.rep ? " ch-wide" : ""}` : `fi-q fi-q-edit iq-question${q.flash ? " fi-flash" : ""}`}>
     <div className={presentation === "chore" ? "ch-q-h" : "fi-q-h"}><span className={presentation === "chore" ? "ch-q-l" : "fi-q-k"}>{label}</span>{q.tone === "bad" && <span className="iq-warning">Problem</span>}{presentation === "full" && q.answered && <button type="button" className="fi-q-done" onClick={q.edit}>Done</button>}</div>

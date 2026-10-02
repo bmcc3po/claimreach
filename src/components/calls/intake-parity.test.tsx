@@ -9,6 +9,7 @@ import { sectionOf } from '../../lib/mva-call/intake';
 import { INTAKE_STEPS, savedCallView } from '../../lib/mva-call/step-layout';
 import { openLine } from './scripts';
 import CallView from './CallView';
+import PostCallReview from './PostCallReview';
 
 // tsx honors the app's preserve JSX setting with the classic transform.
 (globalThis as any).React = React;
@@ -45,6 +46,16 @@ const text = (html: string) => html.replace(/<button[^>]*class="fi-q-done"[^>]*>
 const fields = (html: string) => Array.from(html.matchAll(/<(?:input|textarea|select)\b[^>]*>/g)).map(m => m[0]).filter(tag => /aria-label=/.test(tag)).map(tag => ({ label: tag.match(/aria-label="([^"]*)"/)?.[1], type: tag.match(/type="([^"]*)"/)?.[1] || 'text', value: tag.match(/value="([^"]*)"/)?.[1] || '' }));
 let passed = 0;
 function test(name: string, body: () => void) { body(); console.log('ok', name); passed++; }
+
+test('post-call review shows the same editable answers and missing links without call scripts', () => {
+  const e = make(); e.setView('chore');
+  e.renderVals().fi.sections[0].questions[0].c.field.set({ target: { value: 'Rear ended at a stoplight.' } });
+  const v = { ...e.renderVals(), leadNo: 'SYN-1', identityStatus: '', f: e.renderVals().f };
+  const html = renderToStaticMarkup(<PostCallReview v={v} />);
+  assert.ok(html.includes('Rear ended at a stoplight.') && html.includes('Accident story notes'));
+  assert.ok(html.includes('Show missing answers') && html.includes('Continue to final QA &amp; send'));
+  assert.ok(!html.includes('Say it with') && !html.includes('Tell me what happened.') && !html.includes('Stay on the line'));
+});
 
 test('every applicable question renders the same text, options, child fields and requirements in all actual call views', () => {
   const e = make();
@@ -119,7 +130,7 @@ test('changing view preserves the exact optional or branch question and all save
 });
 
 test('Guided Next visits optional controls in the same order as the other views and never advances an invisible File step in Simple form', () => {
-  const e = make(); e.setView('guided'); e.go('story'); e.setFi({ cq: 'city' });
+  const e = make(); e.setView('guided'); e.go('story'); e.setFi({ cq: 'notes' });
   const visited: string[] = [];
   for (let i = 0; i < 40 && e.state.phase !== 'money'; i++) { const v = e.renderVals(); assert.ok(v.fi.guided); visited.push(v.fi.guided.q.id); v.next.go(); }
   const live = QUESTION_ORDER.filter(id => e.fiInfo(id).applies);

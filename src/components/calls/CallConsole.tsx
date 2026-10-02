@@ -6,6 +6,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CallView from "./CallView";
+import PostCallReview from "./PostCallReview";
 import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
 import CaseSummary from "./CaseSummary";
 import { WsHelper } from "./IntakeWorkspace";
@@ -118,6 +119,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const identitySavedDigits = useRef("");
   const [identityBusy, setIdentityBusy] = useState(false);
   const [identityError, setIdentityError] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState("");
   const [, setIdentityRevision] = useState(0);
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileMessage, setReconcileMessage] = useState("");
@@ -487,7 +490,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           });
         }).then((r) => {
           const note = r.email_error ? `Saved. The email did not send: ${r.email_error}` : "";
-          e().setState({ saved: true, dispo: { ...e().state.dispo, saving: false, saved: true, error: "", serverNote: note } });
+          e().setState({ saved: true, postCallReview: d.pick === "signed", dispo: { ...e().state.dispo, open: d.pick !== "signed", saving: false, saved: true, error: "", serverNote: note } });
         }).catch((err) => e().setState({ dispo: { ...e().state.dispo, saving: false, error: err.message } }));
       },
       home() { void saveIdentityNow().then((secure) => secure && flushSave()).then((ok) => { if (ok) router.push("/dashboard"); }); },
@@ -584,6 +587,17 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   // gets the caller on the left and the tools panel on the right, an iPad
   // sideways gets the caller and the helper, a phone gets one column.
   const v = engine.renderVals();
+  v.reviewBusy = reviewBusy;
+  v.reviewError = reviewError;
+  v.returnToFinalQa = async () => {
+    if (reviewBusy) return;
+    setReviewBusy(true); setReviewError("");
+    try {
+      if (!(await saveIdentityNow()) || !(await flushSave())) throw new Error("Your latest answers have not saved. Stay here and retry.");
+      engine.setState({ postCallReview: false, dispo: { ...engine.state.dispo, open: true } });
+    } catch (error: any) { setReviewError(error?.message || "Could not save your review."); }
+    finally { setReviewBusy(false); }
+  };
   const mainHold = engine.props.esign.sendAttempt;
   const paxHolds = engine.props.esign.paxSendAttempts || {};
   v.reconcileActions = init.props.agentRole === "owner" && v.sendHold ? [
@@ -990,6 +1004,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
     focusLines={focusLines} phones={phones} leadId={init.leadId} claimId={init.claimId} onDialState={setDialState}
     story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />;
+  if (view.postCallReview && !view.dispoOpen) return <PostCallReview v={view} />;
   return (
     <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ws === "ipad" ? " cc-ipad-on" : ""}${sideOn && commandCollapsed ? " cc-command-collapsed" : ""}`}>
       <CallView v={view} />

@@ -127,7 +127,7 @@ export function caseReport(lead: any, answers: any, esign?: any, opts: { include
     rows: s.questions.flatMap((q: any) => {
       const answer = q.id === "when" && q.answered && iso ? `${longDay(iso)}${ago != null ? `, ${ago === 0 ? "today" : ago === 1 ? "1 day ago" : ago + " days ago"}` : ""}` : String(q.value);
       const row: ReportRow = { q: q.id === "fault" ? "Who was at fault" : (q.ask || q.label), a: q.answered ? answer : "Not answered", missing: !q.answered && !q.optional, flag: q.tone === "bad" };
-      if (q.id === "notes") return q.answered ? [{ q: "Notes", a: String(st.text || "").trim() }] : [{ q: "Notes", a: "None" }];
+      if (q.id === "notes") return q.answered ? [{ q: "Accident story (agent notes)", a: String(st.text || "").trim() }] : [{ q: "Accident story (agent notes)", a: "None" }];
       if (q.id === "people" && (car.people || []).length) {
         return [row, ...car.people.map((p: any, i: number) => ({ q: `Passenger ${i + 1}`, a: [p.name || "No name yet", p.age, p.hurt === "Yes" ? "hurt" : p.hurt === "No" ? "not hurt" : ""].filter(Boolean).join(", ") }))];
       }
