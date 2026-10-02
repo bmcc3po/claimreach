@@ -121,6 +121,9 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [, setIdentityRevision] = useState(0);
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileMessage, setReconcileMessage] = useState("");
+  const [signatureCheckBusy, setSignatureCheckBusy] = useState(false);
+  const [signatureCheckMessage, setSignatureCheckMessage] = useState("");
+  const manualSignatureCheck = useRef(false);
   const [deskTab, setDeskTabState] = useState<DeskTab>(init.openReview ? "file" : init.openText ? "texts" : "file");
   const [focusLines, setFocusLines] = useState<{ key: string; n: number } | null>(null);
   // Only the JustCall dialer on this screen can say a call is live. Nothing else claims it.
@@ -181,7 +184,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     engine.setState({});
   }
 
-  async function refreshSigningStatus() {
+  async function refreshSigningStatus(manual = false): Promise<{ status: string | null; error: string | null }> {
+    if (manualSignatureCheck.current && !manual) return { status: null, error: null };
     const generation = ++sendStatusGeneration.current;
     const requestedAgreement = agreementId.current;
     try {
@@ -193,12 +197,12 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         || (data.send_attempt !== null && !isHold(data.send_attempt))
         || !data.pax_send_attempts || typeof data.pax_send_attempts !== "object" || Array.isArray(data.pax_send_attempts)
         || !Object.values(data.pax_send_attempts).every(isHold)) throw new Error("Agreement send status could not be verified.");
-      if (generation !== sendStatusGeneration.current || sendInFlight.current) return;
+      if (generation !== sendStatusGeneration.current || sendInFlight.current) return { status: null, error: null };
       const hold = data.send_attempt as SendAttemptHold | null;
       const pax = data.pax_send_attempts as Record<string, SendAttemptHold>;
       updateSendGate(hold || Object.keys(pax).length ? "held" : "clear", hold, pax);
       const engine = eng.current;
-      if (!engine) return;
+      if (!engine) return { status: null, error: "The intake is no longer open. Reopen the file to check its signature." };
       if (!emergencyResign.current) {
         setNeedsResign(!!data.emergency?.needs_resign);
         setEmergencyStatus(data.emergency?.status || "");
@@ -211,8 +215,28 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         if (data.complete && engine.state.file.agreement !== "done") engine.setState({ file: { ...engine.state.file, agreement: "done" } });
       }
       if (data.pax && Object.keys(data.pax).length) engine.setState({ file: { ...engine.state.file, pax: { ...engine.state.file.pax, ...data.pax } } });
-    } catch {
+      return { status: data.status || null, error: null };
+    } catch (error: any) {
       if (generation === sendStatusGeneration.current) updateSendGate("error");
+      return { status: null, error: error?.message || "Could not check the signature. Try again." };
+    }
+  }
+
+  async function checkSignatureNow() {
+    if (manualSignatureCheck.current) return;
+    manualSignatureCheck.current = true;
+    setSignatureCheckBusy(true);
+    setSignatureCheckMessage("");
+    try {
+      const result = await refreshSigningStatus(true);
+      setSignatureCheckMessage(result.error || (result.status === "signed"
+        ? "Signature confirmed. Open the client-signed PDF and approve it below."
+        : result.status === "opened" || result.status === "sent"
+          ? "The signing service has not confirmed a signature yet. Stay with the client and check again."
+          : "The agreement is not ready for signed-file review. Check its status and history before continuing."));
+    } finally {
+      manualSignatureCheck.current = false;
+      setSignatureCheckBusy(false);
     }
   }
 
@@ -570,6 +594,9 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   ] : [];
   v.reconcileBusy = reconcileBusy;
   v.reconcileMessage = reconcileMessage;
+  v.checkSignature = checkSignatureNow;
+  v.signatureCheckBusy = signatureCheckBusy;
+  v.signatureCheckMessage = signatureCheckMessage;
   const ws: "desk" | "ipad" | null = isDesk && !touch ? "desk" : wide ? "ipad" : null;
   const deskOn = ws === "desk";
   const sideOn = !!ws;

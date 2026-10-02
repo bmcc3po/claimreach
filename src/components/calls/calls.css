@@ -1625,6 +1625,21 @@ div.ws-row{cursor:default}
 .signed-inline{display:grid;gap:10px;padding:18px;border:2px solid #24558c;border-radius:16px;background:#f7fbff;color:#10253f;margin:10px 0 18px;box-shadow:0 6px 18px rgba(18,55,98,.1)}
 .ch .signed-inline{grid-column:1/-1}
 .signed-inline-title{font-size:20px;line-height:1.2;color:#113c70}
+.signature-waiting{display:grid;gap:10px;padding:18px;border:2px solid #285a93;border-radius:14px;background:#f5f9ff;color:#142b47;margin:12px 0;grid-column:1/-1}
+.signature-waiting strong{font-size:21px;line-height:1.25;color:#123c70}
+.signature-waiting p{margin:0;font-size:15px;line-height:1.45}
+.signature-waiting button{width:100%;padding:14px 16px;border:0;border-radius:10px;background:#184f8a;color:#fff;font-size:16px;font-weight:750;cursor:pointer}
+.signature-waiting button:disabled{opacity:.65;cursor:wait}
+.signature-waiting small{font-size:13px;line-height:1.4;color:#415b78}
+.signature-waiting .signature-waiting-result{font-weight:700;color:#163f72}
+.signed-inline-flow{display:grid;gap:6px;margin:2px 0 4px;padding:0;list-style:none}
+.signed-inline-flow li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 11px;border:1px solid #cddae8;border-radius:10px;background:#fff;font-size:14px;line-height:1.35}
+.signed-inline-flow li.is-next{border:2px solid #17477f;background:#e8f2ff;font-weight:700}
+.signed-inline-flow li.is-done{background:#eef8f1;border-color:#a9d7b8}
+.signed-inline-flow li b{display:grid;place-items:center;width:25px;height:25px;border-radius:50%;background:#17477f;color:#fff}
+.signed-inline-flow li.is-done b{background:#118044}
+.signed-inline-flow li em{font-size:12px;font-style:normal;font-weight:750;white-space:nowrap;color:#315d8c}
+.signed-inline-flow li.is-done em{color:#118044}
 .signed-inline p{margin:0;line-height:1.4}
 .signed-inline-preview,.signed-inline-approve{display:block;width:100%;padding:14px 16px;border-radius:11px;text-align:center;font-size:16px;font-weight:750;text-decoration:none}
 .signed-inline-preview{background:#17477f;color:#fff!important}

@@ -62,12 +62,20 @@ export default function SignedInlineReview({ v }: { v: any }) {
   };
   const previewUrl = agreement?.status === "signed" ? agreement.client_signed_url : agreement?.status === "completed" ? agreement.signed_url : null;
   const reviewable = agreement?.status === "signed" && !agreement.replacement_requested_at;
+  const reviewed = !!agreement?.agent_reviewed_at;
+  const officeComplete = agreement?.status === "completed";
   return <section className="signed-inline" aria-label="Review signed retainer">
-    <strong className="signed-inline-title">Review the signed retainer now</strong>
+    <strong className="signed-inline-title">Signed. Follow these steps in order.</strong>
+    <ol className="signed-inline-flow">
+      <li className={reviewed ? "is-done" : "is-next"}><b>1</b><span>Open the client-signed PDF and approve the signature.</span><em>{reviewed ? "Done" : "Do now"}</em></li>
+      <li className={officeComplete ? "is-done" : reviewed ? "is-next" : ""}><b>2</b><span>Get DOB and SSN, or record SSN refusal; complete the office step below.</span><em>{officeComplete ? "Done" : reviewed ? "Next" : "After review"}</em></li>
+      <li className={officeComplete ? "is-next" : ""}><b>3</b><span>Finish the call and record its outcome.</span><em>{officeComplete ? "Next" : "Then"}</em></li>
+      <li><b>4</b><span>Review your file in QA, confirm it is firm-ready, and send the full packet.</span><em>Last</em></li>
+    </ol>
     {loading ? <p role="status">Loading signed copy…</p> : !agreement ? <p role="status">No signed agreement is on this file. Refresh before continuing.</p> : <>
       {previewUrl ? <a className="signed-inline-preview" href={previewUrl} target="_blank" rel="noopener noreferrer" onClick={() => setOpened(agreement.id)}>{agreement.status === "signed" ? "Open client-signed retainer ↗" : "Open completed signed retainer ↗"}</a> : <p role="status">{["voided", "cancelled"].includes(agreement.status) ? "The latest agreement was voided. Correct it before continuing." : ["sent", "opened"].includes(agreement.status) ? "The latest agreement is awaiting the client's signature." : "The signed PDF is still being retrieved. Refresh before you approve or finish this file."}</p>}
       {reviewable && !agreement.agent_reviewed_at && <button type="button" className="signed-inline-approve" disabled={!previewUrl || opened !== agreement.id || busy} onClick={review}>{busy ? "Saving review…" : "Approve signed copy"}</button>}
-      {agreement.agent_reviewed_at && <p className="signed-inline-done" role="status">✓ Signed copy reviewed. Continue the office step below.</p>}
+      {agreement.agent_reviewed_at && <p className="signed-inline-done" role="status">✓ Signed copy reviewed. Continue with step 2 below.</p>}
       {agreement.replacement_requested_at && <p className="signed-inline-error" role="status">Correction requested. Firm delivery is held for supervisor review.</p>}
       {!agreement.can_void && !agreement.replacement_requested_at && v.canReplace && <button type="button" className="signed-inline-secondary" onClick={() => v.jumpTo("send")}>Report error / correct agreement here</button>}
     </>}
