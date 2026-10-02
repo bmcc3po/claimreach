@@ -98,6 +98,12 @@ function LeadWorkspaceRecord({
   const [tab, setTab] = useState("Overview");
   const [editMode, setEditMode] = useState(false);
   const activeClaim = claims.find((c) => c.id === activeClaimId);
+  // A LawRuler-sourced lead can later be signed inside ClaimReach. Route by
+  // this matter's signing workflow, not the lead's original source label.
+  const importedSignedPacket = activeClaim?.claim_type === "mva" && lead.source_system === "lawruler" &&
+    (activeClaim.status === "external_signed_review" ||
+      (activeClaim.status === "signed_approved" && activity.some((row: any) =>
+        row.meta?.event === "imported_packet_review" && row.meta?.claim_id === activeClaimId)));
   const appCall = activeClaimId ? appCalls[activeClaimId] ?? defaultAppCall : null;
   const matterNotes = notes.filter((n: any) => !n.claim_id || n.claim_id === activeClaimId);
   const matterAudit = audit.filter((a: any) => {
@@ -158,15 +164,15 @@ function LeadWorkspaceRecord({
           {fileMayExportPdf(fence) && (
             <a className="cl-btn cl-ghost lf-primary-action" href={`/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${activeClaimId || ""}`} target="_blank" rel="noopener noreferrer" title="Download this matter's full intake as a PDF">Export intake PDF</a>
           )}
-          {canTools && ["owner", "admin", "manager", "qa", "agent"].includes(lead.current_user_role || "") && !(activeClaim?.claim_type === "mva" && lead.source_system === "lawruler") && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
+          {canTools && ["owner", "admin", "manager", "qa", "agent"].includes(lead.current_user_role || "") && !importedSignedPacket && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
         </div>
         {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
       </div>
       {activeClaimId && activeClaim?.claim_type === "mva" && ["owner", "admin"].includes(lead.current_user_role || "") && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
-      {activeClaimId && activeClaim?.claim_type === "mva" && lead.current_user_role === "owner" && lead.source_system !== "lawruler" &&
+      {activeClaimId && activeClaim?.claim_type === "mva" && lead.current_user_role === "owner" && !importedSignedPacket &&
         ["signed_grievous", "signed_qa", "signed_wip", "signed_approved", "delivered"].includes(activeClaim.status) &&
         <ExternalFirmDelivery key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
-      {canTools && activeClaimId && activeClaim?.claim_type === "mva" && lead.source_system === "lawruler" && <ImportedPacketHandoff key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+      {canTools && activeClaimId && importedSignedPacket && <ImportedPacketHandoff key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
           {claims.map((c) => (
@@ -564,4 +570,5 @@ function AppAnswers({ call, onShowOld }: {
     </div>
   );
 }
+
 
