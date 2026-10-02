@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { authUser } from "@/lib/auth-user";
 import { supabaseServer } from "@/lib/supabase-server";
 import { mondayOf, packetWorklist, pacificDay } from "@/lib/packet-worklist";
+import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
 import PacketWorklist from "@/components/PacketWorklist";
 
 async function inChunks(sb: any, table: string, columns: string, column: string, ids: string[]) {
@@ -55,10 +56,29 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   const firmIds = [...new Set([...leads.map((lead) => lead.firm_id), ...claims.map((claim) => claim.firm_id)].filter(Boolean))] as string[];
   const firms = await inChunks(sb, "firms", "id,name", "id", firmIds);
   const rows = packetWorklist({ submissions: submissions || [], leads, claims, calls, users, firms, deliveries, campaigns, ownerEmail });
-  const externalResult = await sb.from("claims").select("id,lead_id,campaign,status").eq("status", "external_signed_review").limit(500);
-  if (externalResult.error) throw new Error(`Could not load imported signed files: ${externalResult.error.message}`);
-  const externalLeads = await inChunks(sb, "leads", "id,lead_no,claimant_name", "id", [...new Set((externalResult.data || []).map((claim: any) => claim.lead_id))]);
-  const externalNames = new Map(externalLeads.map((lead: any) => [lead.id, lead]));
-  const imported = (externalResult.data || []).map((claim: any) => ({ claimId: claim.id, leadNo: externalNames.get(claim.lead_id)?.lead_no || claim.lead_id, name: externalNames.get(claim.lead_id)?.claimant_name || "Name missing", campaign: claim.campaign || "INNO MVA" }));
-  return <PacketWorklist rows={rows} imported={imported} monday={monday} truncated={(submissions || []).length === 3000} />;
+  const sourceResult = await sb.from("lead_activity").select("lead_id,meta,created_at")
+    .eq("meta->>source", "lawruler").eq("meta->>event", "original_document").limit(1000);
+  if (sourceResult.error) throw new Error(`Could not load imported signed originals: ${sourceResult.error.message}`);
+  const importedClaimIds = [...new Set((sourceResult.data || []).map((item: any) => item.meta?.claim_id).filter(Boolean))] as string[];
+  const importedClaims = await inChunks(sb, "claims", "id,lead_id,firm_id,campaign,campaign_id,status,claim_type", "id", importedClaimIds);
+  const importedLeads = await inChunks(sb, "leads", "id,lead_no,claimant_name", "id", [...new Set(importedClaims.map((claim: any) => claim.lead_id))]);
+  const importedFirms = await inChunks(sb, "firms", "id,name", "id", [...new Set(importedClaims.map((claim: any) => claim.firm_id).filter(Boolean))]);
+  const importedCampaigns = await inChunks(sb, "campaigns", "id,firm_email", "id", [...new Set(importedClaims.map((claim: any) => claim.campaign_id).filter(Boolean))]);
+  const importedDeliveries = await inChunks(sb, "firm_deliveries", "claim_id,ok,to_email,cc_email,created_at", "claim_id", importedClaimIds);
+  const importedNames = new Map(importedLeads.map((lead: any) => [lead.id, lead]));
+  const importedFirmNames = new Map(importedFirms.map((firm: any) => [firm.id, firm.name]));
+  const importedRecipients = new Map(importedCampaigns.map((campaign: any) => [campaign.id, campaign.firm_email]));
+  const imported = importedClaims.filter((claim: any) => claim.claim_type === "mva" && claim.campaign === "INNO MVA" &&
+    !rows.some((row) => row.claimId === claim.id)).map((claim: any) => {
+    const originals = (sourceResult.data || []).filter((item: any) => item.meta?.claim_id === claim.id);
+    const signedAt = originals.map((item: any) => item.meta?.source_signed_at).filter(Boolean).sort()[0] || null;
+    const deliveredAt = confirmedFirmDeliveryAt(importedDeliveries.filter((delivery: any) => delivery.claim_id === claim.id), importedRecipients.get(claim.campaign_id), ownerEmail);
+    const window = returnWindow(deliveredAt);
+    return { claimId: claim.id, leadNo: importedNames.get(claim.lead_id)?.lead_no || claim.lead_id,
+      name: importedNames.get(claim.lead_id)?.claimant_name || "Name missing", campaign: claim.campaign,
+      firm: importedFirmNames.get(claim.firm_id) || "Firm not mapped",
+      signedAt, deliveredAt, returnEndsAt: window?.endsAt || null, daysLeft: window?.daysLeft ?? null,
+      cleared: window?.cleared || false, status: claim.status };
+  });
+  return <PacketWorklist rows={rows} imported={imported} monday={monday} truncated={(submissions || []).length === 3000 || (sourceResult.data || []).length === 1000} />;
 }

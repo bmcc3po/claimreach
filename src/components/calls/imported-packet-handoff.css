@@ -1,0 +1,14 @@
+.imported-handoff{max-width:860px;margin:16px auto 24px;padding:24px;background:#fff;border:2px solid #25518d;border-radius:14px;color:#102743;box-shadow:0 5px 22px #10274314}
+.imported-handoff h2{margin:0 0 10px;font-size:23px;line-height:1.2;color:#12376f}
+.imported-handoff p{line-height:1.55}
+.imported-handoff-docs{display:grid;gap:8px;margin:18px 0}
+.imported-handoff-docs a{display:block;padding:12px 14px;background:#eaf1fb;border:1px solid #aebfd8;border-radius:8px;color:#153a72;font-weight:700;text-decoration:none;overflow-wrap:anywhere}
+.imported-handoff-docs a:hover{background:#dfeafb}
+.imported-handoff-check{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid #ccd7e6;font-weight:600}
+.imported-handoff-check input{width:19px;height:19px;flex:none;margin-top:1px}
+.imported-handoff-recipient{margin:17px 0;padding:12px 14px;border-radius:8px;background:#edf4fc;line-height:1.65}
+.imported-handoff-extra{display:grid;gap:7px;font-weight:600}
+.imported-handoff-extra input{padding:11px;border:1px solid #acbdd4;border-radius:7px;font:inherit}
+.imported-handoff-send{width:100%;margin-top:18px;padding:15px;border:0;border-radius:8px;background:#184b91;color:#fff;font-weight:800;font-size:16px;cursor:pointer}
+.imported-handoff-send:disabled{opacity:.55;cursor:not-allowed}
+.imported-handoff-error{color:#9a2525;font-weight:700}
