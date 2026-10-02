@@ -38,7 +38,7 @@ function docFixture() {
   } };
   const admin = { storage: { from: (bucket: string) => {
     assert.equal(bucket, 'signed-docs');
-    return { createSignedUrl: async (requested: string, seconds: number) => {
+    return { download: async (requested: string) => ({ data: new Blob([`%PDF-${requested}`], { type: 'application/pdf' }), error: null }), createSignedUrl: async (requested: string, seconds: number) => {
       calls.signedUrls++; assert.equal(seconds, 300);
       return { data: { signedUrl: `https://storage.example.invalid/${requested}` }, error: null };
     } };
@@ -48,6 +48,7 @@ function docFixture() {
     '@/lib/supabase-server': { supabaseServer: async () => sb, supabaseAdmin: () => { calls.admin++; return admin; } },
     '@/lib/mva-call/server': { requireStaff: async () => staff },
     '@/lib/signed-docs': { SIGNED_BUCKET: 'signed-docs', SIGNED_URL_SECONDS: 300 },
+    '@/lib/mva-call/esign': { expectedPacketPaths: (_firm: string, _submission: string, count: number) => Array.from({ length: count }, (_, i) => `firm/signed-${i + 1}.pdf`) },
     '@/lib/mva-call/client-signed': { ensureClientSignedSnapshot: async () => { calls.snapshot++; return snapshot; } },
   });
   return { route, calls, setStaff: (value: any) => { staff = value; }, setRow: (value: any) => { row = value; }, setSnapshot: (value: any) => { snapshot = value; } };
@@ -108,7 +109,7 @@ function reviewFixture() {
   });
   await test('client-signed PDF route serves a short-lived private preliminary copy, separate from final', async () => {
     const f = docFixture();
-    const preliminary = await f.route.GET(null, { params: Promise.resolve({ id: 'agreement', kind: 'client' }) });
+    const preliminary = await f.route.GET(new Request('https://app.example.invalid/api/calls/esign/doc/agreement/client'), { params: Promise.resolve({ id: 'agreement', kind: 'client' }) });
     assert.equal(preliminary.status, 302); assert.match(preliminary.location, /client-ds-123\.pdf$/);
     assert.equal(preliminary.headers?.['Cache-Control'], 'no-store'); assert.equal(f.calls.snapshot, 1);
     const final = await f.route.GET(null, { params: Promise.resolve({ id: 'agreement', kind: 'signed' }) });
@@ -118,6 +119,13 @@ function reviewFixture() {
     const f = docFixture(); f.setSnapshot({ ok: false, error: 'Preview unavailable' });
     const response = await f.route.GET(null, { params: Promise.resolve({ id: 'agreement', kind: 'client' }) });
     assert.equal(response.status, 503); assert.equal(f.calls.signedUrls, 0);
+  });
+  await test('manual download returns the available PDF without claiming firm delivery', async () => {
+    const f = docFixture();
+    const response = await f.route.GET(new Request('https://app.example.invalid/api/calls/esign/doc/agreement/client?download=1'), { params: Promise.resolve({ id: 'agreement', kind: 'client' }) });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('Content-Disposition') || '', /attachment/);
+    assert.equal(f.calls.signedUrls, 0);
   });
   await test('review route denies unauthenticated access before admin writes', async () => {
     const f = reviewFixture(); f.setStaff(null);

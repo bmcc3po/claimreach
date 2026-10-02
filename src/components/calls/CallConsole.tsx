@@ -121,6 +121,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [identityError, setIdentityError] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
+  const [passengerLinks, setPassengerLinks] = useState<Record<string, string>>({});
   const [, setIdentityRevision] = useState(0);
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileMessage, setReconcileMessage] = useState("");
@@ -410,9 +411,10 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           via: s.send.via, phone: minor ? s.send.phone : (p.cell || ""), email: minor ? s.send.email : (p.email || ""),
           city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
           pax_key: p.pid || String(i), pax_minor: minor, pax_recipient_confirmed: !!p.shareOk,
+          pax_dob: p.dob || null,
           pax_same_addr: p.sameAddr === "Same address",
           nv_variant: choice.key === "NV_FLAT" ? "flat" : "tiered", nv_reason: choice.requiresReason ? s.send.nvReason : undefined,
-        }).then(() => { sendInFlight.current = false; updateSendGate("clear"); mark("sent"); }).catch((err) => {
+        }).then((result) => { sendInFlight.current = false; updateSendGate("clear"); if (result?.lead_id) setPassengerLinks((old) => ({ ...old, [p.pid || String(i)]: result.lead_id })); mark("sent"); }).catch((err) => {
           sendInFlight.current = false;
           handleSendFailure(err, i, p.pid || String(i));
           const pax = { ...e().state.file.pax }; delete pax[i];
@@ -863,7 +865,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   }, [sideOn, commandCollapsed, phase]);
 
   const preview = previewInfo(engine.state, init, engine.props.esign.templateKeys ?? []);
-  const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [],
+  const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, canOverrideDownload: ["owner", "admin"].includes(init.props.agentRole || ""), previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [], passengerLinks,
     showPresence: init.props.campaign === "INNO MVA", liveCall: activeCallPresence(liveCall, now), presenceActorId, presenceBusy, presenceError, markCall };
   const identity = identityInput();
   const identitySaved = !!identity.ssn && identitySavedDigits.current === identity.ssn && identityMeta.current?.mode === identity.mode;

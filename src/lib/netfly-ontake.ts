@@ -159,8 +159,15 @@ export const NETFLY_SECTIONS: NetflySection[] = [
 // The welcome call is a short case-manager workup. Keep the original NETFLY
 // questionnaire above as an archive of earlier answers, not the call script.
 export const NETFLY_CASE_MANAGER_FIELDS: NetflyField[] = [
+  { id: "contact_accuracy", label: "Are the name, phone and email we have correct?", kind: "choice", choices: ["Yes", "Needs correction"] },
+  { id: "care_today", label: "Can you be evaluated today?", kind: "choice", choices: ["Yes", "No", "Already in care", "Not sure"] },
+  { id: "care_today_setting", label: "Where can you be seen today?", kind: "choice", choices: ["Emergency room", "Urgent care", "Other provider", "Not sure"] },
+  { id: "care_today_plan", label: "If not today, what is the soonest care plan or obstacle?", kind: "long" },
   { id: "treatment_location", label: "Would treatment near home or work be easier?", kind: "choice", choices: ["Near home", "Near work", "Either", "Needs help deciding"] },
   { id: "treatment_area", label: "What city, ZIP code, or neighborhood would be convenient for treatment?", kind: "text" },
+  { id: "treatment_time", label: "What time of day works best?", kind: "choice", choices: ["Morning", "Afternoon", "Either"] },
+  { id: "treatment_days", label: "Which days work best?", kind: "choice", choices: ["Weekdays", "Weekends", "Either"] },
+  { id: "treatment_availability", label: "Any specific days or times to avoid or request?", kind: "text" },
   { id: "treatment_barrier", label: "What is keeping you from getting or continuing care?", kind: "long" },
   { id: "insurance_claim_number", label: "Claim number from any insurer, if known", kind: "text" },
 ];

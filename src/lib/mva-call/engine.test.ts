@@ -59,6 +59,7 @@ t("every engine-owned top-level property in CallView resolves", () => {
   const roots = new Set(Array.from(src.matchAll(/\bv\.([A-Za-z_]\w*)/g)).map((m) => m[1]));
   roots.delete("leadId"); // added by CallConsole, not the engine
   roots.delete("claimId"); // added by CallConsole for the pinned matter
+  roots.delete("canOverrideDownload"); roots.delete("passengerLinks"); // authenticated role and linked passenger files from CallConsole
   roots.delete("previewHref"); // added by CallConsole
   roots.delete("onPreview"); // added by CallConsole
   roots.delete("phoneRows"); roots.delete("callOut"); roots.delete("copyNum"); // added by CallConsole

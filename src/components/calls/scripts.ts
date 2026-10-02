@@ -41,5 +41,6 @@ export const closeLines = (_first: string, _firm: string) => [
   "If the other driver's insurance company calls you, you don't have to talk to them. Give them our number and we'll take it from there.",
   "Stay off social media about the accident. No posts, no pictures, nothing about how you're feeling.",
   "The most important piece of this is getting yourself healthy. You focus on your treatment; the firm will focus on everything else.",
+  "If you need to call us about any issues, our number is 404-348-4511.",
 ];
 export const CLOSE_CUE = "If asked: Your case manager will reach out in the next 24–48 business hours.";

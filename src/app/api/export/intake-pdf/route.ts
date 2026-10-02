@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const bytes = await buildIntakePdf(bundle);
     const safeName = String(bundle.lead.claimant_name || bundle.lead.lead_no || "intake").replace(/[^a-z0-9]+/gi, "_");
     return new Response(new Blob([bytes as unknown as BlobPart], { type: "application/pdf" }), {
-      headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${safeName}_intake.pdf"` },
+      headers: { "Content-Type": "application/pdf", "Content-Disposition": `${p.get("preview") === "1" ? "inline" : "attachment"}; filename="${safeName}_intake.pdf"`, "Cache-Control": "no-store" },
     });
   } catch (e: any) {
     return NextResponse.json({ error: `The intake PDF could not be built: ${e?.message || "read failed"}. Nothing was downloaded.` }, { status: 500 });

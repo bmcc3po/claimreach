@@ -1,0 +1,13 @@
+.owner-firm-download{margin:20px 0 0;padding:16px;border:2px solid #164d85;border-radius:10px;background:#f3f8fe;color:#102b4b;text-align:left}
+.owner-firm-download-compact{margin:0 0 14px;padding:10px}
+.owner-firm-download-open{width:100%;min-height:48px;padding:10px 14px;border:0;border-radius:8px;background:#164d85;color:#fff;font:inherit;font-weight:800;cursor:pointer}
+.owner-firm-download-panel{padding:12px 4px 2px}
+.owner-firm-download-panel h3{margin:0 0 8px;font-size:18px}
+.owner-firm-download-panel p{margin:6px 0;font-size:14px;line-height:1.4}
+.owner-firm-download-warnings{margin:12px 0;padding:12px 12px 12px 30px;border-left:4px solid #bb5628;background:#fff1e9;font-size:14px;line-height:1.45}
+.owner-firm-download-warnings li+li{margin-top:5px}
+.owner-firm-download-confirm{display:flex;gap:9px;align-items:flex-start;padding:10px 0;font-size:14px;font-weight:700;line-height:1.3}
+.owner-firm-download-confirm input{width:19px;height:19px;flex:none;margin:0}
+.owner-firm-download-links{display:grid;gap:8px;margin-top:8px}
+.owner-firm-download-links a{display:block;padding:12px;border-radius:7px;background:#fff;border:1px solid #9cb5d0;color:#0f4275;font-size:14px;font-weight:750;text-decoration:none}
+.owner-firm-download-links a.disabled{opacity:.45;pointer-events:none}

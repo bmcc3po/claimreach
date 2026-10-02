@@ -19,7 +19,7 @@ type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
 // across the top split the list by where files are in the pipe; everything
 // else that narrows it sits behind Filters. Board and Timeline stay one click
 // away.
-export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, statuses = [], dqReasons = [], variant = "staff" }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[]; variant?: "staff" | "firm" }) {
+export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, ownerWorklist = false, statuses = [], dqReasons = [], variant = "staff" }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; ownerWorklist?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[]; variant?: "staff" | "firm" }) {
   const isFirm = variant === "firm";
   const showBulk = canBulk && !isFirm;
   const statusList = statuses.length ? statuses : DEFAULT_STATUSES;
@@ -283,6 +283,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
             </div>
           )}
           {!isFirm && <a className="cl-btn" href={exportHref} title={active.length ? "Every standard field for the matters these filters show (the tab and search box are not applied)" : "Every standard field, the same names every webhook uses"}><Icon name="download" size={16} />Export</a>}
+          {ownerWorklist && <Link className="cl-btn" href="/packets">Signed packets waiting to send</Link>}
           {!isFirm && <a className="cl-btn" href="/api/export?format=neos" title="The older NEOS column layout">NEOS export</a>}
           {!isFirm && addPath && addPath !== basePath && <Link className="cl-btn" href={addPath}><Icon name="userplus" size={16} />Add lead</Link>}
         </div>

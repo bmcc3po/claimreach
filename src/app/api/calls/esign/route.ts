@@ -60,11 +60,14 @@ async function send(req: NextRequest) {
   const paxKey = paxIndex == null ? null
     : (/^[A-Za-z0-9_-]{1,40}$/.test(String(b?.pax_key || "")) ? String(b.pax_key) : String(paxIndex));
   const paxMinor = b?.pax_minor === true;
+  const paxDobInput = paxIndex != null ? String(b?.pax_dob || "").trim() : "";
+  const paxDob = paxDobInput ? parseDob(paxDobInput) : null;
   // The signing date is the Pacific office day, independent of the agent's
   // device clock. The browser's preview uses this same calendar rule.
   const today = officeDateUS();
   const doi = TODAY_RE.test(String(b?.doi || "")) ? String(b.doi) : null;
   if (!leadId || !signer) return NextResponse.json({ error: "Add the signer's full name." }, { status: 400 });
+  if (paxDobInput && !paxDob) return NextResponse.json({ error: "Check the passenger's date of birth, or leave it blank and finish it on their own file." }, { status: 400 });
   if (via === "Email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Add the PNC's email to send it by email." }, { status: 400 });
 
   const context = await resolveSigningMatter(sb, leadId, { claimId: b?.claim_id || null, callId: b?.call_id || null });
@@ -139,7 +142,7 @@ async function send(req: NextRequest) {
   let fileLeadId = lead.id;
   if (paxIndex != null) {
     const ext = `${lead.id}:pax:${paxKey}`;
-    const { data: existing, error: existingError } = await sb.from("leads").select("id, claimant_name, archived_at").eq("firm_id", lead.firm_id).eq("external_id", ext).maybeSingle();
+    const { data: existing, error: existingError } = await sb.from("leads").select("id, claimant_name, dob, archived_at").eq("firm_id", lead.firm_id).eq("external_id", ext).maybeSingle();
     if (existingError) return NextResponse.json({ error: `Could not read the passenger's file: ${existingError.message}` }, { status: 500 });
     if (existing?.archived_at) return NextResponse.json({ error: "The passenger's existing file is archived. Restore it before sending another agreement." }, { status: 409 });
     if (existing && !sameName(existing.claimant_name, injured)) {
@@ -147,7 +150,14 @@ async function send(req: NextRequest) {
       // person's agreement to another person's file (Astra round 6).
       return NextResponse.json({ error: `That passenger spot already belongs to ${existing.claimant_name || "someone else"}. Remove this passenger on the Car step and add them again.` }, { status: 409 });
     }
-    if (existing) fileLeadId = existing.id;
+    if (existing) {
+      if (paxDob && existing.dob && existing.dob !== paxDob) return NextResponse.json({ error: "The passenger file has a different date of birth. Open their file and verify identity before sending another agreement." }, { status: 409 });
+      if (paxDob && !existing.dob) {
+        const { error: dobError } = await sb.from("leads").update({ dob: paxDob }).eq("id", existing.id).eq("firm_id", lead.firm_id);
+        if (dobError) return NextResponse.json({ error: "The passenger's date of birth did not save. Open their file before sending." }, { status: 503 });
+      }
+      fileLeadId = existing.id;
+    }
     else {
       const parts = injured.split(/\s+/).filter(Boolean);
       const { data: leadNo } = await sb.rpc("mint_lead_no", { p_firm: lead.firm_id });
@@ -156,7 +166,7 @@ async function send(req: NextRequest) {
         claimant_name: injured, first_name: parts[0] || null, last_name: parts.slice(1).join(" ") || null,
         // The passenger's file carries THEIR number (the one this send goes
         // to), never the caller's — a minor's file keeps the guardian's.
-        phone: phone || null, email: email || null, external_id: ext, source_key: "passenger", origin: "call",
+        phone: phone || null, email: email || null, dob: paxDob, external_id: ext, source_key: "passenger", origin: "call",
         created_by: me.id, assigned_agent: me.id, intake_agent_id: me.id,
         caller_is_self: signer === injured, caller_first: signer.split(/\s+/)[0] || null,
       };
@@ -234,7 +244,7 @@ async function send(req: NextRequest) {
   // unreadable saved identity must not silently disappear from a new packet.
   const capturedIdentity = await readIdentityForSigning(admin, { leadId: fileLeadId, claimId: signClaimId, firmId: target.lead.firm_id });
   if (!capturedIdentity.ok) return NextResponse.json({ error: capturedIdentity.error }, { status: capturedIdentity.status });
-  const capturedDob = paxIndex == null && b?.dob ? parseDob(b.dob) : parseDob(target.lead.dob);
+  const capturedDob = paxIndex == null && b?.dob ? parseDob(b.dob) : paxDob || parseDob(target.lead.dob);
   if (paxIndex == null && b?.dob && !capturedDob) return NextResponse.json({ error: "Check the date of birth before sending, or leave it for the office step." }, { status: 400 });
   const capturedSsn = capturedIdentity.identity ? ssnForForm(capturedIdentity.identity.ssn) : null;
   const intakeValues = { ...(capturedDob ? { "Patient DOB": dobForForm(capturedDob) } : {}), ...(capturedSsn ? { "Patient SSN": capturedSsn.printed } : {}) };
