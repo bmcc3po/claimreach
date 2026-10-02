@@ -21,6 +21,8 @@ import { SsnRefusal } from "./SsnRefusal";
 import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
+import ContractActions from "./ContractActions";
+import PassengerAgreement from "./PassengerAgreement";
 
 const isOn = (cls: string) => / on(\s|$)/.test(" " + String(cls || "") + " ");
 
@@ -116,7 +118,6 @@ function Retainer({ v }: { v: any }) {
         {(v.sendSteps || []).map((st: any, i: number) => <li key={i}><span>{st.label}</span><b className={/done/.test(st.cls) ? "ch-step-done" : undefined}>{stepWord(st.cls)}</b></li>)}
       </ul>}
       {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
-      {v.canReplace && !v.signed && <details className="ch-q"><summary className="ch-btn ch-line">Correct this agreement</summary><div className="ch-note">The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</div><AgreementChoice v={v} />{!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="ch-btn ch-send" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
     </div>
     <SignatureWaiting v={v} />
     {v.notSigned && (<>
@@ -129,7 +130,6 @@ function Retainer({ v }: { v: any }) {
         <div className="ch-say-k">No dead air</div>
         {NO_DEAD_AIR.map((t, i) => <div key={i} className="ch-say-t ch-say-sm">{t}</div>)}
       </div>
-      {v.canResend && <div className="ch-wide"><button type="button" className="ch-btn ch-line" onClick={v.resendLink}>Send the link again</button></div>}
     </>)}
     {v.signed && <><Say label={SIGNED.label} line={SIGNED.line} /><SignedInlineReview v={v} /></>}
     {/* Identity stays editable after sending; completion still uses the
@@ -147,10 +147,10 @@ function Retainer({ v }: { v: any }) {
         {v.agreementParked && <button type="button" className="ch-btn ch-line" onClick={v.reopenAgreement}>Reopen and finish it now</button>}
         {v.hasFileError && <div className="ch-note ch-note-bad">{v.fileError}</div>}
       </div>
-      <div className="ch-q ch-wide">
+      {!v.clientContact && <div className="ch-q ch-wide">
         <div className="ch-q-h"><span className="ch-q-l">Home address</span></div>
         <PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} />
-      </div>
+      </div>}
       <div className="ch-q">
         <div className="ch-q-h"><span className="ch-q-l">Driver&apos;s license</span></div>
         <input className="ch-in" aria-label="Driver's license number" value={v.f.dl.value ?? ""} onChange={v.f.dl.set} />
@@ -161,28 +161,7 @@ function Retainer({ v }: { v: any }) {
         <Field label="Phone"><input className="ch-in" type="tel" value={v.f.ecPhone.value ?? ""} onChange={v.f.ecPhone.set} /></Field>
         <Opts opts={fromCls(v.ecRel)} />
       </div>
-      {v.signed && (v.paxSend || []).map((p: any, i: number) => (
-        <div key={i} className="ch-q ch-wide">
-          <div className="ch-q-h"><span className="ch-q-l">{p.title}</span></div>
-          <div className="ch-note">{p.note}</div>
-          {p.needCell && p.ready && (<>
-            <Field label="Their own cell"><input className="ch-in" type="tel" inputMode="tel" value={p.cell.value ?? ""} onChange={p.cell.set} /></Field>
-            <div className="ch-note ch-note-bad">Add their own cell first. It never texts to the caller&apos;s phone.</div>
-          </>)}
-          {p.needEmail && p.ready && (<>
-            <Field label="Their own email"><input className="ch-in" type="email" inputMode="email" autoComplete="off" value={p.email.value ?? ""} onChange={p.email.set} /></Field>
-            <div className="ch-note ch-note-bad">Add their own email first. It never goes to the caller&apos;s email.</div>
-          </>)}
-          {p.shared && p.ready && (
-            <label className="ch-note" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input type="checkbox" checked={!!p.shareOk} onChange={p.confirmShare} />
-              That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passenger confirmed they share it.
-            </label>
-          )}
-          {p.ready && <button type="button" className="ch-btn" onClick={p.send}>{p.button}</button>}
-          {p.live && <ul className="ch-steps">{(p.steps || []).map((st: any, j: number) => <li key={j}><span>{st.label}</span><b className={/done/.test(st.cls) ? "ch-step-done" : undefined}>{stepWord(st.cls)}</b></li>)}</ul>}
-        </div>
-      ))}
+      {(v.paxSend || []).map((p: any) => <PassengerAgreement key={p.id} p={p} v={v} />)}
       {v.signed && (
         <div className="ch-say ch-say-2 ch-wide">
           <div className="ch-say-k">Before you hang up, say</div>
@@ -242,7 +221,7 @@ export default function ChoreList({ v, sectionActions = true, scrollSections = t
                 {!!gap.sub && <div className="ch-note">{gap.sub}</div>}
               </div>
             )}
-            {r.id === "retainer" ? <Retainer v={v} /> : secQs(r.id).map((q: any) => <IntakeQuestion key={q.id} q={q} v={v} presentation="chore" />)}
+            {r.id === "retainer" ? <>{v.clientContact}<ContractActions key={v.agreementId || v.agreementStatus} v={v} /><Retainer v={v} /></> : secQs(r.id).map((q: any) => <IntakeQuestion key={q.id} q={q} v={v} presentation="chore" />)}
           </div>
 
           {sectionActions && <div className="ch-actions">

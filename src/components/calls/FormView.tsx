@@ -15,6 +15,8 @@ import { SsnRefusal } from "./SsnRefusal";
 import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
+import ContractActions from "./ContractActions";
+import PassengerAgreement from "./PassengerAgreement";
 
 // Plain radio buttons (checkboxes for a pick-several question), like the
 // firm report: no pills (Brett, Sep 28).
@@ -92,7 +94,6 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
           })}</div>
           {v.hasSendError && <div className="sf-bad">{v.sendError}</div>}
           <div className="sf-addrow" style={{ marginTop: 8 }}>
-            {v.canResend && <button type="button" className="sf-btn sf-line" onClick={v.resendLink}>Send the link again</button>}
           </div>
         </>))}
       </div>
@@ -110,7 +111,7 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
         {v.agreementParked && <button type="button" className="sf-btn sf-line" style={{ marginTop: 6 }} onClick={v.reopenAgreement}>Reopen and finish it now</button>}
         {v.hasFileError && <div className="sf-bad">{v.fileError}</div>}
       </>))}
-      {row("Home address", <PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} />, !v.f.addr.value)}
+      {!v.clientContact && row("Home address", <PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} />, !v.f.addr.value)}
       {row("Driver's license", <input className="sf-in" aria-label="Driver's license number" value={v.f.dl.value ?? ""} onChange={v.f.dl.set} />)}
       {row("Emergency contact", (<>
         <div className="sf-addrow">
@@ -119,25 +120,7 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
         </div>
         <div style={{ marginTop: 6 }}>{chips(v.ecRel)}</div>
       </>))}
-      {v.signed && (v.paxSend || []).map((p: any, i: number) => row(p.title, (<>
-        <div>{p.note}</div>
-        {p.needCell && p.ready && (<>
-          <input className="sf-in" type="tel" inputMode="tel" placeholder="Their own cell" aria-label="Passenger's own cell" value={p.cell.value ?? ""} onChange={p.cell.set} />
-          <div className="sf-bad">Add their own cell first. It never texts to the caller&apos;s phone.</div>
-        </>)}
-        {p.needEmail && p.ready && (<>
-          <input className="sf-in" type="email" inputMode="email" autoComplete="off" placeholder="Their own email" aria-label="Passenger's own email" value={p.email.value ?? ""} onChange={p.email.set} />
-          <div className="sf-bad">Add their own email first. It never goes to the caller&apos;s email.</div>
-        </>)}
-        {p.shared && p.ready && (
-          <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
-            <input type="checkbox" checked={!!p.shareOk} onChange={p.confirmShare} />
-            That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passenger confirmed they share it.
-          </label>
-        )}
-        {p.ready && <button type="button" className="sf-btn" style={{ marginTop: 6 }} onClick={p.send}>{p.button}</button>}
-        {p.live && <div className="sf-steps" style={{ marginTop: 6 }}>{(p.steps || []).map((st: any, j: number) => <span key={j} className={/done/.test(st.cls) ? "sf-st sf-st-on" : "sf-st"}>{st.label}</span>)}</div>}
-      </>), false, `passenger-${i}`))}
+      {(v.paxSend || []).map((p: any) => <PassengerAgreement key={p.id} p={p} v={v} />)}
     </div>
     {finish && (
       <div className="sf-rows" style={{ marginTop: 12 }}>
@@ -168,13 +151,12 @@ export default function FormView({ v }: { v: any }) {
         <section key={r.id} id={`sf-sec-${r.id}`} className="sf-sec" onPointerDownCapture={r.enter} onFocusCapture={r.enter}>
           <h2 className="sf-h">{r.label}</h2>
           {r.id === "incident" && <div className="iq-script"><div className="iq-field-label">{OPEN_TONE}</div><p>{openGreeting(v.callerFirst)}</p><p>{openLine(v.callerFirst, v.agentFirst, v.firmSpoken)}</p><div className="iq-cue">{OPEN_CUE} Then stop talking. {OPEN_LINE.cue}</div></div>}
-          {r.id === "retainer" ? (<>
+          {r.id === "retainer" ? (<>{v.clientContact}<ContractActions key={v.agreementId || v.agreementStatus} v={v} />
             {v.sendReady ? <div className="iq-script"><div className="iq-field-label">{MONEY.label}</div><p>{MONEY.line}</p><div className="iq-cue">{MONEY.cue}</div><p>{SEND_LINE}</p></div> : v.notSigned ? <div className="iq-script"><div className="iq-field-label">{STAY.label}</div><p>{STAY.line}</p>{walkThrough(v.firmSpoken).map((line: string, i: number) => <p key={i}>{line}</p>)}<div className="iq-cue">{NO_DEAD_AIR.map((line: string, i: number) => <p key={i}>{line}</p>)}</div></div> : <div className="iq-script"><div className="iq-field-label">{SIGNED.label}</div><p>{SIGNED.line}</p><div className="iq-cue">{SIGNED.cue}</div></div>}
             {v.signed && <SignedInlineReview v={v} />}
             <SignatureWaiting v={v} />
             {v.sendReady && <SendBlock v={v} where={where} />}
             {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
-            {v.canReplace && !v.signed && <details className="sf-rows"><summary className="sf-btn sf-line">Correct this agreement</summary><div className="sf-row"><span className="sf-l">Correction</span><div className="sf-c"><p>The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="sf-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="sf-btn sf-go" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></div></div></details>}
             <FileBlock v={v} finish={r.next ? null : fi.chore?.finish} />
             {v.signed && <div className="iq-script">{closeLines(v.callerFirst, v.firmSpoken).map((line: string, i: number) => <p key={i}>{line}</p>)}<div className="iq-cue">{CLOSE_CUE}</div></div>}
           </>) : (

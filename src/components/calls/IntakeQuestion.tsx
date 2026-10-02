@@ -2,6 +2,7 @@
 
 // The engine resolves the question once. These four presentations share every
 // label, option, branch and callback; only wrappers and control appearance vary.
+import PassengerAgreement from "./PassengerAgreement";
 import WhereField from "./WhereField";
 
 export type IntakePresentation = "guided" | "full" | "chore" | "form";
@@ -75,7 +76,7 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
             </> : !review && <div className="iq-cue">The parent or guardian signs. The child goes on the HIPAA pages.</div>}
             {field("Willing to treat", choices(choicesFromClasses(person.willings)))}
             {field("Home address", choices(choicesFromClasses(person.sameAddrs)))}
-            {v.passengerLinks?.[person.id] ? <a className="iq-passenger-link" href={`/app/${v.passengerLinks[person.id]}`} target="_blank" rel="noopener noreferrer">Open {person.first}&apos;s file to finish the retainer and office step ↗</a> : !review && <div className="iq-cue">Send their agreement from the Retainer section after the caller signs. Then their file link appears here.</div>}
+            {!review ? <PassengerAgreement p={v.paxSend?.find((item: any) => item.id === person.id)} v={v} capture={false} /> : v.passengerLinks?.[person.id] && <a className="iq-passenger-link" href={`/app/${v.passengerLinks[person.id]}`} target="_blank" rel="noopener noreferrer">Open {person.first}'s file ↗</a>}
           </div>}
           {person.wantsRep === "No" && !review && <div className="iq-cue iq-warning">They declined representation. Do not send an agreement.</div>}
         </>}

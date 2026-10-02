@@ -1,3 +1,4 @@
+export const SEND_HELD_MESSAGE = "An agreement send is still being verified. Do not send another link; ask the owner to reconcile this file.";
 /** A correction never destroys signed evidence. A client-signed original with
  * a pending replacement stays on a supervisor-review hold until the owner or
  * admin resolves the original; only the newest active packet can be released. */

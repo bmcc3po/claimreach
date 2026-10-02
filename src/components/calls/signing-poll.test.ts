@@ -14,6 +14,7 @@ const visit = (node: ts.Node) => {
 };
 visit(source); assert.ok(refresh, "The signing refresh exists");
 const code = ts.transpileModule(`exports.make = (fetch, engine, agreementId, emergencyResign, init, callId, setNeedsResign, setEmergencyStatus) => {
+  const manualSignatureCheck = { current: false }, manual = false;
   const sendStatusGeneration = { current: 0 }, sendInFlight = { current: false }, eng = { current: engine };
   const isHold = value => !!value && value.needs_reconciliation === true;
   const updateSendGate = (gate, hold = null, pax = {}) => { engine.props.esign.sendGate = gate; engine.props.esign.sendAttempt = hold; engine.props.esign.paxSendAttempts = pax; };

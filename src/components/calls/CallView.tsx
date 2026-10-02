@@ -18,6 +18,8 @@ import FinalHandoff from "./FinalHandoff";
 import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
+import ContractActions from "./ContractActions";
+import PassengerAgreement from "./PassengerAgreement";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
@@ -288,14 +290,14 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-lab">HURT</div>
 <div className="cc-chips cc-seg">{(p.hurts || []).map((c: any, i28: number) => (<Fragment key={i28}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
 {!!(p.ownFile) && (<>
-<span className="cc-tag">Own file and own agreement after {v.callerFirst} signs</span>
+<span className="cc-tag">Own file and own agreement</span>
 <div className="cc-lab" style={{marginTop: "8px"}}>WANTS REPRESENTATION</div>
 <div className="cc-chips cc-seg">{(p.wantsReps || []).map((c: any, i28b: number) => (<Fragment key={i28b}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
 {p.wantsRep === "Yes" && <div className="iq-passenger-next"><strong>Collect this now, then finish their own agreement and file.</strong>
 <div className="cc-lab" style={{marginTop: "8px"}}>DATE OF BIRTH, IF AVAILABLE</div>
 <input className="cc-field" type="date" aria-label={`${p.first}'s date of birth`} value={p.dob.value ?? ""} onChange={p.dob.set} />
 {!p.minor && <><div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S OWN CELL</div><input className="cc-field" type="tel" inputMode="tel" placeholder="Their agreement texts to THEIR phone" aria-label={`${p.first}'s cell`} value={p.cell.value ?? ""} onChange={p.cell.set} /><div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S EMAIL</div><input className="cc-field" type="email" inputMode="email" aria-label={`${p.first}'s email`} value={p.email.value ?? ""} onChange={p.email.set} /></>}
-{v.passengerLinks?.[p.id] ? <a className="iq-passenger-link" href={`/app/${v.passengerLinks[p.id]}`} target="_blank" rel="noopener noreferrer">Open {p.first}&apos;s file to finish the retainer ↗</a> : <div className="cc-cue">Their file link appears here after their agreement is sent.</div>}
+<PassengerAgreement p={v.paxSend?.find((item: any) => item.id === p.id)} v={v} capture={false} />
 </div>}
 <div className="cc-lab" style={{marginTop: "8px"}}>WILLING TO TREAT</div>
 <div className="cc-chips cc-seg">{(p.willings || []).map((c: any, i28c: number) => (<Fragment key={i28c}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
@@ -325,7 +327,7 @@ export default function CallView({ v }: { v: any }) {
 
 </>)}
 
-{!!(v.showSend) && (<>
+{!!(v.showSend) && (<>{v.clientContact}<ContractActions key={v.agreementId || v.agreementStatus} v={v} />
 {!!(v.free) && (<><div id="fs-send" className="cc-sec-h">Send</div></>)}
 {!!(v.sendReady) && (<>
 <div className="cc-say">
@@ -368,7 +370,6 @@ export default function CallView({ v }: { v: any }) {
 {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
 <div className="cc-steps">{(v.sendSteps || []).map((st: any, i32: number) => (<Fragment key={i32}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div>
 <SignatureWaiting v={v} />
-{v.canReplace && !v.signed && <details className="cc-card"><summary className="cc-card-h">Correct this agreement</summary><p className="cc-cue">The original stays in history. If the client signed it, the supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn cc-full" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
 {!!(v.notSigned) && (<>
 <div className="cc-say">
 <div className="cc-say-label">{STAY.label}</div>
@@ -394,7 +395,7 @@ export default function CallView({ v }: { v: any }) {
 </>)}
 </>)}
 
-{!!(v.showFile) && (<>
+{!!(v.showFile) && (<>{!v.showSend && <>{v.clientContact}<ContractActions key={v.agreementId || v.agreementStatus} v={v} /></>}
 {v.signed && !v.showSend && !v.choreView && !v.formView && !v.stepView && <>
 <div className="cc-say cc-say-win"><div className="cc-say-label">{SIGNED.label}</div><div className="cc-say-line">{SIGNED.line}</div><div className="cc-cue">{SIGNED.cue}</div></div>
 <SignedInlineReview v={v} />
@@ -425,7 +426,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.fsInfo) && (<>
 <div className="cc-card">
 <span className="cc-card-h">PNC info</span>
-<div><div className="cc-lab">HOME ADDRESS</div><PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} /><div className="cc-cue">Paste works here.</div></div>
+{!v.clientContact && <div><div className="cc-lab">HOME ADDRESS</div><PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} /><div className="cc-cue">Paste works here.</div></div>}
 <div><div className="cc-lab">DRIVER'S LICENSE</div><input className="cc-field" type="text" aria-label="Driver's license number" value={v.f.dl.value ?? ""} onChange={v.f.dl.set} /></div>
 <div><div className="cc-lab">EMERGENCY CONTACT</div>
 <div style={{display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px"}}><input className="cc-field" type="text" placeholder="Name" aria-label="Emergency contact name" value={v.f.ecName.value ?? ""} onChange={v.f.ecName.set} /><input className="cc-field" type="tel" placeholder="Phone" aria-label="Emergency contact phone" value={v.f.ecPhone.value ?? ""} onChange={v.f.ecPhone.set} /></div>
@@ -444,28 +445,7 @@ export default function CallView({ v }: { v: any }) {
 </div>
 </>)}
 {!!(v.fsPax) && (<>
-{(v.paxSend || []).map((p: any, i37: number) => (<Fragment key={i37}>
-<div className="cc-card">
-<span className="cc-card-h">{p.title}</span>
-<div className="cc-cue" style={{marginTop: "0"}}>{p.note}</div>
-{!!(p.needCell && p.ready) && (<>
-<input className="cc-field" type="tel" inputMode="tel" placeholder="Their own cell (the agreement texts there)" aria-label="Passenger's own cell" value={p.cell.value ?? ""} onChange={p.cell.set} />
-<div className="cc-cue cc-red" style={{marginTop: "4px"}}>Add their own cell first. It never texts to the caller&apos;s phone.</div>
-</>)}
-{!!(p.needEmail && p.ready) && (<>
-<input className="cc-field" type="email" inputMode="email" autoComplete="off" placeholder="Their own email (the agreement goes there)" aria-label="Passenger's own email" value={p.email.value ?? ""} onChange={p.email.set} />
-<div className="cc-cue cc-red" style={{marginTop: "4px"}}>Add their own email first. It never goes to the caller&apos;s email.</div>
-</>)}
-{!!(p.shared && p.ready) && (
-<label className="cc-cue" style={{display: "flex", gap: 8, alignItems: "center", marginTop: "6px"}}>
-<input type="checkbox" checked={!!p.shareOk} onChange={p.confirmShare} />
-That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passenger confirmed they share it.
-</label>)}
-{!!(p.ready) && (<><button className={cx("cc-btn cc-full" + (p.needCell ? " cc-soft" : ""))} onClick={p.send}>{p.button}</button></>)}
-{!!(p.live) && (<><div className="cc-steps">{(p.steps || []).map((st: any, i38: number) => (<Fragment key={i38}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div></>)}
-{v.passengerLinks?.[p.id] && <a className="iq-passenger-link" href={`/app/${v.passengerLinks[p.id]}`} target="_blank" rel="noopener noreferrer">Open {p.title}&apos;s file ↗</a>}
-</div>
-</Fragment>))}
+{(v.paxSend || []).map((p: any) => <PassengerAgreement key={p.id} p={p} v={v} />)}
 </>)}
 </>)}
 
@@ -573,7 +553,6 @@ That&apos;s the caller&apos;s own {v.viaEmail ? "email" : "number"}. The passeng
 </>)}
 {!!(v.textEmpty) && (<><div className="cc-cue" style={{textAlign: "center", margin: "28px 0"}}>No texts with {v.callerFirst} yet.</div></>)}
 {(v.texts || []).map((m: any, i44: number) => (<Fragment key={i44}><div className={cx(m.cls)}><div>{m.body}</div>{(m.when || m.hasStatus) && (<><div className="cc-bub-s">{[m.when, m.status].filter(Boolean).join(" · ")}</div></>)}</div></Fragment>))}
-{!!(v.canResend) && (<><div className="cc-chips cc-list" style={{marginTop: "8px"}}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div></>)}
 {!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.textError}</div></div>}
 </div>
 <div className="cc-compose">

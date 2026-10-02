@@ -2,7 +2,8 @@
 // through their session. Never expose the stored send context to a browser.
 import type { SendAttemptHold } from "./replacement";
 
-export const SEND_HELD_MESSAGE = "An agreement send is still being verified. Do not send another link; ask the owner to reconcile this file.";
+import { SEND_HELD_MESSAGE } from "./replacement";
+export { SEND_HELD_MESSAGE } from "./replacement";
 type Failure = { ok: false; status: number; error: string };
 type Result<T> = { ok: true } & T | Failure;
 const unavailable = (): Failure => ({ ok: false, status: 503, error: "Could not verify the agreement send reservation. Nothing new will be sent until this check is available." });
