@@ -7,7 +7,7 @@ export const runtime = 'edge';
 export async function POST(req: NextRequest) {
   const secret = process.env.NETFLY_RESEND_WEBHOOK_SECRET || '';
   const recipient = process.env.NETFLY_RECEIVING_TO?.trim().toLowerCase() || '';
-  const key = process.env.RESEND_API_KEY || '';
+  const key = process.env.NETFLY_RESEND_API_KEY || '';
   if (!secret || !recipient || !key) return NextResponse.json({ error: 'NETFLY email receiving is not configured.' }, { status: 503 });
   let raw: string;
   try { raw = new TextDecoder().decode(await cappedBytes(req.body, 64 * 1024)); }

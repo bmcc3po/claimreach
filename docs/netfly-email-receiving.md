@@ -9,7 +9,7 @@ Send or forward NETFLY signed-case emails to `netfly@oourkaudor.resend.app` afte
    - `NETFLY_RESEND_WEBHOOK_SECRET`: the signing secret for that exact webhook, stored as a secret.
    - `NETFLY_RECEIVING_TO`: `netfly@oourkaudor.resend.app`.
    - `NETFLY_EMAIL_FROM_DOMAINS`: `netflydigital.com,innovativeintake.com` (exact authenticated sender domains).
-   - Existing `RESEND_API_KEY` must support receiving-email retrieval. A sending-only key cannot read received messages.
+   - `NETFLY_RESEND_API_KEY`: a dedicated Resend Full access key for retrieving incoming messages, stored as a secret. Resend does not offer a receiving-only key. Leave the existing sending-only `RESEND_API_KEY` unchanged.
 3. Redeploy after setting production variables. Do not copy production receiving credentials to public PR previews.
 4. Send a clearly marked synthetic case with a PDF, inspect the new NETFLY file and original attachment, then replay its webhook. There should still be one lead and one copy of the PDF. Archive the synthetic file after verification.
 
