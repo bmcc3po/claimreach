@@ -145,3 +145,9 @@
 .nf-command.nf-command-open{display:block;position:fixed;inset:0 0 0 auto;width:min(410px,100vw);max-height:100vh;z-index:100;border-radius:0;box-shadow:-15px 0 45px #142b4850;overflow:auto}
 .nf-command-toggle,.nf-command-close{display:inline-flex}
 .nf-command-close{position:absolute;right:2px;top:0;border:1px solid #ccd9ea;border-radius:9px;background:#fff;width:36px;height:36px;align-items:center;justify-content:center;font-size:24px;cursor:pointer}
+
+.nf-import-preview { margin: 16px 0; }
+.nf-import-row { display: flex !important; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid #dce5f1; }
+.nf-import-row input { width: 20px !important; height: 20px; flex: 0 0 20px; margin-top: 2px; }
+.nf-import-row > span { min-width: 0; display: grid; gap: 5px; overflow-wrap: anywhere; }
+.nf-import-row small { color: #64748b; }

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NetflyDocuments from "./NetflyDocuments";
+import HandoffImport from "./HandoffImport";
 import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, NETFLY_UNAVAILABLE_IDS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
 import { NETFLY_WELCOME_STEPS as VERIFY_STEPS, NETFLY_FIRST_CALL_SOURCE_LABELS, NETFLY_FOLLOWUP_FIELDS, netflyFirstCallSources, netflyFirstConversationReview } from "@/lib/netfly-first-conversation";
 import { joinUsAddress } from "@/lib/us-address";
@@ -10,7 +11,7 @@ import "./netfly.css";
 import "./netfly-workspace.css";
 
 type Handoff = { note: string; at: string; by_name?: string; channel?: string };
-type Detail = { file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string; mail_addr1?: string; mail_city?: string; mail_state?: string; mail_zip?: string }; actor_id: string; live_call: NetflyLiveCall | null; answers: { fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; source_field_revisions?: { fields: Record<string, string>; at: string; source_id: string }[]; handoff_verification?: { status: string; note: string; source_revision: number; source_field_revision?: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; source_field_revision?: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
+type Detail = { original_email_url?: string | null; file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string; mail_addr1?: string; mail_city?: string; mail_state?: string; mail_zip?: string }; actor_id: string; live_call: NetflyLiveCall | null; answers: { email_import?: { warnings?: string[]; received_at?: string }; fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; source_field_revisions?: { fields: Record<string, string>; at: string; source_id: string }[]; handoff_verification?: { status: string; note: string; source_revision: number; source_field_revision?: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; source_field_revision?: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
 
 const verifyIds = new Set<string>(VERIFY_STEPS.flatMap((step) => [...step.fields]));
 const fieldById = new Map(NETFLY_FIELDS.map((field) => [field.id, field]));
@@ -31,8 +32,6 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [saveState, setSaveState] = useState("");
   const [uploading, setUploading] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
-  const [handoffDraft, setHandoffDraft] = useState("");
-  const [handoffBusy, setHandoffBusy] = useState(false);
   const [verificationNote, setVerificationNote] = useState("");
   const [showIncidentCorrections, setShowIncidentCorrections] = useState(false);
   const [verificationBusy, setVerificationBusy] = useState(false);
@@ -89,11 +88,6 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     setError("");
     try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "review", file: fileKey, status, document_id, note: reviewNote }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); await load(); }
     catch (e: any) { setError(e.message || "Review did not save."); }
-  }
-  async function addHandoff() {
-    setHandoffBusy(true); setError("");
-    try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "handoff", file: fileKey, note: handoffDraft }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setHandoffDraft(""); await load(); }
-    catch (e: any) { setError(e.message || "Handoff note did not save. Your text remains here."); } finally { setHandoffBusy(false); }
   }
   async function verifyHandoff(status: "matches" | "changes_recorded") {
     setVerificationBusy(true); setError("");
@@ -224,6 +218,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       {detail.canReview && (!activeNetflyCall(liveCall) ? <button type="button" className="nf-primary" disabled={presenceBusy} onClick={() => void markCall("start")}>I’m speaking with this client</button>
         : liveCall?.by === detail.actor_id ? <button type="button" className="nf-secondary" disabled={presenceBusy} onClick={() => void markCall("end")}>I’m off the call</button> : null)}</div>
     {(!latest || !handoffs.length) && <div className="nf-alert" role="status"><strong>Partial NETFLY file</strong><p>{!handoffs.length ? "NETFLY handoff note missing. " : ""}{!latest ? "Signed retainer PDF missing. " : ""}The file is held from review until both arrive.</p></div>}
+    {detail.answers.email_import && <details className="nf-history"><summary>Imported from NETFLY email · confirm details with the client</summary><p>Imported answers are NETFLY’s account and still need your review.</p>{detail.original_email_url && <a href={detail.original_email_url} target="_blank" rel="noopener noreferrer">Open the original email ↗</a>}{(detail.answers.email_import.warnings || []).filter(w => !(w === "Client phone still needed" && detail.file.phone) && !(w === "Signed PDF missing" && latest)).map(w => <p key={w}>{w}</p>)}</details>}
     {error && <div className="nf-alert" role="alert">{error}</div>}
     {flags.length > 0 && <div className="nf-alert"><strong>Supervisor attention</strong>{flags.map((flag) => <p key={flag}>{flag}</p>)}<p>Finish the file and flag it. Do not auto-decline.</p></div>}
     <div className="nf-workspace-grid">
@@ -245,6 +240,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         </> : <section className="nf-panel nf-archive" role="tabpanel" aria-label="NETFLY intake">
           <h2>NETFLY intake</h2>
           <p className="nf-muted">NETFLY's original note, mapped source answers, and the earlier questionnaire stay here for reference. Use Case-manager call for today's conversation.</p>
+          <HandoffImport fileKey={fileKey} values={{ confirmed_name: detail.file.claimant_name || "", confirmed_phone: detail.file.phone || "", confirmed_email: detail.file.email || "", mailing_address: savedAddress, ...values }} onSaved={() => load()} />
           {latestHandoff && <details className="nf-history" open><summary>Original handoff note and corrections ({handoffs.length})</summary>{handoffs.map((item, i) => <div className="nf-source-revision" key={`${item.at}-${i}`}><strong>{i === 0 ? "Original" : `Correction ${i}`} · {new Date(item.at).toLocaleString()}</strong><p>{item.note}</p></div>)}</details>}
           {sourceFieldRows.length > 0 && <details className="nf-history"><summary>LawRuler source answers ({sourceFieldRows.length})</summary><div className="nf-archive-answers">{sourceFieldRows.map(([label, value]) => <div key={label}><strong>{label}</strong><span>{value}</span></div>)}</div></details>}
           <h3>Earlier questionnaire</h3>
@@ -261,7 +257,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       {sourceRows.length ? <div className="nf-source-grid">{sourceRows.map((row) => <div className="nf-source-item" key={row.label}><strong>{row.label}</strong><p>{row.value}</p></div>)}</div> : latestHandoff ? <p className="nf-source-note">{latestHandoff.note}</p> : <p className="nf-alert">No NETFLY handoff note is on this file yet. Add the note before the welcome call.</p>}
       {sourceFieldRows.length > 0 && <details className="nf-history"><summary>{sourceFieldRows.length} separate original form answers · {sourceFieldRevisions.length} source version(s)</summary><div className="nf-source-grid">{sourceFieldRows.map(([label, value]) => <div className="nf-source-item" key={label}><strong>{label}</strong><p>{value}</p></div>)}</div></details>}
       {originalHandoff && <details className="nf-history"><summary>{handoffs.length > 1 ? `Original note and ${handoffs.length - 1} later correction(s)` : "View the original note"}</summary>{handoffs.map((item, i) => <div className="nf-source-revision" key={`${item.at}-${i}`}><strong>{i === 0 ? "Original" : `Correction ${i}`} · {new Date(item.at).toLocaleString()}</strong><p>{item.note}</p></div>)}</details>}
-      <details className="nf-history"><summary>{latestHandoff ? "Add a corrected NETFLY note" : "Paste the NETFLY handoff note"}</summary><p className="nf-muted">A new note is appended. The original stays on the file.</p><textarea className="nf-source-input" value={handoffDraft} onChange={(e) => setHandoffDraft(e.target.value)} placeholder="Paste the NETFLY accident intake note here" /><button className="nf-secondary" disabled={handoffBusy || handoffDraft.trim().length < 10} onClick={() => void addHandoff()}>{handoffBusy ? "Saving…" : "Save handoff note"}</button></details>
+      <HandoffImport fileKey={fileKey} values={{ confirmed_name: detail.file.claimant_name || "", confirmed_phone: detail.file.phone || "", confirmed_email: detail.file.email || "", mailing_address: savedAddress, ...values }} onSaved={() => load()} />
     </section>
         </div>}
         {commandTab === "agreement" && <div className="nf-command-content">
