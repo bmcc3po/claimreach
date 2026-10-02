@@ -70,6 +70,9 @@
 .nf-handoff-inline>strong{font-size:18px;color:#133e71}
 .nf-handoff-inline>p{line-height:1.45;margin:7px 0 0}
 .nf-handoff-inline .nf-source-grid{margin-top:14px}
+.nf-care-prompt{margin:16px 0;padding:16px 18px;border:2px solid #bd8740;border-radius:12px;background:#fff7e9;color:#513314}
+.nf-care-prompt strong{font-size:16px}
+.nf-care-prompt p{margin:6px 0 0;font-size:15px;line-height:1.5}
 .nf-inline-confirm{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:700;line-height:1.4}
 .nf-inline-confirm input{flex:none;width:20px;height:20px;margin:0}
 .nf-finish-call{margin-top:22px;padding:16px;border:1px solid #bdd1e8;border-radius:12px;background:#f3f7fd}

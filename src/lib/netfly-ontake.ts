@@ -113,7 +113,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
     txt("accident_month_year", "Rough month and year from NETFLY"), txt("accident_date", "Exact accident date, if known", { kind: "date" }),
     txt("road", "What road or intersection was it on?"),
     { id: "position", label: "Were you the driver, passenger, or pedestrian?", kind: "choice", choices: ["Driver", "Passenger", "Pedestrian", "Other", "Not sure"] },
-    txt("incident_story", "Walk me through what happened", { kind: "long" }),
+    txt("incident_story", "How did the incident happen? Confirm or correct NETFLY's summary", { kind: "long" }),
     yn("passengers", "Was anyone else in the vehicle with you?"),
     txt("passenger_details", "For each person: name, best number, injuries, and whether they want a call", { kind: "long", when: { id: "passengers", is: "Yes" } }),
     yn("death", "Was there a death?"), txt("hospital_days", "Was anyone admitted to a hospital? How many days?"),
@@ -126,7 +126,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
     txt("other_driver", "Other driver's name"), txt("other_vehicle", "Their vehicle: year, make, model"),
     yn("company_vehicle", "Was it a work truck or company vehicle?"),
     yn("alcohol_drugs", "Did you see signs of drinking or drug use?"), yn("on_phone", "Did you see them on their phone?"),
-    txt("other_insurer", "Other driver's insurer"), txt("other_policy", "Policy number"), txt("other_claim", "Claim number"),
+    txt("other_insurer", "Other driver's insurer"), txt("other_policy", "Policy number"), txt("other_claim", "Other driver's claim number"),
   ] },
   { id: "vehicle", title: "5. Vehicle, pictures & witnesses", fields: [
     txt("own_vehicle", "Your vehicle: year, make, model"), txt("damage", "What would I have seen standing five feet from it?", { kind: "long" }),
@@ -140,7 +140,7 @@ export const NETFLY_SECTIONS: NetflySection[] = [
     txt("health_carrier", "Health insurance company"), txt("health_group", "Health group number"),
     yn("insurer_contact", "Has any insurance company reached out?"), yn("recorded_statement", "Did you give a recorded statement?"),
     yn("money_offer", "Has anyone offered you money?"), yn("insurance_papers", "Has an insurer sent anything to sign?"),
-    yn("insurance_signed", "Did you sign any insurance papers?"), txt("insurance_notes", "Insurance contact details", { kind: "long" }),
+    yn("insurance_signed", "Did you sign any insurance papers?"), txt("insurance_notes", "Which insurer contacted you, and what did they say?", { kind: "long", when: { id: "insurer_contact", is: "Yes" } }),
   ] },
   { id: "work", title: "7. Work & final details", fields: [
     yn("working", "Are you working right now?"), txt("employer", "Who for?", { when: { id: "working", is: "Yes" } }),
@@ -160,7 +160,9 @@ export const NETFLY_SECTIONS: NetflySection[] = [
 // questionnaire above as an archive of earlier answers, not the call script.
 export const NETFLY_CASE_MANAGER_FIELDS: NetflyField[] = [
   { id: "treatment_location", label: "Would treatment near home or work be easier?", kind: "choice", choices: ["Near home", "Near work", "Either", "Needs help deciding"] },
+  { id: "treatment_area", label: "What city, ZIP code, or neighborhood would be convenient for treatment?", kind: "text" },
   { id: "treatment_barrier", label: "What is keeping you from getting or continuing care?", kind: "long" },
+  { id: "insurance_claim_number", label: "Claim number from any insurer, if known", kind: "text" },
 ];
 export const NETFLY_FIELDS = [...NETFLY_SECTIONS.flatMap((s) => s.fields), ...NETFLY_CASE_MANAGER_FIELDS];
 export const NETFLY_FIELD_IDS = new Set(NETFLY_FIELDS.map((f) => f.id));
