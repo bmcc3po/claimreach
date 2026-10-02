@@ -182,4 +182,3 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
     </>
   );
 }
-
