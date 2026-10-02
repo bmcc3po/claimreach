@@ -104,8 +104,19 @@ test("every signed intake view places retainer review and approval before office
   for (const mode of ["guided", "full", "chore", "form", "steps"]) {
     e.setView(mode);
     const html = renderToStaticMarkup(<CallView v={{ ...e.renderVals(), openFile: noop }} />);
-    assert.match(html, /Review the signed retainer now/, `${mode} should show inline review`);
+    assert.match(html, /Signed\. Follow these steps in order\./, `${mode} should show the post-signing path`);
+    assert.match(html, /Open the client-signed PDF and approve the signature/, `${mode} should start with signed-copy review`);
     assert.match(html, /Refresh signed copy/, `${mode} should show inline signed-copy loading`);
+  }
+});
+
+test("every sent intake view offers a direct status check instead of a dead end", () => {
+  const e = make(keys, "opened", "NV_FLAT");
+  for (const mode of ["guided", "full", "chore", "form", "steps"]) {
+    e.setView(mode);
+    const html = renderToStaticMarkup(<CallView v={{ ...e.renderVals(), checkSignature: noop }} />);
+    assert.match(html, /Check signed status now/, `${mode} should offer the same status check`);
+    assert.match(html, /Do not treat the retainer as signed until this screen confirms it/, `${mode} must not infer signing from the caller`);
   }
 });
 
@@ -212,11 +223,12 @@ test("the actual mount status check restores a persisted hold without discarding
   const e = make(keys, "signed", "NV_FLAT");
   const generation = { current: 0 }, inFlight = { current: false }, agreementId = { current: "original" };
   const hold = { id: "held-attempt", state: "uncertain", created_at: "2026-09-29T00:00:00Z", needs_reconciliation: true };
-  const refresh = compile(`exports.refresh = async () => ${refreshNode!.body!.getText()};`,
-    ["sendStatusGeneration", "sendInFlight", "init", "callId", "isHold", "updateSendGate", "eng", "agreementId", "emergencyResign", "setNeedsResign", "setEmergencyStatus", "fetch"],
-    [generation, inFlight, { leadId: "synthetic", claimId: "matter" }, { current: "call" }, (value: any) => value?.id === hold.id, (gate: string, attempt: any, pax: any) => { e.props.esign.sendGate = gate as any; e.props.esign.sendAttempt = attempt; e.props.esign.paxSendAttempts = pax; }, { current: e }, agreementId, { current: false }, noop, noop,
+  const refresh = compile(`exports.refresh = async (manual = false) => ${refreshNode!.body!.getText()};`,
+    ["manualSignatureCheck", "sendStatusGeneration", "sendInFlight", "init", "callId", "isHold", "updateSendGate", "eng", "agreementId", "emergencyResign", "setNeedsResign", "setEmergencyStatus", "fetch"],
+    [{ current: false }, generation, inFlight, { leadId: "synthetic", claimId: "matter" }, { current: "call" }, (value: any) => value?.id === hold.id, (gate: string, attempt: any, pax: any) => { e.props.esign.sendGate = gate as any; e.props.esign.sendAttempt = attempt; e.props.esign.paxSendAttempts = pax; }, { current: e }, agreementId, { current: false }, noop, noop,
       async (url: string) => { assert.match(url, /lead_id=synthetic/); assert.match(url, /claim_id=matter/); return { ok: true, json: async () => ({ send_attempt: hold, pax_send_attempts: {}, status: "signed", agreement_id: "original", agreement: { template_key: "NV_FLAT" }, templates: [] }) }; }]).refresh;
-  await refresh();
+  const result = await refresh();
+  assert.deepEqual(result, { status: "signed", error: null });
   assert.equal(e.props.esign.sendGate, "held");
   assert.equal(e.props.esign.sendAttempt?.id, hold.id);
   assert.equal(e.state.send.status, "signed");

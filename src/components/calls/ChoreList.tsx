@@ -20,6 +20,7 @@ import { DobField, SsnField } from "./SsnDob";
 import { SsnRefusal } from "./SsnRefusal";
 import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
+import SignatureWaiting from "./SignatureWaiting";
 
 const isOn = (cls: string) => / on(\s|$)/.test(" " + String(cls || "") + " ");
 
@@ -117,6 +118,7 @@ function Retainer({ v }: { v: any }) {
       {v.hasSendError && <div className="ch-note ch-note-bad">{v.sendError}</div>}
       {v.canReplace && <details className="ch-q"><summary className="ch-btn ch-line">Correct this agreement</summary><div className="ch-note">The original stays in history. If the client signed it, a supervisor must review it before firm delivery.</div><AgreementChoice v={v} />{!!v.previewHref && <a className="ch-link" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="ch-btn ch-send" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
     </div>
+    <SignatureWaiting v={v} />
     {v.notSigned && (<>
       <Say label={STAY.label} line={STAY.line} small />
       <div className="ch-say ch-say-2 ch-wide">
