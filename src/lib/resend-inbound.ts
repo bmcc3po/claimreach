@@ -60,7 +60,7 @@ export async function receivedPdf(emailId: string, attachmentId: string, apiKey:
   if (!/^[a-zA-Z0-9-]{1,80}$/.test(emailId) || !/^[a-zA-Z0-9-]{1,80}$/.test(attachmentId)) throw new Error('Invalid incoming attachment identity.');
   const metadata = await resendGet(`/emails/receiving/${emailId}/attachments/${attachmentId}`, apiKey, fetcher);
   const url = new URL(metadata.download_url);
-  if (url.protocol !== 'https:' || url.hostname !== 'inbound-cdn.resend.com' || url.port || url.username || url.password)
+  if (url.protocol !== 'https:' || !['inbound-cdn.resend.com', 'cdn.resend.app'].includes(url.hostname) || url.port || url.username || url.password)
     throw new Error('Incoming PDF download host is not approved.');
   if (metadata.size > 15 * 1024 * 1024) throw new Error('Incoming PDF is larger than 15 MB.');
   const response = await fetcher(url.toString(), { redirect: 'error', signal: AbortSignal.timeout(20000) });

@@ -30,3 +30,4 @@ In a NETFLY file, open **NETFLY intake** or **File → Paste email & fill missin
 ## Evidence
 
 `netfly-email.test.ts` covers parser, signature, sender/recipient restrictions, attachment download boundaries, and blank-only updates. `netfly-email-import.test.ts` covers partial files, replay, repeated forwards, attachment failures/recovery, archived files, and firm isolation. Automated tests do not send client communications.
+

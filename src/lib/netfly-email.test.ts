@@ -69,7 +69,7 @@ async function main() {
   const payload = '%PDF-1.7\n' + 'synthetic '.repeat(20) + '\n%%EOF';
   const calls: { url: string; init?: RequestInit }[] = [];
   const fetcher = (async (url: any, init?: RequestInit) => { assert.equal(init?.cache, undefined, "Cloudflare native fetch rejects Request.cache"); calls.push({ url: String(url), init });
-    return String(url).startsWith('https://api.resend.com/') ? Response.json({ download_url: 'https://inbound-cdn.resend.com/email/attachment?signature=test', size: payload.length }) : new Response(payload); }) as typeof fetch;
+    return String(url).startsWith('https://api.resend.com/') ? Response.json({ download_url: 'https://cdn.resend.app/receiving/email/attachments/pdf?signature=test', size: payload.length }) : new Response(payload); }) as typeof fetch;
   assert.equal((await receivedPdf('email-1', 'pdf-1', 'test-key', fetcher)).length, payload.length);
   assert.equal((calls[1].init?.headers as any)?.Authorization, undefined, 'API credential never goes to attachment CDN');
   assert.equal(calls[1].init?.redirect, 'error');
