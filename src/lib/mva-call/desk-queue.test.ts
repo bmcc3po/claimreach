@@ -17,6 +17,13 @@ function test(name: string, run: () => void) { run(); passed++; console.log("ok"
 test("due and waiting lead the work queues", () => {
   assert.deepEqual(DESK_TABS.map(row => row[1]), ["CALL NOW", "WAIT TO CALL", "CALLBACK SCHEDULED", "SENT ESIGN", "SIGNED ESIGN", "WIP", "NEEDS REVIEW"]);
 });
+test("the exact matter's active phone marker appears in the call list and expires", () => {
+  const file: any = lead("phone");
+  file.claims[0].answers = { mva_live_call: { by: "agent-a", by_name: "Brett", expires_at: new Date(Date.now() + 60_000).toISOString() } };
+  assert.equal(classify([file]).due[0].onPhoneBy, "Brett");
+  file.claims[0].answers.mva_live_call.expires_at = new Date(Date.now() - 60_000).toISOString();
+  assert.equal(classify([file]).due[0].onPhoneBy, null);
+});
 test("a do-not-call flag holds outreach without hiding the file or a sent agreement", () => {
   const stopped = { ...lead("stopped"), perm_call: false }, sent = { ...lead("sent", "esign_sent"), perm_call: false };
   const queues = classify([stopped, sent], [], [agreement(sent)]);

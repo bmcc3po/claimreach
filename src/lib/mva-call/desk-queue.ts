@@ -4,6 +4,7 @@ import { agreementName } from "./agreement-names";
 import { paxParentId } from "../linked-files";
 import type { DeskTab, DeskRow, DeskQueues } from "./desk-types";
 import { placeOutreach, type DialSummary } from "./outreach-stage";
+import { activeCallPresence } from "../call-presence";
 const stamp = (row: any) => row?.created_at || row?.sent_at || row?.signed_at || "";
 
 /** Read every matching row; active work never ages out or falls behind a row limit. */
@@ -54,7 +55,8 @@ export function buildDeskQueues(opts: {
       const row: DeskRow = { id: lead.id, claimId: claim.id, name: lead.claimant_name, phone: lead.phone,
         sub: [lead.marketing_source, claim.campaign || lead.campaign].filter(Boolean).join(", "),
         at: claim.updated_at || lead.last_called_at || lead.created_at, receivedAt: lead.created_at, href: `/app/${lead.id}?claim=${claim.id}`,
-        callCount: summary?.total_dials ?? null, lastCallAt: summary?.last_call_at ?? null };
+        callCount: summary?.total_dials ?? null, lastCallAt: summary?.last_call_at ?? null,
+        onPhoneBy: activeCallPresence(claim.answers?.mva_live_call)?.by_name ?? null };
       let bucket: DeskTab;
       if (claim.status === SIGNED_QA_RETURN_STATUS) {
         bucket = "wip"; row.tag = "QA returned"; row.sub = "Signed file returned by QA for corrections";
