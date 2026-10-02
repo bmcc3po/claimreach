@@ -10,11 +10,12 @@ export function questionPhase(id: string): 'story' | 'body' | 'car' {
 
 export const QUESTION_PATHS: Record<string, string[]> = {
   city: ['story.city'], when: ['story.when', 'story.date'], seat: ['story.seat', 'story.seatOther'],
-  fault: ['story.fault'], police: ['story.police'], report: ['file.report'],
+  fault: ['story.fault'], police: ['story.police'], report: ['file.report', 'file.reportUnavailable'],
+  road: ['story.road', 'story.roadUnavailable'], policeAgency: ['file.policeAgency', 'file.policeAgencyUnavailable'],
   pain: ['body.pain', 'body.done.pain', 'body.painNote'], work: ['body.work'],
-  seen: ['body.seen', 'body.done.seen'], providers: ['body.providers'], firstAt: ['body.firstAt'],
+  seen: ['body.seen', 'body.done.seen'], providers: ['body.providers', 'body.providersUnavailable'], firstAt: ['body.firstAt'],
   lastAt: ['body.lastAt'], stretch: ['body.stretch'], willing: ['body.willing'],
-  carrier: ['file.carrier'], exchanged: ['body.exchanged'], coverage: ['body.coverage'],
+  carrier: ['file.carrier', 'file.ownCarrier', 'file.insuranceDetails', 'file.insuranceUnavailable'], exchanged: ['body.exchanged'], coverage: ['body.coverage'],
   uim: ['body.uim'], check: ['body.check'], rep: ['body.rep', 'body.repUnhappy', 'body.repKind'],
-  people: ['car.justMe', 'car.people'], car: ['file.vYear', 'file.vMake', 'file.vModel'], notes: ['story.text'],
+  people: ['car.justMe', 'car.people', 'car.othersPresent'], car: ['file.vYear', 'file.vMake', 'file.vModel'], notes: ['story.text'],
 };

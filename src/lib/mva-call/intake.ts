@@ -19,7 +19,7 @@ export interface IntakeSection {
 }
 
 export const INTAKE_SECTIONS: IntakeSection[] = [
-  { id: "incident", label: "Incident", questions: ["notes", "city", "when", "seat", "fault", "police", "report"] },
+  { id: "incident", label: "Incident", questions: ["notes", "city", "road", "when", "seat", "fault", "police", "report", "policeAgency"] },
   { id: "injury", label: "Injury", questions: ["pain", "work"] },
   { id: "treatment", label: "Treatment", questions: ["seen", "providers", "firstAt", "lastAt", "stretch", "willing"] },
   { id: "insurance", label: "Insurance", questions: ["carrier", "exchanged", "coverage", "uim", "check", "rep"] },
@@ -35,7 +35,7 @@ export const INTAKE_SEQUENCE = [
 ];
 
 /** Captured when she says it, never chased: they do not hold a section open. */
-export const INTAKE_OPTIONAL = new Set(["report", "providers", "carrier", "car", "notes"]);
+export const INTAKE_OPTIONAL = new Set(["road", "report", "policeAgency", "providers", "carrier", "car", "notes"]);
 
 export function sectionOf(qid: string): SectionId | null {
   const s = INTAKE_SECTIONS.find((x) => x.questions.includes(qid));

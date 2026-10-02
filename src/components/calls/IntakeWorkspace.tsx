@@ -387,6 +387,7 @@ export function WsLeft({ v }: { v: any }) {
           <div className="ws-h">Unanswered</div>
           {missing.length === 0 ? <div className="ws-tags">Required intake answers captured.</div> : <div className="ws-miss-items">{missing.slice(0, 3).map(missingItem)}</div>}
           {missing.length > 3 && <details className="ws-review-more"><summary>{missing.length - 3} more unanswered</summary><div className="ws-miss-items">{missing.slice(3).map(missingItem)}</div></details>}
+          {!!fi.firstConversation?.some((item: any) => item.pending) && <details className="ws-review-more"><summary>First-conversation details to collect</summary><div className="ws-miss-items">{fi.firstConversation.filter((item: any) => item.pending).map((item: any) => <button key={item.id} type="button" className="ws-miss-b" onClick={item.go}>{item.label}: {item.detail}</button>)}</div></details>}
         </div>
       </details>
 
