@@ -53,6 +53,16 @@ async function main() {
   assert.equal(listed.body.files[0].claims.length, 1);
   assert.equal(listed.body.files[0].claims[0].id, CLAIM);
   assert.deepEqual(listed.body.files[0].missing_source, ["handoff_note", "signed_retainer_pdf"]);
+  const answer = (field: string, value: string) => route.POST({ json: async () => ({ op: "answer", file: LEAD, field, value }) });
+  assert.equal((await answer("first_visit_unavailable", "Not available yet")).status, 200);
+  assert.equal(db.tables.claims[0].answers.netfly_secondary.fields.first_visit_unavailable, "Not available yet");
+  assert.equal(db.tables.claims[0].answers.netfly_secondary.fields.first_visit, undefined, "unavailable must not create a fake date");
+  assert.equal((await answer("first_visit", "2026-09-28")).status, 200);
+  assert.equal(db.tables.claims[0].answers.netfly_secondary.fields.first_visit, "2026-09-28");
+  assert.equal(db.tables.claims[0].answers.netfly_secondary.fields.first_visit_unavailable, "", "a real answer clears its follow-up marker");
+  assert.equal((await answer("confirmed_phone_unavailable", "Not available yet")).status, 200);
+  assert.equal(db.tables.leads[0].phone, undefined, "unavailable is not a replacement phone number");
+  assert.deepEqual(db.tables.claims[1].answers, { private_other_campaign: true }, "answers must stay on the NETFLY matter");
   db.tables.claims[0].answers = { netfly_secondary: {
     handoffs: [{ note: "Synthetic original note", source_id: "42" }],
     source_field_revisions: [{ fields: { "Case number": "SYN-1" } }],

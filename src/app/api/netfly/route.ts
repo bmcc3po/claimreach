@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { netflyContext, netflyMatter } from "@/lib/netfly-server";
-import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, activeNetflyCall, netflyFlags, validateNetflyCallClose, type NetflyCallClose } from "@/lib/netfly-ontake";
+import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, NETFLY_UNAVAILABLE_IDS, activeNetflyCall, netflyFlags, validateNetflyCallClose, type NetflyCallClose } from "@/lib/netfly-ontake";
 import { parseDob } from "@/lib/mva-call/server";
 import { mailColumnsFrom } from "@/lib/us-address";
 import { packetShort } from "@/lib/mva-call/esign";
@@ -290,7 +290,7 @@ export async function POST(req: NextRequest) {
       if (readError || !current) return fail("Could not check the latest answers.", 503);
       const all = current.answers && typeof current.answers === "object" ? current.answers as Record<string, any> : {};
       const netfly = all[NETFLY_ANSWER_KEY] && typeof all[NETFLY_ANSWER_KEY] === "object" ? all[NETFLY_ANSWER_KEY] : {};
-      const fields = { ...(netfly.fields || {}), [field]: value };
+      const fields = { ...(netfly.fields || {}), [field]: value, ...(value && NETFLY_UNAVAILABLE_IDS.has(field) ? { [`${field}_unavailable`]: "" } : {}) };
       const next = { ...all, [NETFLY_ANSWER_KEY]: { ...netfly, version: 1, fields, review: { ...(netfly.review || {}), flags: netflyFlags(fields) } } };
       const { data: saved, error: saveError } = await ctx.db.from("claims")
         .update({ answers: next, updated_at: new Date().toISOString() })

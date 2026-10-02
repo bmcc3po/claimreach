@@ -27,7 +27,7 @@ export async function netflyMatter(ctx: NonNullable<Awaited<ReturnType<typeof ne
   if (!/^[0-9a-f-]{36}$/i.test(identifier) && !/^TMP-\d{1,9}$/i.test(identifier)) return null;
   const field = identifier.startsWith("TMP-") ? "lead_no" : "id";
   const { data: lead, error: leadError } = await ctx.db.from("leads")
-    .select("id, firm_id, campaign_id, case_type, lead_no, claimant_name, phone, email, archived_at")
+    .select("id, firm_id, campaign_id, case_type, lead_no, claimant_name, phone, email, mail_addr1, mail_city, mail_state, mail_zip, archived_at")
     .eq(field, identifier).eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).is("archived_at", null).maybeSingle();
   if (leadError || !lead || lead.case_type !== "mva") return null;
   const { data: claims, error: claimError } = await ctx.db.from("claims")
