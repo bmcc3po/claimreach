@@ -571,4 +571,3 @@ function AppAnswers({ call, onShowOld }: {
   );
 }
 
-
