@@ -82,14 +82,18 @@ test("all five renderers expose the same selected contract and approval control"
     assert.match(html, /aria-label="Non-tiered approval reason"/);
   }
 });
-test("sent and signed views preserve the stored contract while offering a separate correction draft", () => {
+test("sent and signed views preserve the stored contract; signed corrections stay out of the call flow", () => {
   for (const status of ["sent", "opened", "signed"]) {
     const e = make(keys, status, "NV_FLAT"); e.set("story", "city", "Dallas, TX");
     for (const mode of ["guided", "full", "chore", "form", "steps"]) {
       e.setView(mode); e.go("send"); const html = renderToStaticMarkup(<CallView v={e.renderVals()} />);
       assert.ok(html.includes("Contract already sent") && html.includes("Nevada non-tiered"));
-      assert.ok(html.includes('aria-label="Agreement contract"'));
-      assert.ok(html.includes('Report error and send corrected agreement'));
+      if (status === "signed") {
+        assert.ok(!html.includes('Report error and send corrected agreement'), `${mode} should leave signed correction in Agreement tools`);
+      } else {
+        assert.ok(html.includes('aria-label="Agreement contract"'));
+        assert.ok(html.includes('Report error and send corrected agreement'));
+      }
     }
     e.renderVals().contractChoice.select("TX"); assert.equal(e.state.send.nvVariant, "tiered");
     assert.equal(e.props.esign.templateKey, "NV_FLAT");
@@ -104,8 +108,8 @@ test("every signed intake view places retainer review and approval before office
   for (const mode of ["guided", "full", "chore", "form", "steps"]) {
     e.setView(mode);
     const html = renderToStaticMarkup(<CallView v={{ ...e.renderVals(), openFile: noop }} />);
-    assert.match(html, /Signed\. Follow these steps in order\./, `${mode} should show the post-signing path`);
-    assert.match(html, /Open the client-signed PDF and approve the signature/, `${mode} should start with signed-copy review`);
+    assert.match(html, /Signed retainer.*Step 1 of 4/, `${mode} should show only the current post-signing step`);
+    assert.match(html, /Review the signed retainer/, `${mode} should start with signed-copy review`);
     assert.match(html, /Refresh signed copy/, `${mode} should show inline signed-copy loading`);
   }
 });
@@ -116,7 +120,7 @@ test("every sent intake view offers a direct status check instead of a dead end"
     e.setView(mode);
     const html = renderToStaticMarkup(<CallView v={{ ...e.renderVals(), checkSignature: noop }} />);
     assert.match(html, /Check signed status now/, `${mode} should offer the same status check`);
-    assert.match(html, /Do not treat the retainer as signed until this screen confirms it/, `${mode} must not infer signing from the caller`);
+    assert.match(html, /Confirm it here before moving on/, `${mode} must not infer signing from the caller`);
   }
 });
 

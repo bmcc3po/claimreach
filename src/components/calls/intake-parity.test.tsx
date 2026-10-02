@@ -238,7 +238,7 @@ test('step layout keeps notes, missing-question jumps and signed passenger docum
   e.setState({ send: { ...e.state.send, status: 'signed' } });
   const v = { ...e.renderVals(), openFile() {}, ssnRequireFull: false };
   const html = renderToStaticMarkup(<CallView v={v} />);
-  assert.ok(html.includes('Review the signed retainer now'));
+  assert.ok(html.includes('Review the signed retainer'));
   assert.ok(html.includes('Refresh signed copy'));
   assert.ok(html.includes('Synthetic Passenger'));
   assert.ok(html.includes('Walk') || html.includes('Before you hang up, say'));

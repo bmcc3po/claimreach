@@ -20,6 +20,7 @@ const modules: Record<string, any> = {
   },
   "./SsnRefusal": { SsnRefusal: () => null },
   "./SignedInlineReview": { default: () => null },
+  "./SignatureWaiting": { default: () => null },
   "./FinalHandoff": { default: () => null },
   "./IntakeQuestion": { default: () => null, QuestionControl: () => null, AgreementRecipient: () => null },
   "./PlaceField": { default: () => null }, "./WhereField": { default: () => null },
@@ -84,8 +85,6 @@ console.log(`${count+1} identity presentation checks passed`);
 for (const view of ["chore", "form", "guided", "full", "steps"]) {
   const e = engine("signed"); e.setView(view);
   const html = renderToStaticMarkup(jsx.jsx(View, { v: { ...e.renderVals(), canReplace: true, previewHref: "/synthetic-preview", replaceAgreement: () => { throw new Error("No send during render"); } } }));
-  const correction = html.match(/<details\b([^>]*)>[\s\S]*?Correct this agreement[\s\S]*?Report error and send corrected agreement[\s\S]*?<\/details>/);
-  assert.ok(correction, `${view}: correction remains reachable in a disclosure`);
-  assert.doesNotMatch(correction[1], /\bopen(?:=|\s|$)/, `${view}: correction form is closed until deliberately requested`);
+  assert.doesNotMatch(html, /Correct this agreement|Report error and send corrected agreement/, `${view}: signed correction stays in Agreement tools`);
 }
-console.log("ok all intake layouts keep correction controls available but closed by default");
+console.log("ok signed intake keeps correction controls outside the on-call flow");

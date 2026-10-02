@@ -60,8 +60,8 @@ function IdentityFields({ v }: { v: any }) {
 
 export default function CallView({ v }: { v: any }) {
   // One frame for Guided, Collapsible and All questions (IntakeWorkspace.tsx):
-  // the same header, progress bar, view switch, side columns and bottom bar.
-  // Only the middle changes with the view.
+  // the same header, progress bar, view switch, call strip and bottom bar.
+  // Only the intake content changes with the view.
   const wide = !!v.ws;
   const view = v.stepView ? "steps" : v.formView ? "form" : v.choreView ? "chore" : v.fullView ? "full" : "guided";
   const cls = ["cc-app", "ix", `ix-${view}`, `ix-v-${v.view}`, wide ? `ws ws-${v.ws}` : "ix-narrow", v.choreView || v.stepView ? "ch-mode" : "", v.formView ? "sf-mode" : "", v.fullView ? "fi-mode" : ""].filter(Boolean).join(" ");
@@ -366,7 +366,7 @@ export default function CallView({ v }: { v: any }) {
 {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
 <div className="cc-steps">{(v.sendSteps || []).map((st: any, i32: number) => (<Fragment key={i32}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div>
 <SignatureWaiting v={v} />
-{v.canReplace && <details className="cc-card"><summary className="cc-card-h">Correct this agreement</summary><p className="cc-cue">The original stays in history. If the client signed it, the supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn cc-full" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
+{v.canReplace && !v.signed && <details className="cc-card"><summary className="cc-card-h">Correct this agreement</summary><p className="cc-cue">The original stays in history. If the client signed it, the supervisor must review it before firm delivery.</p><AgreementChoice v={v} />{!!v.previewHref && <a className="cc-preview" href={v.previewHref} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn cc-full" disabled={!v.previewHref || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
 {!!(v.notSigned) && (<>
 <div className="cc-say">
 <div className="cc-say-label">{STAY.label}</div>

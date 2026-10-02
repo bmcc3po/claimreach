@@ -18,7 +18,6 @@
 // switching views, turning the iPad or resizing lands in the same place.
 // ============================================================================
 import { useEffect, useId, useRef, useState } from "react";
-import Icon from "@/components/ui/Icon";
 import { REBS } from "@/lib/mva-call/engine";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, OPEN_LINE, MONEY, SEND_LINE, STAY, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
@@ -344,8 +343,7 @@ export function WsLeft({ v }: { v: any }) {
     ? <button key={m.id} type="button" className="ws-miss-b" onClick={m.go}>{m.label}</button>
     : <span key={m.id} className="ws-miss-b ws-miss-t">{m.label}</span>;
   return (
-    <aside className="ws-left" aria-label="Intake review">
-      <div className="ws-review-heading"><Icon name="shield" size={22} /><div><strong>Call guide</strong><span>What to do next</span></div></div>
+    <aside className="ws-left" aria-label="Call and intake guide">
       <section className="ws-caller ws-review-identity">
         <a className="ws-back" href="/app">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>All calls
@@ -359,50 +357,43 @@ export function WsLeft({ v }: { v: any }) {
             <span>{v.onCall ? "On a call in JustCall" : "Ringing in JustCall"}</span>
           </div>
         )}
-        {!!v.clockText && (
-          <div className={`ws-pace${v.clockOver ? " ws-pace-over" : ""}`}>
-            <span className="ws-pace-k">Intake time</span>
-            <span className="ws-clock">{v.clockText}</span>
-          </div>
-        )}
         <div className={`ws-save${v.saveBad ? " ws-save-bad" : ""}`} role="status">{v.saveBad ? v.saveError : v.saveText || "Saves as you go"}</div>
         <div className="ws-ctl">
           <button type="button" className="ws-btn" onClick={v.openPhone || v.openText}>Call</button>
           <button type="button" className="ws-btn" onClick={v.openText}>
             Text{!!v.textBadge && <span className="ws-badge">{v.textUnread}</span>}
           </button>
-          <button type="button" className="ws-btn ws-end" onClick={v.openDispo}>End call</button>
+          <button type="button" className="ws-btn ws-end" onClick={v.openDispo}>Finish call</button>
         </div>
       </section>
 
       <section className={`ws-next-guide ws-next-${guide.tone}`} aria-label="Next action">
         <span className="ws-next-kicker">NEXT</span>
-        <strong>{guide.label}</strong>
+        {guide.go ? <button type="button" onClick={guide.go}>{guide.label} <Chevron /></button> : <strong>{guide.label}</strong>}
         <p>{guide.note}</p>
-        {guide.go && <button type="button" onClick={guide.go}>Go to this step <Chevron /></button>}
       </section>
 
-      <section className="ws-block ws-review-checks">
-        <div className="ws-h">Qualification checks <span className={`ws-count${fi.lights.bad ? " ws-count-bad" : ""}`}>{fi.lights.bad ? "Problem" : fi.lights.text}</span></div>
-        <div className="ws-lights">
-          {fi.lights.rows.map((r: any, i: number) => (
-            <div key={i} className={`ws-light ws-l-${r.state || "none"}`}>
-              <i aria-hidden="true" /><span>{r.label}</span><b>{LIGHT_WORD[r.state || "none"]}</b>
-            </div>
-          ))}
+      <details className="ws-block ws-review-details">
+        <summary>Checks <span className={fi.lights.bad ? "ws-count-bad" : ""}>{fi.lights.bad ? "Problem" : fi.lights.text}</span><span aria-hidden="true">·</span> Unanswered {missing.length}</summary>
+        <div className="ws-review-details-body">
+          <div className="ws-h">Qualification checks</div>
+          <div className="ws-lights">
+            {fi.lights.rows.map((r: any, i: number) => (
+              <div key={i} className={`ws-light ws-l-${r.state || "none"}`}>
+                <i aria-hidden="true" /><span>{r.label}</span><b>{LIGHT_WORD[r.state || "none"]}</b>
+              </div>
+            ))}
+          </div>
+          <div className="ws-h">Unanswered</div>
+          {missing.length === 0 ? <div className="ws-tags">Required intake answers captured.</div> : <div className="ws-miss-items">{missing.slice(0, 3).map(missingItem)}</div>}
+          {missing.length > 3 && <details className="ws-review-more"><summary>{missing.length - 3} more unanswered</summary><div className="ws-miss-items">{missing.slice(3).map(missingItem)}</div></details>}
         </div>
-      </section>
-
-      <section className="ws-block ws-review-missing">
-        <div className="ws-h">Unanswered <span className="ws-count">{missing.length}</span></div>
-        <div className="ws-review-meter"><strong>{fi.progress.text}</strong><span>questions captured</span></div>
-        {missing.length === 0 ? <div className="ws-tags">Required intake answers captured.</div> : <div className="ws-miss-items">{missing.slice(0, 3).map(missingItem)}</div>}
-        {missing.length > 3 && <details className="ws-review-more"><summary>{missing.length - 3} more unanswered</summary><div className="ws-miss-items">{missing.slice(3).map(missingItem)}</div></details>}
-      </section>
+      </details>
 
       {!!(v.linked || []).length && (
-        <section className="ws-block">
-          <div className="ws-h">Same wreck</div>
+        <details className="ws-block ws-review-linked">
+          <summary className="ws-h">Same wreck <span className="ws-count">{v.linked.length}</span></summary>
+          <div className="ws-review-linked-body">
           {(v.linked || []).map((l: any, i: number) => (
             <a key={i} className="ws-linkfile" href={`/app/${l.lead_no || l.id}`}>
               <b>{l.name}</b>
@@ -410,7 +401,8 @@ export function WsLeft({ v }: { v: any }) {
             </a>
           ))}
           <div className="ws-tags">Linked files. Ask how they&apos;re doing.</div>
-        </section>
+          </div>
+        </details>
       )}
 
     </aside>
