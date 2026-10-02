@@ -65,6 +65,8 @@ export function caseReport(lead: any, answers: any, esign?: any, opts: { include
   if (st.fault === "Not clear") crash.push("Fault is not clear yet.");
   if (st.police === "Came out") crash.push(`Police came to the scene${String(f.report || "").trim() ? `, report ${String(f.report).trim()}` : ""}.`);
   if (st.police === "No") crash.push("Police did not come out.");
+  if (String(st.road || "").trim()) crash.push(`Wreck location: ${String(st.road).trim()}.`);
+  if (String(f.policeAgency || "").trim()) crash.push(`Reporting agency: ${String(f.policeAgency).trim()}.`);
 
   const pain = (b.pain || []).filter((p: string) => p !== FINE);
   if (pain.length) hurt.push(`${first} is hurting in the ${andList(pain.map((p: string) => p.toLowerCase()))}.`);
@@ -87,6 +89,8 @@ export function caseReport(lead: any, answers: any, esign?: any, opts: { include
 
   const carrier = f.carrier && f.carrier !== "Pick one" ? f.carrier : "";
   if (carrier) ins.push(`The other driver's insurance is ${carrier}.`);
+  if (String(f.ownCarrier || "").trim()) ins.push(`The client's insurance is ${String(f.ownCarrier).trim()}.`);
+  if (String(f.insuranceDetails || "").trim()) ins.push(`Insurance details: ${String(f.insuranceDetails).trim()}`);
   if (ans("exchanged") === "Hit and run") ins.push("It was a hit and run.");
   if (ans("exchanged") === "No") ins.push("No information was exchanged.");
   if (ans("exchanged") === "Police handled it") ins.push("Police took the insurance information.");
@@ -100,6 +104,7 @@ export function caseReport(lead: any, answers: any, esign?: any, opts: { include
   if (ans("rep") === "Yes") ins.push(e.repGood(b) ? "Has another attorney, is unhappy with them, and it sounds like a good case." : "Already has an attorney.");
 
   if (car.justMe) close.push("No passengers.");
+  else if (car.othersPresent && !(car.people || []).length) close.push("Other people were in the vehicle; passenger details to follow.");
   else if ((car.people || []).length) {
     const n = car.people.length, h = car.people.filter((p: any) => p.hurt === "Yes").length;
     close.push(`${n} ${n === 1 ? "passenger" : "passengers"}${h ? `, ${h} hurt` : ""}.`);

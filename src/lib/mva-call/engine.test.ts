@@ -351,13 +351,37 @@ t("gap: a month with no visit is a gap; a date before the wreck is refused", () 
   assert.ok(!e.answered(e.state.body, BODYQ_BY("firstAt")));
 });
 
-t("gap: a fresh wreck she was seen for asks no dates", () => {
+t("a fresh wreck still captures the first treatment date without extra gap questions", () => {
   const e = crashAgo(10);
   e.setState({ body: { ...e.state.body, pain: ["Neck"], done: { pain: true }, seen: ["Urgent care"] } });
   e.setState({ body: { ...e.state.body, done: { ...e.state.body.done, seen: true } } });
   const keys = liveKeys(e);
-  assert.ok(!keys.includes("firstAt") && !keys.includes("lastAt") && !keys.includes("stretch"));
+  assert.ok(keys.includes("firstAt") && !keys.includes("lastAt") && !keys.includes("stretch"));
   assert.ok(light(e, "Gap").includes("ok"));
+});
+
+t("first-call essentials persist real facts and unavailable markers without fake values", () => {
+  const e = mk({ callerPhone: '2025550100', callerEmail: 'client@example.test', homeAddress: '100 Test St, Houston, TX 77001' });
+  e.setState({ view: 'form', story: { ...e.state.story, city: 'Houston, TX', when: 'Yesterday', police: 'Came out' }, body: { ...e.state.body, seen: ['Not yet'] } });
+  const question = (id: string) => e.renderVals().fi.sections.flatMap((s: any) => s.questions).find((q: any) => q.id === id);
+  question('road').c.field.set({ target: { value: 'Main at First' } });
+  question('policeAgency').c.field.set({ target: { value: 'Houston Police' } });
+  question('report').c.unavailable.pick();
+  question('carrier').c.own.set({ target: { value: 'Client insurer' } });
+  question('carrier').c.details.set({ target: { value: 'Policy TEST-42' } });
+  question('people').c.others.pick();
+  const saved = e.persistable();
+  assert.equal(saved.file.report, '', 'unknown report must remain blank');
+  assert.equal(saved.file.reportUnavailable, true);
+  const reopened = mk({ saved, callerPhone: '2025550100', callerEmail: 'client@example.test', homeAddress: '100 Test St, Houston, TX 77001' });
+  const rows = reopened.renderVals().fi.firstConversation;
+  assert.deepEqual(rows.filter((r: any) => r.pending).map((r: any) => r.id), ['report']);
+  assert.equal(reopened.state.file.ownCarrier, 'Client insurer');
+  assert.equal(reopened.state.story.road, 'Main at First');
+  assert.equal(reopened.state.car.othersPresent, true);
+  assert.equal(reopened.fiInfo('people').answered, true, 'passenger demographics must not block the caller');
+  question('report').c.field.set({ target: { value: 'CASE-123' } });
+  assert.equal(e.state.file.reportUnavailable, false);
 });
 
 // ---- Story as one list ----
@@ -433,6 +457,7 @@ t("full intake: the caller's story, captured out of order", () => {
   fiTap(e, "pain", "Neck"); fiTap(e, "pain", "Back");
   fiOf(e).bookmarks.find((b: any) => b.id === "treatment").go();
   fiTap(e, "seen", "ER");
+  fiTap(e, "firstAt", "Same day");
   const pv = fiQ(e, "providers").c;
   pv.draft.set({ target: { value: "Sunrise Hospital" } }); fiQ(e, "providers").c.add();
   fiOf(e).bookmarks.find((b: any) => b.id === "insurance").go();
@@ -679,12 +704,14 @@ t("quick capture: same answers as Full Intake, and switching lands on the same q
   oneTap(e, "Head"); oneOf(e).q.done();
   oneTap(e, "ER"); oneOf(e).q.done();
   const at = oneOf(e).q.id;
-  assert.equal(at, "work"); // a wreck yesterday skips the visit dates; next in call order is missed work
+  assert.equal(at, "firstAt"); // even yesterday's wreck needs the first treatment date
   e.setView("full");
-  assert.equal(fiOf(e).openSec, "injury");
+  assert.equal(fiOf(e).openSec, "treatment");
   assert.deepEqual(e.state.body.seen, ["ER"]);
   e.setView("convo");
   assert.equal(oneOf(e).q.id, at);
+  oneTap(e, "Same day");
+  assert.equal(oneOf(e).q.id, "work");
   // The missing list on the side jumps the one-question views too.
   fiOf(e).missing.find((m: any) => m.id === "work").go();
   assert.equal(oneOf(e).q.id, "work");

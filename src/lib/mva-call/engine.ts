@@ -593,14 +593,14 @@ export class CallEngine {
 
   // Branching for the 30-day check. Every question here is a date or a yes/no
   // the calculator (gapCheck) needs, and only when the math can need it:
-  //   first visit: the wreck was more than 30 days ago (or no date yet)
+  //   first visit: always capture when care began, including recent wrecks
   //   last visit: 25+ days, so a gap coming up inside 5 days is caught
   //   a month with no visit: first to last visit spans more than 30 days,
   //     and the dates do not already show a gap
   //   willing: not seen, a gap, a not sure, or under 5 days left
   applies(b: any, q: any) {
     var days = this.daysAgo();
-    if (q.key === 'firstAt') return this.seenYes(b) && (days == null || days > 30);
+    if (q.key === 'firstAt') return this.seenYes(b);
     if (q.key === 'lastAt') return this.seenYes(b) && (days == null || days >= 25);
     if (q.key === 'stretch') {
       if (!this.seenYes(b)) return false;
@@ -664,7 +664,7 @@ export class CallEngine {
         if (b.stretch === 'Yes') bad('The PNC went more than a month with no visit. That is a gap.');
         if (b.stretch === 'Not sure') { r.unsure = true; line('Not sure about a month with no visit.', 'warn'); }
       }
-      complete = ['firstAt', 'lastAt', 'stretch'].every((k) => !this.applies(b, { key: k }) || this.answered(b, BODYQ.find((x) => x.key === k)));
+      complete = ['firstAt', 'lastAt', 'stretch'].every((k) => (k === 'firstAt' && days != null && days <= 30) || !this.applies(b, { key: k }) || this.answered(b, BODYQ.find((x) => x.key === k)));
     } else if (days != null) {
       // Not asked yet: say what the date means so the agent knows what is coming.
       r.head = 'Wreck was ' + ago(days) + '. ' + (days <= 30 ? 'If the PNC has not been seen yet, they need to be by ' + shortDay(crash + 30) + '.' : (r.visits >= 2 ? 'The PNC needs to have been seen at least ' + r.visits + ' times' : 'The PNC needs to have been seen') + ', never more than 30 days apart.');
@@ -1203,12 +1203,18 @@ export class CallEngine {
       return { id: id, label: fact.label, ask: fact.ask, applies: true, answered: fact.done, optional: false, value: fv, tone: id === 'fault' && st.fault === 'Caller' ? 'bad' : '' };
     }
     var one = (label: any, answered: any, value: any, applies?: any) => ({ id: id, label: label, ask: '', applies: applies !== false, answered: !!answered, optional: optional, value: answered ? value : '', tone: '' });
-    if (id === 'report') return one('Report number', String(f.report || '').trim(), String(f.report || '').trim());
-    if (id === 'providers') { var pv = (b.providers || []).filter(Boolean); return one('Where the PNC was seen', pv.length, pv.join(', '), this.seenYes(b) || pv.length > 0); }
-    if (id === 'carrier') return one("Other driver's insurance", f.carrier && f.carrier !== 'Pick one', f.carrier);
+    if (id === 'road') return one('Wreck location: road / intersection', String(st.road || '').trim() || st.roadUnavailable, st.road || 'Not available yet — follow up');
+    if (id === 'report') return one('Report number', String(f.report || '').trim() || f.reportUnavailable, f.report || 'Not available yet — follow up', st.police !== 'No' || !!f.report);
+    if (id === 'policeAgency') return one('Reporting agency', String(f.policeAgency || '').trim() || f.policeAgencyUnavailable, f.policeAgency || 'Not available yet — follow up', st.police !== 'No' || !!f.policeAgency);
+    if (id === 'providers') { var pv = (b.providers || []).filter(Boolean); return one('Where treated: facility and city', pv.length || b.providersUnavailable, pv.length ? pv.join(', ') : 'Not available yet — follow up', this.seenYes(b) || pv.length > 0); }
+    if (id === 'carrier') {
+      const other = f.carrier && !['Pick one', 'Not sure yet'].includes(f.carrier) ? f.carrier : '';
+      const insurance = [other ? 'Other driver: ' + other : '', f.ownCarrier ? 'Client: ' + f.ownCarrier : '', f.insuranceDetails || ''].filter(Boolean).join(' · ');
+      return one('Insurance information', other || f.ownCarrier || f.insuranceUnavailable || f.carrier === 'Not sure yet', insurance || 'Not available yet — follow up');
+    }
     if (id === 'people') {
-      var ok = car.justMe || (car.people.length > 0 && car.people.every((p) => p.age && p.hurt));
-      return { ...one('Passengers', ok, car.justMe ? 'Just them' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers'),
+      var ok = car.justMe || car.othersPresent || (car.people.length > 0 && car.people.every((p) => p.age && p.hurt));
+      return { ...one('Passengers', ok, car.justMe ? 'Just them' : !car.people.length ? 'Yes — passenger details to follow' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers'),
         optional: !car.justMe && car.people.length === 0, ask: 'Who else was in the car with you?' };
     }
     if (id === 'car') { var cv = [f.vYear !== 'Year' ? f.vYear : '', f.vMake, f.vModel].filter(Boolean).join(' '); return one('Their car', cv, cv); }
@@ -1286,30 +1292,39 @@ export class CallEngine {
       if (id === 'seat') return { kind: 'chips', opts: storyChip('seat', SEATS), other: st.seat === 'Other' ? { value: st.seatOther || '', set: (e: any) => this.set('story', 'seatOther', e.target.value), ph: 'What were they doing' } : null };
       if (id === 'fault') return { kind: 'chips', opts: storyChip('fault', ['Other driver', 'Caller', 'Not clear']), cue: st.fault === 'Caller' ? 'Do not go hunting.' : '' };
       if (id === 'police') return { kind: 'chips', opts: storyChip('police', ['Came out', 'No', 'Not sure']) };
-      if (id === 'report') return { kind: 'text', field: { value: f.report || '', set: (e: any) => this.set('file', 'report', e.target.value), ph: 'If the PNC has it' } };
+      if (['road', 'report', 'policeAgency'].includes(id)) {
+        const group = id === 'road' ? 'story' : 'file';
+        const source = this.state[group];
+        return { kind: 'text', field: { value: source[id] || '', set: (e: any) => this.setState({ [group]: { ...this.state[group], [id]: e.target.value, [id + 'Unavailable']: false } }), ph: id === 'road' ? 'Road, intersection or wreck address' : id === 'policeAgency' ? 'Police department, sheriff or highway patrol' : 'Wreck report or case number' },
+          unavailable: !String(source[id] || '').trim() ? chip('Not available yet — follow up', source[id + 'Unavailable'], () => this.set(group, id + 'Unavailable', !this.state[group][id + 'Unavailable'])) : null };
+      }
       if (id === 'providers') {
         var list = (b.providers || []);
         var add = () => {
           var t = String(this.state.fi.prov || '').trim();
           if (!t) return;
-          this.setState({ body: Object.assign({}, this.state.body, { providers: (this.state.body.providers || []).concat([t]) }) });
+          this.setState({ body: Object.assign({}, this.state.body, { providers: (this.state.body.providers || []).concat([t]), providersUnavailable: false }) });
           this.setFi({ prov: '' });
         };
         return { kind: 'providers', items: list.map((name, i) => ({ label: name, remove: () => this.setState({ body: Object.assign({}, this.state.body, { providers: this.state.body.providers.filter((x, j) => j !== i) }) }) })),
-          draft: { value: fi.prov || '', set: (e: any) => this.setFi({ prov: e.target.value }), ph: 'Hospital or clinic' }, add: add };
+          draft: { value: fi.prov || '', set: (e: any) => this.setFi({ prov: e.target.value }), ph: 'Facility / provider name and city' }, add: add,
+          unavailable: !list.length ? chip('Not available yet — follow up', b.providersUnavailable, () => this.set('body', 'providersUnavailable', !this.state.body.providersUnavailable)) : null };
       }
       if (id === 'carrier') {
         var q = String(fi.carrierQ || '').trim().toLowerCase();
-        var all = pre.carriers.filter((c) => c !== 'Pick one' && c !== 'Other');
+        var all = pre.carriers.filter((c) => c !== 'Pick one' && c !== 'Other' && c !== 'Not sure yet');
         var hits = q ? all.filter((c) => c.toLowerCase().indexOf(q) >= 0) : all.slice(0, 6);
-        if (f.carrier && f.carrier !== 'Pick one' && !hits.includes(f.carrier)) hits = [f.carrier].concat(hits);
+        if (f.carrier && !['Pick one', 'Not sure yet'].includes(f.carrier) && !hits.includes(f.carrier)) hits = [f.carrier].concat(hits);
         var typed = String(fi.carrierQ || '').trim();
         var exact = all.some((c) => c.toLowerCase() === q);
-        var pickC = (c: any) => { this.set('file', 'carrier', this.state.file.carrier === c ? 'Pick one' : c); this.setFi({ carrierQ: '' }); this.fiAfter('carrier'); };
+        var pickC = (c: any) => { this.setState({ file: { ...this.state.file, carrier: this.state.file.carrier === c ? 'Pick one' : c, insuranceUnavailable: false } }); this.setFi({ carrierQ: '' }); this.fiAfter('carrier'); };
         return { kind: 'carrier', query: { value: fi.carrierQ || '', set: (e: any) => this.setFi({ carrierQ: e.target.value }), ph: 'Type to search' },
+          own: { value: f.ownCarrier || '', set: (e: any) => this.setState({ file: { ...this.state.file, ownCarrier: e.target.value, insuranceUnavailable: false } }) },
+          details: { value: f.insuranceDetails || '', set: (e: any) => this.set('file', 'insuranceDetails', e.target.value) },
+          unavailable: !f.ownCarrier && (!f.carrier || ['Pick one', 'Not sure yet'].includes(f.carrier)) ? chip('No insurance details available yet — follow up', f.insuranceUnavailable, () => this.set('file', 'insuranceUnavailable', !this.state.file.insuranceUnavailable)) : null,
           opts: hits.map((c) => chip(c, f.carrier === c, () => pickC(c))).concat(typed && !exact ? [chip('Use "' + typed + '"', false, () => pickC(typed))] : []) };
       }
-      if (id === 'people') return { kind: 'people', justMe: chip('Just them', s.car.justMe, pre.justMe), add: pre.addPerson, people: pre.people };
+      if (id === 'people') return { kind: 'people', justMe: chip('Just them', s.car.justMe, pre.justMe), others: chip('Yes — details later', s.car.othersPresent || s.car.people.length > 0, () => this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true } })), add: pre.addPerson, people: pre.people };
       if (id === 'car') return { kind: 'car', year: { value: f.vYear, set: (e: any) => this.set('file', 'vYear', e.target.value), options: pre.years }, make: { value: f.vMake || '', set: (e: any) => this.set('file', 'vMake', e.target.value) }, model: { value: f.vModel || '', set: (e: any) => this.set('file', 'vModel', e.target.value) } };
       if (id === 'notes') return { kind: 'notes', field: { value: st.text || '', set: (e: any) => this.set('story', 'text', e.target.value), ph: 'Jot down the client’s account in your own words. This saves as you go.' } };
       return { kind: 'none' };
@@ -1541,8 +1556,18 @@ export class CallEngine {
     var bad = pre.gates.filter((g) => g.cls.indexOf('bad') >= 0);
     var now = new Date();
     var stamp = ((now.getHours() % 12) || 12) + ':' + String(now.getMinutes()).padStart(2, '0') + (now.getHours() < 12 ? ' AM' : ' PM');
+    // First-call handoff coverage is distinct from qualification and delivery
+    // gates. Keep unavailable facts actionable without trapping the agent.
+    const firstConversation = ['city', 'road', 'when', 'police', 'report', 'policeAgency', 'seen', 'providers', 'firstAt', 'carrier', 'people']
+      .map(id => this.fiInfo(id)).filter(q => q.applies)
+      .map(q => ({ id: q.id, label: q.label, pending: q.id === 'people' ? !(s.car.justMe || s.car.othersPresent || s.car.people.length) : !q.answered || /not (?:available|sure)/i.test(q.value), detail: q.answered ? q.value : 'Still to ask', go: () => goTo(q.id) }));
+    const clientPhone = s.send.toOther ? this.props.callerPhone : s.send.phone;
+    for (const [id, label, value] of [['contact-phone', 'Client phone', clientPhone], ['contact-email', 'Client email', s.send.email], ['contact-address', 'Client address', f.addr]]) {
+      firstConversation.push({ id, label, pending: !String(value || '').trim(), detail: String(value || '').trim() || 'Still to ask', go: () => { this.setFi({ sec: 'retainer', target: null, jump: (this.state.fi.jump || 0) + 1 }); if (s.view === 'guided') this.go('file'); } });
+    }
     return {
       sections: sections,
+      firstConversation,
       step,
       guided: guided,
       bookmarks: sections.map((x) => ({ id: x.id, label: x.label, status: x.status, on: x.open,

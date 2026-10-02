@@ -42,16 +42,23 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
       {!!c.date.show && <input className={input} type="date" max={c.date.max} aria-label="Date of the wreck" value={c.date.value ?? ""} onChange={c.date.set} />}
     </>;
     case "where": return <WhereField value={c.where.value} agreement={v.agreement} onChange={c.where.set} onDone={c.where.done} />;
-    case "text": return <input className={input} placeholder={c.field.ph} aria-label={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />;
+    case "text": return <><input className={input} placeholder={c.field.ph} aria-label={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />{c.unavailable && choices([c.unavailable])}</>;
     case "notes": return <textarea className={area} rows={7} placeholder={review ? "No story notes captured" : c.field.ph} aria-label="Accident story notes" value={c.field.value ?? ""} onChange={c.field.set} />;
     case "providers": return <>
       {!!c.items.length && <div className="fi-chips">{c.items.map((it: any, i: number) => <span key={i} className="fi-tag">{it.label}<button type="button" aria-label={`Remove ${it.label}`} onClick={it.remove}>×</button></span>)}</div>}
       <div className="fi-addrow"><input className={input} placeholder={c.draft.ph} aria-label={c.draft.ph} value={c.draft.value} onChange={c.draft.set} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); c.add(); } }} /><button type="button" className="fi-add" onClick={c.add}>Add</button></div>
+      {c.unavailable && choices([c.unavailable])}
     </>;
-    case "carrier": return <><input className={input} placeholder={c.query.ph} aria-label="Search insurance companies" value={c.query.value} onChange={c.query.set} />{choices(c.opts)}</>;
+    case "carrier": return <>
+      {!review && <p className="iq-cue">Get insurance information from either side. Collect what they have.</p>}
+      {field("Other driver's insurance", <><input className={input} placeholder={c.query.ph} aria-label="Search insurance companies" value={c.query.value} onChange={c.query.set} />{choices(c.opts)}</>)}
+      {c.own && field("Client's insurance company, if available", <input className={input} aria-label="Client's insurance company" value={c.own.value} onChange={c.own.set} />)}
+      {c.details && field("Policy / claim number and other insurance details, if available", <textarea className={area} rows={3} aria-label="Policy, claim number and insurance details" value={c.details.value} onChange={c.details.set} />)}
+      {c.unavailable && choices([c.unavailable])}
+    </>;
     case "people": return <>
       {!review && <p className="iq-cue">Every passenger is their own file if they want representation. Capture their details here while you are on the phone.</p>}
-      {choices([c.justMe])}<button type="button" className="fi-add" onClick={c.add}>+ Add a passenger</button>
+      {choices([c.justMe, ...(c.others ? [c.others] : [])])}<button type="button" className="fi-add" onClick={c.add}>+ Add a passenger</button>
       {(c.people || []).map((person: any, i: number) => <div key={person.id || i} className={`${p}-person iq-person`}>
         <div className="fi-addrow"><input className={input} placeholder="Passenger's name" aria-label="Passenger's name" value={person.name ?? ""} onChange={person.setName} /><button type="button" className="fi-add" onClick={person.remove}>Remove</button></div>
         {field("Relationship", choices(choicesFromClasses(person.rels)))}

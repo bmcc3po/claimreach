@@ -63,4 +63,15 @@ t("an empty file still reads cleanly", () => {
   assert.ok(incident.rows.every((row) => row.a === "Not answered" || row.q === "Report number" || (row.q === "Accident story (agent notes)" && row.a === "None")));
 });
 
+t("first-call details reach the same intake report used for the firm packet", () => {
+  const r = caseReport(lead, { ...answers,
+    story: { ...answers.story, road: 'Main at First' },
+    body: { ...answers.body, firstAt: 'same' },
+    car: { justMe: false, people: [], othersPresent: true },
+    file: { ...answers.file, policeAgency: 'Houston Police', ownCarrier: 'Client insurer', insuranceDetails: 'Policy TEST-42' },
+  }, sub);
+  const text = caseReportText(r, 'https://claimreach.com/app/TMP-1181');
+  for (const value of ['Main at First', 'Houston Police', 'Client insurer', 'Policy TEST-42', 'Same day as the wreck', 'passenger details to follow']) assert.ok(text.includes(value), value);
+});
+
 console.log(passed, "passed");
