@@ -154,6 +154,7 @@
 
 /* One quiet conversation; readable prompts and quick answers, without a wall of cards. */
 .nf-conversation{max-width:820px;margin-inline:auto}
+.nf-step-card{scroll-margin-top:160px}
 .nf-conversation .nf-script{background:transparent;border:0;padding:0 0 18px}
 .nf-conversation .nf-script>strong{display:none}
 .nf-conversation .nf-script p,.nf-say,.nf-closing p{font-size:17px;line-height:1.6}

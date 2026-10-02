@@ -22,6 +22,12 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [section, setSection] = useState(0);
   const [workspaceTab, setWorkspaceTab] = useState<"call" | "netfly_intake">("call");
   const [viewMode, setViewMode] = useState<"step" | "all" | "simple">("step");
+  const previousSection = useRef(0);
+  useEffect(() => {
+    if (previousSection.current !== section && viewMode === "step")
+      document.getElementById(`nf-step-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    previousSection.current = section;
+  }, [section, viewMode]);
   const [activeQuestion, setActiveQuestion] = useState<string>(VERIFY_STEPS[0].fields[0]);
   const [commandTab, setCommandTab] = useState<"file" | "agreement" | "scripts" | "phone">("file");
   const [commandOpen, setCommandOpen] = useState(false);
