@@ -50,7 +50,7 @@ export function receiveAllowed(email: ReceivedEmail, recipient: string, domains:
 
 export async function resendGet(path: string, apiKey: string, fetcher: typeof fetch = fetch) {
   const response = await fetcher(`https://api.resend.com${path}`, { headers: { Authorization: `Bearer ${apiKey}` },
-    redirect: 'error', signal: AbortSignal.timeout(20000), cache: 'no-store' });
+    redirect: 'error', signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw new Error(`Resend could not provide the incoming email (${response.status}).`);
   return JSON.parse(new TextDecoder().decode(await cappedBytes(response.body, 1024 * 1024)));
 }
@@ -60,10 +60,10 @@ export async function receivedPdf(emailId: string, attachmentId: string, apiKey:
   if (!/^[a-zA-Z0-9-]{1,80}$/.test(emailId) || !/^[a-zA-Z0-9-]{1,80}$/.test(attachmentId)) throw new Error('Invalid incoming attachment identity.');
   const metadata = await resendGet(`/emails/receiving/${emailId}/attachments/${attachmentId}`, apiKey, fetcher);
   const url = new URL(metadata.download_url);
-  if (url.protocol !== 'https:' || url.hostname !== 'inbound-cdn.resend.com' || url.port || url.username || url.password)
+  if (url.protocol !== 'https:' || !['inbound-cdn.resend.com', 'cdn.resend.app'].includes(url.hostname) || url.port || url.username || url.password)
     throw new Error('Incoming PDF download host is not approved.');
   if (metadata.size > 15 * 1024 * 1024) throw new Error('Incoming PDF is larger than 15 MB.');
-  const response = await fetcher(url.toString(), { redirect: 'error', signal: AbortSignal.timeout(20000), cache: 'no-store' });
+  const response = await fetcher(url.toString(), { redirect: 'error', signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw new Error('The incoming PDF could not be downloaded.');
   const bytes = await cappedBytes(response.body, 15 * 1024 * 1024);
   if (bytes.length < 100 || !new TextDecoder().decode(bytes.slice(0, 8)).startsWith('%PDF-') ||
@@ -78,3 +78,4 @@ export async function emailObjectId(value: string) {
   const h = await contentHash(new TextEncoder().encode(value));
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-8${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
+

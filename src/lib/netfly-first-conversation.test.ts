@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { NETFLY_WELCOME_STEPS, NETFLY_FOLLOWUP_FIELDS, netflyFirstCallSources, netflyFirstConversationReview } from "./netfly-first-conversation";
+import { NETFLY_WELCOME_STEPS, NETFLY_FOLLOWUP_FIELDS, netflyCareGuidance, netflyFirstCallSources, netflyFirstConversationReview } from "./netfly-first-conversation";
 import { NETFLY_FIELD_IDS, NETFLY_UNAVAILABLE_IDS } from "./netfly-ontake";
 
 const active = NETFLY_WELCOME_STEPS.flatMap((step) => [...step.fields]);
@@ -37,7 +37,10 @@ console.log("NETFLY first-conversation essentials passed");
 
 const extra = Object.values(NETFLY_FOLLOWUP_FIELDS).flat();
 assert.equal(NETFLY_WELCOME_STEPS.length, 5, "four call steps, then after-call review");
-assert.ok(active.length <= 30, "the first call must stay short");
-assert.ok(!active.includes("treatment_days" as any), "detailed scheduling belongs in optional follow-up");
+assert.ok(active.length <= 40, "the call must stay bounded; populated and conditional details are not all asked");
+for (const id of ["treatment_days", "treatment_time", "treatment_location", "photo_request_permission", "towed"]) assert.ok(active.includes(id as any), "the welcoming care conversation stays in the main call");
+assert.match(netflyCareGuidance({ seen_doctor: "No" }), /one body/);
+assert.match(netflyCareGuidance({ care_today: "No" }), /virtual visit/);
 for (const id of extra) { assert.ok(NETFLY_FIELD_IDS.has(id)); assert.ok(!active.includes(id as any), "optional fields must not repeat in the main call"); }
 for (const item of review(core)) assert.ok(NETFLY_WELCOME_STEPS[item.step].fields.includes(item.id as never), `${item.id} bookmark must reach its current step`);
+
