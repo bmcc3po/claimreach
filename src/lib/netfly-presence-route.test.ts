@@ -22,6 +22,7 @@ const modules: Record<string, any> = {
   "next/server": { NextResponse: { json: (body: any, options: any = {}) => ({ body, status: options.status || 200 }) } },
   "@/lib/netfly-server": { netflyContext: async () => ctx(), netflyMatter: async (_ctx: any, key: string) => key === LEAD ? { lead: { id: LEAD }, claim: db.tables.claims[0] } : null },
   "@/lib/netfly-ontake": ontake,
+  "@/lib/netfly-handoff-save": { saveNetflyHandoff: async () => { throw new Error('Not used by presence tests'); } },
   "@/lib/mva-call/server": { parseDob: () => null },
   "@/lib/us-address": { mailColumnsFrom: () => ({}) },
   "@/lib/mva-call/esign": { packetShort: async () => false },
