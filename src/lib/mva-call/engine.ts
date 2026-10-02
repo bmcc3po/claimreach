@@ -232,7 +232,7 @@ export interface CallProps {
   saved?: any;
   reasons: { esign: Reason[]; dq: Reason[]; callback: Reason[]; ni: Reason[] };
   notifyDefaults: { who: string; how: string }[];
-  esign: { status: string; configured: boolean; pax: Record<string, string>; templateKeys?: string[]; templateKey?: string | null;
+  esign: { status: string; configured: boolean; pax: Record<string, string>; templateKeys?: string[]; templateKey?: string | null; deliveryPhone?: string | null; deliveryVia?: string | null;
     sendGate?: 'checking' | 'clear' | 'held' | 'error'; sendAttempt?: SendAttemptHold | null; paxSendAttempts?: Record<string, SendAttemptHold> };
   /** A newer emergency packet requires a new primary before office completion. */
   agreementSuperseded?: boolean;
@@ -245,7 +245,7 @@ export interface CallApi {
   sendAgreement(replacementReason?: string): void;
   sendPax(i: number): void;
   completeAgreement(): void;
-  resendLink(): void;
+  resendLink(options?: { phone?: string; recipient_confirmed?: boolean }): unknown;
   /** Void the matter's live agreement (asks for the reason). Optional so older harnesses still build. */
   voidAgreement?(): void;
   sendText(body: string): void;
@@ -1096,20 +1096,32 @@ export class CallEngine {
     if (this.state.send.status === 'signed') this.api.completeAgreement();
   }
 
-  sendPax(i: number) {
+  passengerSendIssue(i: number): string {
     const hold = this.agreementHoldNotice();
-    if (hold) { this.setState({ file: { ...this.state.file, error: hold } }); return; }
-    var p = this.state.car.people[i] || {};
-    var minor = p.age === 'Under 18';
-    if (p.wantsRep !== 'Yes') { this.setState({ file: Object.assign({}, this.state.file, { error: 'Confirm that ' + (p.name || 'this passenger') + ' wants representation on the Passengers step before sending their own agreement.' }) }); return; }
-    if (!minor && this.state.send.via !== 'Email' && String(p.cell || '').replace(/\D/g, '').length < 10) {
-      this.setState({ file: Object.assign({}, this.state.file, { error: 'Add ' + (p.name || 'the passenger') + "'s own cell first. Their agreement goes to their phone, never the caller's." }) });
-      return;
-    }
-    if (!minor && this.state.send.via === 'Email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(p.email || ''))) {
-      this.setState({ file: Object.assign({}, this.state.file, { error: 'Add ' + (p.name || 'the passenger') + "'s own email first. Their agreement goes to their email, never the caller's." }) });
-      return;
-    }
+    if (hold) return hold;
+    const p = this.state.car.people[i];
+    if (!p || !String(p.name || '').trim()) return "Add the passenger's full name.";
+    if (this.state.file.pax[i]) return 'Their agreement is already being sent or is on file.';
+    if (p.hurt !== 'Yes' || p.wantsRep !== 'Yes') return 'Confirm that this injured passenger wants representation.';
+    if (!['Adult', 'Under 18'].includes(p.age)) return 'Choose adult or under 18 so the right person signs.';
+    const minor = p.age === 'Under 18', byEmail = (p.via || this.state.send.via) === 'Email';
+    const phone = minor ? this.state.send.phone : p.cell, email = minor ? this.state.send.email : p.email;
+    if (byEmail ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '')) : !/^(?:1)?\d{10}$/.test(String(phone || '').replace(/\D/g, ''))) return minor ? 'Add the parent or guardian’s delivery details in Retainer.' : byEmail ? 'Add their own email above.' : 'Add their own cell above.';
+    if (minor && !String(this.state.send.client || '').trim()) return 'Add the parent or guardian’s full name in Retainer.';
+    const shared = !minor && (byEmail ? String(email || '').toLowerCase() === String(this.props.callerEmail || '').toLowerCase() : String(phone || '').replace(/\D/g, '').slice(-10) === String(this.props.callerPhone || '').replace(/\D/g, '').slice(-10));
+    if (shared && !p.shareOk) return 'Confirm that the passenger shares this contact before sending.';
+    if (!this.props.esign.configured) return 'A signing template must be configured for this campaign.';
+    const contract = agreementChoice(this.state.story.city, this.state.send.nvVariant, this.props.esign.templateKeys ?? ['TX', 'FL', 'NV', 'NV_FLAT', 'OTHER']);
+    if (!contract.available) return 'Add the wreck city and state and choose a configured agreement in Retainer.';
+    if (!doiOf(this.state.story)) return 'Add the date of the wreck first.';
+    if (contract.requiresReason && !String(this.state.send.nvReason || '').trim()) return 'Add the approval reason for the non-tiered agreement in Retainer.';
+    return '';
+  }
+
+  sendPax(i: number) {
+    const issue = this.passengerSendIssue(i);
+    if (issue) { this.setState({ file: { ...this.state.file, error: issue } }); return; }
+    this.setState({ file: { ...this.state.file, error: '' } });
     this.api.sendPax(i);
   }
 
@@ -1931,7 +1943,7 @@ export class CallEngine {
       justMe: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }),
       addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, dob: '', cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
       people: s.car.people.map((p, i) => ({
-        id: p.pid,
+        id: p.pid || String(i),
         title: p.name ? p.name : 'Passenger ' + (i + 1),
         name: p.name,
         first: String(p.name || '').trim().split(/\s+/)[0] || ('Passenger ' + (i + 1)),
@@ -2044,7 +2056,7 @@ export class CallEngine {
         var minor = x.p.age === 'Under 18';
         var nm = x.p.name || 'Passenger ' + (x.i + 1);
         var cellDigits = String(x.p.cell || '').replace(/\D/g, '');
-        var byEmail = s.send.via === 'Email';
+        var byEmail = (x.p.via || s.send.via) === 'Email';
         var needCell = !minor && !byEmail && cellDigits.length < 10;
         var needEmail = !minor && byEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(x.p.email || ''));
         var callerDigits = String(this.props.callerPhone || '').replace(/\D/g, '').slice(-10);
@@ -2056,10 +2068,12 @@ export class CallEngine {
           title: nm + (minor ? ', under 18' : ''),
           note: minor ? this.callerFirst() + ' signs as parent or guardian. ' + nm + ' goes on the HIPAA pages.'
             : noRep ? 'Confirm that ' + nm + ' wants representation on the Passengers step before sending their agreement.'
-            : byEmail ? nm + ' signs their own agreement. It goes to THEIR email' + (x.p.email ? ' (' + x.p.email + ')' : '') + ', never the caller\'s.'
-            : nm + ' signs their own agreement. It goes to THEIR phone' + (cellDigits.length >= 10 ? ' (' + fmtPhone(x.p.cell) + ')' : '') + ', never the caller\'s.',
+            : byEmail ? nm + ' signs their own agreement. It goes to THEIR email' + (x.p.email ? ' (' + x.p.email + ')' : '') + '.'
+            : nm + ' signs their own agreement. It goes to THEIR phone' + (cellDigits.length >= 10 ? ' (' + fmtPhone(x.p.cell) + ')' : '') + '.',
           button: 'Send ' + nm + "'s agreement",
-          ready: !sendHeld && !status && !noRep, live: !!status, noRep: noRep,
+          ready: !this.passengerSendIssue(x.i), live: !!status, noRep: noRep,
+          status, minor, byEmail, via: x.p.via || s.send.via, setVia: (via: string) => this.setPerson(x.i, 'via', via),
+          blockedReason: status ? '' : this.passengerSendIssue(x.i),
           needCell: needCell, needEmail: needEmail,
           cell: { value: x.p.cell || '', set: (e: any) => this.setPerson(x.i, 'cell', e.target.value.replace(/[^\d() +-]/g, '').slice(0, 16)) },
           email: { value: x.p.email || '', set: (e: any) => this.setPerson(x.i, 'email', String(e.target.value).trim().slice(0, 120)) },
@@ -2099,7 +2113,8 @@ export class CallEngine {
       textCantSend: !String(s.text.draft || '').trim(),
       sendText: () => this.sendText(String(this.state.text.draft || '').trim()),
       canResend: !sendHeld && (s.send.status === 'sent' || s.send.status === 'opened'),
-      resendLink: () => this.api.resendLink(),
+      resendLink: (options?: { phone?: string; recipient_confirmed?: boolean }) => this.api.resendLink(options),
+      agreementDeliveryPhone: this.props.esign.deliveryPhone || null, agreementDeliveryVia: this.props.esign.deliveryVia || null,
       // A staff correction is a single replacement send with a reason. It
       // never grants an agent the ability to void an envelope in isolation.
       canReplace: !sendHeld && canReplaceDraft,

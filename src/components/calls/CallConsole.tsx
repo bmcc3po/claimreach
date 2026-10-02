@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import CallView from "./CallView";
 import PostCallReview from "./PostCallReview";
 import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
+import ClientContact from "./ClientContact";
 import CaseSummary from "./CaseSummary";
 import { WsHelper } from "./IntakeWorkspace";
 import { popOutDialer } from "./JustCallDialer";
@@ -16,6 +17,7 @@ import { agreementChoice } from "@/lib/mva-call/agreement-choice";
 import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
 import { callbackAt } from "@/lib/mva-call/dispo";
 import { applyAnswerDelta, isAnswerObject } from "@/lib/mva-call/answer-merge";
+import { SEND_HELD_MESSAGE } from "@/lib/mva-call/replacement";
 import type { SendAttemptHold } from "@/lib/mva-call/replacement";
 import { savedCallView } from "@/lib/mva-call/step-layout";
 import { OPEN_DESK_FILE_EVENT } from "@/lib/mva-call/links";
@@ -171,6 +173,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     } catch (error: any) { setPresenceError(error.message || "Call status did not save."); }
     finally { setPresenceBusy(false); }
   }
+  const contactSave = useRef<(() => Promise<boolean>) | null>(null);
+  const saveContactNow = async () => !contactSave.current || await contactSave.current();
   const deskTextsOpen = useRef(false);
   const setDeskTab = (t: DeskTab) => { setCommandCollapsed(false); deskTextsOpen.current = t === "texts"; setDeskTabState(t); if (t === "texts") eng.current?.setState({ textUnread: 0 }); };
 
@@ -182,10 +186,15 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   function updateSendGate(gate: "checking" | "clear" | "held" | "error", hold: SendAttemptHold | null = null, pax: Record<string, SendAttemptHold> = {}) {
     const engine = eng.current;
     if (!engine) return;
+    const oldHoldNotice = engine.agreementHoldNotice();
     engine.props.esign.sendGate = gate;
     engine.props.esign.sendAttempt = hold;
     engine.props.esign.paxSendAttempts = pax;
-    engine.setState({});
+    const stale = (message: string) => !!message && (message === oldHoldNotice || message === SEND_HELD_MESSAGE);
+    engine.setState(gate === "clear" ? {
+      send: { ...engine.state.send, error: stale(engine.state.send.error) ? "" : engine.state.send.error },
+      file: { ...engine.state.file, error: stale(engine.state.file.error) ? "" : engine.state.file.error },
+    } : {});
   }
 
   async function refreshSigningStatus(manual = false): Promise<{ status: string | null; error: string | null }> {
@@ -213,7 +222,12 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       }
       if (!emergencyResign.current && agreementId.current === requestedAgreement) {
         agreementId.current = data.agreement_id || data.id || agreementId.current;
-        if (data.agreement) engine.props.esign.templateKey = data.agreement.template_key || null;
+        if (data.agreement) {
+          engine.props.esign.templateKey = data.agreement.template_key || null;
+          engine.props.esign.deliveryPhone = data.agreement.phone || null;
+          engine.props.esign.deliveryVia = data.agreement.via || null;
+          engine.setState({});
+        }
         if (Array.isArray(data.templates)) engine.props.esign.templateKeys = data.templates.map((template: any) => String(template.key));
         if (data.status && data.status !== engine.state.send.status) engine.setState({ send: { ...engine.state.send, status: data.status } });
         if (data.complete && engine.state.file.agreement !== "done") engine.setState({ file: { ...engine.state.file, agreement: "done" } });
@@ -352,6 +366,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     const leadId = init.leadId;
     const api: CallApi = {
       async sendAgreement(replacementReason?: string) {
+        if (!(await saveContactNow())) { e().setState({ send: { ...e().state.send, error: "Client details have not saved. Retry the contact save before sending." } }); return; }
         const hold = e().agreementHoldNotice();
         if (hold) { e().setState({ send: { ...e().state.send, error: hold } }); return; }
         if (replacementReason && !agreementId.current) {
@@ -381,6 +396,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           updateSendGate("clear");
           agreementId.current = newAgreementId || priorAgreementId;
           e().props.esign.templateKey = d.template_key || choice.key || null;
+          e().props.esign.deliveryPhone = s.send.phone; e().props.esign.deliveryVia = s.send.via;
           emergencyResign.current = false; setNeedsResign(false);
           e().setState({ send: { ...e().state.send, status: d.status || "sent", sentNameReview: newAgreementId && newAgreementId !== priorAgreementId ? "" : e().state.send.sentNameReview, error: d.warning || (d.owner_review_required ? "Correction sent. The original signed agreement is held for supervisor review before firm delivery." : "") } });
         }).catch((err) => {
@@ -389,7 +405,10 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           e().setState({ send: { ...e().state.send, status: replacementReason ? s.send.status : "ready", error: err.message } });
         });
       },
-      sendPax(i: number) {
+      async sendPax(i: number) {
+        if (!(await saveContactNow()) || !(await flushSave())) { e().setState({ file: { ...e().state.file, error: "Passenger details have not saved. Stay here and retry before sending." } }); return; }
+        const issue = e().passengerSendIssue(i);
+        if (issue) { e().setState({ file: { ...e().state.file, error: issue } }); return; }
         const hold = e().agreementHoldNotice();
         if (hold) { e().setState({ file: { ...e().state.file, error: hold } }); return; }
         const s = e().state;
@@ -408,7 +427,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           // minor's goes to the caller, who signs as parent or guardian. The
           // server refuses the caller's own destination for an adult unless
           // someone confirmed they share it (round 7).
-          via: s.send.via, phone: minor ? s.send.phone : (p.cell || ""), email: minor ? s.send.email : (p.email || ""),
+          via: p.via || s.send.via, phone: minor ? s.send.phone : (p.cell || ""), email: minor ? s.send.email : (p.email || ""),
           city: s.story.city, today: todayMDY(), doi: doiOf(s.story),
           pax_key: p.pid || String(i), pax_minor: minor, pax_recipient_confirmed: !!p.shareOk,
           pax_dob: p.dob || null,
@@ -422,6 +441,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         });
       },
       async completeAgreement() {
+        if (!(await saveContactNow())) { e().setState({ file: { ...e().state.file, error: "Client details have not saved. Retry the contact save before completing." } }); return; }
         const hold = e().agreementHoldNotice();
         if (hold) { e().setState({ file: { ...e().state.file, error: hold } }); return; }
         const f = e().state.file;
@@ -453,13 +473,13 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           }))
           .catch((err) => e().setState({ send: { ...e().state.send, error: err.message } }));
       },
-      resendLink() {
+      async resendLink(options) {
         const hold = e().agreementHoldNotice();
-        if (hold) { e().setState({ text: { ...e().state.text, error: hold } }); return; }
-        const t = e().state.text;
-        post("/api/calls/esign/resend", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current })
-          .then(() => { e().setState({ text: { ...e().state.text, error: "" } }); loadComms(); })
-          .catch((err) => e().setState({ text: { ...t, error: err.message } }));
+        if (hold) throw new Error(hold);
+        const result = await post("/api/calls/esign/resend", { lead_id: leadId, claim_id: init.claimId, agreement_id: agreementId.current, ...options });
+        e().setState({ text: { ...e().state.text, error: "" } });
+        void loadComms();
+        return result;
       },
       sendText(body: string) {
         const t = e().state.text;
@@ -481,7 +501,10 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         const at = callbackAt(d.when, d.at);
         // The call does not end over unsaved answers (Astra round 3): a failed
         // answers save blocks the dispo with a plain error instead.
-        flushSave().then((saved) => {
+        saveContactNow().then((contactSaved) => {
+          if (!contactSaved) throw new Error("Client details have not saved. Retry the contact save before leaving intake.");
+          return flushSave();
+        }).then((saved) => {
           if (!saved) throw new Error("The answers have not saved yet. Check the connection; they retry automatically, then press Save again.");
           return post("/api/calls/dispo", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current, dispo: d.pick, reasons: d.why,
@@ -495,7 +518,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           e().setState({ saved: true, postCallReview: d.pick === "signed", dispo: { ...e().state.dispo, open: d.pick !== "signed", saving: false, saved: true, error: "", serverNote: note } });
         }).catch((err) => e().setState({ dispo: { ...e().state.dispo, saving: false, error: err.message } }));
       },
-      home() { void saveIdentityNow().then((secure) => secure && flushSave()).then((ok) => { if (ok) router.push("/dashboard"); }); },
+      home() { void saveContactNow().then((contactSaved) => contactSaved && saveIdentityNow()).then((secure) => secure && flushSave()).then((ok) => { if (ok) router.push("/dashboard"); }); },
       ask(text: string) {
         const q = String(text || "").trim();
         if (!q) return;
@@ -595,7 +618,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     if (reviewBusy) return;
     setReviewBusy(true); setReviewError("");
     try {
-      if (!(await saveIdentityNow()) || !(await flushSave())) throw new Error("Your latest answers have not saved. Stay here and retry.");
+      if (!(await saveContactNow()) || !(await saveIdentityNow()) || !(await flushSave())) throw new Error("Your latest answers have not saved. Stay here and retry.");
       engine.setState({ postCallReview: false, dispo: { ...engine.state.dispo, open: true } });
     } catch (error: any) { setReviewError(error?.message || "Could not save your review."); }
     finally { setReviewBusy(false); }
@@ -753,7 +776,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The File tab's contact card saved the record: the call follows it at
+  // The inline contact editor saved the record: the call follows it at
   // once. Cell, email and home address are the record's on every screen
   // (hard-mapped, Brett Sep 28), never a separate copy the call keeps.
   useEffect(() => {
@@ -762,7 +785,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       if (d.leadId !== init.leadId) return;
       engine.applyRecord({ phone: d.phone, email: d.email, addr: d.addr, name: d.name, previousName: d.previousName });
     };
-    // An agreement voided from the File tab opens the send again here.
+    // An agreement voided inline opens the send again here.
     const onVoid = (e: any) => {
       const d = e?.detail || {};
       if (d.leadId !== init.leadId || (d.claimId && d.claimId !== init.claimId)) return;
@@ -853,19 +876,10 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     document.addEventListener("keydown", keys);
     return () => { document.removeEventListener("keydown", keys); previous?.focus(); };
   }, [sideOn, utilityOpen]);
-  // Entering Send brings up the agreement preview. Merely reopening the file
-  // or resizing the screen keeps the case file (or the agent's chosen tab).
   const phase = s.phase;
-  const previousPhase = useRef(phase);
-  useEffect(() => {
-    const enteredSend = previousPhase.current !== phase && phase === "send";
-    previousPhase.current = phase;
-    if (sideOn && !commandCollapsed && enteredSend && init.canPreview) setDeskTabState("retainer");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sideOn, commandCollapsed, phase]);
 
   const preview = previewInfo(engine.state, init, engine.props.esign.templateKeys ?? []);
-  const view: any = { ...v, leadId: init.leadId, claimId: init.claimId, canOverrideDownload: ["owner", "admin"].includes(init.props.agentRole || ""), previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [], passengerLinks,
+  const view: any = { ...v, agreementId: agreementId.current, clientContact: <ClientContact leadId={init.leadId} claimId={init.claimId} saveRef={contactSave} />, leadId: init.leadId, claimId: init.claimId, canOverrideDownload: ["owner", "admin"].includes(init.props.agentRole || ""), previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [], passengerLinks,
     showPresence: init.props.campaign === "INNO MVA", liveCall: activeCallPresence(liveCall, now), presenceActorId, presenceBusy, presenceError, markCall };
   const identity = identityInput();
   const identitySaved = !!identity.ssn && identitySavedDigits.current === identity.ssn && identityMeta.current?.mode === identity.mode;
@@ -903,8 +917,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     view.openSheet = () => setDeskTab("know");
     view.openCommon = () => { setDeskTab("know"); setFocusLines({ key: "common", n: Date.now() }); };
     view.openRamble = () => { setDeskTab("know"); setFocusLines({ key: "ramble", n: Date.now() }); };
-    view.onPreview = (ev: any) => { ev.preventDefault(); setDeskTab("retainer"); };
-    view.openRetainer = () => setDeskTab("retainer");
+    view.openRetainer = view.reviewAgreement;
     view.openFile = () => setDeskTab("file");
     view.openScripts = () => setDeskTab("know");
     view.textBadge = commandCollapsed && v.textBadge;
@@ -912,8 +925,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     const openUtility = (tab: DeskTab) => { setDeskTab(tab); setUtilityOpen(true); };
     view.openCaseTools = () => openUtility("file");
     view.openFile = () => openUtility("file");
-    view.openRetainer = () => openUtility("retainer");
-    view.onPreview = (ev: any) => { ev.preventDefault(); openUtility("retainer"); };
+    view.openRetainer = view.reviewAgreement;
   }
   // Slide the divider to give the call or the panel more room. Remembered per
   // computer; double-click puts it back.
@@ -999,7 +1011,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
 
   const lead = init.props.lead ? { ...init.props.lead, name: engine.state.send.client || init.props.callerName, phone: init.props.callerPhone, email: init.props.callerEmail } : null;
   const fill = (t: string) => String(t || "").replace(/\{FIRM\}/g, init.props.firmSpoken).replace(/\{NAME\}/g, v.callerFirst || "");
-  const casePanel = <DeskPanel key="case-panel" v={{ ...v, agentRole: init.props.agentRole, reviewAgreement: view.reviewAgreement, beforeQaResubmit: async () => (await saveIdentityNow()) && (await flushSave()) }} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
+  const casePanel = <DeskPanel key="case-panel" v={{ ...v, agentRole: init.props.agentRole, reviewAgreement: view.reviewAgreement, beforeQaResubmit: async () => (await saveContactNow()) && (await saveIdentityNow()) && (await flushSave()) }} tab={deskTab} setTab={setDeskTab} phase={phase} fill={fill} lead={lead}
     onCollapse={sideOn ? collapseCommand : undefined} panelId={commandPanelId}
     summary={<WsHelper v={view} />}
     caseSummary={<CaseSummary answerSnapshot={snapshot} claimantName={engine.props.callerName || ""} saveBad={!!view.saveBad} />}

@@ -20,16 +20,17 @@ const modules: Record<string, any> = {
   },
   "./SsnRefusal": { SsnRefusal: () => null },
   "./SignedInlineReview": { default: () => null },
+  "./AgreementActions": { default: () => null },
   "./SignatureWaiting": { default: () => null },
   "./FinalHandoff": { default: () => null },
-  "./IntakeQuestion": { default: () => null, QuestionControl: () => null, AgreementRecipient: () => null },
+  "./IntakeQuestion": { default: () => null, QuestionControl: () => null, AgreementRecipient: () => null, IntakeChoices: () => null, choicesFromClasses: () => [] },
   "./PlaceField": { default: () => null }, "./WhereField": { default: () => null },
   "./FullIntake": { FiBody: () => null }, "./OneQuestion": { GuidedIntake: () => null },
   "./IntakeWorkspace": { WsLeft: () => null, WsHelper: () => null, IxTop: () => null, IxFoot: () => null },
 };
 function load(name: string): any {
   if (name in modules) return modules[name];
-  assert.ok(["./AgreementChoice","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
+  assert.ok(["./ContractActions","./PassengerAgreement","./AgreementChoice","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
   const source=fs.readFileSync(path.join(__dirname,`${name}.tsx`),"utf8");
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
   const exports: any={}; new Function("require","exports",code)(load,exports);
@@ -85,6 +86,6 @@ console.log(`${count+1} identity presentation checks passed`);
 for (const view of ["chore", "form", "guided", "full", "steps"]) {
   const e = engine("signed"); e.setView(view);
   const html = renderToStaticMarkup(jsx.jsx(View, { v: { ...e.renderVals(), canReplace: true, previewHref: "/synthetic-preview", replaceAgreement: () => { throw new Error("No send during render"); } } }));
-  assert.doesNotMatch(html, /Correct this agreement|Report error and send corrected agreement/, `${view}: signed correction stays in Agreement tools`);
+  assert.match(html, /Correct or send a new agreement/, `${view}: correction stays inline with client details`);
 }
-console.log("ok signed intake keeps correction controls outside the on-call flow");
+console.log("ok signed intake keeps corrections inline in every presentation");

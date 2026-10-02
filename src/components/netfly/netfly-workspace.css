@@ -134,3 +134,14 @@
 .nf-minimum-review button{width:100%;display:flex;justify-content:space-between;gap:16px;text-align:left;border:0;background:transparent;color:#173e70;font:inherit;font-weight:700;padding:14px 0;cursor:pointer}
 .nf-minimum-review button span{font-weight:400;color:#805516}
 @media(max-width:700px){.nf-minimum-review button{display:grid;gap:5px}}
+
+.nf-followup-details { border-top: 1px solid #d2deeb; margin-top: 20px; padding: 16px 0; }
+.nf-followup-details summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+.nf-followup-details .nf-questions { margin-top: 16px; }
+
+/* The welcome call is the focus; supporting tools open only when requested. */
+.nf-workspace-grid{max-width:1120px;grid-template-columns:185px minmax(0,1fr);gap:24px}
+.nf-command{display:none}
+.nf-command.nf-command-open{display:block;position:fixed;inset:0 0 0 auto;width:min(410px,100vw);max-height:100vh;z-index:100;border-radius:0;box-shadow:-15px 0 45px #142b4850;overflow:auto}
+.nf-command-toggle,.nf-command-close{display:inline-flex}
+.nf-command-close{position:absolute;right:2px;top:0;border:1px solid #ccd9ea;border-radius:9px;background:#fff;width:36px;height:36px;align-items:center;justify-content:center;font-size:24px;cursor:pointer}

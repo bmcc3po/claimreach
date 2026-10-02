@@ -405,7 +405,7 @@ async function send(req: NextRequest) {
   });
 
   const identity = { claim_id: signClaimId, agreement_id: row.id, lead_id: fileLeadId, template_key: key, replacement_of: replaced?.id || null, owner_review_required: signedReplacement };
-  if (textError) return NextResponse.json({ ok: true, status: "sent", ...identity, warning: `The agreement is ready, but the text did not go out: ${textError}. Use Resend in the text sheet.` });
+  if (textError) return NextResponse.json({ ok: true, status: "sent", ...identity, warning: `The agreement is ready, but the text did not go out: ${textError}. Use Send agreement again in the Retainer section.` });
   return NextResponse.json({ ok: true, status: "sent", ...identity });
   } finally {
     // Safe only while no create/uncertain provider mutation was attempted.
@@ -483,5 +483,5 @@ export async function GET(req: NextRequest) {
     claim_id: context.matter.claim.id, agreement_id: main?.id ?? null, templates: templates.data ?? [], case_type: context.matter.claim.claim_type, read_only: !!context.lead.archived_at,
     send_attempt: pending.attempt, pax_send_attempts: paxSendAttempts,
     emergency: emergency.row ? { group: emergency.row.packet_group, status: emergency.row.status, needs_resign: emergencySupersedes(main, emergency.row) } : null,
-    agreement: main ? { id: main.id, status: main.status, via: main.via, template_key: main.template_key, sent_at: main.created_at, signed_at: main.signed_at, voided_at: main.voided_at, void_reason: main.void_reason } : null });
+    agreement: main ? { id: main.id, status: main.status, via: main.via, phone: main.phone, email: main.email, template_key: main.template_key, sent_at: main.created_at, signed_at: main.signed_at, voided_at: main.voided_at, void_reason: main.void_reason } : null });
 }

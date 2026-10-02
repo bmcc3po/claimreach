@@ -120,6 +120,15 @@ function makeAutosave<V extends Record<string, any>>(start: V, opts: { current: 
     flush() {
       if (timer || dirtyCount()) void run();
     },
+    /** A signing action must see the acknowledged contact, not pending typing. */
+    async flushAndWait(): Promise<boolean> {
+      for (let i = 0; i < 100; i++) {
+        if (busy) { await new Promise((resolve) => setTimeout(resolve, 50)); continue; }
+        await run();
+        return !busy && dirtyCount() === 0;
+      }
+      return false;
+    },
     isDirty(k: string) { return k in revs; },
   };
 }
@@ -138,5 +147,5 @@ export function useFieldAutosave<V extends Record<string, any>>(initial: () => V
   useEffect(() => () => { api.current?.flush(); }, []);
   const status: AutosaveStatus = error ? "error" : saving ? "saving" : pending ? "dirty" : savedAt != null ? "saved" : "idle";
   const a = api.current;
-  return { values, status, error, savedAt, edit: a.edit, incoming: a.incoming, flush: a.flush, isDirty: a.isDirty };
+  return { values, status, error, savedAt, edit: a.edit, incoming: a.incoming, flush: a.flush, flushAndWait: a.flushAndWait, isDirty: a.isDirty };
 }

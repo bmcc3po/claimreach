@@ -3,7 +3,6 @@
 // on smaller screens. Every layout uses the same contact and document controls.
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import Icon from "@/components/ui/Icon";
-import AgreementChoice from "./AgreementChoice";
 import LawRulerSyncSummary from "@/components/LawRulerSyncSummary";
 import FileStatusControl from "@/components/FileStatusControl";
 import OwnerFirmDownload from "./OwnerFirmDownload";
@@ -11,7 +10,6 @@ import { SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
 import { SOL, stateCodeOf, injuryDeadline, STATE_TZ } from "@/lib/mva-call/state";
-import { splitUsAddress, joinUsAddress, mailColumnsFrom } from "@/lib/us-address";
 
 export type DeskTab = "summary" | "know" | "texts" | "phone" | "retainer" | "file" | "tools";
 export interface PhoneRow { label: string; number: string; pretty: string; kind: "caller" | "threeway" }
@@ -51,7 +49,6 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   const [phoneOn, setPhoneOn] = useState(false);
   const [dialState, setDialState] = useState<DialerState>("loading");
   const [moreOpen, setMoreOpen] = useState(false);
-  const [correctionFor, setCorrectionFor] = useState<string | null>(null);
   // File contents unmount when another tool opens. Keep unsaved notes above
   // that boundary, scoped to their exact lead and matter while this Desk lives.
   const [noteDrafts, setNoteDrafts] = useState<Record<string, FileNoteDraft>>({});
@@ -64,8 +61,8 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
   const moreButton = useRef<HTMLButtonElement | null>(null);
   const dialer = useRef<JustCallDialerHandle | null>(null);
   useEffect(() => { if (tab === "phone") setPhoneOn(true); }, [tab]);
-  const primaryTabs: [DeskTab, string][] = [["file", "File"], ["texts", "Texts"], ["retainer", "Agreement"]];
-  const secondaryTabs: [DeskTab, string][] = [["phone", "Phone"], ["know", "Scripts"], ["tools", "Tools"], ...(summary ? [["summary", "Helper"] as [DeskTab, string]] : [])];
+  const primaryTabs: [DeskTab, string][] = [["file", "File"], ["texts", "Texts"], ["phone", "Phone"]];
+  const secondaryTabs: [DeskTab, string][] = [["know", "Scripts"], ["tools", "Tools"], ...(summary ? [["summary", "Helper"] as [DeskTab, string]] : [])];
   const activeSecondary = secondaryTabs.find(([key]) => key === tab)?.[1];
   const callActive = dialState === "on-call" || dialState === "ringing";
   const tabButton = ([key, label]: [DeskTab, string]) => (
@@ -84,7 +81,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
       }}>
         <div className="cc-file-heading">
           <Icon name="files" size={22} />
-          <div className="cc-file-heading-copy"><strong>Command center</strong><span>Contact, documents &amp; activity</span></div>
+          <div className="cc-file-heading-copy"><strong>Command center</strong><span>Calls, texts, tools &amp; delivery</span></div>
           {onCollapse && <button type="button" className="cc-command-collapse" aria-label="Collapse command center" title="Give the intake more space" aria-expanded="true" aria-controls={panelId} onClick={onCollapse}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m8 6 6 6-6 6M19 4v16" /></svg>
           </button>}
@@ -106,8 +103,8 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
       {tab === "summary" && !!summary && <div className="cc-side-b ws-side-b">{summary}</div>}
       {tab === "know" && <Knowledge v={v} phase={phase} fill={fill} focusLines={focusLines} />}
       {tab === "texts" && <Texts v={v} />}
-      {tab === "retainer" && <><Retainer v={v} preview={preview} correctionOpen={correctionFor === claimId} onCorrectionToggle={(open) => setCorrectionFor(open ? claimId : null)} /><AgreementActions leadId={leadId} claimId={claimId} /></>}
-      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} canOpenClassic={v.agentRole === "owner"} canDownloadFirmPacket={["owner", "admin"].includes(v.agentRole)} caseSummary={caseSummary} noteDraft={noteDraft} updateNoteDraft={updateNoteDraft} sendHoldNotice={v.sendHoldNotice || ""} reconcileActions={v.reconcileActions || []} reconcileBusy={!!v.reconcileBusy} reconcileMessage={v.reconcileMessage || ""} onFinishOffice={v.reviewAgreement} beforeQaResubmit={v.beforeQaResubmit} onCorrect={() => { setCorrectionFor(claimId); setTab("retainer"); }} />}
+      {tab === "retainer" && <div className="cc-side-b"><button type="button" className="cc-btn" onClick={v.reviewAgreement}>Open client details and contract in intake</button></div>}
+      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} canOpenClassic={v.agentRole === "owner"} canDownloadFirmPacket={["owner", "admin"].includes(v.agentRole)} caseSummary={caseSummary} noteDraft={noteDraft} updateNoteDraft={updateNoteDraft} sendHoldNotice={v.sendHoldNotice || ""} reconcileActions={v.reconcileActions || []} reconcileBusy={!!v.reconcileBusy} reconcileMessage={v.reconcileMessage || ""} onFinishOffice={v.reviewAgreement} beforeQaResubmit={v.beforeQaResubmit} onCorrect={v.reviewAgreement} />}
       {tab === "tools" && <Tools v={v} story={story} />}
       {phoneOn && (
         <div className="cc-side-b cc-side-phone" hidden={tab !== "phone"}>
@@ -314,8 +311,6 @@ function Texts({ v }: { v: any }) {
             <div>{m.body}</div>{(m.when || m.hasStatus) && <div className="cc-bub-s">{[m.when, m.status].filter(Boolean).join(" · ")}</div>}
           </div>
         ))}
-        {!!v.canResend && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><button className="cc-chip cc-go" onClick={v.resendLink}>Resend the agreement link</button></div>}
-        {!!v.canReplace && <div className="cc-cue">To correct this agreement, open Agreement, preview the new contract, and report the error.</div>}
         {!!v.hasTextError && <div className="cc-stop"><div className="cc-cue cc-red" style={{ marginTop: 0 }}>{v.textError}</div></div>}
         <div ref={end} />
       </div>
@@ -329,103 +324,6 @@ function Texts({ v }: { v: any }) {
   );
 }
 
-function Retainer({ v, preview, correctionOpen, onCorrectionToggle }: { v: any; preview: PreviewInfo; correctionOpen: boolean; onCorrectionToggle: (open: boolean) => void }) {
-  const [reload, setReload] = useState(0);
-  const missing = preview.checks.filter((c) => !c.ok && !c.later).length;
-  if (!v.sendReady) return <div className="cc-side-b cc-side-ret cc-side-ret-sent">
-    {!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>Signing actions paused</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
-    <div className="cc-agreement-current"><span>{v.currentAgreement ? "Contract already sent" : "Sending agreement"}</span><strong>{v.currentAgreement?.label || "Preparing the selected contract…"}</strong></div>
-    {v.canReplace && <details open={correctionOpen} onToggle={(event) => onCorrectionToggle(event.currentTarget.open)}><summary className="cc-chip">Correct this agreement</summary><p className="cc-cue">The original stays in File history. Select and preview the corrected agreement, then report the error and send the replacement. A client-signed original is held for supervisor review before firm delivery.</p><AgreementChoice v={v} />{preview.href && <a className="cc-btn" href={preview.href} target="_blank" rel="noopener noreferrer">Preview corrected agreement</a>}<button type="button" className="cc-btn" disabled={!preview.href || missing > 0 || v.contractChoice?.needReason} onClick={v.replaceAgreement}>Report error and send corrected agreement</button></details>}
-    {v.hasSendError && <div className="cc-cue cc-red" role="status">{v.sendError}</div>}
-  </div>;
-  return (
-    <div className="cc-side-b cc-side-ret">
-      {!!v.sendHoldNotice && <div className="cc-stop" role="status"><strong>Signing actions paused</strong><p>{v.sendHoldNotice}</p>{(v.reconcileActions || []).map((action: any) => <button type="button" key={action.label} className="cc-btn" disabled={!!v.reconcileBusy} onClick={action.go}>{v.reconcileBusy ? "Checking" : action.label}</button>)}{!!v.reconcileMessage && <p>{v.reconcileMessage}</p>}</div>}
-      <AgreementChoice v={v} />
-      {v.reviewAgreement && <button type="button" className="cc-btn cc-agreement-review" onClick={v.reviewAgreement}>Review and send</button>}
-      <div className="cc-grp">
-        {preview.checks.map((c) => (
-          <div key={c.label} className="cc-chk">
-            <span className={`cc-chk-dot${c.ok ? " cc-ok" : c.later ? " cc-later" : " cc-miss"}`} aria-hidden="true" />
-            <span className="cc-chk-k">{c.label}</span>
-            {c.ok || c.later || !(c as any).spot ? (
-              <span className={`cc-chk-v${c.ok ? "" : c.later ? "" : " cc-red"}`}>{c.value}</span>
-            ) : (
-              /* A missing item is a link: tap it and land where it gets typed. */
-              <button type="button" className="cc-chk-v cc-red cc-chk-go" onClick={() => v.jumpTo((c as any).spot)}>{c.value}</button>
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="cc-cue" style={{ margin: "0 4px" }}>
-        {missing ? `${missing} thing${missing === 1 ? "" : "s"} still missing before it can go.` : "Yellow on the agreement is what the call filled in. Check the spelling with the PNC before you send."}
-      </div>
-      {preview.href ? (
-        <>
-          <div className="cc-ret-bar">
-            <button className="cc-chip cc-sm" onClick={() => setReload((n) => n + 1)}>Reload preview</button>
-            <a className="cc-chip cc-sm cc-ret-open" href={preview.href} target="_blank" rel="noopener">Open full size</a>
-          </div>
-          <iframe key={`${preview.href}:${reload}`} className="cc-ret-pdf" title="Draft agreement preview" src={preview.href} />
-        </>
-      ) : (
-        <div className="cc-cue" style={{ textAlign: "center", marginTop: 20 }}>Choose a configured contract and add the signer's name to preview the draft.</div>
-      )}
-    </div>
-  );
-}
-
-function AgreementActions({ leadId, claimId }: { leadId: string; claimId: string }) {
-  const [agreements, setAgreements] = useState<any[]>([]);
-  const [target, setTarget] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const load = async () => {
-    try {
-      const query = new URLSearchParams({ lead_id: leadId, claim_id: claimId });
-      const response = await fetch(`/api/calls/file?${query}`, { cache: "no-store" });
-      const body = await response.json();
-      if (!response.ok || body.error) throw new Error(body.error || "Agreement actions did not load.");
-      setAgreements((body.agreements || []).filter((agreement: any) => agreement.can_void));
-      setError("");
-    } catch (cause: any) { setError(cause.message || "Agreement actions did not load."); }
-  };
-  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [leadId, claimId]);
-  useEffect(() => {
-    const refresh = () => { void load(); };
-    window.addEventListener("focus", refresh);
-    window.addEventListener("cr:esign-reconciled", refresh);
-    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("cr:esign-reconciled", refresh); };
-  }, [leadId, claimId]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!agreements.length && !error) return null;
-  const active = agreements.find((agreement) => agreement.id === target);
-  const voidAgreement = async () => {
-    if (!active || reason.trim().length < 3 || busy) return;
-    setBusy(true); setError("");
-    try {
-      const response = await fetch("/api/calls/esign/void", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, id: active.id, reason: reason.trim() }) });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || body.error) throw new Error(body.error || "The agreement was not voided.");
-      setTarget(null); setReason("");
-      await load();
-      window.dispatchEvent(new CustomEvent("cr:voided", { detail: { leadId, claimId, pax: active.pax } }));
-    } catch (cause: any) { setError(cause.message || "The agreement was not voided."); }
-    finally { setBusy(false); }
-  };
-  return <div className="cc-side-b cc-side-ret"><details className="cc-card"><summary>Agreement actions · owner/admin</summary>
-    <p className="cc-cue">Use only to correct a signed or sent agreement. The original and audit history stay on file.</p>
-    {agreements.map((agreement) => <div key={agreement.id} className="cc-card">
-      <div className="cc-cue">{agreement.name || agreement.signer || "Agreement"} · {agreement.status}</div>
-      {target === agreement.id ? <>
-        <label className="cc-cue" htmlFor={`void-reason-${agreement.id}`}>Reason to void</label>
-        <textarea id={`void-reason-${agreement.id}`} className="cc-area" rows={2} value={reason} onChange={(event) => setReason(event.target.value)} />
-        <div className="cc-chips cc-list"><button type="button" className="cc-chip cc-sm" onClick={() => { setTarget(null); setReason(""); }}>Cancel</button><button type="button" className="cc-chip cc-sm" disabled={busy || reason.trim().length < 3} onClick={() => void voidAgreement()}>{busy ? "Voiding…" : "Confirm void"}</button></div>
-      </> : <button type="button" className="cc-chip cc-sm" onClick={() => { setTarget(agreement.id); setReason(""); }}>Void this agreement</button>}
-    </div>)}
-    {error && <p className="cc-cue cc-red" role="alert">{error}</p>}
-  </details></div>;
-}
 
 function LeadCard({ lead }: { lead: { from: string; said: string; tags: string[] } | null }) {
   if (!lead || (!lead.from && !lead.said && !lead.tags.length)) return null;
@@ -448,157 +346,11 @@ const fmtWhen = (iso?: string | null) => {
 
 // The file: status, agreements, notes, documents and history, without leaving
 // the call. Loads when the tab opens.
-// ContactCard's autosave, the same one the CRM's Contact Info and Case
-// Details tabs use.
-import { useFieldAutosave } from "../useFieldAutosave";
-// The traditional contact card (Brett, Sep 28): the record's phone, email
-// and mailing address, right on the File tab, editable during the call.
-// Saves to the LEAD (the same generic contact save the CRM uses), so a
-// callback, a report or a prefill reads exactly what the agent typed here.
-function ContactCard({ leadId, initial }: { leadId: string; initial: Record<string, string> }) {
-  // A record that came in with the whole address on the street line
-  // ("18475 Zurich Ln, Tinley Park, IL 60477") shows split. Merely opening
-  // the file never writes contact data; normalization accompanies an address edit.
-  const first = (() => {
-    const f = {
-      first_name: initial.first_name || "", last_name: initial.last_name || "", claimant_name: initial.claimant_name || "",
-      phone: initial.phone || "", email: initial.email || "",
-      home_phone: initial.home_phone || "", work_phone: initial.work_phone || "",
-      mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
-      mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
-    };
-    const cols = mailColumnsFrom(f, f.mail_addr1);
-    return { f: cols ? { ...f, ...cols } : f, tidy: cols };
-  })();
-  const [open, setOpen] = useState(false);
-  // What the record holds, so the call's own copy follows a save exactly.
-  const saved = useRef<Record<string, string>>({
-    first_name: initial.first_name || "", last_name: initial.last_name || "", claimant_name: initial.claimant_name || "",
-    phone: initial.phone || "", email: initial.email || "",
-    home_phone: initial.home_phone || "", work_phone: initial.work_phone || "",
-    mail_addr1: initial.mail_addr1 || "", mail_city: initial.mail_city || "",
-    mail_state: initial.mail_state || "", mail_zip: initial.mail_zip || "",
-  });
-  const acknowledged = useRef<Record<string, string> | null>(null);
-  // A save sends only the fields the agent changed, with what they hold when
-  // it goes out, so the Activity Log says what really changed and a phone the
-  // call just saved is never sent back as its old value (Astra round 7b).
-  const { values: f, status, error: msg, edit, incoming } = useFieldAutosave<Record<string, string>>(() => first.f, {
-    delay: 900,
-    send: async (patch) => {
-      let r: Response;
-      try {
-        r = await fetch("/api/leads", { method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ op: "save", lead_id: leadId, lead: patch }) });
-      } catch {
-        throw new Error("Could not reach the server. The contact did not save.");
-      }
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.error) throw new Error(j.error || "The contact did not save.");
-      acknowledged.current = j.contact || null;
-    },
-    onSaved: (patch) => {
-      const prev = saved.current;
-      const s = { ...prev, ...(patch as Record<string, string>) };
-      const nameChanged = ["first_name", "last_name", "claimant_name"].some((k) => Object.prototype.hasOwnProperty.call(patch, k));
-      if (nameChanged) {
-        const canonical = acknowledged.current;
-        for (const key of ["first_name", "last_name", "claimant_name"]) if (typeof canonical?.[key] === "string") s[key] = canonical[key];
-        if (!canonical?.claimant_name) s.claimant_name = [s.first_name, s.last_name].filter(Boolean).join(" ").trim();
-        incoming({ first_name: s.first_name, last_name: s.last_name, claimant_name: s.claimant_name });
-      }
-      saved.current = s;
-      // The call's own copy follows (the File step's home address, the send).
-      try {
-        window.dispatchEvent(new CustomEvent("cr:contact", { detail: {
-          leadId, addr: joinUsAddress({ street: s.mail_addr1, city: s.mail_city, state: s.mail_state, zip: s.mail_zip }),
-          phone: s.phone, email: s.email, prevPhone: prev.phone, prevEmail: prev.email,
-          ...(nameChanged ? { name: s.claimant_name, previousName: prev.claimant_name || [prev.first_name, prev.last_name].filter(Boolean).join(" "), first_name: s.first_name, last_name: s.last_name, claimant_name: s.claimant_name } : {}),
-        } }));
-      } catch { /* the console is not on this page */ }
-    },
-  });
-  // The call saved a contact field onto the record (the PNC's email typed on
-  // the send step, the home address on the File step): show it here too. A
-  // box with unsaved typing keeps it, and that typing still saves.
-  useEffect(() => {
-    const on = (e: any) => {
-      const d = e?.detail || {};
-      if (d.leadId !== leadId) return;
-      const upd: Record<string, string> = {};
-      for (const k of ["first_name", "last_name", "claimant_name", "phone", "email", "mail_addr1", "mail_city", "mail_state", "mail_zip"]) if (typeof d[k] === "string") upd[k] = d[k];
-      if (!Object.keys(upd).length) return;
-      saved.current = { ...saved.current, ...upd };
-      incoming(upd);
-    };
-    window.addEventListener("cr:record", on);
-    return () => window.removeEventListener("cr:record", on);
-  }, [leadId, incoming]);
-  const set = (k: string) => (e: any) => {
-    const v = e.target.value;
-    // Pasting a whole address into the street box fills city, state and ZIP.
-    // A pasted address with no ZIP clears the old ZIP instead of keeping one
-    // that belonged to the previous address.
-    const split = k === "mail_addr1" ? splitUsAddress(v) : null;
-    const tidy = k.startsWith("mail_") ? mailColumnsFrom(saved.current, saved.current.mail_addr1) : null;
-    const patch = split
-      ? { mail_addr1: split.street, mail_city: split.city, mail_state: split.state, mail_zip: split.zip }
-      : { [k]: k === "mail_state" ? v.toUpperCase() : v };
-    // Current displayed address values preserve earlier unsaved typing too.
-    edit({ ...(tidy ? { ...tidy, mail_addr1: f.mail_addr1, mail_city: f.mail_city, mail_state: f.mail_state, mail_zip: f.mail_zip } : {}), ...patch });
-  };
-  const addr = joinUsAddress({ street: f.mail_addr1, city: f.mail_city, state: f.mail_state, zip: f.mail_zip });
-  const gaps = [!f.phone && "cell", !f.mail_addr1 && "street", !f.mail_city && "city", !f.mail_state && "state", !f.mail_zip && "ZIP"].filter(Boolean) as string[];
-  return (
-    <div className="cc-card cc-contact-card">
-      <div className="cc-contact-heading">
-        <span className="cc-card-h">Contact</span>
-        <button type="button" className="cc-chip cc-sm cc-contact-edit" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{open ? "Done" : "Edit contact"}</button>
-      </div>
-      {!open && (<>
-        <div className="cc-chk"><span className="cc-chk-k">PNC name</span><span className="cc-chk-v">{[f.first_name, f.last_name].filter(Boolean).join(" ") || f.claimant_name || "Not on file"}</span></div>
-        <div className="cc-chk"><span className="cc-chk-k">Cell</span><span className="cc-chk-v">{f.phone || "Not on file"}</span></div>
-        {!!f.home_phone && <div className="cc-chk"><span className="cc-chk-k">Home phone</span><span className="cc-chk-v">{f.home_phone}</span></div>}
-        {!!f.work_phone && <div className="cc-chk"><span className="cc-chk-k">Work phone</span><span className="cc-chk-v">{f.work_phone}</span></div>}
-        <div className="cc-chk"><span className="cc-chk-k">Email</span><span className="cc-chk-v">{f.email || "Not on file"}</span></div>
-        <div className="cc-chk"><span className="cc-chk-k">Address</span><span className="cc-chk-v">{addr || "Not on file"}</span></div>
-        {gaps.length > 0 && <button type="button" className="cc-cue cc-red" style={{ background: "none", border: 0, padding: 0, marginTop: 6, cursor: "pointer", textAlign: "left" }} onClick={() => setOpen(true)}>Missing {gaps.join(", ")}. Tap to add.</button>}
-      </>)}
-      {open && (<>
-        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-          <label style={{ flex: 1, minWidth: 0 }}><span className="cc-lab">FIRST NAME</span><input className="cc-field" type="text" autoComplete="given-name" aria-label="PNC first name" value={f.first_name} onChange={set("first_name")} /></label>
-          <label style={{ flex: 1, minWidth: 0 }}><span className="cc-lab">LAST NAME</span><input className="cc-field" type="text" autoComplete="family-name" aria-label="PNC last name" value={f.last_name} onChange={set("last_name")} /></label>
-        </div>
-        <div className="cc-cue" style={{ marginBottom: 8 }}>Correct the PNC's legal name here. An agreement already sent keeps its original name; send a corrected agreement and the original stays in history.</div>
-        <div className="cc-lab">CELL</div>
-        <input className="cc-field" type="tel" inputMode="tel" aria-label="Cell" value={f.phone} onChange={set("phone")} />
-        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}><div className="cc-lab">HOME PHONE</div><input className="cc-field" type="tel" inputMode="tel" aria-label="Home phone" value={f.home_phone} onChange={set("home_phone")} /></div>
-          <div style={{ flex: 1, minWidth: 0 }}><div className="cc-lab">WORK PHONE</div><input className="cc-field" type="tel" inputMode="tel" aria-label="Work phone" value={f.work_phone} onChange={set("work_phone")} /></div>
-        </div>
-        <div className="cc-lab" style={{ marginTop: 8 }}>EMAIL</div>
-        <input className="cc-field" type="email" inputMode="email" autoComplete="off" aria-label="Email" value={f.email} onChange={set("email")} />
-        <div className="cc-lab" style={{ marginTop: 8 }}>STREET</div>
-        <input className="cc-field" type="text" placeholder="Street, or paste the whole address" aria-label="Street address" value={f.mail_addr1} onChange={set("mail_addr1")} />
-        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-          <input className="cc-field" style={{ flex: 2, minWidth: 0 }} type="text" placeholder="City" aria-label="City" value={f.mail_city} onChange={set("mail_city")} />
-          <input className="cc-field" style={{ flex: 1, minWidth: 0 }} type="text" placeholder="ST" maxLength={2} aria-label="State" value={f.mail_state} onChange={set("mail_state")} />
-          <input className="cc-field" style={{ flex: 1, minWidth: 0 }} type="text" inputMode="numeric" placeholder="ZIP" maxLength={10} aria-label="ZIP" value={f.mail_zip} onChange={set("mail_zip")} />
-        </div>
-      </>)}
-      {status === "saving" && <div className="cc-cue" style={{ marginTop: 6 }}>Saving</div>}
-      {status === "saved" && <div className="cc-cue" style={{ marginTop: 6 }}>Saved to the file.</div>}
-      {status === "error" && <div className="cc-cue cc-red" style={{ marginTop: 6 }}>{msg}</div>}
-    </div>
-  );
-}
-
 function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket, caseSummary, noteDraft, updateNoteDraft, sendHoldNotice, reconcileActions, reconcileBusy, reconcileMessage, onCorrect, onFinishOffice, beforeQaResubmit }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null; canOpenClassic: boolean; canDownloadFirmPacket: boolean; caseSummary?: ReactNode; noteDraft: FileNoteDraft; updateNoteDraft: (update: (draft: FileNoteDraft) => FileNoteDraft) => void; sendHoldNotice: string; reconcileActions: { label: string; go: () => void }[]; reconcileBusy: boolean; reconcileMessage: string; onCorrect: () => void; onFinishOffice?: () => void; beforeQaResubmit?: () => Promise<boolean> }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
   const noteInput = useRef<HTMLTextAreaElement | null>(null);
   const { body: note, scope, saving } = noteDraft;
-  const [openedSignedPreview, setOpenedSignedPreview] = useState<string | null>(null);
   const [qaBusy, setQaBusy] = useState(false);
   const [qaMessage, setQaMessage] = useState("");
   const qaRequest = useRef<{ review: string; id: string } | null>(null);
@@ -651,15 +403,6 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket,
     } catch (e: any) { setErr(e.message || "The matter was not resubmitted."); }
     finally { qaInFlight.current = false; setQaBusy(false); }
   };
-  const reviewOne = async (a: any) => {
-    if (openedSignedPreview !== a.id) return;
-    try {
-      const r = await fetch("/api/calls/esign/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId, agreement_id: a.id }) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.error) throw new Error(j.error || "Review was not saved.");
-      await load();
-    } catch (e: any) { setErr(e.message); }
-  };
   if (!d) return <div className="cc-side-b">{err ? <div className="cc-cue cc-red">{err}</div> : <div className="cc-cue" style={{ textAlign: "center", marginTop: 24 }}>Loading the file</div>}</div>;
   const L = d.lead || {};
   const activeAgreement = d.agreements.find((a: any) => a.pax == null && !a.voided);
@@ -689,7 +432,7 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket,
           noteInput.current?.scrollIntoView({ behavior: "smooth", block: "center" });
         }}>Add note</button>
       </div>
-      <ContactCard leadId={leadId} initial={d.contact || {}} />
+      {onFinishOffice && <button type="button" className="cc-chip" onClick={onFinishOffice}>Edit client details and contract in intake</button>}
       <LawRulerSyncSummary imported={d.imported} />
       <div className="cc-grp">
         {row("Lead number", L.lead_no)}
@@ -718,7 +461,7 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket,
               </div>}
               {a.error && a.status !== "voided" && <div className="cc-cue cc-red">{a.error}</div>}
               {a.replacement_requested_at && !a.voided && <div className="cc-cue cc-red" role="status">Supervisor review required since {fmtWhen(a.replacement_requested_at)}. {a.replacement_requested_by || "An agent"} reported: {a.replacement_reason}. The original signed evidence stays on file; firm delivery is held.</div>}
-              {a.client_signed_url && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><a className="cc-chip cc-sm" href={a.client_signed_url} target="_blank" rel="noopener noreferrer" onClick={() => setOpenedSignedPreview(a.id)}>{a.status === "voided" ? "Original client-signed preview (voided)" : "View client-signed preview"}</a><span className="cc-cue">{a.status === "voided" ? "Historical signed evidence is preserved." : "Client signed; office signer and final certificate are pending. Inspect this preview before finishing or correcting."}</span>{a.status === "signed" && !a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" disabled={openedSignedPreview !== a.id} onClick={() => reviewOne(a)}>I reviewed this signed copy</button>}{a.agent_reviewed_at && <span className="cc-cue">Reviewed {fmtWhen(a.agent_reviewed_at)} by {a.agent_reviewed_by || "staff"}</span>}{a.status === "signed" && a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" onClick={onCorrect}>Report error / send corrected agreement</button>}</div>}
+              {a.client_signed_url && <div className="cc-chips cc-list" style={{ marginTop: 8 }}><a className="cc-chip cc-sm" href={a.client_signed_url} target="_blank" rel="noopener noreferrer">{a.status === "voided" ? "Original client-signed preview (voided)" : "View client-signed preview"}</a><span className="cc-cue">{a.status === "voided" ? "Historical signed evidence is preserved." : "Client signed; office signer and final certificate are pending. Inspect this preview before finishing or correcting."}</span>{a.status === "signed" && !a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" onClick={onFinishOffice}>Review signed copy in intake</button>}{a.agent_reviewed_at && <span className="cc-cue">Reviewed {fmtWhen(a.agent_reviewed_at)} by {a.agent_reviewed_by || "staff"}</span>}{a.status === "signed" && a.agent_reviewed_at && !a.replacement_requested_at && <button type="button" className="cc-chip cc-sm" onClick={onCorrect}>Report error / send corrected agreement</button>}</div>}
             </div>
           ))}
         </div>

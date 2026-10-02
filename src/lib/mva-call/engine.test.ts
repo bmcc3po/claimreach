@@ -57,6 +57,7 @@ t("caller, agent and firm fill the script", () => {
 t("every engine-owned top-level property in CallView resolves", () => {
   const src = readFileSync(new URL("../../components/calls/CallView.tsx", import.meta.url), "utf8");
   const roots = new Set(Array.from(src.matchAll(/\bv\.([A-Za-z_]\w*)/g)).map((m) => m[1]));
+  roots.delete("clientContact"); roots.delete("agreementId"); // inline record editor and agreement identity from CallConsole
   roots.delete("leadId"); // added by CallConsole, not the engine
   roots.delete("claimId"); // added by CallConsole for the pinned matter
   roots.delete("canOverrideDownload"); roots.delete("passengerLinks"); // authenticated role and linked passenger files from CallConsole
@@ -943,6 +944,24 @@ t("terminal agreement states reopen selection on reload and polling without send
     assert.equal(e.state.send.error, "Cancellation failed to save; review history.");
     assert.equal(calls.length, before);
   }
+});
+
+t("passenger agreements are available before the caller signs, with their own destination", () => {
+  const e = mk({ callerPhone: "2025550100", callerEmail: "caller@example.invalid" });
+  e.setState({ story: { ...e.state.story, city: "Las Vegas, NV", when: "Pick a date", date: isoAgo(2) } });
+  e.renderVals().addPerson();
+  for (const [key, value] of Object.entries({ name: "Synthetic Friend", age: "Adult", hurt: "Yes", wantsRep: "Yes", cell: "2025550101" })) e.setPerson(0, key, value);
+  assert.equal(e.state.send.status, "ready");
+  assert.equal(e.renderVals().paxSend[0].ready, true);
+  calls.length = 0; e.sendPax(0); assert.deepEqual(calls, ["sendPax:0"]);
+  e.setPerson(0, "cell", "2025550100"); assert.equal(e.renderVals().paxSend[0].ready, false);
+  e.setPerson(0, "shareOk", true); assert.equal(e.renderVals().paxSend[0].ready, true);
+  e.renderVals().paxSend[0].setVia("Email"); assert.equal(e.renderVals().paxSend[0].ready, false);
+  e.setPerson(0, "email", "friend@example.invalid"); assert.equal(e.renderVals().paxSend[0].ready, true);
+  assert.equal(e.persistable().car.people[0].via, "Email");
+  e.props.esign.sendGate = "held"; assert.equal(e.renderVals().paxSend[0].ready, false);
+  e.props.esign.sendGate = "clear"; e.setPerson(0, "wantsRep", "No"); assert.equal(e.renderVals().paxSend[0].ready, false);
+  e.setPerson(0, "wantsRep", "Yes"); e.setPerson(0, "age", ""); assert.match(e.passengerSendIssue(0), /adult or under 18/);
 });
 
 console.log(passed, "passed");

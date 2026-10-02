@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { NETFLY_WELCOME_STEPS, netflyFirstCallSources, netflyFirstConversationReview } from "./netfly-first-conversation";
+import { NETFLY_WELCOME_STEPS, NETFLY_FOLLOWUP_FIELDS, netflyFirstCallSources, netflyFirstConversationReview } from "./netfly-first-conversation";
 import { NETFLY_FIELD_IDS, NETFLY_UNAVAILABLE_IDS } from "./netfly-ontake";
 
 const active = NETFLY_WELCOME_STEPS.flatMap((step) => [...step.fields]);
@@ -34,3 +34,10 @@ assert.equal(merged.find((row) => row.label === "Accident Date")?.value, "09/20/
 assert.equal(merged.find((row) => row.label === "Location")?.value, "Main and First, Sample City, GA");
 assert.equal(merged.find((row) => row.label === "Passengers")?.value, "None", "structured source answers must be available without re-asking");
 console.log("NETFLY first-conversation essentials passed");
+
+const extra = Object.values(NETFLY_FOLLOWUP_FIELDS).flat();
+assert.equal(NETFLY_WELCOME_STEPS.length, 5, "four call steps, then after-call review");
+assert.ok(active.length <= 30, "the first call must stay short");
+assert.ok(!active.includes("treatment_days" as any), "detailed scheduling belongs in optional follow-up");
+for (const id of extra) { assert.ok(NETFLY_FIELD_IDS.has(id)); assert.ok(!active.includes(id as any), "optional fields must not repeat in the main call"); }
+for (const item of review(core)) assert.ok(NETFLY_WELCOME_STEPS[item.step].fields.includes(item.id as never), `${item.id} bookmark must reach its current step`);
