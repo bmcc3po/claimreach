@@ -171,7 +171,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.solClose) && (<><div className="cc-cue cc-red" style={{marginTop: "-14px"}}>Inside 90 days. Get a supervisor before you sign or decline.</div></>)}
 <div>
 <div className="cc-lab">NOTES</div>
-<textarea className="cc-area" rows={2} placeholder="Tap the mic on your keyboard and say it" aria-label="Short outline of the story" value={v.f.text.value ?? ""} onChange={v.f.text.set}></textarea>
+<QuestionControl c={v.fi.sections.flatMap((section: any) => section.questions).find((question: any) => question.id === 'notes').c} v={v} presentation="guided" />
 </div>
 <div className="cc-quiet">
 <span>Lines</span>
