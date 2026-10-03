@@ -54,6 +54,12 @@ const SHOW_IF: Record<string, Record<string, ShowIf>> = {
       { fieldId: "injured", op: "is", value: "yes" },
       { fieldId: "treatment", op: "is", value: "never" },
     ),
+    commit_appointment: all(
+      { fieldId: "injured", op: "is", value: "yes" },
+      { fieldId: "treatment", op: "is", value: "never" },
+      { fieldId: "willing", op: "is", value: "yes" },
+      { fieldId: "date_bucket", op: "is", value: "mid" },
+    ),
     treatment_followup: all(
       { fieldId: "injured", op: "is", value: "yes" },
       { fieldId: "treatment", op: "not_blank" },
@@ -67,6 +73,8 @@ const SHOW_IF: Record<string, Record<string, ShowIf>> = {
     others_need_help: is("others_injured", "yes"),
     ins_forms_signed: is("ins_forms", "yes"),
     ins_forms_said: is("ins_forms_signed", "yes"),
+    attorney_consult: { match: "all", rules: [{ fieldId: "attorney", op: "is_not", value: "yes" }] },
+    pending_legal: { match: "all", rules: [{ fieldId: "attorney", op: "is_not", value: "yes" }] },
   },
   prem: {
     commit_appointment: COMMIT_APPOINTMENT,
@@ -83,6 +91,12 @@ const SHOW_IF: Record<string, Record<string, ShowIf>> = {
     willing: all(
       { fieldId: "injured", op: "is", value: "yes" },
       { fieldId: "treatment", op: "is", value: "never" },
+    ),
+    commit_appointment: all(
+      { fieldId: "injured", op: "is", value: "yes" },
+      { fieldId: "treatment", op: "is", value: "never" },
+      { fieldId: "willing", op: "is", value: "yes" },
+      { fieldId: "date_bucket", op: "is", value: "mid" },
     ),
   },
 };
