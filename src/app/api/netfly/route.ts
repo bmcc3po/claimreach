@@ -6,6 +6,7 @@ import { mailColumnsFrom } from "@/lib/us-address";
 import { packetShort } from "@/lib/mva-call/esign";
 import { assertHandoffFirm, saveNetflyHandoff } from "@/lib/netfly-handoff-save";
 import { normPhone } from "@/lib/comms";
+import { extractNetflyEmail } from "@/lib/netfly-handoff";
 export const runtime = "edge";
 
 const fail = (message: string, status: number) => NextResponse.json({ error: message }, { status });
@@ -104,12 +105,15 @@ export async function POST(req: NextRequest) {
   }
   if (body?.op === "create" || body?.op === "start_call") {
     if (!ctx.actor.can("leads.edit")) return fail("This account cannot add files.", 403);
-    const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 160);
-    if (name.length < 2) return fail("Enter the client's name.", 400);
-    const phone = String(body.phone || "").trim().slice(0, 40);
-    const email = String(body.email || "").trim().slice(0, 254);
     const sourceNote = String(body.source_note || "").trim();
     if (sourceNote.length > 20000) return fail("The NETFLY handoff note is too long (20,000 characters maximum).", 400);
+    const extracted = extractNetflyEmail(body.op === "create" ? sourceNote : "");
+    // Explicit edits (including a cleared phone/email) win over the source.
+    const contact = (key: string, field: string) => Object.hasOwn(body, key) ? body[key] : extracted.fields[field];
+    const name = String(contact("name", "confirmed_name") || "").trim().replace(/\s+/g, " ").slice(0, 160);
+    if (name.length < 2) return fail("Enter the client's name.", 400);
+    const phone = String(contact("phone", "confirmed_phone") || "").trim().slice(0, 40);
+    const email = String(contact("email", "confirmed_email") || "").trim().slice(0, 254);
     try { await assertHandoffFirm(ctx.db, ctx.campaign.firm_id, sourceNote); }
     catch (error: any) { return fail(error.message || "Could not verify the receiving firm. Nothing was imported.", 409); }
     if (body.op === "start_call") {
@@ -135,22 +139,31 @@ export async function POST(req: NextRequest) {
       firm_id: ctx.campaign.firm_id, campaign_id: ctx.campaign.id, campaign: NETFLY_CAMPAIGN,
       case_type: "mva", lead_no: number, claimant_name: name, first_name: parts[0], last_name: parts.slice(1).join(" "),
       phone: phone || null, email: email || null, marketing_source: "NETFLY", stage: "referral_received",
+      ...(extracted.fields.dob ? { dob: extracted.fields.dob } : {}),
+      ...(mailColumnsFrom({}, extracted.fields.mailing_address) || {}),
       created_by: ctx.actor.id, assigned_agent: ctx.actor.id, intake_agent_id: ctx.actor.id,
       // Hold all automated acquisition outreach on a secondary intake.
       perm_call: false, perm_text: false, perm_email: false,
     }).select("id, lead_no").single();
     if (leadError || !lead) return fail(`Could not create NETFLY file: ${leadError?.message || "unknown error"}`, 503);
-    const prefill = {
-      accident_city: String(body.city || "").trim().slice(0, 120), accident_state: String(body.state || "").trim().slice(0, 80),
+    const prefill: Record<string, string> = {
+      ...extracted.fields,
+      accident_city: String(Object.hasOwn(body, "city") ? body.city || "" : extracted.fields.accident_city || "").trim().slice(0, 120),
+      accident_state: String(Object.hasOwn(body, "state") ? body.state || "" : extracted.fields.accident_state || "").trim().slice(0, 80),
       accident_month_year: String(body.month_year || "").trim().slice(0, 80),
       transfer_fault: String(body.at_fault || "").trim().slice(0, 30),
       confirmed_name: name, confirmed_email: email, confirmed_phone: phone,
     };
+    const at = new Date().toISOString();
+    const source = { at, by: ctx.actor.id, by_name: ctx.actor.name, channel: "staff_entered" };
+    const imported_fields = Object.fromEntries(extracted.candidates
+      .filter(({ id, value }) => prefill[id] === value)
+      .map(({ id, value }) => [id, { value, ...source, confirmed: false }]));
     const { error: claimError } = await ctx.db.from("claims").insert({
       firm_id: ctx.campaign.firm_id, lead_id: lead.id, campaign_id: ctx.campaign.id,
       campaign: NETFLY_CAMPAIGN, claim_type: "mva", status: "new",
-      answers: { [NETFLY_ANSWER_KEY]: { version: 1, fields: prefill, review: { status: "in_progress" },
-        handoffs: sourceNote ? [{ note: sourceNote, at: new Date().toISOString(), by: ctx.actor.id, by_name: ctx.actor.name, channel: "staff_entered" }] : [] } },
+      answers: { [NETFLY_ANSWER_KEY]: { version: 1, fields: prefill, imported_fields, review: { status: "in_progress" },
+        handoffs: sourceNote ? [{ note: sourceNote, ...source }] : [] } },
     });
     if (claimError) {
       await ctx.db.from("leads").update({ archived_at: new Date().toISOString(), archived_by: ctx.actor.id }).eq("id", lead.id);

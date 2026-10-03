@@ -5,6 +5,7 @@ import ts from "typescript";
 import { FakeDb } from "./test-fake-db";
 import * as ontake from "./netfly-ontake";
 import { assertHandoffFirm } from "./netfly-handoff-save";
+import * as handoff from "./netfly-handoff";
 
 const FIRM = "11111111-1111-4111-8111-111111111111";
 const LEAD = "22222222-2222-4222-8222-222222222222";
@@ -24,6 +25,7 @@ const modules: Record<string, any> = {
   "next/server": { NextResponse: { json: (body: any, options: any = {}) => ({ body, status: options.status || 200 }) } },
   "@/lib/netfly-server": { netflyContext: async () => ctx(), netflyMatter: async (_ctx: any, key: string) => key === LEAD ? { lead: { id: LEAD }, claim: db.tables.claims[0] } : null },
   "@/lib/netfly-ontake": ontake,
+  "@/lib/netfly-handoff": handoff,
   "@/lib/netfly-handoff-save": { assertHandoffFirm, saveNetflyHandoff: async () => { throw new Error('Not used by presence tests'); } },
   "@/lib/mva-call/server": { parseDob: () => null },
   "@/lib/us-address": { mailColumnsFrom: () => ({}) },
