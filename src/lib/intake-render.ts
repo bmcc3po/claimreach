@@ -4,6 +4,8 @@
 // by firm delivery so there is one source of truth for the artifact shape.
 // ============================================================================
 import { caseReport, type ReportSection } from "@/lib/mva-call/report";
+import { NETFLY_FIELDS, NETFLY_CAMPAIGN } from "@/lib/netfly-ontake";
+import { parseNetflyHandoff } from "@/lib/netfly-handoff";
 
 const SKIP_KINDS = ["section", "script", "gate"];
 
@@ -71,6 +73,26 @@ export interface IntakeBundle {
 // engine as the agent screen. Keep that question/branch definition shared and
 // never dump the raw object (which may contain sensitive transient fields).
 export function intakeSections(b: IntakeBundle): ReportSection[] {
+  const netfly = b.answers?.netfly_secondary;
+  if (b.caseType === "mva" && b.claim?.campaign === NETFLY_CAMPAIGN && netfly && typeof netfly === "object") {
+    const values = netfly.fields || {};
+    const contact = { confirmed_name: b.lead.claimant_name, confirmed_phone: b.lead.phone, confirmed_email: b.lead.email,
+      mailing_address: [b.lead.mail_addr1, b.lead.mail_city, b.lead.mail_state, b.lead.mail_zip].filter(Boolean).join(", ") };
+    const rows = NETFLY_FIELDS.filter(field => !field.id.endsWith('_unavailable')).flatMap(field => {
+      const raw = values[field.id] || contact[field.id as keyof typeof contact];
+      const answer = raw || (values[`${field.id}_unavailable`] ? "Not available yet — follow up" : "");
+      return answer ? [{ q: field.label, a: String(answer) }] : [];
+    });
+    const sections: ReportSection[] = [{ id: "netfly", title: "NETFLY welcome call — recorded answers", rows }];
+    const latest = Array.isArray(netfly.handoffs) ? netfly.handoffs.at(-1) : null;
+    if (latest?.note) sections.push({ id: "netfly-source", title: "NETFLY source notes — original account", rows: parseNetflyHandoff(latest.note).map(row => ({ q: row.label, a: row.value })) });
+    if (netfly.handoff_verification?.status) sections.push({ id: "netfly-review", title: "Welcome-call review", rows: [
+      { q: "Read-back with client", a: netfly.handoff_verification.status === "matches" ? "Details match" : "Changes recorded" },
+      ...(netfly.handoff_verification.note ? [{ q: "Corrections", a: String(netfly.handoff_verification.note) }] : []),
+      ...(netfly.call_close?.assessment_reason ? [{ q: "Follow-up / concerns", a: String(netfly.call_close.assessment_reason) }] : []),
+    ] });
+    return sections.filter(section => section.rows.length);
+  }
   const call = b.answers?.mva_call;
   if (b.caseType === "mva" && call && typeof call === "object" && !Array.isArray(call)) {
     return caseReport({ ...b.lead, campaign: b.claim?.campaign ?? b.lead.campaign }, call).sections;
@@ -132,7 +154,7 @@ export async function loadIntakeBundle(sb: any, leadId: string, claimId: string)
   // The claim's own campaign decides its form; a legacy claim with no
   // campaign recorded falls back to the file's, the same order
   // resolveFormKey uses.
-  const fields = caseType === "mva" && answers.mva_call && typeof answers.mva_call === "object"
+  const fields = caseType === "mva" && (answers.mva_call && typeof answers.mva_call === "object" || claim.campaign === NETFLY_CAMPAIGN && answers.netfly_secondary)
     ? [] : await resolveFields(sb, caseType, claim.campaign_id || lead.campaign_id || null);
   return { lead, claim, answers, caseType, fields };
 }
@@ -147,11 +169,17 @@ export async function buildIntakePdf(b: IntakeBundle): Promise<Uint8Array> {
 
   const W = 612; const H = 792;
   const sections = intakeSections(b);
+  // Standard PDF fonts cannot encode emoji or every script. Preserve their
+  // code points visibly instead of letting one pasted character block delivery.
+  const printable = (text: string, f: any) => [...String(text)].map(character => {
+    try { f.encodeText(character); return character; }
+    catch { return `[U+${character.codePointAt(0)!.toString(16).toUpperCase()}]`; }
+  }).join('');
   // Keep a complete intake readable. If every question and answer can fit on
   // one letter page with the compact layout, use it; otherwise paginate with
   // the regular type size instead of clipping or omitting answers.
   function lineCount(text: string, f: any, size: number, width: number): number {
-    const words = String(text).split(/\s+/); let lines = 1; let cur = "";
+    const words = printable(text, f).split(/\s+/); let lines = 1; let cur = "";
     for (const word of words) {
       const next = cur ? `${cur} ${word}` : word;
       if (cur && f.widthOfTextAtSize(next, size) > width) { lines++; cur = word; }
@@ -178,7 +206,7 @@ export async function buildIntakePdf(b: IntakeBundle): Promise<Uint8Array> {
   const ink = rgb(0.07, 0.1, 0.16); const soft = rgb(0.4, 0.45, 0.53); const accent = rgb(0.85, 0.6, 0.16);
 
   function wrap(text: string, f: any, size: number, maxW: number): string[] {
-    const words = String(text).split(/\s+/); const lines: string[] = []; let cur = "";
+    const words = printable(text, f).split(/\s+/); const lines: string[] = []; let cur = "";
     for (const w of words) {
       const test = cur ? cur + " " + w : w;
       if (f.widthOfTextAtSize(test, size) > maxW && cur) { lines.push(cur); cur = w; } else cur = test;

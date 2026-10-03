@@ -2,6 +2,8 @@ import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_RETAINER_TYPE } from './netf
 import { emailPlainText, extractNetflyEmail } from './netfly-handoff';
 import { assertHandoffFirm, saveNetflyHandoff } from './netfly-handoff-save';
 import { contentHash, emailObjectId, receivedPdf, type ReceivedEmail } from './resend-inbound';
+import { netflyAgreementPdf } from './netfly-agreement-import';
+import { netflyEmailSuggestions } from './netfly-email-suggestions';
 
 type Campaign = { id: string; firm_id: string };
 type Scope = { firmId: string; campaignId: string; leadId: string; claimId: string };
@@ -14,7 +16,7 @@ export async function netflyEmailCampaign(db: any): Promise<Campaign> {
   return result.data[0];
 }
 
-async function preserve(db: any, scope: Scope, name: string, bytes: Uint8Array, docType: string, contentType: string) {
+export async function preserveNetflySource(db: any, scope: Scope, name: string, bytes: Uint8Array, docType: string, contentType: string) {
   const hash = await contentHash(bytes);
   const id = await emailObjectId(`netfly-email-document|${scope.firmId}|${scope.claimId}|${hash}`);
   const ext = contentType === 'application/pdf' ? 'pdf' : 'txt';
@@ -43,7 +45,7 @@ async function preserve(db: any, scope: Scope, name: string, bytes: Uint8Array, 
   return id;
 }
 
-export async function importNetflyEmail(db: any, campaign: Campaign, email: ReceivedEmail, apiKey: string, fetcher: typeof fetch = fetch) {
+export async function importNetflyEmail(db: any, campaign: Campaign, email: ReceivedEmail, apiKey: string, fetcher: typeof fetch = fetch, enrich = netflyEmailSuggestions) {
   const body = email.text?.trim() || emailPlainText(email.html || '').trim();
   await assertHandoffFirm(db, campaign.firm_id, body);
   const extraction = extractNetflyEmail(body);
@@ -52,7 +54,9 @@ export async function importNetflyEmail(db: any, campaign: Campaign, email: Rece
   const name = fields.confirmed_name?.slice(0, 160) || 'NETFLY email — client name needed';
   // Exact repeated source content is idempotent even when forwarded twice.
   // A name alone or a shared phone never binds an original to an existing file.
-  const fingerprint = extraction.rows.length >= 2 && fields.confirmed_name
+  const fingerprint = extraction.agreementLinks.length === 1 && fields.confirmed_name
+    ? `agreement:${new URL(extraction.agreementLinks[0]).pathname}|${fields.confirmed_name.toLowerCase().replace(/\s+/g, ' ').trim()}`
+    : extraction.rows.length >= 2 && fields.confirmed_name
     ? JSON.stringify(extraction.rows) : email.message_id || email.id;
   const importKey = await emailObjectId(`netfly-source|${campaign.firm_id}|${campaign.id}|${fingerprint}`);
   let leadId = importKey;
@@ -105,17 +109,17 @@ export async function importNetflyEmail(db: any, campaign: Campaign, email: Rece
   }
   const scope = { firmId: campaign.firm_id, campaignId: campaign.id, leadId, claimId };
   const raw = `From: ${email.from}\nTo: ${email.to.join(', ')}\nSubject: ${email.subject}\nReceived: ${email.created_at}\nMessage-ID: ${email.message_id || email.id}\n\n${body}`;
-  const original = await preserve(db, scope, 'NETFLY original email.txt', new TextEncoder().encode(raw), 'other', 'text/plain');
+  const original = await preserveNetflySource(db, scope, 'NETFLY original email.txt', new TextEncoder().encode(raw), 'other', 'text/plain');
   const note = body.length >= 10 ? body.slice(0, 20000) : `NETFLY email received. Body: ${body || '(empty)'}. Review the original email and attachments.`;
+  const enrichment = await enrich(note);
   await saveNetflyHandoff(db, scope, note, extraction.candidates.map(c => c.id), {
     by: 'netfly_email', by_name: 'NETFLY email', channel: 'email', source_id: email.id,
-  });
+  }, enrichment.suggestions);
   const pdfs = (email.attachments || []).filter(a => /\.pdf$/i.test(a.filename || '') || a.content_type === 'application/pdf');
   const warnings: string[] = [...extraction.warnings];
   const documentIds: string[] = [];
   if (!fields.confirmed_name) warnings.push('Client name missing');
   if (!fields.confirmed_phone) warnings.push('Client phone still needed');
-  if (!pdfs.length) warnings.push('Signed PDF missing');
   if (body.length > 20000) warnings.push('Long email: full text is in the original email document');
   if (pdfs.length > 8) warnings.push('More than eight PDFs: review the remaining attachments in Resend');
   let retry = false;
@@ -123,9 +127,19 @@ export async function importNetflyEmail(db: any, campaign: Campaign, email: Rece
     try {
       const bytes = await receivedPdf(email.id, pdf.id, apiKey, fetcher);
       const safeName = (pdf.filename || 'signed-retainer.pdf').split(/[\\/]/).pop()!.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 120);
-      documentIds.push(await preserve(db, scope, safeName, bytes, NETFLY_RETAINER_TYPE, 'application/pdf'));
+      documentIds.push(await preserveNetflySource(db, scope, safeName, bytes, NETFLY_RETAINER_TYPE, 'application/pdf'));
     } catch { warnings.push(`PDF not imported: ${pdf.filename || 'attachment'}. Retry from Resend or upload it on the file.`); retry = true; }
   }
+  if (!documentIds.length && extraction.agreementLinks.length === 1 && fields.confirmed_name) {
+    try {
+      const pdf = await netflyAgreementPdf(extraction.agreementLinks[0], fields.confirmed_name, fetcher);
+      documentIds.push(await preserveNetflySource(db, scope, pdf.filename, pdf.bytes, NETFLY_RETAINER_TYPE, 'application/pdf'));
+    } catch (error: any) {
+      warnings.push(`Signed agreement needs attention: ${error.message || 'Download failed'}`);
+      retry = true;
+    }
+  }
+  if (!documentIds.length) warnings.push('Signed PDF missing');
   // Save the visible import receipt without replacing answers from the call.
   for (let attempt = 0; attempt < 4; attempt++) {
     const read = await db.from('claims').select('answers, updated_at').eq('id', claimId).eq('firm_id', campaign.firm_id).eq('campaign_id', campaign.id).single();
@@ -133,7 +147,7 @@ export async function importNetflyEmail(db: any, campaign: Campaign, email: Rece
     const answers = read.data.answers || {};
     const saved = await db.from('claims').update({ answers: { ...answers, [NETFLY_ANSWER_KEY]: { ...(answers[NETFLY_ANSWER_KEY] || {}),
       email_import: { email_id: email.id, received_at: email.created_at, original_document_id: original, document_ids: documentIds, warnings,
-        status: retry || warnings.length ? 'partial' : 'needs_review', source: 'resend', review_required: true } } }, updated_at: new Date().toISOString() })
+        status: retry || warnings.length ? 'partial' : 'needs_review', narrative_helper: enrichment.available ? 'available' : 'unavailable', source: 'resend', review_required: true } } }, updated_at: new Date().toISOString() })
       .eq('id', claimId).eq('firm_id', campaign.firm_id).eq('campaign_id', campaign.id).eq('updated_at', read.data.updated_at).select('id').maybeSingle();
     if (saved.error) throw new Error('The email receipt did not save. Retry this email.');
     if (saved.data) break;

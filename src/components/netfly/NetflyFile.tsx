@@ -4,7 +4,9 @@ import Link from "next/link";
 import NetflyDocuments from "./NetflyDocuments";
 import HandoffImport from "./HandoffImport";
 import HandoffEvidence from "./HandoffEvidence";
+import { extractNetflyEmail } from "@/lib/netfly-handoff";
 import NotesAssist from "./NotesAssist";
+import NetflySendPacket from "./NetflySendPacket";
 import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, NETFLY_UNAVAILABLE_IDS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
 import { NETFLY_WELCOME_STEPS as VERIFY_STEPS, NETFLY_FIRST_CALL_SOURCE_LABELS, NETFLY_FOLLOWUP_FIELDS, NETFLY_CLOSING_REMINDERS, netflyCareGuidance, netflyFirstCallSources, netflyFirstConversationReview } from "@/lib/netfly-first-conversation";
 import { joinUsAddress } from "@/lib/us-address";
@@ -38,6 +40,8 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [saveState, setSaveState] = useState("");
+  const answerQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const failedAnswers = useRef(new Set<string>());
   const [uploading, setUploading] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
   const [verificationNote, setVerificationNote] = useState("");
@@ -53,6 +57,8 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const actorRef = useRef("");
   useEffect(() => { liveCallRef.current = liveCall; actorRef.current = detail?.actor_id || ""; }, [liveCall, detail?.actor_id]);
   async function load(forceCall = false) {
+    await answerQueue.current;
+    if (failedAnswers.current.size) { setError("An answer did not save. Use Retry saving answers below before refreshing this file."); return; }
     try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); actorRef.current = d.actor_id; liveCallRef.current = d.live_call || null; setDetail(d); setLiveCall(d.live_call || null); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { const saved = d.answers?.call_close; setCallClose(saved ? { ...emptyCallClose, ...saved, closeout_version: 2, callback_promised_24_48_hours: saved.closeout_version === 2 && saved.callback_promised_24_48_hours === true } : emptyCallClose); setCallCloseDirty(false); } }
     catch (e: any) { setError(e.message || "NETFLY file did not load."); }
   }
@@ -81,12 +87,23 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     catch (error: any) { setError(error.message || "Call status did not save."); }
     finally { setPresenceBusy(false); }
   }
-  async function save(id: string, value: string) {
+  function save(id: string, value: string): Promise<boolean> {
+    const pending = answerQueue.current.then(() => saveAnswer(id, value));
+    answerQueue.current = pending.catch(() => false);
+    return pending;
+  }
+  async function saveAnswer(id: string, value: string) {
     setSaveState(`Saving ${id}…`); setError("");
-    try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "answer", file: fileKey, field: id, value }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); if (["confirmed_name", "confirmed_phone", "confirmed_email"].includes(id)) setDetail((old) => old ? { ...old, file: { ...old.file, [id === "confirmed_name" ? "claimant_name" : id === "confirmed_phone" ? "phone" : "email"]: value } } : old); setSaveState("Saved"); return true; }
-    catch (e: any) { setSaveState(""); setError(`${id}: ${e.message || "Save failed"}. Your answer remains on screen; retry before leaving.`); return false; }
+    try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "answer", file: fileKey, field: id, value }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error);
+      setDetail(old => old ? { ...old, answers: { ...old.answers, fields: { ...(old.answers.fields || {}), [id]: value.trim(), ...(value.trim() && NETFLY_UNAVAILABLE_IDS.has(id) ? { [`${id}_unavailable`]: "" } : {}) } }, file: { ...old.file, ...(["confirmed_name", "confirmed_phone", "confirmed_email"].includes(id) ? { [id === "confirmed_name" ? "claimant_name" : id === "confirmed_phone" ? "phone" : "email"]: value.trim() } : {}) } } : old);
+      failedAnswers.current.delete(id); setSaveState("Saved"); return true; }
+    catch (e: any) { failedAnswers.current.add(id); setSaveState(""); setError(`${fieldById.get(id)?.label || id}: ${e.message || "Save failed"}. Your answer remains on screen; retry before leaving.`); return false; }
   }
   const set = (id: string, value: string) => setValues((old) => ({ ...old, [id]: value, ...(value.trim() && NETFLY_UNAVAILABLE_IDS.has(id) ? { [`${id}_unavailable`]: "" } : {}) }));
+  function appliedNotes(fields: Record<string, string>) {
+    setValues(old => ({ ...old, ...Object.fromEntries(Object.entries(fields).filter(([id]) => !old[id]?.trim() && !old[id + "_unavailable"])) }));
+    setDetail(old => old ? { ...old, answers: { ...old.answers, fields: { ...(old.answers.fields || {}), ...fields } } } : old);
+  }
   async function upload(file: File) {
     setUploading(true); setError("");
     try { const fd = new FormData(); fd.append("file_key", fileKey); fd.append("file", file); const r = await fetch("/api/netfly/retainer", { method: "POST", body: fd }); const d = await r.json(); if (!r.ok) throw new Error(d.error); await load(); }
@@ -96,6 +113,15 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     setError("");
     try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "review", file: fileKey, status, document_id, note: reviewNote }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); await load(); }
     catch (e: any) { setError(e.message || "Review did not save."); }
+  }
+  async function importAgreement() {
+    setUploading(true); setError("");
+    try {
+      const response = await fetch('/api/netfly/agreement-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: fileKey }) });
+      const body = await response.json(); if (!response.ok) throw new Error(body.error);
+      await load();
+    } catch (error: any) { setError(error.message || 'PDF import failed. Retry or upload the original.'); }
+    finally { setUploading(false); }
   }
   async function verifyHandoff(status: "matches" | "changes_recorded") {
     setVerificationBusy(true); setError("");
@@ -181,6 +207,8 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         const source = (label: string) => sourceRows.find(row => row.label === label)?.value || "";
         return <Fragment key={id}>
           {id === "care_today" && <p className="nf-say">{netflyCareGuidance(values)}</p>}
+          {id === "seen_doctor" && source("Injuries & Treatment") && <div className="nf-readback"><strong>NETFLY already shared</strong><p>{source("Injuries & Treatment")}</p><p>Check what has changed since then.</p></div>}
+          {id === "insurance_info_available" && source("Insurance") && <div className="nf-readback"><strong>Insurance from NETFLY</strong><p>{source("Insurance")}</p></div>}
           {id === "ambulance" && values.health_insured === "No" && <p className="nf-say">No problem. We can help you explore care options, including doctors who may be able to wait for payment until the case settles.</p>}
           {id === "contact_accuracy" && <div className="nf-readback"><p>And so we can keep in touch, I have:</p><p><strong>{detail.file.claimant_name}</strong> · {detail.file.phone || "Phone needed"} · {detail.file.email || "Email needed"}<br />{address || "Address needed"}</p></div>}
           {id === "accident_date" && <div className="nf-readback"><p>Just to make sure I have this right: the accident was <strong>{values.accident_date || source("Accident Date") || "[date]"}</strong>, at <strong>{[values.road, values.accident_city, values.accident_state].filter(Boolean).join(", ") || source("Location") || "[location]"}</strong>?</p>{latestHandoff && <button type="button" className="nf-text-action" onClick={() => setShowIncidentCorrections(old => !old)}>{showIncidentCorrections ? "Hide corrections" : "Correct these details"}</button>}</div>}
@@ -211,11 +239,12 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         {flags.length > 0 && <p className="nf-alert">These flags need supervisor attention. Do not decline the client on this call.</p>}
         {callClose.disposition && <p className="nf-muted">Record the call result below.</p>}
       </div>}
-      {stepIndex === 4 && <div className="nf-call-block nf-finish-call"><strong>After the call: record the result</strong><label className="nf-inline-confirm"><input type="checkbox" checked={callClose.callback_promised_24_48_hours === true} onChange={(e) => updateCallClose("callback_promised_24_48_hours", e.target.checked)} /> I told the client we will call back within 24–48 hours.</label><button type="button" className="nf-primary" disabled={callCloseBusy || !callClose.disposition || !callClose.callback_promised_24_48_hours} onClick={() => void recordCallClose()}>{callCloseBusy ? "Recording…" : callRecorded ? "Update call result" : "Record call result"}</button>{callRecorded && <p className="nf-saved">Call result saved. A callback is needed within 24–48 hours. {callClose.completion === "incomplete" ? "Finish the missing details on the next call." : "Send the completed file for supervisor review below."}</p>}<p className="nf-muted">{callClose.completion === "incomplete" ? "This file stays open for the callback." : "The signed retainer, verified note, and call result stay together for review."}</p></div>}
+      {stepIndex === 4 && <div className="nf-call-block nf-finish-call"><strong>After the call: record the result</strong><label className="nf-inline-confirm"><input type="checkbox" checked={callClose.callback_promised_24_48_hours === true} onChange={(e) => updateCallClose("callback_promised_24_48_hours", e.target.checked)} /> I told the client we will call back within 24–48 hours.</label><button type="button" className="nf-primary" disabled={callCloseBusy || !callClose.disposition || !callClose.callback_promised_24_48_hours} onClick={() => void recordCallClose()}>{callCloseBusy ? "Recording…" : callRecorded ? "Update call result" : "Record call result"}</button>{callRecorded && <p className="nf-saved">Call result saved. A callback is needed within 24–48 hours. {callClose.completion === "incomplete" ? "Finish the missing details on the next call." : "Review the intake and signed PDF, then send to the firm below."}</p>}<p className="nf-muted">{callClose.completion === "incomplete" ? "This file stays open for the callback." : "The signed retainer, verified note, and call result stay together for review."}</p></div>}
       {stepIndex === 4 && <section className="nf-inline-retainer" aria-label="Original signed retainer">
         <h3>Already signed — review the NETFLY retainer</h3>
-        <p>NETFLY collected this before the welcome call. Review the signed PDF after the call, before sending the completed file for supervisor review.</p>
+        <p>NETFLY collected this before the welcome call. Review the signed PDF, then send the completed packet below.</p>
         <HandoffEvidence note={latestHandoff?.note || ""} hasPdf={!!latest} />
+        {!latest && extractNetflyEmail(latestHandoff?.note || "").agreementLinks.length === 1 && <button type="button" className="nf-primary" disabled={uploading} onClick={() => void importAgreement()}>{uploading ? "Importing signed PDF…" : "Import signed PDF from email"}</button>}
         {latest ? <>
           <p className="nf-muted">{latest.file_name} · received {new Date(latest.created_at).toLocaleString()}</p>
           <div className="nf-actions">
@@ -231,7 +260,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
           {openedOriginalId === latest.id && <details className="nf-history nf-inline-issue"><summary>Something is wrong with the signed retainer</summary><p>Keep the original PDF. Describe the exact error for a supervisor; this is an exception to the welcome call.</p><textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="What is wrong with the name, date, signature or agreement?" /><button type="button" className="nf-secondary" disabled={reviewNote.trim().length < 5 || detail.answers.review?.retainer_reviewed_document_id !== latest.id} onClick={() => void review("correction_needed", latest.id)}>Flag original for supervisor correction</button>{detail.answers.review?.retainer_reviewed_document_id !== latest.id && <p className="nf-muted">Record that you inspected the signed PDF above first.</p>}</details>}
         </> : <div className="nf-actions"><p className="nf-alert">The signed PDF is missing. Upload NETFLY's original before marking it reviewed.</p><label className="nf-primary">{uploading ? "Uploading…" : "Upload signed PDF"}<input type="file" accept="application/pdf,.pdf" disabled={uploading} hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label></div>}
       </section>}
-      {stepIndex === 4 && <div className="nf-call-block"><button type="button" className="nf-primary" disabled={!latest || !checked || !callRecorded || callClose.completion !== "complete" || callClose.disposition === "callback_to_finish" || (detail.answers.review?.status === "correction_needed" || detail.answers.review?.retainer_reviewed_document_id !== latest.id)} onClick={() => void review("ready_for_review")}>{detail.answers.review?.status === "ready_for_review" ? "Ready for supervisor review" : "Send completed ontake to review"}</button></div>}
+      {stepIndex === 4 && <NetflySendPacket fileKey={fileKey} signedDocuments={detail.retainer} unsaved={callCloseDirty || Object.entries(values).some(([id, value]) => value.trim() !== (detail.answers.fields?.[id] || '').trim())} revision={JSON.stringify([detail.answers.fields, detail.answers.review, detail.answers.call_close, detail.answers.handoff_verification, latest?.id])} />}
       {viewMode === "step" && <div className="nf-footer"><button className="nf-secondary" disabled={stepIndex === 0} onClick={() => setSection((i) => Math.max(0, i - 1))}>← Previous</button><button className="nf-primary" onClick={() => setSection((i) => Math.min(VERIFY_STEPS.length - 1, i + 1))} disabled={stepIndex === VERIFY_STEPS.length - 1}>Next step →</button></div>}</section>
     </div>;
   };
@@ -243,6 +272,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     {(!latest || !handoffs.length) && <div className="nf-alert" role="status"><strong>Partial NETFLY file</strong><p>{!handoffs.length ? "NETFLY handoff note missing. " : ""}{!latest ? "Signed retainer PDF missing. " : ""}The file is held from review until both arrive.</p></div>}
     {detail.answers.email_import && <details className="nf-history"><summary>Imported from NETFLY email · confirm details with the client</summary><p>Imported answers are NETFLY’s account and still need your review.</p>{detail.original_email_url && <a href={detail.original_email_url} target="_blank" rel="noopener noreferrer">Open the original email ↗</a>}{(detail.answers.email_import.warnings || []).filter(w => !(w === "Client phone still needed" && detail.file.phone) && !(w === "Signed PDF missing" && latest)).map(w => <p key={w}>{w}</p>)}</details>}
     {error && <div className="nf-alert" role="alert">{error}</div>}
+    {failedAnswers.current.size > 0 && <button type="button" className="nf-secondary" onClick={() => { for (const id of failedAnswers.current) void save(id, values[id] || ""); }}>Retry saving answers</button>}
     {flags.length > 0 && <div className="nf-alert"><strong>Supervisor attention</strong>{flags.map((flag) => <p key={flag}>{flag}</p>)}<p>Finish the file and flag it. Do not auto-decline.</p></div>}
     <div className="nf-workspace-grid">
       <aside className="nf-review-rail" aria-label="Intake review">
@@ -257,7 +287,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         </div>
         {workspaceTab === "call" ? <>
         <div className={`nf-view-bar${headerCollapsed ? " nf-view-bar-collapsed" : ""}`}><div><strong>Welcome call · {detail.file.claimant_name}</strong>{!headerCollapsed && <span>Verify the contact, treatment and missing case details. Four short steps.</span>}</div>{!headerCollapsed && <div className="nf-view-actions"><div className="nf-view-tabs" role="tablist" aria-label="Intake view">{([["step", "Guided call"], ["simple", "Full form"], ["all", "All details"]] as const).map(([mode, label]) => <button type="button" key={mode} role="tab" aria-selected={viewMode === mode} className={viewMode === mode ? "active" : ""} onClick={() => setViewMode(mode)}>{label}</button>)}</div><button type="button" className="nf-command-toggle nf-secondary" aria-controls="netfly-command" aria-expanded={commandOpen} onClick={() => setCommandOpen(true)}>Command center</button></div>}<button type="button" className="nf-header-toggle" aria-expanded={!headerCollapsed} onClick={() => setHeaderCollapsed((old) => !old)}>{headerCollapsed ? "Show header" : "Hide header"}</button></div>
-        <section className="nf-call-notes"><label htmlFor="nf-call-notes"><strong>Call notes · shorthand is fine</strong></label><textarea id="nf-call-notes" value={values.final_notes || ""} onChange={e => set("final_notes", e.target.value)} onBlur={e => void save("final_notes", e.target.value)} placeholder="Listen, reassure, jot it down. Keep the conversation flowing." /><small>{saveState || "Saves when you leave this box."}</small><NotesAssist fileKey={fileKey} notes={values.final_notes || ""} saveNotes={() => save("final_notes", values.final_notes || "")} onApplied={fields => setValues(old => ({ ...old, ...Object.fromEntries(Object.entries(fields).filter(([id]) => !old[id]?.trim() && !old[id + "_unavailable"])) }))} /></section>
+        <section className="nf-call-notes"><label htmlFor="nf-call-notes"><strong>Call notes · shorthand is fine</strong></label><textarea id="nf-call-notes" value={values.final_notes || ""} onChange={e => set("final_notes", e.target.value)} onBlur={e => void save("final_notes", e.target.value)} placeholder="Listen, reassure, jot it down. Keep the conversation flowing." /><small>{saveState || "Saves when you leave this box."}</small><NotesAssist fileKey={fileKey} notes={values.final_notes || ""} saveNotes={() => save("final_notes", values.final_notes || "")} onApplied={appliedNotes} /></section>
         {viewMode === "step" ? <>
           {renderStep(section)}
         </> : <div className={`nf-all-steps${viewMode === "simple" ? " nf-simple-steps" : ""}`}>{VERIFY_STEPS.map((_, i) => renderStep(i))}</div>}

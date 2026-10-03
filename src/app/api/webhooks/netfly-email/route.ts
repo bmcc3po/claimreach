@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { cappedBytes, emailObjectId, receiveAllowed, resendGet, verifyResendWebhook, type ReceivedEmail } from '@/lib/resend-inbound';
 import { importNetflyEmail, netflyEmailCampaign } from '@/lib/netfly-email-import';
+import { emailPlainText, isNetflyCaseEmail } from '@/lib/netfly-handoff';
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
     const denied = receiveAllowed(email, recipient, domains);
     if (denied === 'different_recipient' || denied === 'unapproved_sender') return NextResponse.json({ ignored: true, reason: denied });
     if (denied) throw new Error('Sender authentication could not be verified. Email remains in Resend for review.');
+    if (!isNetflyCaseEmail(email.subject || '', email.text?.trim() || emailPlainText(email.html || '')))
+      return NextResponse.json({ ignored: true, reason: 'not_a_case_handoff' });
     const result = await importNetflyEmail(db, campaign, email, key);
     const receipt = { id: logId, firm_id: firmId, direction: 'inbound', event_type: 'netfly.email',
       status: result.retry_required ? 'failed' : 'received', http_status: result.retry_required ? 503 : 200,

@@ -63,6 +63,15 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>,
 }
 
 (async () => {
+  await t("NETFLY nested answers and source notes appear in the actual PDF, CSV and email", async () => {
+    const answers = { netfly_secondary: { fields: { accident_date: '2026-09-04', police_report: 'NF-REPORT-1', treatment_location: 'Near work', final_notes: 'Call after 3 PM 🎈', first_visit_unavailable: 'Not available yet' },
+      handoffs: [{ note: 'Client/Driver: Synthetic PNC\nInsurance: Both parties believed insured.\nInjuries & Treatment: Pain and appointment planned.' }] } };
+    const netfly: IntakeBundle = { ...bundle, claim: { ...claim, campaign: 'NETFLY ONTAKE' }, answers };
+    const csv = buildIntakeCsvSingle(netfly), html = buildIntakeEmailHtml(netfly), text = await pdfText(await buildIntakePdf(netfly));
+    for (const output of [csv, html, text]) for (const value of ['NF-REPORT-1', 'Near work', 'Call after 3 PM', 'Both parties believed insured.', 'Pain and appointment planned.']) assert(output.includes(value), value);
+    assert(text.includes('U+1F388'), 'unsupported pasted emoji does not block the PDF');
+    assert(!csv.includes('MVA_ONLY_SENTINEL'), 'NETFLY never reads a different intake namespace');
+  });
   await t("MVA questions/answers reuse the existing call report and never dump SSN", () => {
     assert.deepEqual(intakeSections(bundle), caseReport({ ...lead, campaign: claim.campaign }, call).sections);
     const csv = buildIntakeCsvSingle(bundle);

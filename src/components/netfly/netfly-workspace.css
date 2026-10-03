@@ -176,4 +176,8 @@
 .nf-notes-assist{margin-top:10px}.nf-notes-preview{margin-top:14px}.nf-notes-preview>.nf-primary{margin-top:12px}.nf-notes-preview>.nf-text-action{margin-left:14px}
 .nf-conversation .nf-handoff-check{margin-top:16px;padding:14px;border:1px solid #d7e4e8;background:#fafcfd}
 @media(max-width:700px){.nf-call-notes{padding:12px}.nf-conversation .nf-script p,.nf-say,.nf-closing p{font-size:16px}.nf-quick-choices label{flex:1 1 auto}.nf-readback{padding:10px 12px}}
-
+.nf-final-send{border-top:3px solid #2b659b;margin-top:24px;padding-top:20px;overflow-wrap:anywhere}
+.nf-final-send>.nf-primary{display:block;width:100%;box-sizing:border-box;text-align:center;margin-top:18px;font-size:18px}
+.nf-sent-balloons{font-size:40px;animation:nf-celebrate 1s ease-out 1}
+@keyframes nf-celebrate{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+@media(prefers-reduced-motion:reduce){.nf-sent-balloons{animation:none}}

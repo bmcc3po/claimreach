@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { deliverLeadToFirm, matterSendState, type FirmEmail, type DeliverDeps } from "./firm-delivery";
 import { loadIntakeBundle, buildIntakeCsvSingle } from "./intake-render";
+import { netflyPacketReview } from './netfly-packet';
 
 let pass = 0;
 const t = async (name: string, fn: () => Promise<void> | void) => { await fn(); pass++; console.log("ok", name); };
@@ -191,6 +192,59 @@ function deps(db: any, o: Partial<DeliverDeps> = {}): DeliverDeps & { sent: Firm
 const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed\.pdf$/.test(a.filename))?.content;
 
 (async () => {
+  const netflyWorld = () => {
+    const campaign = camp('ca01', { name: 'NETFLY ONTAKE', path: 'secondary', esign_required: false });
+    const lead = leadRow();
+    const original = { id: 'nf-doc', firm_id: FIRM, lead_id: L, claim_id: 'aaa1', doc_type: 'netfly_signed_retainer', file_name: 'NETFLY signed original.pdf', storage_path: `${FIRM}/${L}/netfly-original.pdf`, created_at: '2026-10-02T10:00:00Z' };
+    const claim = claimRow('aaa1', 'ca01', { campaign: 'NETFLY ONTAKE', status: 'new', answers: { netfly_secondary: {
+      fields: { incident_story: 'Synthetic rear-end case', accident_date: '2026-09-04' }, handoffs: [{ note: 'Client/Driver: Pat Doe\nAccident Date: 09/04/2026' }],
+      handoff_verification: { status: 'matches', source_revision: 1 },
+      call_close: { closeout_version: 2, source_revision: 1, completion: 'complete', disposition: 'appears_qualified', callback_promised_24_48_hours: true },
+      review: { status: 'retainer_reviewed', retainer_reviewed_document_id: original.id },
+    } } });
+    const db = fakeDb({ leads: [lead], claims: [claim], campaigns: [campaign], case_documents: [original], esign_submissions: [], signable_documents: [], retainers: [], qa_reviews: [], firm_deliveries: [], app_users: [{ role: 'owner', active: true, email: 'bmc@innovativeintake.com' }] },
+      { storage: { [original.storage_path]: bytes('%PDF-1.7\n' + 'SYNTHETIC ORIGINAL '.repeat(15) + '\n%%EOF') } });
+    return { db, lead, claim, campaign, original };
+  };
+  await t('NETFLY agent packet uses its reviewed original and intake, copies Brett, and sends only once', async () => {
+    const w = netflyWorld(), d = deps(w.db);
+    const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
+    assert.deepEqual(preview.errors, []);
+    const options = { leadId: L, claimId: 'aaa1', triggeredBy: 'manual' as const, includeOwner: true, netflySnapshot: preview.snapshot };
+    const result = await deliverLeadToFirm(options, d);
+    assert.equal(result.ok, true, result.error); assert.equal(d.sent.length, 1);
+    assert.deepEqual(d.sent[0].cc, ['bmc@innovativeintake.com']);
+    assert(d.sent[0].attachments.some(a => /intake.pdf$/.test(a.filename)));
+    assert(d.sent[0].attachments.some(a => /NETFLY_signed/.test(a.filename)));
+    assert.equal(w.claim.status, 'delivered'); assert(w.claim.firm_sent_at);
+    assert((await deliverLeadToFirm(options, d)).skipped); assert.equal(d.sent.length, 1);
+  });
+  await t('NETFLY refuses stale review, incomplete calls, missing or foreign PDFs and generic bypass', async () => {
+    for (const mutate of [
+      (w: any) => { w.claim.answers.netfly_secondary.review.retainer_reviewed_document_id = ''; },
+      (w: any) => { w.claim.answers.netfly_secondary.review.status = 'needs_supervisor'; },
+      (w: any) => { w.db.tables.esign_submissions.push({ id: 'new-packet', firm_id: FIRM, lead_id: L, claim_id: 'aaa1', campaign_id: 'ca01', status: 'completed' }); },
+      (w: any) => { w.claim.answers.netfly_secondary.call_close.completion = 'incomplete'; },
+      (w: any) => { w.original.claim_id = 'another-claim'; },
+      (w: any) => { w.claim.answers.netfly_secondary.fields.wants_cancel = 'Yes'; },
+    ]) {
+      const w = netflyWorld(); mutate(w); const d = deps(w.db), preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
+      const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot }, d);
+      assert.equal(result.ok, false); assert.equal(d.sent.length, 0);
+    }
+    const w = netflyWorld(), d = deps(w.db), preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
+    w.claim.answers.netfly_secondary.fields.incident_story = 'Changed after preview';
+    assert.equal((await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot }, d)).ok, false);
+    assert.equal((await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual' }, d)).ok, false);
+    assert.equal(d.sent.length, 0);
+  });
+  await t('NETFLY rechecks an answer changed while assembling its PDF before provider send', async () => {
+    const w = netflyWorld(), d = deps(w.db), loader = d.loadBundle!;
+    const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
+    d.loadBundle = async (...args) => { const bundle = await loader(...args); w.claim.answers.netfly_secondary.fields.police_report = 'CHANGED'; return bundle; };
+    const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot }, d);
+    assert.equal(result.ok, false); assert.match(result.error || '', /changed while/); assert.equal(d.sent.length, 0);
+  });
   await t("MVA handoff refuses a signed file before QA approval", async () => {
     const db = world({ claims: [claimRow("aaa1", "ca01", { status: "signed_qa" })], campaigns: [camp("ca01")], agreements: [agreement("e1", "5001", { claim_id: "aaa1" })] });
     const d = deps(db);

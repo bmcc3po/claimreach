@@ -16,13 +16,22 @@ export async function GET(req: NextRequest) {
   if (!ctx || !ctx.actor.can("leads.view")) return fail("NETFLY is unavailable to this account.", 403);
   const key = new URL(req.url).searchParams.get("file");
   if (!key) {
+    const inboxAddress = process.env.NETFLY_RECEIVING_TO || '';
+    const importReady = !!inboxAddress && !!process.env.NETFLY_RESEND_API_KEY && !!process.env.NETFLY_RESEND_WEBHOOK_SECRET;
+    let receiving: any = { address: inboxAddress, configured: importReady };
+    if (['owner', 'admin'].includes(ctx.actor.role)) {
+      const recent = await ctx.db.from('webhook_events').select('status, error, created_at, response')
+        .eq('firm_id', ctx.campaign.firm_id).in('event_type', ['netfly.email', 'netfly.email.failed'])
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      receiving = { ...receiving, latest: recent.data || null, check_error: recent.error ? 'Could not check the latest email import.' : null };
+    }
     const { data, error } = await ctx.db.from("leads")
       .select("id, lead_no, claimant_name, phone, created_at")
       .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).is("archived_at", null)
       .order("created_at", { ascending: false }).limit(150);
     if (error) return fail("Could not load NETFLY files.", 503);
     const ids = (data ?? []).map(row => row.id);
-    const claims = ids.length ? await ctx.db.from("claims").select("id, lead_id, answers, status")
+    const claims = ids.length ? await ctx.db.from("claims").select("id, lead_id, answers, status, firm_sent_at")
       .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).in("lead_id", ids) : { data: [], error: null };
     if (claims.error) return fail("Could not load NETFLY matters. Refresh the queue.", 503);
     const claimsByLead = new Map<string, typeof claims.data>();
@@ -32,7 +41,7 @@ export async function GET(req: NextRequest) {
     if (documents.error) return fail("Could not check NETFLY signed PDFs. Refresh the queue.", 503);
     const documentKeys = new Set((documents.data ?? []).map(doc => `${doc.lead_id}:${doc.claim_id}`));
     if ([...claimsByLead.values()].some(rows => rows.length !== 1)) return fail("A NETFLY file has ambiguous matters. Supervisor review needed.", 409);
-    return NextResponse.json({ files: (data ?? []).map(row => {
+    return NextResponse.json({ receiving, files: (data ?? []).map(row => {
       const claim = claimsByLead.get(row.id)?.[0];
       const saved = (claim?.answers as any)?.[NETFLY_ANSWER_KEY];
       const missing_source = [

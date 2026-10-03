@@ -95,6 +95,22 @@ export function parseNetflyHandoff(note: string): { label: string; value: string
     if (contact.email && !values.get('Client Email')) values.set('Client Email', contact.email);
     if (contact.phone && !values.get('Client Phone')) values.set('Client Phone', contact.phone);
   }
+  // NETFLY's standard email has a compact, comma-separated details block.
+  // Explicit agent notes above win; a relative month is never an exact DOL.
+  const detailsStart = lines.findIndex(line => /^accident\s+details\s*:?$/i.test(line));
+  if (detailsStart >= 0) {
+    const details: string[] = [];
+    for (const line of lines.slice(detailsStart + 1)) {
+      if (/^(?:agent\s+comments|note|from|to|cc|subject|contact\s+information)\s*:/i.test(line)) break;
+      details.push(line);
+      if (details.length >= 12) break;
+    }
+    const compact = details.join(' ');
+    for (const [key, label] of [['State', 'Accident State'], ['City', 'Accident City'], ['Accident Type', 'Accident Type'], ['At fault', 'At Fault']]) {
+      const match = new RegExp('(?:^|,)\\s*' + key + '\\s*:\\s*([^,]*)', 'i').exec(compact);
+      if (match?.[1].trim() && !values.has(label)) values.set(label, match[1].trim());
+    }
+  }
   return NETFLY_HANDOFF_LABELS.filter(label => values.get(label)).map(label => ({ label, value: values.get(label)! }));
 }
 
@@ -177,6 +193,10 @@ export function extractNetflyEmail(note: string) {
   }
   add('police_report', 'Case #'); add('police_department', 'Reporting Agency');
   add('incident_story', 'Accident Summary');
+  // Keep narrative sections intact in their matching notes fields. These are
+  // NETFLY's account, not clinical conclusions or answers confirmed on our call.
+  add('insurance_notes', 'Insurance');
+  add('other_pain', 'Injuries & Treatment');
   const passengers = source.Passengers || '';
   if (/^(?:none|no|0|no passengers)\.?$/i.test(passengers)) add('passengers', 'Passengers', 'No');
   else if (/^yes\b|^[1-9]\d*\b/i.test(passengers)) { add('passengers', 'Passengers', 'Yes'); add('passenger_details', 'Passengers'); }
@@ -186,8 +206,20 @@ export function extractNetflyEmail(note: string) {
   if (/^(yes|no)$/i.test(source['Treatment Received'] || '')) add('seen_doctor', 'Treatment Received', /^yes$/i.test(source['Treatment Received']) ? 'Yes' : 'No');
   // Narrative ambiguity stays in the original source. Do not infer medical
   // answers, fault, representation, consent, or signing state from prose.
-  add('health_carrier', 'Health Insurance');
+  const health = source['Health Insurance'] || '';
+  if (/^(?:no|none|uninsured)\.?$/i.test(health)) add('health_insured', 'Health Insurance', 'No');
+  else if (/^yes\.?$/i.test(health)) add('health_insured', 'Health Insurance', 'Yes');
+  else if (health && !/^(?:unknown|not sure|pending)\.?$/i.test(health)) add('health_carrier', 'Health Insurance');
   return { rows, candidates, fields: Object.fromEntries(candidates.map(c => [c.id, c.value])), agreementLinks, warnings };
+}
+
+/** A dedicated inbox still receives replies and reminders: those are not new cases. */
+export function isNetflyCaseEmail(subject: string, body: string): boolean {
+  const extracted = extractNetflyEmail(body);
+  return /^(?:(?:re|fw|fwd):\s*)*new signing\b/i.test(subject.trim()) ||
+    extracted.agreementLinks.length > 0 ||
+    extracted.rows.some(row => row.label === 'Client/Driver') &&
+      extracted.rows.some(row => ['Accident Summary', 'Accident Date', 'Case #'].includes(row.label));
 }
 
 /** Import into empty answers only. Explicit unavailable answers also win. */

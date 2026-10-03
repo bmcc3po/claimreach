@@ -87,7 +87,7 @@ assert.deepEqual(extractNetflyEmail(sample + `\nContact Information:\nDifferent 
 for (const bad of ['javascript:alert(1)', 'http://go.easyclaimcenter.com/documents/v1/00000000-0000-4000-8000-000000000001', link.replace('go.easyclaimcenter.com', 'go.easyclaimcenter.com.attacker.test'), link.replace('https://', 'https://user:password@'), link + '&redirect=https://attacker.test']) assert.equal(approvedAgreementUrl(bad), null);
 const view = renderToStaticMarkup(createElement(HandoffEvidence, { note: sample }));
 assert.ok(view.includes('Open NETFLY agreement'));
-assert.ok(view.includes('Download PDF'));
+assert.ok(view.includes('Import signed PDF from email'));
 assert.ok(view.includes('no-referrer'));
 assert.ok(view.includes('representation note'));
 assert.ok(!renderToStaticMarkup(createElement(HandoffEvidence, { note: sample, hasPdf: true })).includes('Download PDF'));

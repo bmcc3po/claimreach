@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { extractNetflyEmail, parseNetflyHandoff, planHandoffFields, emailDate } from './netfly-handoff';
+import { extractNetflyEmail, parseNetflyHandoff, planHandoffFields, emailDate, isNetflyCaseEmail } from './netfly-handoff';
 import { verifyResendWebhook, receiveAllowed, receivedPdf, resendGet, cappedBytes, type ReceivedEmail } from './resend-inbound';
 import { NETFLY_FIELD_IDS } from './netfly-ontake';
 import { saveNetflyHandoff } from './netfly-handoff-save';
@@ -38,6 +38,11 @@ async function main() {
   assert.equal(result.fields.seen_doctor, undefined, 'limited treatment does not mean none');
   assert.equal(result.fields.fault, undefined, 'no automatic legal conclusions');
   assert.equal(result.fields.other_lawyer_signed, undefined);
+  assert.equal(result.fields.insurance_notes, 'Both parties are believed to be insured.');
+  assert.equal(result.fields.other_pain, 'Has pain; unable to fully pursue treatment.');
+  assert(isNetflyCaseEmail('New Signing! Synthetic Client', 'Contact details will follow.'));
+  assert(!isNetflyCaseEmail('Check-In: NETFLY', 'Hi team, checking whether treatment was scheduled.'));
+  assert(!isNetflyCaseEmail('Onboarding', 'Please fill the form.'));
   assert.ok(result.candidates.every(c => NETFLY_FIELD_IDS.has(c.id)), 'only canonical question IDs');
   assert.equal(result.fields.incident_story, 'The car stalled and was rear-ended. More details on a second line.');
   assert.equal(result.rows.at(-1)?.value, 'Ready to follow recommendations.', 'drop signatures');
@@ -45,6 +50,10 @@ async function main() {
   assert.equal(markdown.fields.confirmed_phone, '2025550123');
   assert.equal(markdown.fields.confirmed_email, 'client@example.test');
   assert.equal(extractNetflyEmail('<div><b>Client/Driver:</b> Synthetic Client</div><p>Accident Date: 09/04/2026</p>').fields.accident_date, '2026-09-04');
+  const compact = extractNetflyEmail('Contact Information:\nSynthetic Client\nclient@example.test\n2025550146\nAccident Details:\nState: MO, City: Kansas City,Accident Type: Auto Accident, At fault: No, When: Less than 30 days ago, September, 2026\nAgent Comments:');
+  assert.equal(compact.fields.accident_state, 'MO'); assert.equal(compact.fields.accident_city, 'Kansas City');
+  assert.equal(compact.fields.accident_date, undefined, 'relative dates must stay unknown');
+  assert.equal(compact.fields.fault, undefined, 'source fault claim never becomes a legal conclusion');
   assert.equal(parseNetflyHandoff('Client/Driver: New Name\nClient/Driver: Quoted Old Name')[0].value, 'New Name');
   assert.equal(emailDate('02/31/2026'), null);
   assert.equal(emailDate('09/04/26'), null, 'no guessed century');
