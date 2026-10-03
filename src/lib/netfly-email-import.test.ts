@@ -27,10 +27,18 @@ const campaign = { id: 'camp', firm_id: 'firm' };
 const pdf = '%PDF-1.7\n' + 'Synthetic test only '.repeat(10) + '\n%%EOF';
 const fetcher = (async (url: any) => String(url).startsWith('https://api.resend.com/')
   ? Response.json({ download_url: 'https://inbound-cdn.resend.com/test.pdf', size: pdf.length }) : new Response(pdf)) as typeof fetch;
-const database = () => new EmailDb({ leads: [], claims: [], case_documents: [], firms: [{ id: 'firm', slug: 'tmp' }],
+const database = () => new EmailDb({ leads: [], claims: [], case_documents: [], firms: [{ id: 'firm', slug: 'tmp', name: 'Example, Second & Third' }],
   campaigns: [{ ...campaign, name: 'NETFLY ONTAKE', case_type: 'mva', path: 'secondary', active: true, esign_required: false, firms: { slug: 'tmp' } }] });
 
 async function main() {
+  const wrongFirm = database();
+  await assert.rejects(() => importNetflyEmail(wrongFirm, campaign, { ...email,
+    text: 'Accident Intake Note – Other Law FL\n' + email.text }, 'test-key', fetcher), /different or unrecognized/);
+  assert.equal(wrongFirm.tables.leads.length, 0, 'wrong-firm mail cannot create a lead');
+  assert.equal(wrongFirm.tables.claims.length, 0); assert.equal(wrongFirm.blobs.size, 0, 'wrong-firm PDFs never enter receiving firm storage');
+  const namedFirm = database();
+  await importNetflyEmail(namedFirm, campaign, { ...email, text: 'Accident Intake Note – Example Law\n' + email.text }, 'test-key', fetcher);
+  assert.equal(namedFirm.tables.leads.length, 1, 'matching shorthand firm name is accepted');
   const db = database();
   assert.equal((await netflyEmailCampaign(db)).id, 'camp');
   db.tables.campaigns.push({ ...db.tables.campaigns[0], id: 'foreign', firm_id: 'another-firm' });

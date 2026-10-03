@@ -4,7 +4,7 @@ import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, NETFLY_UNAVAILABL
 import { parseDob } from "@/lib/mva-call/server";
 import { mailColumnsFrom } from "@/lib/us-address";
 import { packetShort } from "@/lib/mva-call/esign";
-import { saveNetflyHandoff } from "@/lib/netfly-handoff-save";
+import { assertHandoffFirm, saveNetflyHandoff } from "@/lib/netfly-handoff-save";
 import { normPhone } from "@/lib/comms";
 export const runtime = "edge";
 
@@ -110,6 +110,8 @@ export async function POST(req: NextRequest) {
     const email = String(body.email || "").trim().slice(0, 254);
     const sourceNote = String(body.source_note || "").trim();
     if (sourceNote.length > 20000) return fail("The NETFLY handoff note is too long (20,000 characters maximum).", 400);
+    try { await assertHandoffFirm(ctx.db, ctx.campaign.firm_id, sourceNote); }
+    catch (error: any) { return fail(error.message || "Could not verify the receiving firm. Nothing was imported.", 409); }
     if (body.op === "start_call") {
       if (sourceNote) return fail("Add NETFLY's handoff note on the signed-transfer file.", 400);
       const normalized = normPhone(phone);
@@ -386,4 +388,3 @@ export async function POST(req: NextRequest) {
   }
   return fail("Unknown NETFLY action.", 400);
 }
-

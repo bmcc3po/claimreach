@@ -8,21 +8,21 @@ export const NETFLY_HANDOFF_LABELS = [
   'Case #', 'Reporting Agency', 'Passengers', 'Airbags', 'Accident Summary',
   'Insurance', 'Client Insurer', 'Other Driver Insurer', 'Claim Number',
   'Injuries & Treatment', 'Treatment Received', 'Treatment Provider', 'Treatment Date',
-  'Health Insurance', 'Representation', 'Next Steps',
+  'Health Insurance', 'Representation', 'Next Steps', 'Accident Type', 'At Fault', 'Additional Information',
 ] as const;
 const labelKey = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 const aliases: Record<string, string> = {
   client: 'Client/Driver', clientname: 'Client/Driver', fullname: 'Client/Driver',
   cellphone: 'Client Phone', clientphonenumber: 'Client Phone', clientemailaddress: 'Client Email',
   mailingaddress: 'Client Address', dob: 'Date of Birth', leadid: 'LawRuler Lead ID',
-  dateofincident: 'Accident Date', dol: 'Accident Date', accidentlocation: 'Location',
+  dateofincident: 'Accident Date', dateofaccident: 'Accident Date', dol: 'Accident Date', accidentlocation: 'Location', city: 'Location',
   casenumber: 'Case #', policereportnumber: 'Case #', policereport: 'Case #',
   policedepartment: 'Reporting Agency', policeagency: 'Reporting Agency',
   accidentnarrative: 'Accident Summary', casedescription: 'Accident Summary', summary: 'Accident Summary',
   injuriesandtreatment: 'Injuries & Treatment', autoinsurance: 'Client Insurer',
   otherdriversinsurance: 'Other Driver Insurer', healthinsuranceprovider: 'Health Insurance',
 };
-const multiline = new Set(['Accident Summary', 'Insurance', 'Injuries & Treatment', 'Representation', 'Next Steps']);
+const multiline = new Set(['Accident Summary', 'Insurance', 'Injuries & Treatment', 'Representation', 'Next Steps', 'Additional Information']);
 
 /** HTML is converted to plain text only; no email markup is ever rendered. */
 export function emailPlainText(input: string): string {
@@ -44,17 +44,39 @@ export function parseNetflyHandoff(note: string): { label: string; value: string
     if (!line) continue;
     if (/^(?:--+|_{3,}|thanks(?:,|$)|thank you(?:,|$)|regards|sincerely|sent from|on .+ wrote:)/i.test(line)) { current = null; continue; }
     const match = /^([^:]{2,50}):\s*(.*)$/.exec(line);
-    const label = match ? headings.get(labelKey(match[1])) : undefined;
+    const label = headings.get(labelKey(match ? match[1] : line));
     if (label) {
+      // A second client starts a separate account, not missing fields for the first.
+      if (label === 'Client/Driver' && values.has(label)) break;
       // The first labeled account wins. A quoted older email cannot replace it.
       current = values.has(label) ? null : label;
-      if (current) values.set(current, match![2].trim());
+      if (current) values.set(current, match ? match[2].trim() : '');
     } else if (match) current = null;
     else if (current && (!values.get(current) || multiline.has(current))) {
       values.set(current, `${values.get(current) || ''} ${line}`.trim());
     }
   }
   return NETFLY_HANDOFF_LABELS.filter(label => values.get(label)).map(label => ({ label, value: values.get(label)! }));
+}
+
+/** Only explicit routing headings, never a mention of a former lawyer in prose. */
+export function handoffFirmNames(note: string): string[] {
+  const names = new Set<string>();
+  for (const raw of emailPlainText(note).split('\n')) {
+    const line = raw.trim().replace(/^>\s?/, '').replace(/\*\*/g, '').trim();
+    const match = /^(?:accident\s+intake\s+note\s*[-–—:]|(?:law\s+firm|receiving\s+firm|firm)\s*:)\s*(.{2,160})$/i.exec(line);
+    if (match) names.add(match[1].trim());
+  }
+  return [...names];
+}
+
+export function handoffFirmMatches(declared: string, firm: { name: string; slug?: string }): boolean {
+  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ')
+    .split(' ').filter(word => word && !['the', 'and', 'law', 'firm', 'llp', 'pllc', 'llc', 'pc'].includes(word)).join(' ');
+  const source = normalize(declared), expected = normalize(firm.name);
+  // Accept a leading partner shorthand such as "Example Law" for
+  // "Example, Second & Third"; never partial words or an unrelated name.
+  return !!source && (!!expected && (source === expected || expected.startsWith(source + ' ')) || source === normalize(firm.slug || ''));
 }
 
 export function emailDate(value: string): string | null {

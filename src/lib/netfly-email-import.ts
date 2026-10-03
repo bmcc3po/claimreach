@@ -1,6 +1,6 @@
 import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_RETAINER_TYPE } from './netfly-ontake';
 import { emailPlainText, extractNetflyEmail } from './netfly-handoff';
-import { saveNetflyHandoff } from './netfly-handoff-save';
+import { assertHandoffFirm, saveNetflyHandoff } from './netfly-handoff-save';
 import { contentHash, emailObjectId, receivedPdf, type ReceivedEmail } from './resend-inbound';
 
 type Campaign = { id: string; firm_id: string };
@@ -45,6 +45,7 @@ async function preserve(db: any, scope: Scope, name: string, bytes: Uint8Array, 
 
 export async function importNetflyEmail(db: any, campaign: Campaign, email: ReceivedEmail, apiKey: string, fetcher: typeof fetch = fetch) {
   const body = email.text?.trim() || emailPlainText(email.html || '').trim();
+  await assertHandoffFirm(db, campaign.firm_id, body);
   const extraction = extractNetflyEmail(body);
   const fields = extraction.fields;
   const source = Object.fromEntries(extraction.rows.map(r => [r.label, r.value]));
