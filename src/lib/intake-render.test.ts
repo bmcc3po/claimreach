@@ -47,13 +47,13 @@ async function pdfText(bytes: Uint8Array): Promise<string> {
   }
   return texts.join(" ");
 }
-function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>) {
+function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>, user: any = { role: "owner", can: () => true }) {
   const source = fs.readFileSync(path.resolve(__dirname, "../app/api/export/intake-pdf/route.ts"), "utf8");
   const mods: Record<string, any> = {
     "next/server": { NextResponse: { json: (body: any, o: any = {}) => ({ body, status: o.status ?? 200 }) } },
     "@/lib/supabase-server": { supabaseServer: async () => sb },
-    "@/lib/gate": { requirePerm: async () => ({ ok: true, user: { role: "agent" } }) },
-    "@/lib/permissions": { isInternalRole: () => true }, "@/lib/matter": matter,
+    "@/lib/gate": { gateUser: async () => user },
+    "@/lib/permissions": { isInternalRole: (role: string) => role !== "firm" }, "@/lib/matter": matter,
     "@/lib/intake-render": { loadIntakeBundle, buildIntakePdf: makePdf, hasIntakeQuestions: () => true },
   };
   const exp: any = {};
@@ -114,6 +114,24 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>)
     let rendered = false;
     const r = await exportRoute(sb, async () => { rendered = true; return new Uint8Array(); }).GET({ url: `https://synthetic.invalid/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${claim.id}` });
     assert.notEqual(r.status, 200); assert.equal(rendered, false);
+  });
+  await t("agent without bulk-export permission can review only an explicit visible matter", async () => {
+    const sb = db({ leads: [lead], claims: [claim] });
+    const agent = { role: "agent", can: (permission: string) => permission === "intake.fill" };
+    const route = exportRoute(sb, async () => new Uint8Array([1]), agent);
+    const prefix = `https://synthetic.invalid/api/export/intake-pdf?lead_id=${lead.id}`;
+    const preview = await route.GET({ url: `${prefix}&claim_id=${claim.id}&preview=1` });
+    assert.equal(preview.status, 200); assert.match(preview.headers.get("Content-Disposition"), /^inline/);
+    assert.equal((await route.GET({ url: `${prefix}&claim_id=${claim.id}` })).status, 403);
+    assert.equal((await route.GET({ url: `${prefix}&preview=1` })).status, 403);
+    assert.notEqual((await route.GET({ url: `${prefix}&claim_id=someone-else&preview=1` })).status, 200);
+    assert.equal((await exportRoute(db({ leads: [], claims: [claim] }), async () => { throw Error("must not render"); }, agent).GET({ url: `${prefix}&claim_id=${claim.id}&preview=1` })).status, 404);
+  });
+  await t("firm, deactivated and denied agents cannot use the review exception", async () => {
+    for (const user of [null, { role: "firm", can: () => true }, { role: "agent", can: () => false }]) {
+      const r = await exportRoute(db({ leads: [lead], claims: [claim] }), async () => { throw Error("must not render"); }, user).GET({ url: `https://synthetic.invalid/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${claim.id}&preview=1` });
+      assert.equal(r.status, user ? 403 : 401);
+    }
   });
   console.log(`${count} passed`);
 })().catch((e) => { console.error(e); process.exitCode = 1; });
