@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { extractNetflyEmail } from '@/lib/netfly-handoff';
 import { NETFLY_FIELDS } from '@/lib/netfly-ontake';
+import HandoffEvidence from './HandoffEvidence';
 
 const labels = new Map(NETFLY_FIELDS.map(f => [f.id, f.label]));
 export default function HandoffImport({ fileKey, values, onSaved }: {
@@ -36,6 +37,7 @@ export default function HandoffImport({ fileKey, values, onSaved }: {
       <span><strong>{labels.get(c.id) || c.source}</strong><span>{c.value}</span>{occupied(c.id) && <small>Keeping the answer already on this file.</small>}</span>
     </label>)}</div>}
     {note.trim().length >= 10 && !candidates.length && <p>No clearly labeled fields found. You can still save the complete email as the handoff note.</p>}
+    <HandoffEvidence note={note} />
     {error && <p className="nf-alert" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     <button className="nf-primary" disabled={busy || note.trim().length < 10} onClick={() => void save()}>{busy ? 'Saving…' : 'Save email & fill selected fields'}</button>
   </details>;

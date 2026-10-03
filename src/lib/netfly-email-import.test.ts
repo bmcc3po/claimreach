@@ -39,6 +39,27 @@ async function main() {
   const namedFirm = database();
   await importNetflyEmail(namedFirm, campaign, { ...email, text: 'Accident Intake Note – Example Law\n' + email.text }, 'test-key', fetcher);
   assert.equal(namedFirm.tables.leads.length, 1, 'matching shorthand firm name is accepted');
+  const linkedDb = database();
+  const linked = await importNetflyEmail(linkedDb, campaign, { ...email, attachments: [], text: `${email.text}
+Representation: Synthetic Test has not retained an attorney.
+Subject: New Signing! Synthetic Test
+Contact Information:
+Synthetic Test
+client@example.test
++12025550146
+The Signed Agreement:
+https://go.easyclaimcenter.com/documents/v1/00000000-0000-4000-8000-000000000001?locale=en-US
+Accident Details:
+Note:
+Office: 2025550188
+sender@netflydigital.com` }, 'test-key', (async () => { throw new Error('A viewer link must not trigger an arbitrary download'); }) as typeof fetch);
+  assert.equal(linkedDb.tables.leads[0].phone, '2025550146');
+  assert.equal(linkedDb.tables.leads[0].email, 'client@example.test');
+  assert.equal(linked.partial, true);
+  assert.ok(linked.warnings.includes('Signed PDF missing'));
+  assert.ok(linked.warnings.some(warning => /representation note/.test(warning)));
+  assert.equal(linkedDb.tables.case_documents.length, 1, 'viewer link is source evidence, not an attached signed PDF');
+  assert.equal(linkedDb.tables.claims[0].answers.netfly_secondary.review.status, 'in_progress');
   const db = database();
   assert.equal((await netflyEmailCampaign(db)).id, 'camp');
   db.tables.campaigns.push({ ...db.tables.campaigns[0], id: 'foreign', firm_id: 'another-firm' });
