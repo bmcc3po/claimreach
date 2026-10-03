@@ -7,6 +7,7 @@ import { packetShort } from "@/lib/mva-call/esign";
 import { assertHandoffFirm, saveNetflyHandoff } from "@/lib/netfly-handoff-save";
 import { normPhone } from "@/lib/comms";
 import { extractNetflyEmail } from "@/lib/netfly-handoff";
+import { canEditNetflyDelivery, netflyFirmEmailProblem } from "@/lib/netfly-delivery-settings";
 export const runtime = "edge";
 
 const fail = (message: string, status: number) => NextResponse.json({ error: message }, { status });
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
     if (documents.error) return fail("Could not check NETFLY signed PDFs. Refresh the queue.", 503);
     const documentKeys = new Set((documents.data ?? []).map(doc => `${doc.lead_id}:${doc.claim_id}`));
     if ([...claimsByLead.values()].some(rows => rows.length !== 1)) return fail("A NETFLY file has ambiguous matters. Supervisor review needed.", 409);
-    return NextResponse.json({ receiving, files: (data ?? []).map(row => {
+    return NextResponse.json({ receiving, delivery: { to: ctx.campaign.firm_email || '', cc: ctx.campaign.firm_cc || '', can_edit: canEditNetflyDelivery(ctx.actor) }, files: (data ?? []).map(row => {
       const claim = claimsByLead.get(row.id)?.[0];
       const saved = (claim?.answers as any)?.[NETFLY_ANSWER_KEY];
       const missing_source = [
@@ -85,6 +86,24 @@ export async function POST(req: NextRequest) {
   if (!ctx) return fail("NETFLY is unavailable to this account.", 403);
   let body: any;
   try { body = await req.json(); } catch { return fail("Invalid request.", 400); }
+  if (body?.op === "delivery_settings") {
+    if (!canEditNetflyDelivery(ctx.actor)) return fail("Only the owner can change the firm delivery email.", 403);
+    const email = String(body.firm_email || '').trim().toLowerCase();
+    const problem = netflyFirmEmailProblem(email);
+    if (problem) return fail(problem, 400);
+    const previous = ctx.campaign.firm_email || '';
+    if (body.expected_to !== previous) return fail("The delivery address changed. Refresh and review it before saving.", 409);
+    let update = ctx.db.from('campaigns').update({ firm_email: email, updated_at: new Date().toISOString() })
+      .eq('id', ctx.campaign.id).eq('firm_id', ctx.campaign.firm_id);
+    update = ctx.campaign.firm_email == null ? update.is('firm_email', null) : update.eq('firm_email', ctx.campaign.firm_email);
+    const saved = await update.select('firm_email, firm_cc').maybeSingle();
+    if (saved.error) return fail("The firm delivery email did not save. Please retry.", 503);
+    if (!saved.data) return fail("The delivery address changed. Refresh and retry.", 409);
+    const audit = await ctx.db.from('audit_log').insert({ firm_id: ctx.campaign.firm_id, actor: ctx.actor.id, actor_name: ctx.actor.name,
+      category: 'settings', description: 'NETFLY firm delivery email updated', meta: { campaign_id: ctx.campaign.id, previous, firm_email: email } });
+    return NextResponse.json({ ok: true, delivery: { to: saved.data.firm_email, cc: saved.data.firm_cc || '', can_edit: true },
+      ...(audit.error ? { warning: 'Address saved, but its activity record could not be saved. Please notify support.' } : {}) });
+  }
   if (body?.op === "call_presence") {
     if (!ctx.actor.can("intake.fill")) return fail("This account cannot mark a NETFLY call.", 403);
     const action = String(body.action || "");

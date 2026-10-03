@@ -33,7 +33,7 @@ export default function NetflySendPacket({ fileKey, revision, signedDocuments, u
     {sentAt ? <><div className="nf-sent-balloons" aria-hidden="true">🎈 🎈 🎈</div><h2>File sent to the firm!</h2><p>Sent {new Date(sentAt).toLocaleString()}. Brett was copied. The packet is recorded on this file.</p><Link className="nf-primary" href="/app/netfly">Back to NETFLY files</Link></> : <>
       <h2>Final step: send to the firm</h2><p>Review the intake and signed PDF above, then send the packet.</p>
       <a className="nf-secondary" href={`${endpoint}&pdf=intake`} target="_blank" rel="noopener noreferrer">Open intake PDF ↗</a>
-      {packet && <><p><strong>To firm:</strong> {packet.to || 'Not configured'}<br /><strong>Copy:</strong> {packet.cc.join(', ')}</p>
+      {packet && <><p><strong>To firm:</strong> {packet.to || 'Not configured'}<br /><strong>Copy:</strong> {packet.cc.join(', ')}</p><Link href="/app/netfly#firm-delivery" target="_blank" rel="noopener noreferrer">Firm delivery email settings ↗</Link>
         <p><strong>Included:</strong> intake PDF{packet.documents.map(doc => ` + ${doc.name}`).join('')}</p>
         {packet.documents.map(doc => { const stored = signedDocuments.find(item => item.id === doc.id); return stored?.url ? <p key={doc.id}><a className="nf-secondary" href={stored.url} target="_blank" rel="noopener noreferrer">Open {doc.name} ↗</a></p> : null; })}
         {packet.errors.length > 0 && <div className="nf-alert"><strong>Finish these items on this file:</strong><ul>{packet.errors.map(item => <li key={item}>{item}</li>)}</ul><Link href={packet.case_url}>Open case and agreement actions →</Link></div>}
