@@ -32,7 +32,9 @@ export async function saveNetflyHandoff(db: any, scope: Scope, note: string, sel
     const all = read.data.answers || {};
     const current = all[NETFLY_ANSWER_KEY] || {};
     const handoffs = Array.isArray(current.handoffs) ? current.handoffs : [];
-    const same = handoffs.some((h: any) => h.note === note && (!source.source_id || h.source_id === source.source_id));
+    // A forwarded copy has a new provider ID, but the same case facts.
+    // Its separate email receipt is retained without invalidating staff review.
+    const same = handoffs.some((h: any) => h.note === note);
     if (!same && handoffs.length >= 20) throw new Error('Handoff revision limit reached. Ask a supervisor to review the file.');
     const contactFields = { confirmed_name: lead.claimant_name || '', confirmed_phone: lead.phone || '',
       confirmed_email: lead.email || '', dob: lead.dob || '',
