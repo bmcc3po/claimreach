@@ -2202,6 +2202,10 @@ div.ws-row{cursor:default}
 @media(max-width:700px){.post-review-header{position:static;padding:14px 18px;align-items:stretch;flex-direction:column}.post-review-header .post-review-next{width:100%}.post-review-body{width:calc(100% - 24px);margin:12px auto 40px}.post-review-status{align-items:flex-start;flex-direction:column}.post-review-row{display:block}.post-review-row>label{display:block;padding:0 0 7px}.post-review-footer .post-review-next{width:100%}}
 
 /* Client work stays in the intake, with the same controls at every width. */
+.firm-send-celebration { position: fixed; inset: 0; overflow: hidden; z-index: 120; pointer-events: none; }
+.firm-send-celebration span { position: absolute; bottom: -100px; font-size: 58px; animation: firm-balloon-rise 5s ease-out both; }
+@keyframes firm-balloon-rise { from { transform: translateY(0) rotate(-10deg); opacity: 1; } to { transform: translateY(-120vh) rotate(12deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .firm-send-celebration { display: none; } }
 .inline-client-contact, .contract-actions, .passenger-agreement { grid-column: 1 / -1; min-width: 0; width: 100%; }
 .contract-actions { display: grid; gap: 16px; }
 .contract-actions:empty { display: none; }
@@ -2220,3 +2224,4 @@ div.ws-row{cursor:default}
 .contract-actions .cc-btn, .passenger-agreement .cc-btn, .contract-actions .cc-chip { min-height: 44px; white-space: normal; }
 .contract-success { color: #126535; font-weight: 600; }
 @media (max-width: 600px) { .agreement-resend .cc-btn, .passenger-agreement .cc-btn, .contract-correction .cc-btn { width: 100%; } }
+

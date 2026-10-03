@@ -48,6 +48,21 @@ function classicRoute(db: FakeDb) {
 let count = 0;
 async function check(name: string, fn: () => Promise<void>) { await fn(); count++; console.log("ok", name); }
 async function main() {
+  await check("different screen positions do not block saving client answers or closing the call", async () => {
+    const db = world();
+    Object.assign(db.tables.claims[0].answers.mva_call, { at: "insurance", phase: "body", free: true });
+    const r = await route(db)({ base_answers: { story: { text: "Before" }, at: "incident", phase: "open", free: false }, answers: { story: { text: "Client story" }, at: "retainer", phase: "send", free: false } });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.answers.story.text, "Client story");
+    assert.equal(r.body.answers.at, "retainer");
+    assert.equal(r.body.answers.free, true, "unchanged local view keeps server hint");
+  });
+  await check("a real answer conflict still stops the entire write even when navigation also differs", async () => {
+    const db = world(); db.tables.claims[0].answers.mva_call = { story: { text: "Other answer" }, at: "insurance" };
+    const r = await route(db)({ base_answers: { story: { text: "Before" }, at: "incident" }, answers: { story: { text: "My answer" }, at: "retainer" } });
+    assert.equal(r.status, 409); assert.deepEqual(r.body.conflicts, ["story.text"]);
+    assert.ok(db.ops.every(o => o.kind === "select"));
+  });
   await check("first saved MVA call records the intake agent and mailing time zone", async () => {
     const db = world();
     db.tables.leads[0].mail_state = "TX";
@@ -182,4 +197,5 @@ async function main() {
   console.log(`${count} passed`);
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });
+
 

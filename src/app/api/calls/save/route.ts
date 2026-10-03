@@ -3,7 +3,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff, leadPatchSince, LEAD_CALL_COLS } from "@/lib/mva-call/server";
 import { inferMailTimeZone } from "@/lib/mail-time-zone";
 import { resolveMatter } from "@/lib/matter";
-import { isAnswerObject, mergeAnswerDelta } from "@/lib/mva-call/answer-merge";
+import { isAnswerObject, mergeCallAnswerDelta } from "@/lib/mva-call/answer-merge";
 
 export const runtime = "edge";
 
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     // A legacy claim without mva_call can adopt the scoped call restored by the
     // page. Once mva_call exists (even {}), it always wins over session copies.
     previous = isAnswerObject(bag.mva_call) ? bag.mva_call : (base || {});
-    const merged = hasBase ? mergeAnswerDelta(base, previous, incoming) : { value: incoming, conflicts: [] };
+    const merged = hasBase ? mergeCallAnswerDelta(base, previous, incoming) : { value: incoming, conflicts: [] };
     if (merged.conflicts.length) return NextResponse.json({ error: `These answers changed on another screen: ${merged.conflicts.join(", ")}. Your edits remain on this screen; review the file before saving again.`, conflict: true, conflicts: merged.conflicts }, { status: 409 });
     answers = merged.value;
     changedPaths = "changedPaths" in merged ? merged.changedPaths : [];
@@ -173,4 +173,5 @@ export async function POST(req: NextRequest) {
   for (const k of ["phone", "email", "mail_addr1", "mail_city", "mail_state", "mail_zip"]) if (k in since) contact[k] = String((since as any)[k] ?? "");
   return NextResponse.json({ ok: true, call_id: callId, claim_id: claim.id, answers, contact });
 }
+
 

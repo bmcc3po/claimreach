@@ -595,7 +595,7 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-grp" role="radiogroup" aria-label={v.dispo.whenHead}>{(v.dispo.when || []).map((c: any, i47: number) => (<Fragment key={i47}><button className={cx(c.cls)} role="radio" aria-checked={!!c.on} onClick={c.pick}><span>{c.label}</span>{!!(c.on) && (<><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg></>)}</button></Fragment>))}</div>
 {!!(v.dispo.pickTime) && (<><input className="cc-field" type="datetime-local" aria-label="Call back at" value={v.dispo.at.value ?? ""} onChange={v.dispo.at.set} /></>)}
 </>)}
-{!!(v.dispo.isSigned) && <div className="cc-stop"><strong>After saving this call:</strong> Review your file below and use the single final send. Saving the disposition does not email the packet.</div>}
+{!!(v.dispo.isSigned) && <div className="cc-stop"><strong>Next: review your intake.</strong> Save this call to open the review. Then check the two PDFs and send the packet to the firm.</div>}
 {!!(v.dispo.isDnc) && (<>
 <div className="cc-stop"><div className="cc-card-h">The number comes off every list</div><div className="cc-cue">No more calls or texts from any campaign.</div></div>
 </>)}
@@ -626,3 +626,4 @@ function Dispo({ v }: { v: any }) {
 </>)}
   </>);
 }
+

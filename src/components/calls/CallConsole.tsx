@@ -16,7 +16,7 @@ import { stateCodeOf } from "@/lib/mva-call/state";
 import { agreementChoice } from "@/lib/mva-call/agreement-choice";
 import { CallEngine, doiOf, type CallApi, type CallProps } from "@/lib/mva-call/engine";
 import { callbackAt } from "@/lib/mva-call/dispo";
-import { applyAnswerDelta, isAnswerObject } from "@/lib/mva-call/answer-merge";
+import { applyAnswerDelta, isAnswerObject, CALL_VIEW_KEYS } from "@/lib/mva-call/answer-merge";
 import { SEND_HELD_MESSAGE } from "@/lib/mva-call/replacement";
 import type { SendAttemptHold } from "@/lib/mva-call/replacement";
 import { savedCallView } from "@/lib/mva-call/step-layout";
@@ -53,8 +53,8 @@ export interface ConsoleInit {
 
 type IdentityMeta = { saved: boolean; mode: "full" | "last4" | null; version: number; saved_at: string | null };
 
-async function post(url: string, body: unknown): Promise<any> {
-  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+async function post(url: string, body: unknown, timeoutMs?: number): Promise<any> {
+  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok || d?.error) {
     const err: any = new Error(d?.error || (r.status >= 500
@@ -100,6 +100,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const saveBlocked = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saving = useRef(false);
+  const saveInFlight = useRef<Promise<boolean> | null>(null);
   // Inbound texts already seen. Anything newer lights the badge.
   const seenInbound = useRef<number | null>(null);
   // Desktop: the call on the left, CarCure, texts, agreement and lead on the right.
@@ -497,6 +498,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
       },
       saveDispo() {
         const d = e().state.dispo;
+        if (d.saving) return;
         e().setState({ dispo: { ...d, saving: true, error: "" } });
         const at = callbackAt(d.when, d.at);
         // The call does not end over unsaved answers (Astra round 3): a failed
@@ -505,7 +507,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
           if (!contactSaved) throw new Error("Client details have not saved. Retry the contact save before leaving intake.");
           return flushSave();
         }).then((saved) => {
-          if (!saved) throw new Error("The answers have not saved yet. Check the connection; they retry automatically, then press Save again.");
+          if (!saved) throw new Error(e().state.net?.saveError || "Your latest answers have not saved. Stay on this screen and try Save again; your entries are still here.");
           return post("/api/calls/dispo", {
           lead_id: leadId, claim_id: init.claimId, call_id: callId.current, dispo: d.pick, reasons: d.why,
           callback_at: at ? at.toISOString() : null, note: d.note,
@@ -666,6 +668,13 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
 
   async function save(snap: string): Promise<boolean> {
     if (saving.current || saveBlocked.current) return false;
+    const request = performSave(snap);
+    saveInFlight.current = request;
+    try { return await request; }
+    finally { if (saveInFlight.current === request) saveInFlight.current = null; }
+  }
+
+  async function performSave(snap: string): Promise<boolean> {
     saving.current = true;
     const sentView = JSON.parse(snap);
     const baseView = JSON.parse(lastSaved.current);
@@ -673,12 +682,15 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     const sentAnswers = applyAnswerDelta(baseView, sentView, baseAnswers);
     let acknowledged = false;
     try {
-      const d = await post("/api/calls/save", { lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, post_call_correction: !!engine.state.dispo.saved, base_answers: baseAnswers, answers: sentAnswers, mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" });
+      const d = await post("/api/calls/save", { lead_id: init.leadId, claim_id: init.claimId, call_id: callId.current, post_call_correction: !!engine.state.dispo.saved, base_answers: baseAnswers, answers: sentAnswers, mode: engine.state.bare ? "bare" : engine.state.free ? "free" : "guided" }, 30000);
       callId.current = d.call_id || callId.current;
       const canonical = isAnswerObject(d.answers) ? d.answers : sentAnswers;
       // The acknowledgement may contain an import or another screen's unrelated
       // edits. Keep those, then reapply anything typed after this request began.
       const acknowledgedView = applyAnswerDelta(baseAnswers, canonical, sentView);
+      // Another open screen's navigation is not this screen's current position.
+      // Acknowledging it without moving the UI creates an endless save loop.
+      for (const key of CALL_VIEW_KEYS) acknowledgedView[key] = sentView[key];
       const withPending = applyAnswerDelta(sentView, engine.persistable(), acknowledgedView);
       answerBase.current = canonical;
       lastSaved.current = JSON.stringify(acknowledgedView);
@@ -709,7 +721,10 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         engine.setState({ net: { saveError: err.message } });
         return false;
       }
-      engine.setState({ net: { saveError: "Not saved. Retrying." } });
+      const reason = err?.name === "TimeoutError" || err?.name === "AbortError"
+        ? "The save is taking too long. Your entries are still here. Try Save again."
+        : err?.message || "The connection was interrupted.";
+      engine.setState({ net: { saveError: `Not saved: ${reason}` } });
       console.error("autosave failed", err?.message);
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => { void save(JSON.stringify(engine.persistable())); }, 4000);
@@ -734,8 +749,10 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     for (let i = 0; i < 16; i++) {
       if (saveBlocked.current) return false;
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      if (saving.current) {
-        await new Promise((r) => setTimeout(r, 250));
+      if (saveInFlight.current) {
+        // Wait for the actual request. The former four-second polling budget
+        // reported failure while a perfectly healthy slow save was still running.
+        if (!(await saveInFlight.current)) return false;
         continue;
       }
       const snap = JSON.stringify(engine.persistable());
@@ -1065,3 +1082,4 @@ function previewInfo(s: any, init: ConsoleInit, templateKeys: string[]): Preview
   if (choice.key === "NV_FLAT") q.set("nv_variant", "flat");
   return { href: `/api/calls/esign/preview?${q}`, checks };
 }
+

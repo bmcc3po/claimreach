@@ -1761,9 +1761,8 @@ export class CallEngine {
     var dispoSummary = dd ? [{ k: 'Dispo', v: dd.label }] : [];
     if (d.why.length) dispoSummary.push({ k: 'Why', v: d.why.map((k: string) => ((dd && dd.why ? dd.why : []).find((r: any) => r.key === k) || { label: k }).label).join(', ') });
     if (dd && dd.when && whenText) dispoSummary.push({ k: dd.whenHead, v: whenText });
-    if (d.pick === 'signed') dispoSummary.push({ k: 'Firm packet', v: 'Not sent yet — review and confirm below' });
     if (String(d.note || '').trim()) dispoSummary.push({ k: 'Note', v: d.note });
-    var savedNote = d.pick === 'signed' ? 'Call saved. Review your file and send the complete packet below.'
+    var savedNote = d.pick === 'signed' ? 'Call saved. Your file review and confirmed delivery status are below.'
       : d.pick === 'dnc' ? 'The number is off every list.'
       : (dd && dd.when && whenText) ? 'On the call back list for ' + (d.when === 'Pick a time' ? whenText : whenText.toLowerCase()) + '.'
       : 'Logged for reports.';
@@ -2165,7 +2164,7 @@ export class CallEngine {
           this.setState({ dispo: Object.assign({}, dd2, { add: '', notify: dd2.notify.concat([{ who: em, how: 'Added on this call', on: true }]) }) });
         },
         note: this.field('dispo', 'note'),
-        cantSave: saveLabel !== 'Save the call' || !!d.saving, saveLabel: d.saving ? 'Saving' : saveLabel,
+        cantSave: saveLabel !== 'Save the call' || !!d.saving, saveLabel: d.saving ? 'Saving your answers…' : saveLabel === 'Save the call' && d.pick === 'signed' ? 'Save & review intake' : saveLabel,
         save: () => this.api.saveDispo(),
         saving: !!d.saving, error: d.error || '', hasError: !!d.error,
         edit: () => this.set('dispo', 'saved', false),
@@ -2218,3 +2217,4 @@ export class CallEngine {
     return out;
   }
 }
+

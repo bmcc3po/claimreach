@@ -167,6 +167,14 @@ t("dispo: nothing picked on a fresh call", () => {
   assert.ok(v.dispo.cantSave);
 });
 
+t("signed disposition names the next step without inventing firm delivery status", () => {
+  const e = mk(); e.openDispo(); e.dispoPick("signed");
+  const v = e.renderVals();
+  assert.equal(v.dispo.saveLabel, "Save & review intake");
+  assert.equal(v.dispo.cantSave, false);
+  assert.ok(!v.dispo.summary.some((row: any) => row.k === "Firm packet"));
+});
+
 t("dispo: call back needs a reason and a time", () => {
   const e = mk(); e.openDispo();
   e.dispoPick("callback");
@@ -965,3 +973,4 @@ t("passenger agreements are available before the caller signs, with their own de
 });
 
 console.log(passed, "passed");
+
