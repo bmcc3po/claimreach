@@ -118,6 +118,10 @@ async function main() {
   assert.equal(db.tables.claims[0].answers.netfly_secondary.imported_fields.confirmed_phone.confirmed, false);
   await saveNetflyHandoff(db, scope, note, selected, { by: 'test', by_name: 'Test', channel: 'staff_entered' });
   assert.equal(db.tables.claims[0].answers.netfly_secondary.handoffs.length, 1);
+  db.tables.claims[0].answers.netfly_secondary.review.status = 'ready';
+  await saveNetflyHandoff(db, scope, note, selected, { by: 'netfly_email', by_name: 'NETFLY', channel: 'email', source_id: 'forwarded-copy' });
+  assert.equal(db.tables.claims[0].answers.netfly_secondary.handoffs.length, 1, 'identical forwarded facts do not create another review revision');
+  assert.equal(db.tables.claims[0].answers.netfly_secondary.review.status, 'ready', 'identical forwarded facts preserve staff review');
   await assert.rejects(() => saveNetflyHandoff(db, { ...scope, firmId: 'other' }, note, selected, { by: 'x', by_name: 'x', channel: 'email' }), /contact/);
   db.failOn = op => op.table === 'claims' && op.kind === 'update' ? 'simulated outage' : null;
   await assert.rejects(() => saveNetflyHandoff(db, scope, note + '\nNew detail', selected, { by: 'x', by_name: 'x', channel: 'email' }), /could not be saved/);

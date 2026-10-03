@@ -133,6 +133,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   };
   const chooseDisposition = (disposition: NetflyCallClose["disposition"]) => {
     setCallClose((old) => ({ ...old, disposition,
+      assessment_reason: disposition === old.disposition ? old.assessment_reason : "",
       dq_reason_key: disposition === "appears_dq" ? old.dq_reason_key : "",
       transfer_destination: "", transfer_outcome: "not_attempted",
       transfer_note: "", client_notified_48_business_hours: false, callback_promised_24_48_hours: false,
