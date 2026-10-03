@@ -4,6 +4,7 @@ import path from "node:path";
 import ts from "typescript";
 import { FakeDb } from "./test-fake-db";
 import * as ontake from "./netfly-ontake";
+import * as deliverySettings from "./netfly-delivery-settings";
 import * as handoff from "./netfly-handoff";
 import { assertHandoffFirm } from "./netfly-handoff-save";
 import { mailColumnsFrom } from "./us-address";
@@ -28,6 +29,7 @@ const modules: Record<string, any> = {
   "next/server": { NextResponse: { json: (body: any, options: any = {}) => ({ body, status: options.status || 200 }) } },
   "@/lib/netfly-server": { netflyContext: async () => ({ actor, db, campaign: { id: "netfly", firm_id: FIRM } }) },
   "@/lib/netfly-ontake": ontake,
+  "@/lib/netfly-delivery-settings": deliverySettings,
   "@/lib/netfly-handoff": handoff,
   "@/lib/netfly-handoff-save": { assertHandoffFirm },
   "@/lib/mva-call/server": {},

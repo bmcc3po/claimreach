@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { extractNetflyEmail } from "@/lib/netfly-handoff";
+import NetflyDeliverySettings, { type NetflyDeliveryConfig } from './NetflyDeliverySettings';
 import "./netfly.css";
 
 type FileRow = { id: string; lead_no: string; claimant_name: string; phone: string; created_at: string; missing_source: string[];
@@ -10,6 +11,7 @@ type FileRow = { id: string; lead_no: string; claimant_name: string; phone: stri
 export default function NetflyHome() {
   const router = useRouter();
   const [files, setFiles] = useState<FileRow[]>([]);
+  const [delivery, setDelivery] = useState<NetflyDeliveryConfig | null>(null);
   const [receiving, setReceiving] = useState<{ configured: boolean; address: string; latest?: { status: string; error?: string; created_at: string }; check_error?: string } | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", email: "", source_note: "" });
   const editedContacts = useRef(new Set<"name" | "phone" | "email">());
@@ -18,7 +20,7 @@ export default function NetflyHome() {
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   async function load() {
-    try { const r = await fetch("/api/netfly", { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setFiles(d.files || []); setReceiving(d.receiving || null); setLoadError(""); }
+    try { const r = await fetch("/api/netfly", { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setFiles(d.files || []); setReceiving(d.receiving || null); setDelivery(d.delivery || null); setLoadError(""); }
     catch (e: any) { setLoadError(e.message || "NETFLY files did not load."); }
   }
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 20_000); return () => window.clearInterval(timer); }, []);
@@ -54,6 +56,7 @@ export default function NetflyHome() {
   return <main className="nf-page">
     <div className="nf-head"><div><Link href="/app" className="nf-back">← Desk</Link><p className="nf-eyebrow">Turnbull, Moak &amp; Pendergrass</p><h1>NETFLY ONTAKE</h1><p>Already signed. Welcome the client, verify NETFLY's handoff, and handle what changed.</p></div></div>
     {receiving && <section className="nf-panel" aria-label="Automatic NETFLY email import"><strong>Automatic email import</strong><p>{receiving.configured ? <>Have NETFLY send “New Signing” emails to <b>{receiving.address}</b>. New files appear below; missing details stay visible for follow-up.</> : 'Receiving setup needs owner attention. You can still paste an email below.'}</p>{receiving.latest && <p className={receiving.latest.status === 'received' ? 'nf-saved' : 'nf-alert'}>Latest attempt · {new Date(receiving.latest.created_at).toLocaleString()}: {receiving.latest.status === 'received' ? 'Imported.' : receiving.latest.error || 'Import needs attention. The original email remains in Resend.'}</p>}{receiving.check_error && <p className="nf-alert">{receiving.check_error}</p>}</section>}
+    {delivery && <NetflyDeliverySettings delivery={delivery} onSaved={setDelivery} />}
     <div className="nf-columns"><section className="nf-panel"><h2>Create a NETFLY file</h2><p className="nf-muted">Paste the whole email. Check the contact details, then open the file to welcome your client.</p>
       <form onSubmit={create} className="nf-form">
       <label>Paste the NETFLY email<textarea maxLength={20000} disabled={busy} value={form.source_note} onChange={(e) => setNote(e.target.value)} placeholder="Agent notes, Contact Information, Signed Agreement — paste it all here. If it has not arrived, enter the client's name below to start a partial file." /></label>

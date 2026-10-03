@@ -1,5 +1,6 @@
 import { NETFLY_CAMPAIGN, NETFLY_RETAINER_TYPE, netflyFlags, validateNetflyCallClose } from './netfly-ontake';
 import { contentHash } from './resend-inbound';
+import { netflyFirmEmailProblem, validDeliveryEmail } from './netfly-delivery-settings';
 
 export async function netflyPacketReview(db: any, lead: any, claim: any, campaign: any) {
   if (campaign.name !== NETFLY_CAMPAIGN || campaign.path !== 'secondary' || campaign.esign_required !== false ||
@@ -44,8 +45,7 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
   const to = String(campaign.firm_email || '').trim().toLowerCase();
   const configuredCc = String(campaign.firm_cc || '').split(/[,;]/).map(s => s.trim().toLowerCase()).filter(Boolean);
   const cc = [...new Set([...configuredCc, 'bmc@innovativeintake.com'])].filter(address => address !== to);
-  const validEmail = (address: string) => /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(address);
-  if (!validEmail(to) || configuredCc.some(address => !validEmail(address)) || to === 'bmc@innovativeintake.com') errors.push('Set a separate firm delivery email in the NETFLY campaign settings.');
+  if (netflyFirmEmailProblem(to) || configuredCc.some(address => !validDeliveryEmail(address))) errors.push('Set a valid, separate firm delivery email in NETFLY → Firm delivery email.');
   const snapshot = await contentHash(new TextEncoder().encode(JSON.stringify({
     lead: { id: lead.id, name: lead.claimant_name, phone: lead.phone, email: lead.email, address: [lead.mail_addr1, lead.mail_city, lead.mail_state, lead.mail_zip] },
     claim: claim.id, fields: saved.fields, handoffs: saved.handoffs, source: saved.source_field_revisions,

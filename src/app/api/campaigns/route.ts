@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
+import { supabaseServer } from "@/lib/supabase-server";
+import { gateUser } from "@/lib/gate";
 export const runtime = "edge";
 
 async function gate(sb: any) {
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return { error: "unauthorized", status: 401 as const };
-  const { data: me } = await sb.from("app_users").select("role").eq("id", auth.user.id).maybeSingle();
-  return { user: auth.user, role: me?.role };
+  const actor = await gateUser(sb);
+  if (!actor) return { error: "unauthorized", status: 401 as const };
+  return { actor, role: actor.role };
 }
 
 export async function GET() {
   const sb = await supabaseServer();
   const g = await gate(sb);
   if ("error" in g) return NextResponse.json({ error: g.error }, { status: g.status });
-  const { data } = await sb.from("campaigns")
+  const { data, error } = await sb.from("campaigns")
     .select("*, firms(name)").order("name");
+  if (error) return NextResponse.json({ error: "Could not load campaigns." }, { status: 503 });
   return NextResponse.json({ campaigns: data ?? [] });
 }
 
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const g = await gate(sb);
   if ("error" in g) return NextResponse.json({ error: g.error }, { status: g.status });
-  if (!["owner", "admin"].includes(g.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!["owner", "admin"].includes(g.role) || !g.actor.can('settings.manage')) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const b = await req.json();
   if (!b.name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
   if (!b.case_type?.trim()) return NextResponse.json({ error: "case type required" }, { status: 400 });
@@ -46,12 +47,24 @@ export async function POST(req: NextRequest) {
     attach_certificate: b.attach_certificate !== false,
     firm_delivery_on: b.firm_delivery_on === true,
   };
+  // Use the signed-in client's RLS for every campaign mutation. The previous
+  // service-role write trusted any campaign ID supplied by an admin browser.
+  if (row.firm_id) {
+    const firm = await sb.from('firms').select('id').eq('id', row.firm_id).maybeSingle();
+    if (firm.error || !firm.data) return NextResponse.json({ error: 'Firm not available to this account.' }, { status: 403 });
+  }
   if (b.id) {
-    const { error } = await supabaseAdmin().from("campaigns").update(row).eq("id", b.id);
+    const existing = await sb.from('campaigns').select('id, firm_id').eq('id', b.id).maybeSingle();
+    if (existing.error || !existing.data) return NextResponse.json({ error: 'Campaign not available to this account.' }, { status: 403 });
+    if (existing.data.firm_id !== row.firm_id) return NextResponse.json({ error: 'Create a separate campaign for a different firm.' }, { status: 409 });
+    let update = sb.from("campaigns").update(row).eq("id", b.id);
+    update = row.firm_id ? update.eq('firm_id', row.firm_id) : update.is('firm_id', null);
+    const { data, error } = await update.select('id').maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!data) return NextResponse.json({ error: 'Campaign was not saved. Check your access and retry.' }, { status: 403 });
     return NextResponse.json({ ok: true, id: b.id });
   }
-  const { data, error } = await supabaseAdmin().from("campaigns").insert(row).select("id").single();
+  const { data, error } = await sb.from("campaigns").insert(row).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, id: data.id });
 }
@@ -60,11 +73,16 @@ export async function DELETE(req: NextRequest) {
   const sb = await supabaseServer();
   const g = await gate(sb);
   if ("error" in g) return NextResponse.json({ error: g.error }, { status: g.status });
-  if (!["owner", "admin"].includes(g.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!["owner", "admin"].includes(g.role) || !g.actor.can('settings.manage')) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
   // Soft-delete: deactivate so historical leads keep their campaign link.
-  const { error } = await supabaseAdmin().from("campaigns").update({ active: false }).eq("id", id);
+  const existing = await sb.from('campaigns').select('id, firm_id').eq('id', id).maybeSingle();
+  if (existing.error || !existing.data) return NextResponse.json({ error: 'Campaign not available to this account.' }, { status: 403 });
+  let update = sb.from("campaigns").update({ active: false }).eq("id", id);
+  update = existing.data.firm_id ? update.eq('firm_id', existing.data.firm_id) : update.is('firm_id', null);
+  const { data, error } = await update.select('id').maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) return NextResponse.json({ error: 'Campaign was not changed. Check your access and retry.' }, { status: 403 });
   return NextResponse.json({ ok: true });
 }
