@@ -193,7 +193,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       if (f.id === "care_today_setting") return values.care_today === "Yes";
       if (f.id === "care_today_plan") return values.care_today === "No" || values.care_today === "Not sure";
       if (f.id === "insurance_claim_number") return values.insurer_contact === "Yes" || !!values[f.id];
-      if (f.id === "health_carrier") return values.health_insured === "Yes";
+      if (f.id === "health_carrier") return values.health_insured === "Yes" || !!values.health_carrier;
       return true;
     };
 
