@@ -1,12 +1,24 @@
 import { NETFLY_ANSWER_KEY, NETFLY_FIELD_IDS } from './netfly-ontake';
-import { extractNetflyEmail, planHandoffFields } from './netfly-handoff';
+import { extractNetflyEmail, handoffFirmMatches, handoffFirmNames, planHandoffFields } from './netfly-handoff';
 import { joinUsAddress, mailColumnsFrom } from './us-address';
 
 type Scope = { firmId: string; campaignId: string; claimId: string; leadId: string };
 type Source = { by: string; by_name: string; channel: string; source_id?: string };
+
+/** Check declared routing against the already-authorized firm before any write. */
+export async function assertHandoffFirm(db: any, firmId: string, note: string) {
+  const declared = handoffFirmNames(note);
+  if (!declared.length) return; // Missing information can remain a partial file.
+  const result = await db.from('firms').select('name, slug').eq('id', firmId).maybeSingle();
+  if (result.error || !result.data?.name) throw new Error('Could not verify the receiving firm. Nothing was imported.');
+  if (declared.some(name => !handoffFirmMatches(name, result.data)))
+    throw new Error('The handoff names a different or unrecognized law firm. Nothing was imported. Ask a supervisor to verify the destination.');
+}
+
 /** Append source evidence and fill selected blanks with an optimistic lock. */
 export async function saveNetflyHandoff(db: any, scope: Scope, note: string, selected: string[], source: Source) {
   if (note.trim().length < 10 || note.length > 20000) throw new Error('Paste an email or note between 10 and 20,000 characters.');
+  await assertHandoffFirm(db, scope.firmId, note);
   const extracted = extractNetflyEmail(note);
   for (let attempt = 0; attempt < 4; attempt++) {
     const contact = await db.from('leads').select('claimant_name, phone, email, dob, mail_addr1, mail_city, mail_state, mail_zip')
