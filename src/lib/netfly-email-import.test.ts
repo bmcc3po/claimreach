@@ -92,6 +92,28 @@ sender@netflydigital.com` }, 'test-key', (async () => { throw new Error('A viewe
   const blank = database();
   await importNetflyEmail(blank, campaign, { ...email, text: '', attachments: [] }, 'test-key', fetcher);
   assert.equal(blank.tables.leads.length, 1); assert.match(blank.tables.leads[0].claimant_name, /name needed/);
+  const viewerDb = database();
+  const viewerBody = `${email.text}\nInjuries & Treatment: Treated at Synthetic Clinic on 09/05/2026.\nContact Information:\nSynthetic Test\nclient@example.test\n2025550146\nThe Signed Agreement:\nhttps://go.easyclaimcenter.com/documents/v1/00000000-0000-4000-8000-000000000001\nAccident Details:`;
+  const viewerFetcher = (async (url: any) => String(url).startsWith('https://services.leadconnectorhq.com/')
+    ? String(url).includes('/download?') ? Response.json({ url: 'https://storage.googleapis.com/leadgen-proposals-estimates/location/location00001/documents/document00001/signed.pdf' })
+      : Response.json({ document: { _id: 'document00001', locationId: 'location00001', status: 'completed', recipients: [{ role: 'signer', firstName: 'Synthetic', lastName: 'Test', hasCompleted: true }] } })
+    : new Response(pdf)) as typeof fetch;
+  const enrich = async () => ({ available: true, suggestions: [
+    { id: 'seen_doctor', value: 'Yes', evidence: 'Treated at Synthetic Clinic', label: '' },
+    { id: 'first_provider', value: 'Synthetic Clinic', evidence: 'Treated at Synthetic Clinic', label: '' },
+    { id: 'first_visit', value: '2026-09-05', evidence: '09/05/2026', label: '' },
+    { id: 'perm_text', value: 'Yes', evidence: 'Treated at Synthetic Clinic', label: '' },
+  ] });
+  const viaLink = await importNetflyEmail(viewerDb, campaign, { ...email, id: 'viewer-mail', text: viewerBody, attachments: [] }, 'test-key', viewerFetcher, enrich);
+  assert.equal(viaLink.partial, false, 'the provided email shape imports contact, notes and linked completed PDF');
+  assert.equal(viewerDb.tables.case_documents.filter(row => row.doc_type === 'netfly_signed_retainer').length, 1);
+  const savedFields = viewerDb.tables.claims[0].answers.netfly_secondary;
+  assert.equal(savedFields.fields.first_provider, 'Synthetic Clinic'); assert.equal(savedFields.fields.first_visit, '2026-09-05');
+  assert.equal(savedFields.fields.perm_text, undefined); assert.equal(savedFields.imported_fields.first_provider.confirmed, false);
+  savedFields.fields.first_provider = 'Agent corrected clinic';
+  const amended = await importNetflyEmail(viewerDb, campaign, { ...email, id: 'amended-mail', text: viewerBody.replace('Case #: TEST-1', 'Case #: TEST-2'), attachments: [] }, 'test-key', viewerFetcher, enrich);
+  assert.equal(amended.lead_id, viaLink.lead_id, 'same original agreement keeps later note revisions on the same file');
+  assert.equal(viewerDb.tables.claims[0].answers.netfly_secondary.fields.first_provider, 'Agent corrected clinic');
   const isolation = database();
   isolation.tables.leads.push({ id: 'foreign', firm_id: 'different', campaign_id: 'camp', lawruler_ref_no: '123', claimant_name: 'Synthetic Test' });
   const scoped = await importNetflyEmail(isolation, campaign, { ...email, text: email.text + '\nLawRuler Lead ID: 123' }, 'test-key', fetcher);

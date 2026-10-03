@@ -37,6 +37,7 @@ import { signingReleaseGate } from "@/lib/mva-call/replacement";
 import { beginFirmDispatch, finishFirmDispatch } from "@/lib/firm-delivery-dispatch";
 import { sameName, paxParentId } from "@/lib/linked-files";
 import { importedOriginals, verifiedImportedPdfs } from "@/lib/imported-packet";
+import { netflyPacketReview, netflyPacketBytes } from "@/lib/netfly-packet";
 
 interface Attachment { filename: string; content: string; kind: string; } // content = base64
 
@@ -191,6 +192,8 @@ export async function deliverLeadToFirm(opts: {
   additionalRecipients?: string[];
   /** Only the authenticated imported-packet review route may request this path. */
   importedPacket?: boolean;
+  /** Authenticated NETFLY final review; snapshot includes answers, originals and recipients. */
+  netflySnapshot?: string;
 }, deps: DeliverDeps = {}): Promise<DeliverResult> {
   const db = deps.db ?? supabaseAdmin();
   const audit = deps.audit ?? (async (row: any) => { await recordAudit(row); });
@@ -237,7 +240,7 @@ export async function deliverLeadToFirm(opts: {
     try {
       const { data: hit, error: e } = await db.from("claims")
         .update(ok ? { firm_sent_at: stamp, firm_send_result: "sent",
-          ...(claim.claim_type === "mva" && claim.status === "signed_approved" ? { status: "delivered" } : {})
+          ...(claim.claim_type === "mva" && (claim.status === "signed_approved" || !!opts.netflySnapshot) ? { status: "delivered" } : {})
         } : { firm_send_result: `error: ${error}` })
         .eq("id", claim.id).select("id");
       if (e) problems.push(`this matter's delivery record did not save (${e.message})`);
@@ -296,7 +299,15 @@ export async function deliverLeadToFirm(opts: {
   // including a manual resend, must be tied to this matter's latest recorded
   // QA approval. A generic status edit or an earlier approval followed by WIP
   // must not release a packet to the firm.
-  if (String(claim.claim_type || cfg.case_type || lead.case_type || "").trim().toLowerCase() === "mva") {
+  let netflyPacket: Awaited<ReturnType<typeof netflyPacketReview>> | null = null;
+  if (opts.netflySnapshot) {
+    if (opts.triggeredBy !== "manual" || !opts.includeOwner || opts.importedPacket || opts.force) return refuse("Use the NETFLY final review to send this packet.");
+    try { netflyPacket = await netflyPacketReview(db, lead, claim, cfg); }
+    catch (error) { return refuse(errText(error)); }
+    if (netflyPacket.snapshot !== opts.netflySnapshot) return refuse("The file or recipients changed. Refresh the final review before sending.");
+    if (netflyPacket.errors.length) return refuse(netflyPacket.errors.join(" "));
+  }
+  if (!netflyPacket && String(claim.claim_type || cfg.case_type || lead.case_type || "").trim().toLowerCase() === "mva") {
     if (!["signed_approved", "delivered", "retained"].includes(String(claim.status || ""))) {
       return refuse("This MVA matter has not passed signed-file QA. Review and approve it before firm handoff.");
     }
@@ -318,7 +329,7 @@ export async function deliverLeadToFirm(opts: {
   const replyTo = String(cfg.firm_reply_to || "").trim() || undefined;
   if (!to) return refuse("This campaign has no firm email set.");
   if (opts.includeOwner) {
-    if (opts.triggeredBy !== "manual" || cfg.name !== "INNO MVA") return refuse("Owner-copy handoff is only available for a confirmed INNO MVA send.");
+    if (opts.triggeredBy !== "manual" || cfg.name !== "INNO MVA" && !netflyPacket) return refuse("Owner-copy handoff is only available for a confirmed intake send.");
     const { data: owners, error: ownerErr } = await db.from("app_users").select("email").eq("role", "owner").eq("active", true);
     if (ownerErr || !owners?.length) return refuse("Could not verify Brett's delivery address. Nothing was emailed.");
     const ownerEmails = (owners as { email?: string }[]).map((owner) => String(owner.email || "").trim().toLowerCase()).filter(Boolean);
@@ -373,11 +384,11 @@ export async function deliverLeadToFirm(opts: {
   }
 
   const wantRetainer = requirePrimary || cfg.attach_retainer !== false;
-  const wantCert = !opts.importedPacket && cfg.attach_certificate !== false;
+  const wantCert = !opts.importedPacket && !netflyPacket && cfg.attach_certificate !== false;
   // MVA delivery follows agent review of a primary-signed matter. Attachment
   // choices control the email contents, never whether the matter is ready.
   const checkPacket = requirePrimary || wantRetainer;
-  const checkCertificate = !opts.importedPacket && (requirePrimary || wantCert);
+  const checkCertificate = !opts.importedPacket && !netflyPacket && (requirePrimary || wantCert);
 
   // An active provisional emergency supersedes older primary evidence for
   // every campaign, including campaigns that intentionally omit attachments.
@@ -416,7 +427,13 @@ export async function deliverLeadToFirm(opts: {
       }
     } catch (e) { return refuse(`The imported packet could not be verified (${errText(e)}).`); }
   }
-  if (requirePrimary && !d && !opts.importedPacket) return refuse("No signed agreement is stored for this matter yet. MVA delivery requires its current completed DocuSeal packet and signing certificate.");
+  if (netflyPacket && !d) {
+    try {
+      for (const [index, pdf] of (await netflyPacketBytes(db, netflyPacket.documents)).entries())
+        attachments.push({ filename: `${nameBase}_NETFLY_signed_${index + 1}.pdf`, content: toB64(pdf.bytes), kind: "retainer" });
+    } catch (error) { return refuse(errText(error)); }
+  }
+  if (requirePrimary && !d && !opts.importedPacket && !netflyPacket) return refuse("No signed agreement is stored for this matter yet. MVA delivery requires its current completed DocuSeal packet and signing certificate.");
 
   // The designated agreement (DocuSeal): the newest main agreement bound to
   // THIS matter, including voided/incomplete rows. A sibling's agreement, a voided
@@ -489,7 +506,7 @@ export async function deliverLeadToFirm(opts: {
   // a row counts for the file's sole matter, or, on a file with several,
   // only when its retainer was explicitly associated with this claim
   // (retainers.claim_id, migration 0108).
-  if ((wantRetainer || wantCert) && !selectedDocuSeal && !opts.importedPacket) {
+  if ((wantRetainer || wantCert) && !selectedDocuSeal && !opts.importedPacket && !netflyPacket) {
     const { data: docs, error: sdErr } = await db.from("signable_documents")
       .select("*").eq("lead_id", opts.leadId).order("created_at", { ascending: false }).order("packet_seq");
     if (sdErr) return refuse(`Could not read this file's older signed retainers (${sdErr.message}).`);
@@ -590,6 +607,16 @@ export async function deliverLeadToFirm(opts: {
   // Reserve only after packet readiness. The database serializes callers on
   // the claim, including forced sends; no timer silently steals a send whose
   // result may already have reached the provider.
+  if (netflyPacket) {
+    const fresh = await db.from("claims").select("*").eq("id", claim.id).eq("lead_id", lead.id).eq("firm_id", lead.firm_id).maybeSingle();
+    const freshLead = await db.from("leads").select("*").eq("id", lead.id).eq("firm_id", lead.firm_id).maybeSingle();
+    const freshConfig = await db.from("campaigns").select("*").eq("id", campaignId).eq("firm_id", lead.firm_id).maybeSingle();
+    if (fresh.error || freshLead.error || freshConfig.error || !fresh.data || !freshLead.data || !freshConfig.data) return refuse("Could not recheck the final file. Refresh and retry.");
+    try {
+      const current = await netflyPacketReview(db, freshLead.data, fresh.data, freshConfig.data);
+      if (current.snapshot !== opts.netflySnapshot || current.errors.length) return refuse("The file changed while building the packet. Refresh the final review before sending.");
+    } catch (error) { return refuse(errText(error)); }
+  }
   const reservation = await beginFirmDispatch(db, opts.leadId, claim.id, lead.firm_id ?? null, campaignId, !!opts.force);
   if (!reservation.ok) return {
     ok: !!reservation.skipped, claimId: claim.id, skipped: reservation.skipped,

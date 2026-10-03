@@ -1,6 +1,7 @@
 import { NETFLY_ANSWER_KEY, NETFLY_FIELD_IDS } from './netfly-ontake';
 import { extractNetflyEmail, handoffFirmMatches, handoffFirmNames, planHandoffFields } from './netfly-handoff';
 import { joinUsAddress, mailColumnsFrom } from './us-address';
+import { noteSuggestions } from './netfly-note-suggestions';
 
 type Scope = { firmId: string; campaignId: string; claimId: string; leadId: string };
 type Source = { by: string; by_name: string; channel: string; source_id?: string };
@@ -16,7 +17,7 @@ export async function assertHandoffFirm(db: any, firmId: string, note: string) {
 }
 
 /** Append source evidence and fill selected blanks with an optimistic lock. */
-export async function saveNetflyHandoff(db: any, scope: Scope, note: string, selected: string[], source: Source) {
+export async function saveNetflyHandoff(db: any, scope: Scope, note: string, selected: string[], source: Source, suggested: unknown = []) {
   if (note.trim().length < 10 || note.length > 20000) throw new Error('Paste an email or note between 10 and 20,000 characters.');
   await assertHandoffFirm(db, scope.firmId, note);
   const extracted = extractNetflyEmail(note);
@@ -39,9 +40,12 @@ export async function saveNetflyHandoff(db: any, scope: Scope, note: string, sel
     const existing = { ...(current.fields || {}) };
     for (const [id, value] of Object.entries(contactFields)) if (value) existing[id] ||= value;
     const plan = planHandoffFields(note, existing, selected.filter(id => NETFLY_FIELD_IDS.has(id)));
+    const narrative = noteSuggestions(suggested, note, { ...existing, ...plan.fields });
+    for (const suggestion of narrative) plan.fields[suggestion.id] = suggestion.value;
     const at = new Date().toISOString();
     const provenance = { ...(current.imported_fields || {}) };
-    for (const [id, value] of Object.entries(plan.fields)) provenance[id] = { value, at, ...source, confirmed: false };
+    for (const [id, value] of Object.entries(plan.fields)) provenance[id] = { value, at, ...source, confirmed: false,
+      ...(narrative.find(row => row.id === id) ? { evidence: narrative.find(row => row.id === id)!.evidence, extracted_from_narrative: true } : {}) };
     const next = { ...all, [NETFLY_ANSWER_KEY]: { ...current, version: 1,
       handoffs: same ? handoffs : [...handoffs, { note, at, ...source }],
       fields: { ...(current.fields || {}), ...plan.fields }, imported_fields: provenance,

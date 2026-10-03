@@ -6,6 +6,6 @@ export default function HandoffEvidence({ note, hasPdf = false }: { note: string
   return <div className="nf-handoff-evidence">
     {warnings.map(warning => <p className="nf-alert" role="status" key={warning}>{warning}</p>)}
     {agreementLinks.map(url => <a key={url} className="nf-secondary" href={url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">Open NETFLY agreement ↗</a>)}
-    {!!agreementLinks.length && !hasPdf && <p className="nf-muted">Open the agreement, choose Download PDF, then upload that PDF here. The link alone does not attach or approve the signed packet.</p>}
+    {!!agreementLinks.length && !hasPdf && <p className="nf-muted">Automatic email import retrieves the completed PDF. On a pasted file, use “Import signed PDF from email” in the after-call review. You can also open the agreement, download and upload the original.</p>}
   </div>;
 }
