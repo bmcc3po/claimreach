@@ -100,6 +100,10 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     catch (e: any) { failedAnswers.current.add(id); setSaveState(""); setError(`${fieldById.get(id)?.label || id}: ${e.message || "Save failed"}. Your answer remains on screen; retry before leaving.`); return false; }
   }
   const set = (id: string, value: string) => setValues((old) => ({ ...old, [id]: value, ...(value.trim() && NETFLY_UNAVAILABLE_IDS.has(id) ? { [`${id}_unavailable`]: "" } : {}) }));
+  function appliedNotes(fields: Record<string, string>) {
+    setValues(old => ({ ...old, ...Object.fromEntries(Object.entries(fields).filter(([id]) => !old[id]?.trim() && !old[id + "_unavailable"])) }));
+    setDetail(old => old ? { ...old, answers: { ...old.answers, fields: { ...(old.answers.fields || {}), ...fields } } } : old);
+  }
   async function upload(file: File) {
     setUploading(true); setError("");
     try { const fd = new FormData(); fd.append("file_key", fileKey); fd.append("file", file); const r = await fetch("/api/netfly/retainer", { method: "POST", body: fd }); const d = await r.json(); if (!r.ok) throw new Error(d.error); await load(); }
@@ -283,7 +287,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         </div>
         {workspaceTab === "call" ? <>
         <div className={`nf-view-bar${headerCollapsed ? " nf-view-bar-collapsed" : ""}`}><div><strong>Welcome call · {detail.file.claimant_name}</strong>{!headerCollapsed && <span>Verify the contact, treatment and missing case details. Four short steps.</span>}</div>{!headerCollapsed && <div className="nf-view-actions"><div className="nf-view-tabs" role="tablist" aria-label="Intake view">{([["step", "Guided call"], ["simple", "Full form"], ["all", "All details"]] as const).map(([mode, label]) => <button type="button" key={mode} role="tab" aria-selected={viewMode === mode} className={viewMode === mode ? "active" : ""} onClick={() => setViewMode(mode)}>{label}</button>)}</div><button type="button" className="nf-command-toggle nf-secondary" aria-controls="netfly-command" aria-expanded={commandOpen} onClick={() => setCommandOpen(true)}>Command center</button></div>}<button type="button" className="nf-header-toggle" aria-expanded={!headerCollapsed} onClick={() => setHeaderCollapsed((old) => !old)}>{headerCollapsed ? "Show header" : "Hide header"}</button></div>
-        <section className="nf-call-notes"><label htmlFor="nf-call-notes"><strong>Call notes · shorthand is fine</strong></label><textarea id="nf-call-notes" value={values.final_notes || ""} onChange={e => set("final_notes", e.target.value)} onBlur={e => void save("final_notes", e.target.value)} placeholder="Listen, reassure, jot it down. Keep the conversation flowing." /><small>{saveState || "Saves when you leave this box."}</small><NotesAssist fileKey={fileKey} notes={values.final_notes || ""} saveNotes={() => save("final_notes", values.final_notes || "")} onApplied={fields => setValues(old => ({ ...old, ...Object.fromEntries(Object.entries(fields).filter(([id]) => !old[id]?.trim() && !old[id + "_unavailable"])) }))} /></section>
+        <section className="nf-call-notes"><label htmlFor="nf-call-notes"><strong>Call notes · shorthand is fine</strong></label><textarea id="nf-call-notes" value={values.final_notes || ""} onChange={e => set("final_notes", e.target.value)} onBlur={e => void save("final_notes", e.target.value)} placeholder="Listen, reassure, jot it down. Keep the conversation flowing." /><small>{saveState || "Saves when you leave this box."}</small><NotesAssist fileKey={fileKey} notes={values.final_notes || ""} saveNotes={() => save("final_notes", values.final_notes || "")} onApplied={appliedNotes} /></section>
         {viewMode === "step" ? <>
           {renderStep(section)}
         </> : <div className={`nf-all-steps${viewMode === "simple" ? " nf-simple-steps" : ""}`}>{VERIFY_STEPS.map((_, i) => renderStep(i))}</div>}
