@@ -81,7 +81,7 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, canOver
     setBusy(true); setError("");
     try {
       if (!state.qa_approved) {
-        const qa = await fetch("/api/qa", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        const qa = await fetch("/api/calls/qa/ready", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
           op: "submit", agent_ready: true, lead_id: leadId, claim_id: claimId, decision: "approve",
           g_qa_pass: "green", g_esign: "green", g_criteria: "green",
           confirm_intake: true, confirm_signed_packet: true, confirm_criteria: true,
@@ -128,4 +128,3 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, canOver
     {preview && <div className="final-handoff-preview-backdrop" role="presentation" onClick={() => setPreview(null)}><div className="final-handoff-preview" role="dialog" aria-modal="true" aria-label={preview === "intake" ? "Intake PDF" : "Signed retainer and HIPAA/HITECH packet"} onClick={(event) => event.stopPropagation()}><div className="final-handoff-preview-head"><strong>{preview === "intake" ? "Intake PDF" : "Signed retainer + HIPAA/HITECH"}</strong><div><a href={preview === "intake" ? intakePreviewUrl : packetUrl || "#"} target="_blank" rel="noopener noreferrer">Open in new tab ↗</a><button type="button" onClick={() => setPreview(null)}>Back to file review</button></div></div><iframe title={preview === "intake" ? "Intake PDF preview" : "Signed packet preview"} src={preview === "intake" ? intakePreviewUrl : packetUrl || undefined} /></div></div>}
   </section>;
 }
-

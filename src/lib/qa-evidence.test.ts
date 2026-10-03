@@ -13,6 +13,7 @@ import * as matter from "./matter";
 import * as signedDocs from "./signed-docs";
 import * as agreementNames from "./mva-call/agreement-names";
 import * as replacement from "./mva-call/replacement";
+import * as intakeReadiness from "./mva-call/intake-readiness";
 
 let pass = 0;
 const t = async (name: string, fn: () => Promise<void> | void) => { await fn(); pass++; console.log("ok", name); };
@@ -156,6 +157,7 @@ function world(seed: { claims?: any[]; subs?: any[]; retainers?: any[]; signable
     "@/lib/signed-docs": signedDocs,
     "@/lib/mva-call/agreement-names": agreementNames,
     "@/lib/mva-call/replacement": replacement,
+    "@/lib/mva-call/intake-readiness": intakeReadiness,
   });
   const post = (body: any) => route.POST({ url: "https://synthetic.invalid/api/qa", json: async () => body });
   const approve = (extra: any = {}) => post({
@@ -374,6 +376,31 @@ const refusedCleanly = (w: ReturnType<typeof world>) => {
     w.as("agent-1");
     assert.equal((await w.approve()).status, 403);
     refusedCleanly(w);
+  });
+
+  await t("agent final review approves their complete signed call without auto-emailing", async () => {
+    const saved = {
+      story: { city: "Atlanta, GA", when: "Pick a date", date: new Date().toISOString().slice(0, 10), seat: "Driver", fault: "Other driver", police: "No", road: "Test road", text: "Synthetic rear-end accident" },
+      body: { pain: ["Neck"], seen: ["Not yet"], done: { pain: true, seen: true }, willing: "Yes", work: "No", exchanged: "Yes", coverage: "Full coverage", uim: "Not sure", check: "No", rep: "No" },
+      car: { justMe: true, people: [] }, file: { carrier: "Synthetic insurance" },
+    };
+    assert.deepEqual(intakeReadiness.missingRequiredMvaIntake(saved), []);
+    const make = () => {
+      const w = world({ claims: [{ ...claimRow(MVA, C_MVA, "2026-09-01"), answers: { mva_call: saved } }], subs: [sub("s1", { claim_id: MVA })], campaigns: [{ id: C_MVA, esign_required: true, name: "INNO MVA", firm_id: FIRM, firms: { slug: "tmp" } }] });
+      w.as("agent-1");
+      w.tables.intake_calls = [{ id: "call-1", lead_id: LEAD, claim_id: MVA, agent_id: "agent-1", disposition: "signed", ended_at: "2026-10-02T12:00:00Z" }];
+      return w;
+    };
+    const approval = { agent_ready: true, g_esign: "green", confirm_intake: true, confirm_signed_packet: true, confirm_criteria: true };
+    const w = make(); assert.equal((await w.approve(approval)).status, 200);
+    assert.equal(w.statusCalls[0].suppressAutoDelivery, true);
+    assert.equal(w.tables.qa_reviews[0].reviewer, "agent-1");
+    for (const change of [
+      (x: ReturnType<typeof make>) => { x.tables.intake_calls[0].agent_id = "someone-else"; },
+      (x: ReturnType<typeof make>) => { x.tables.claims[0].answers = {}; },
+      (x: ReturnType<typeof make>) => { x.tables.esign_submissions[0].agent_reviewed_at = null; },
+      (x: ReturnType<typeof make>) => { x.tables.esign_submissions[0].status = "signed"; },
+    ]) { const denied = make(); change(denied); assert.ok((await denied.approve(approval)).status >= 400); refusedCleanly(denied); }
   });
 
   console.log(`${pass} passed`);

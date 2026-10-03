@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
-import { requirePerm } from "@/lib/gate";
+import { gateUser } from "@/lib/gate";
 import { isInternalRole } from "@/lib/permissions";
 import { resolveMatter } from "@/lib/matter";
 import { loadIntakeBundle, buildIntakePdf, hasIntakeQuestions } from "@/lib/intake-render";
@@ -10,10 +10,11 @@ export const runtime = "edge";
 // renderer is used by delivery, including the compiled MVA call's nested data.
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
-  const gate = await requirePerm(sb, "leads.export");
-  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
-  if (!isInternalRole(gate.user.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const p = new URL(req.url).searchParams;
+  const user = await gateUser(sb);
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const canReview = user.role === "agent" && user.can("intake.fill") && p.get("preview") === "1" && !!p.get("claim_id");
+  if (!isInternalRole(user.role) || (!user.can("leads.export") && !canReview)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const leadId = p.get("lead_id");
   if (!leadId) return NextResponse.json({ error: "lead_id required" }, { status: 400 });
   const { data: lead, error } = await sb.from("leads").select("id, campaign_id").eq("id", leadId).maybeSingle();

@@ -33,4 +33,14 @@ assert.equal(pilotStaffApiAllowed("/api/netfly", "POST"), true);
 assert.equal(pilotStaffApiAllowed("/api/netfly/retainer", "POST"), true);
 assert.equal(pilotStaffApiAllowed("/api/netfly/retainer", "GET"), false);
 assert.equal(pilotStaffApiAllowed("/api/netfly/other", "POST"), false);
+assert.equal(pilotStaffApiAllowed("/api/calls/qa/ready", "POST"), true);
+assert.equal(pilotStaffApiAllowed("/api/qa", "POST"), false);
+assert.equal(pilotStaffPageAllowed("/app/help"), true);
+for (const method of ["GET", "HEAD"]) assert.equal(pilotStaffApiAllowed("/api/export/intake-pdf", method), true);
+for (const method of ["POST", "PATCH", "DELETE"]) assert.equal(pilotStaffApiAllowed("/api/export/intake-pdf", method), false);
+assert.equal(pilotStaffApiAllowed("/api/netfly/notes", "POST"), true);
+for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE"]) assert.equal(pilotStaffApiAllowed("/api/netfly/notes", method), false);
+for (const method of ["GET", "POST", "PATCH"]) assert.equal(pilotStaffApiAllowed("/api/netfly/documents", method), true);
+for (const method of ["HEAD", "PUT", "DELETE"]) assert.equal(pilotStaffApiAllowed("/api/netfly/documents", method), false);
+console.log("agent final review, NETFLY helper and document routes reach their own authorization checks");
 

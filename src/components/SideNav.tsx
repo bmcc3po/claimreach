@@ -26,6 +26,7 @@ const STAFF_GROUPS: NavGroup[] = [
     { href: "/packets", icon: "files", label: "Signed packets to firm", ownerOnly: true },
     { href: "/call-activity", icon: "chart", label: "Call activity" },
     { href: "/queue", icon: "queue", label: "My queue" },
+    { href: "/app/help", icon: "book", label: "Agent guides" },
     { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true },
   ]},
   { id: "calls", label: "Desk", items: [
@@ -58,6 +59,7 @@ const PILOT_GROUPS: NavGroup[] = [
   { id: "main", label: null, items: [
     { href: "/dashboard", icon: "home", label: "Dashboard" },
     { href: "/queue", icon: "queue", label: "My queue" },
+    { href: "/app/help", icon: "book", label: "Agent guides" },
   ]},
   { id: "calls", label: "Desk", items: [
     { href: "/app", icon: "mobile", label: "ClaimReach Desk" },

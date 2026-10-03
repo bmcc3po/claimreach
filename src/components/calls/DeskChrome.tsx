@@ -53,8 +53,9 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
     { href: owner ? "/leads" : "/app?tab=due", icon: "files", label: owner ? "Leads" : "Calls due" },
     { href: owner ? "/signed" : "/app?tab=signed", icon: "signed", label: "Signed" },
     { href: "/queue", icon: "queue", label: "My queue" },
+    { href: "/app/help", icon: "book", label: "Agent guides" },
   ];
-  const on = (h: string) => h === "/app" ? (path === "/app" || path.startsWith("/app/")) : path.startsWith(h);
+  const on = (h: string) => h === "/app" ? (path === "/app" || (path.startsWith("/app/") && !path.startsWith("/app/help"))) : path.startsWith(h);
   const initials = (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
   return (
     <>
@@ -123,7 +124,7 @@ function FullSiteLink({ owner }: { owner: boolean }) {
     setHref("/dashboard");
     try {
       const m = pathname.match(/^\/app\/([^\/]+)$/);
-      if (m && m[1] && !["new", "search"].includes(m[1])) {
+      if (m && m[1] && !["new", "search", "help", "netfly"].includes(m[1])) {
         const q = new URLSearchParams(window.location.search);
         q.delete("text"); q.delete("classic");
         setHref(`/leads/${encodeURIComponent(decodeURIComponent(m[1]))}${q.size ? `?${q}` : ""}`);
