@@ -18,6 +18,13 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
   const ids = latest && Array.isArray(incoming) && incoming.includes(latest.id) ? incoming : latest ? [latest.id] : [];
   const documents = (read.data || []).filter((row: any) => ids.includes(row.id));
   const errors: string[] = [];
+  const replacement = await db.from('esign_submissions').select('id, status, updated_at')
+    .eq('firm_id', campaign.firm_id).eq('lead_id', lead.id).eq('claim_id', claim.id).eq('campaign_id', campaign.id)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (replacement.error) throw new Error('Could not check agreement corrections. Refresh and retry.');
+  // This review approves NETFLY's original PDFs only. A replacement must use
+  // the existing corrected-agreement review, never silently swap attachments.
+  if (replacement.data) errors.push('A replacement agreement is on this file. Open the case to finish and review that corrected packet.');
   if (!documents.length || documents.length !== ids.length) errors.push('Import or upload the signed NETFLY PDF.');
   for (const doc of documents) {
     const path = String(doc.storage_path || '');
@@ -44,7 +51,7 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
     claim: claim.id, fields: saved.fields, handoffs: saved.handoffs, source: saved.source_field_revisions,
     verification: saved.handoff_verification, close, review: saved.review, documents, to, cc,
   })));
-  return { errors, documents, to, cc, configuredCc, snapshot };
+  return { errors, documents, to, cc, configuredCc, snapshot, case_url: `/leads/${lead.id}?claim=${claim.id}` };
 }
 
 export async function netflyPacketBytes(db: any, documents: any[]) {

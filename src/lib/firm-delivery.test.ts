@@ -223,6 +223,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     for (const mutate of [
       (w: any) => { w.claim.answers.netfly_secondary.review.retainer_reviewed_document_id = ''; },
       (w: any) => { w.claim.answers.netfly_secondary.review.status = 'needs_supervisor'; },
+      (w: any) => { w.db.tables.esign_submissions.push({ id: 'new-packet', firm_id: FIRM, lead_id: L, claim_id: 'aaa1', campaign_id: 'ca01', status: 'completed' }); },
       (w: any) => { w.claim.answers.netfly_secondary.call_close.completion = 'incomplete'; },
       (w: any) => { w.original.claim_id = 'another-claim'; },
       (w: any) => { w.claim.answers.netfly_secondary.fields.wants_cancel = 'Yes'; },

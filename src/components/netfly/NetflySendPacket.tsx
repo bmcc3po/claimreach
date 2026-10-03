@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-type Preview = { errors: string[]; documents: { id: string; name: string }[]; to: string; cc: string[]; snapshot: string; sent_at: string | null; can_send: boolean; dispatch: { state: string; finished_at?: string } | null };
+type Preview = { errors: string[]; documents: { id: string; name: string }[]; to: string; cc: string[]; snapshot: string; case_url: string; sent_at: string | null; can_send: boolean; dispatch: { state: string; finished_at?: string } | null };
 export default function NetflySendPacket({ fileKey, revision, signedDocuments, unsaved }: { fileKey: string; revision: string; signedDocuments: { id: string; url: string | null; file_name: string }[]; unsaved: boolean }) {
   const [packet, setPacket] = useState<Preview | null>(null), [error, setError] = useState('');
   const [reviewed, setReviewed] = useState(false), [busy, setBusy] = useState(false), [sent, setSent] = useState('');
@@ -36,7 +36,7 @@ export default function NetflySendPacket({ fileKey, revision, signedDocuments, u
       {packet && <><p><strong>To firm:</strong> {packet.to || 'Not configured'}<br /><strong>Copy:</strong> {packet.cc.join(', ')}</p>
         <p><strong>Included:</strong> intake PDF{packet.documents.map(doc => ` + ${doc.name}`).join('')}</p>
         {packet.documents.map(doc => { const stored = signedDocuments.find(item => item.id === doc.id); return stored?.url ? <p key={doc.id}><a className="nf-secondary" href={stored.url} target="_blank" rel="noopener noreferrer">Open {doc.name} ↗</a></p> : null; })}
-        {packet.errors.length > 0 && <div className="nf-alert"><strong>Finish these items on this file:</strong><ul>{packet.errors.map(item => <li key={item}>{item}</li>)}</ul></div>}
+        {packet.errors.length > 0 && <div className="nf-alert"><strong>Finish these items on this file:</strong><ul>{packet.errors.map(item => <li key={item}>{item}</li>)}</ul><Link href={packet.case_url}>Open case and agreement actions →</Link></div>}
         {locked && <p className="nf-alert">A send is already running or needs its delivery result checked. Ask an owner to check delivery history before sending again.</p>}
         <label className="nf-inline-confirm"><input type="checkbox" checked={reviewed} disabled={busy} onChange={e => setReviewed(e.target.checked)} /> I reviewed the intake, every signed PDF listed, and the recipients.</label>
         {unsaved && <p className="nf-alert">Save the answers and call result before sending. Your edits are still on screen.</p>}
