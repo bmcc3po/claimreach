@@ -181,3 +181,54 @@
 .nf-sent-balloons{font-size:40px;animation:nf-celebrate 1s ease-out 1}
 @keyframes nf-celebrate{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
 @media(prefers-reduced-motion:reduce){.nf-sent-balloons{animation:none}}
+
+/* Phone navigation leaves the conversation in view. */
+.nf-mobile-toolbar,.nf-notes-toggle,.nf-mobile-view-choice{display:none}
+.nf-command-backdrop{position:fixed;inset:0;background:#10223866;z-index:99}
+.nf-command.nf-command-open{height:100dvh;max-height:100dvh;overscroll-behavior:contain;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+.nf-command-close{width:44px;height:44px}
+.nf-command-head{min-height:52px;padding-right:52px}
+@media(max-width:700px){
+  .nf-workspace{box-sizing:border-box;padding:12px 12px calc(96px + env(safe-area-inset-bottom));width:100%;min-width:0}
+  .nf-workspace .nf-head{margin-bottom:12px}
+  .nf-workspace .nf-head h1{font-size:21px;overflow-wrap:anywhere}
+  .nf-workspace .nf-head p{font-size:13px;overflow-wrap:anywhere}
+  .nf-workspace .nf-head .nf-progress{display:none}
+  .nf-workspace .nf-live-status{padding:8px 10px;gap:8px;margin-bottom:12px;border-width:1px;font-size:13px}
+  .nf-workspace .nf-live-status strong{flex:1 1 100px}
+  .nf-workspace .nf-live-status button{flex:0 1 160px;padding:9px;font-size:13px;margin:0}
+  .nf-review-rail{display:none}
+  .nf-workspace-tabs{margin-bottom:8px}
+  .nf-workspace-tabs button{flex:1;min-height:44px;padding:8px;font-size:14px}
+  .nf-workspace .nf-view-bar{position:sticky;top:0;display:block;padding:8px;margin-bottom:8px;border-radius:10px;z-index:5}
+  .nf-view-heading,.nf-desktop-view-actions,.nf-header-toggle{display:none!important}
+  .nf-mobile-toolbar{display:flex;align-items:center;gap:8px}
+  .nf-mobile-toolbar label{display:grid;gap:3px;flex:1;min-width:0;font-size:12px;font-weight:700;color:#526781}
+  .nf-mobile-toolbar select,.nf-mobile-view-choice select{width:100%;min-width:0;min-height:44px;padding:8px;border:1px solid #bdcce0;border-radius:8px;background:#fff;color:#173a71;font:inherit;font-size:16px}
+  .nf-mobile-toolbar>.nf-secondary{align-self:end}
+  .nf-mobile-view-choice{display:block;margin-bottom:12px}
+  .nf-mobile-view-choice label{display:grid;gap:6px;font-size:14px;font-weight:700}
+  .nf-call-notes{padding:0;margin-bottom:12px}
+  .nf-notes-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;padding:12px;border:0;border-radius:12px;background:transparent;color:#173a71;text-align:left;font:inherit;font-size:14px;font-weight:700}
+  .nf-notes-toggle span{font-size:12px;font-weight:400}
+  .nf-notes-body{display:none}
+  .nf-notes-open .nf-notes-body{display:block;padding:0 12px 12px}
+  .nf-conversation.nf-panel{padding:16px 14px}
+  .nf-conversation .nf-section-head{gap:6px;margin-bottom:14px}
+  .nf-conversation .nf-section-head .nf-eyebrow{display:none}
+  .nf-conversation .nf-section-head h2{font-size:20px;margin:0}
+  .nf-workspace .nf-step-card{scroll-margin-top:92px}
+  .nf-question{scroll-margin-top:92px;min-width:0}
+  .nf-question .nf-muted{margin:0}
+  .nf-workspace .nf-quick-choices label{min-height:48px;font-size:15px;padding:11px}
+  .nf-unknown{min-height:44px;font-size:14px}
+  .nf-footer:not(.nf-footer-last){position:fixed;bottom:0;left:0;right:0;z-index:6;display:grid;grid-template-columns:1fr 1.5fr;gap:10px;margin:0;padding:10px 12px max(10px,env(safe-area-inset-bottom));background:#fff;border-top:1px solid #cbd9e9;box-shadow:0 -3px 14px #173a7110}
+  .nf-footer .nf-primary,.nf-footer .nf-secondary{min-height:48px;font-size:16px}
+  .nf-footer-last button:disabled{display:none}
+  .nf-command.nf-command-open{width:100%;padding-top:max(12px,env(safe-area-inset-top))}
+  .nf-command .nf-command-head{position:sticky;top:-12px;z-index:2;background:#f4f7fc}
+  .nf-command .nf-command-tabs button,.nf-command summary{min-height:44px}
+  .nf-inline-retainer .nf-actions{display:grid}
+  .nf-inline-retainer .nf-actions>*{width:100%;white-space:normal}
+  .nf-final-send .nf-secondary{max-width:100%;overflow-wrap:anywhere;text-align:center}
+}

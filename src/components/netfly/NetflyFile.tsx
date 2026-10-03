@@ -34,6 +34,30 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [activeQuestion, setActiveQuestion] = useState<string>(VERIFY_STEPS[0].fields[0]);
   const [commandTab, setCommandTab] = useState<"file" | "agreement" | "scripts" | "phone">("file");
   const [commandOpen, setCommandOpen] = useState(false);
+  const commandPanel = useRef<HTMLElement | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  useEffect(() => {
+    if (!commandOpen) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    commandPanel.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setCommandOpen(false); }
+      if (event.key !== "Tab") return;
+      const items = Array.from(commandPanel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary') || [])
+        .filter(item => item.getClientRects().length > 0 && getComputedStyle(item).visibility !== "hidden" && item.tabIndex >= 0);
+      const first = items[0], last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", keydown);
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, [commandOpen]);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [openedOriginalId, setOpenedOriginalId] = useState<string | null>(null);
   const [originalConfirmed, setOriginalConfirmed] = useState(false);
@@ -93,7 +117,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     return pending;
   }
   async function saveAnswer(id: string, value: string) {
-    setSaveState(`Saving ${id}…`); setError("");
+    setSaveState("Saving…"); setError("");
     try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "answer", file: fileKey, field: id, value }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error);
       setDetail(old => old ? { ...old, answers: { ...old.answers, fields: { ...(old.answers.fields || {}), [id]: value.trim(), ...(value.trim() && NETFLY_UNAVAILABLE_IDS.has(id) ? { [`${id}_unavailable`]: "" } : {}) } }, file: { ...old.file, ...(["confirmed_name", "confirmed_phone", "confirmed_email"].includes(id) ? { [id === "confirmed_name" ? "claimant_name" : id === "confirmed_phone" ? "phone" : "email"]: value.trim() } : {}) } } : old);
       failedAnswers.current.delete(id); setSaveState("Saved"); return true; }
@@ -262,7 +286,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         </> : <div className="nf-actions"><p className="nf-alert">The signed PDF is missing. Upload NETFLY's original before marking it reviewed.</p><label className="nf-primary">{uploading ? "Uploading…" : "Upload signed PDF"}<input type="file" accept="application/pdf,.pdf" disabled={uploading} hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label></div>}
       </section>}
       {stepIndex === 4 && <NetflySendPacket fileKey={fileKey} signedDocuments={detail.retainer} unsaved={callCloseDirty || Object.entries(values).some(([id, value]) => value.trim() !== (detail.answers.fields?.[id] || '').trim())} revision={JSON.stringify([detail.answers.fields, detail.answers.review, detail.answers.call_close, detail.answers.handoff_verification, latest?.id])} />}
-      {viewMode === "step" && <div className="nf-footer"><button className="nf-secondary" disabled={stepIndex === 0} onClick={() => setSection((i) => Math.max(0, i - 1))}>← Previous</button><button className="nf-primary" onClick={() => setSection((i) => Math.min(VERIFY_STEPS.length - 1, i + 1))} disabled={stepIndex === VERIFY_STEPS.length - 1}>Next step →</button></div>}</section>
+      {viewMode === "step" && <nav className={`nf-footer${stepIndex === VERIFY_STEPS.length - 1 ? " nf-footer-last" : ""}`} aria-label="Call step navigation"><button className="nf-secondary" disabled={stepIndex === 0} onClick={() => setSection((i) => Math.max(0, i - 1))}>← Back</button><button className="nf-primary" onClick={() => setSection((i) => Math.min(VERIFY_STEPS.length - 1, i + 1))} disabled={stepIndex === VERIFY_STEPS.length - 1}>{stepIndex === 3 ? "Review & send →" : "Next →"}</button></nav>}</section>
     </div>;
   };
   return <main className="nf-page nf-workspace">
@@ -271,7 +295,6 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       {detail.canReview && (!activeNetflyCall(liveCall) ? <button type="button" className="nf-primary" disabled={presenceBusy} onClick={() => void markCall("start")}>I’m speaking with this client</button>
         : liveCall?.by === detail.actor_id ? <button type="button" className="nf-secondary" disabled={presenceBusy} onClick={() => void markCall("end")}>I’m off the call</button> : null)}</div>
     {(!latest || !handoffs.length) && <div className="nf-alert" role="status"><strong>Partial NETFLY file</strong><p>{!handoffs.length ? "NETFLY handoff note missing. " : ""}{!latest ? "Signed retainer PDF missing. " : ""}The file is held from review until both arrive.</p></div>}
-    {detail.answers.email_import && <details className="nf-history"><summary>Imported from NETFLY email · confirm details with the client</summary><p>Imported answers are NETFLY’s account and still need your review.</p>{detail.original_email_url && <a href={detail.original_email_url} target="_blank" rel="noopener noreferrer">Open the original email ↗</a>}{(detail.answers.email_import.warnings || []).filter(w => !(w === "Client phone still needed" && detail.file.phone) && !(w === "Signed PDF missing" && latest)).map(w => <p key={w}>{w}</p>)}</details>}
     {error && <div className="nf-alert" role="alert">{error}</div>}
     {failedAnswers.current.size > 0 && <button type="button" className="nf-secondary" onClick={() => { for (const id of failedAnswers.current) void save(id, values[id] || ""); }}>Retry saving answers</button>}
     {flags.length > 0 && <div className="nf-alert"><strong>Supervisor attention</strong>{flags.map((flag) => <p key={flag}>{flag}</p>)}<p>Finish the file and flag it. Do not auto-decline.</p></div>}
@@ -287,13 +310,14 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
           <button type="button" role="tab" aria-selected={workspaceTab === "netfly_intake"} className={workspaceTab === "netfly_intake" ? "active" : ""} onClick={() => setWorkspaceTab("netfly_intake")}>NETFLY intake</button>
         </div>
         {workspaceTab === "call" ? <>
-        <div className={`nf-view-bar${headerCollapsed ? " nf-view-bar-collapsed" : ""}`}><div><strong>Welcome call · {detail.file.claimant_name}</strong>{!headerCollapsed && <span>Verify the contact, treatment and missing case details. Four short steps.</span>}</div>{!headerCollapsed && <div className="nf-view-actions"><div className="nf-view-tabs" role="tablist" aria-label="Intake view">{([["step", "Guided call"], ["simple", "Full form"], ["all", "All details"]] as const).map(([mode, label]) => <button type="button" key={mode} role="tab" aria-selected={viewMode === mode} className={viewMode === mode ? "active" : ""} onClick={() => setViewMode(mode)}>{label}</button>)}</div><button type="button" className="nf-command-toggle nf-secondary" aria-controls="netfly-command" aria-expanded={commandOpen} onClick={() => setCommandOpen(true)}>Command center</button></div>}<button type="button" className="nf-header-toggle" aria-expanded={!headerCollapsed} onClick={() => setHeaderCollapsed((old) => !old)}>{headerCollapsed ? "Show header" : "Hide header"}</button></div>
-        <section className="nf-call-notes"><label htmlFor="nf-call-notes"><strong>Call notes · shorthand is fine</strong></label><textarea id="nf-call-notes" value={values.final_notes || ""} onChange={e => set("final_notes", e.target.value)} onBlur={e => void save("final_notes", e.target.value)} placeholder="Listen, reassure, jot it down. Keep the conversation flowing." /><small>{saveState || "Saves when you leave this box."}</small><NotesAssist fileKey={fileKey} notes={values.final_notes || ""} saveNotes={() => save("final_notes", values.final_notes || "")} onApplied={appliedNotes} /></section>
+        <div className={`nf-view-bar${headerCollapsed ? " nf-view-bar-collapsed" : ""}`}><div className="nf-view-heading"><strong>Welcome call · {detail.file.claimant_name}</strong>{!headerCollapsed && <span>Verify the contact, treatment and missing case details. Four short steps.</span>}</div>{!headerCollapsed && <div className="nf-view-actions nf-desktop-view-actions"><div className="nf-view-tabs" role="tablist" aria-label="Intake view">{([["step", "Guided call"], ["simple", "Full form"], ["all", "All details"]] as const).map(([mode, label]) => <button type="button" key={mode} role="tab" aria-selected={viewMode === mode} className={viewMode === mode ? "active" : ""} onClick={() => setViewMode(mode)}>{label}</button>)}</div><button type="button" className="nf-command-toggle nf-secondary" aria-controls="netfly-command" aria-expanded={commandOpen} onClick={() => setCommandOpen(true)}>Command center</button></div>}<button type="button" className="nf-header-toggle" aria-expanded={!headerCollapsed} onClick={() => setHeaderCollapsed((old) => !old)}>{headerCollapsed ? "Show header" : "Hide header"}</button><div className="nf-mobile-toolbar"><label>Step {section + 1} of {VERIFY_STEPS.length}<select aria-label="Welcome call step" value={section} onChange={event => { const next = Number(event.target.value); setViewMode("step"); setSection(next); if (VERIFY_STEPS[next].fields[0]) setActiveQuestion(VERIFY_STEPS[next].fields[0]); }}>{VERIFY_STEPS.map((step, i) => <option key={step.title} value={i}>{step.title.replace(/^\d+\.\s*/, "")}</option>)}</select></label><button type="button" className="nf-secondary" aria-controls="netfly-command" aria-expanded={commandOpen} onClick={() => setCommandOpen(true)}>Tools</button></div></div>
+        <section className={`nf-call-notes${notesOpen ? " nf-notes-open" : ""}`}><button type="button" className="nf-notes-toggle" aria-expanded={notesOpen} aria-controls="nf-notes-body" onClick={() => setNotesOpen(open => !open)}>{notesOpen ? "Hide call notes" : "Call notes · jot it down"}<span>{saveState || (values.final_notes ? "Notes on file" : "+")}</span></button><div id="nf-notes-body" className="nf-notes-body"><label htmlFor="nf-call-notes"><strong>Call notes · shorthand is fine</strong></label><textarea id="nf-call-notes" value={values.final_notes || ""} onChange={e => set("final_notes", e.target.value)} onBlur={e => void save("final_notes", e.target.value)} placeholder="Listen, reassure, jot it down. Keep the conversation flowing." /><small>{saveState || "Saves when you leave this box."}</small><NotesAssist fileKey={fileKey} notes={values.final_notes || ""} saveNotes={() => save("final_notes", values.final_notes || "")} onApplied={appliedNotes} /></div></section>
         {viewMode === "step" ? <>
           {renderStep(section)}
         </> : <div className={`nf-all-steps${viewMode === "simple" ? " nf-simple-steps" : ""}`}>{VERIFY_STEPS.map((_, i) => renderStep(i))}</div>}
         </> : <section className="nf-panel nf-archive" role="tabpanel" aria-label="NETFLY intake">
           <h2>NETFLY intake</h2>
+    {detail.answers.email_import && <details className="nf-history"><summary>Imported from NETFLY email · confirm details with the client</summary><p>Imported answers are NETFLY’s account and still need your review.</p>{detail.original_email_url && <a href={detail.original_email_url} target="_blank" rel="noopener noreferrer">Open the original email ↗</a>}{(detail.answers.email_import.warnings || []).filter(w => !(w === "Client phone still needed" && detail.file.phone) && !(w === "Signed PDF missing" && latest)).map(w => <p key={w}>{w}</p>)}</details>}
           <p className="nf-muted">NETFLY's original note, mapped source answers, and the earlier questionnaire stay here for reference. Use Case-manager call for today's conversation.</p>
           <HandoffImport fileKey={fileKey} values={{ confirmed_name: detail.file.claimant_name || "", confirmed_phone: detail.file.phone || "", confirmed_email: detail.file.email || "", mailing_address: savedAddress, ...values }} onSaved={() => load()} />
           {latestHandoff && <details className="nf-history" open><summary>Original handoff note and corrections ({handoffs.length})</summary>{handoffs.map((item, i) => <div className="nf-source-revision" key={`${item.at}-${i}`}><strong>{i === 0 ? "Original" : `Correction ${i}`} · {new Date(item.at).toLocaleString()}</strong><p>{item.note}</p></div>)}</details>}
@@ -302,8 +326,10 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
           {NETFLY_SECTIONS.map((group) => <details className="nf-history" key={group.id}><summary>{group.title.replace(/^\d+\.\s*/, "")}</summary><div className="nf-archive-answers">{group.fields.map((field) => <div key={field.id}><strong>{field.label}</strong><span>{values[field.id]?.trim() || "Not recorded"}</span></div>)}</div></details>)}
         </section>}
       </div>
-      <aside id="netfly-command" className={`nf-command${commandOpen ? " nf-command-open" : ""}`} aria-label="Command center">
+      {commandOpen && <div className="nf-command-backdrop" aria-hidden="true" onClick={() => setCommandOpen(false)} />}
+      <aside ref={commandPanel} id="netfly-command" role={commandOpen ? "dialog" : undefined} aria-modal={commandOpen || undefined} className={`nf-command${commandOpen ? " nf-command-open" : ""}`} aria-label="Command center">
         <div className="nf-command-head"><div><strong>Command center</strong></div><button type="button" className="nf-command-close" onClick={() => setCommandOpen(false)} aria-label="Close Command center">×</button></div>
+        <div className="nf-mobile-view-choice"><label>Call view<select value={viewMode} onChange={event => setViewMode(event.target.value as typeof viewMode)}><option value="step">Guided call</option><option value="simple">Full form</option><option value="all">All details</option></select></label></div>
         <div className="nf-command-tabs" aria-label="Command center sections"><button type="button" className={commandTab === "file" ? "active" : ""} onClick={() => setCommandTab("file")}>File</button><button type="button" className={commandTab === "phone" ? "active" : ""} onClick={() => setCommandTab("phone")}>Phone</button><label className="nf-command-more">More tools<select aria-label="More command center tools" value={commandTab === "file" || commandTab === "phone" ? "" : commandTab} onChange={(event) => setCommandTab(event.target.value as "agreement" | "scripts")}><option value="">Choose…</option><option value="scripts">Scripts</option><option value="agreement">Agreement correction</option></select></label></div>
         {commandTab === "file" && <div className="nf-command-content">
     <div className="nf-retainer"><div><strong>Already signed with NETFLY</strong><p>{latest ? `Original PDF received ${new Date(latest.created_at).toLocaleString()} · ${detail.answers.review?.status || "Review needed"}` : "Original signed PDF missing — upload it before reviewing the agreement."}</p></div><div className="nf-actions"><label className="nf-secondary">{uploading ? "Uploading…" : "Upload signed PDF"}<input type="file" accept="application/pdf,.pdf" disabled={uploading} hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); }} /></label>{latest?.url && <a className="nf-secondary" href={latest.url} target="_blank" rel="noopener noreferrer">View signed PDF</a>}</div></div>
