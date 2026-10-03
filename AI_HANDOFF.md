@@ -15,45 +15,48 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current objective
 
-- Outcome: v8 checkpoint saved at Brett's request (stop and save). See HANDOFF.md for the full completed / open list.
-- Definition of done for the next session: one MVA question spine across all four views, remaining matter binding, signing lifecycle, classic Retainer tab, cadence phase 1.
+- Outcome: finish and verify the current INNO and NETFLY intake-to-firm handoff flow without losing the separate app-wide call-alert work.
+- Definition of done: the current NETFLY import change has passed a synthetic preview test and owner review, merged work is represented here, and the call-alert branch is reconciled with current main before release.
 
 ## Current state
 
-- Status: checkpoint. Not deployed. Live = PR #40 (round 7b).
-- Working branch: round8 (local; zip delivery; push is 403 from this session). Base main 822338f.
-- Last verified result: tsc zero errors; next-on-pages Build completed, Edge Function Routes (193); offline suites all passing (matter 5, standard-fields 24, us-address 10, lead-ingest 12, server 13, engine 51, SSN/DOB 3, docuseal 12, firm-delivery 20, bulk-move-firm 13, qa-evidence 18, contact-saves 23, notify-signed 23, statuses 8, drip-dispatch 11, comms 11, inbound-media 19, signed-docs 17, file-fence 41, drip-rules 17).
-- No new migrations in this checkpoint (0108, 0109, 0109b already applied live).
+- Main: `68cb1068a133cc94fd3bb25c55e3aede57edd13c`.
+- Material movement in the last 24 hours: PRs #99 through #116 merged, covering document collection, post-sign guidance, focused intake, MVA answer review, signed-packet handoff, first-call guidance, NETFLY signed-file import, outside-firm delivery, and receiving-firm checks.
+- Current review candidate: PR #117, `8d6d5f35664a9565f9563a5b84eba92cedc6dcbc`, is open, non-draft, cleanly mergeable, and has successful Cloudflare Pages and Netlify preview checks.
+- Separate unfinished build: draft PR #80, app-wide call-ready sound and green pulse, is 56 commits behind main and 2 commits ahead with merge conflicts. Its hosted build checks are green, but it is not ready to merge or deploy.
+- Git evidence does not establish the current production deployment or live data behavior.
 
 ## Work completed
 
-- Round 6 (see DEPLOY_THIS.md top section for the full list): claim-status setter hardening + claim scope through every caller; packet manifest/recovery on the real esign GET route incl. passengers; QA capability/evidence/write-gates; drip wrapper, atomic firm move (0107), property targeting, save allowlists; contact-state sync; notify retry; honest speed/signed metrics; Nevada tiered + non-tiered retainer packets with approval-reason gate; passenger-as-own-PNC (own cell, rep/willing/address, linked files, story prefill); PNC wording sweep with saved-answer migration; console contact card; MMS auto-filing; Simple form view; clickable missing items; numbered File steps; quick case-type filters on Leads/Signed.
+- Added bounded document collection and post-sign guidance.
+- Simplified the focused intake work area and MVA answer review.
+- Built reviewed signed-packet handoff, owner downloads, LawRuler signed-file handoff, and outside-firm delivery recording.
+- Added INNO and NETFLY first-call guidance, NETFLY email and signed-PDF import, final file review, and receiving-firm validation.
+- PR #117 adds NETFLY forwarded contact-block parsing and approved agreement-viewer links while preserving ambiguity warnings and agent-entered answers.
 
 ## Files and systems changed
 
-- src/lib/claim-status.ts, mva-call/esign.ts, firm-delivery.ts, signed-docs.ts, notify-signed.ts, comms.ts, statuses.ts, linked-files.ts (new), esign-packets/tmp-mva.ts, docuseal.ts
-- api routes: calls/dispo, calls/esign (+preview), calls/email, calls/file, qa, drip, leads (+bulk), claims, signable packet+submit, justcall/webhook
-- console: engine.ts (+test), CallView, ChoreList, FullIntake, OneQuestion, FormView (new), DeskPanel, CallConsole, IntakeWorkspace, SsnDob, WhereField, scripts.ts, calls.css
-- CRM: LeadWorkspace, ContactInfo, CaseDetails, FileStatusControl, LeadsView, ReportsView, leads/signed/reports pages, clean.css
-- DB: supabase/migrations/0107_round6_hardening.sql (APPLIED live, probe-verified)
-- public/esign-src/.../tmp-mva-nv.pdf, tmp-mva-nv-flat.pdf (new packet PDFs)
+- See merged PRs #99 through #116 for the exact current-main change sets.
+- See PR #117 for the active NETFLY parser, import, route, and UI changes.
+- See draft PR #80 for the isolated app-wide alert implementation.
 
 ## Verification performed
 
-- Commands or checks: rm -rf .next/types && npx tsc --noEmit -p .; npx tsx engine.test.ts (46), lead-ingest.test.ts (10), SsnDob.test.ts (3); Playwright shots (Simple form, passenger card, NV chooser blocks send without a reason, pain notes); npx @cloudflare/next-on-pages; overlay of the full changed set on a clean checkout of origin/main; 0107 probes via has_function_privilege + rolled-back synthetic two-firm move.
-- Result: all green (build route count noted in DEPLOY_THIS).
+- PR #117 reports TypeScript, component, parser, import, route, MVA engine, and intake-console suites passing with synthetic fixtures.
+- PR #117 Cloudflare Pages check completed successfully on 2026-10-02; its Netlify deploy preview is also successful.
+- Five ClaimReach workflow runs in the review window completed successfully; no open ClaimReach PR has a failed or pending reported check.
+- Live synthetic UI behavior and production deployment state were not verified in this handoff update.
 
 ## Active blockers or open questions
 
-- Exact issue: LawRuler MVA hook posts rejected 401 "bad or missing x-lr-secret" since Sep 27 15:41Z (Motel hook fine — TMP-1184/1185 posted). Brett fixing the header in LawRuler; /api/webhooks/lawruler/replay?hours=48 recovers the rejected posts afterward.
-- Cadence system: design agreed in chat, four decisions still open with Brett (ownership, status key, e-sign chase SMS wording, quiet hours). DO NOT build until he answers.
-- Global UI consolidation round (Users, Firms, Templates, Integrations, Settings, Campaigns manager, Form builder, firm portal): committed as its own reviewable round, still to do.
-- Nevada contracts carry no printed TMP countersignature (unlike AL/GA) — flagged to Brett; docs went in as supplied.
+- PR #117 still needs a no-PII synthetic pass in the hosted preview for contact extraction, agreement-link display, ambiguity handling, and the "no attorney retained" conflict.
+- Draft PR #80 must be rebased or its alert changes selectively reapplied onto current main before release. Do not merge the conflicted branch as-is.
+- Older open intake PRs may be superseded by the merged #99-#116 sequence; treat current main and this handoff as authoritative before resuming them.
 
 ## Next safe action
 
-- Brett uploads claimreach_round6.zip; then triage Astra's next handback the same verify-fix-dispute way, and start the global UI round.
+- Run a synthetic, no-PII hosted-preview walkthrough on PR #117. If its four guarded behaviors pass, record the evidence on the PR and hand it to the owner for merge review. Do not merge or deploy automatically.
 
 ## Session log
 
-Add the newest entry first. Use: `YYYY-MM-DD HH:MM TZ — agent — outcome / blocker / next action`.
+- 2026-10-02 20:10 PT — Codex — reconciled the handoff to current Git evidence; opened a documentation-only correction; next: hosted synthetic verification of PR #117.
