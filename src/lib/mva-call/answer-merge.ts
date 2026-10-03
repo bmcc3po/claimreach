@@ -53,6 +53,20 @@ export function mergeAnswerDelta(base: AnswerDocument, current: AnswerDocument, 
   return { value: conflicts.length ? copy(current) : value, conflicts, changedPaths: delta.map(c => c.path.join(".")) };
 }
 
+/** These are resume-position hints, never client answers. Two tabs moving
+ * between sections must not lock the agent out of saving the actual intake. */
+export const CALL_VIEW_KEYS = ["phase", "free", "bare", "visited", "at", "atQuestion"] as const;
+export function mergeCallAnswerDelta(base: AnswerDocument, current: AnswerDocument, incoming: AnswerDocument) {
+  const withoutView = (doc: AnswerDocument) => Object.fromEntries(Object.entries(doc).filter(([key]) => !CALL_VIEW_KEYS.includes(key as any)));
+  const merged = mergeAnswerDelta(withoutView(base), withoutView(current), withoutView(incoming));
+  const view: AnswerDocument = {};
+  for (const key of CALL_VIEW_KEYS) {
+    if (own(incoming, key) && !equal(base[key], incoming[key])) view[key] = copy(incoming[key]);
+    else if (own(current, key)) view[key] = copy(current[key]);
+  }
+  return { ...merged, value: { ...merged.value, ...view } };
+}
+
 /** Client-only projection: put edits since the rendered baseline onto the raw
  * server document. This keeps engine defaults out of storage. Also preserves
  * edits made while a save was in flight when its canonical acknowledgement arrives. */
@@ -80,3 +94,4 @@ export function fillMissingAnswerLeaves(current: AnswerDocument, candidates: Ans
   fill(value, candidates, []);
   return { value, filledPaths };
 }
+

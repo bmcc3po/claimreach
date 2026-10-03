@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import OwnerFirmDownload from "./OwnerFirmDownload";
+import { officeDateTime } from "@/lib/office-clock";
 
 type DeliveryState = {
   claim_id: string;
@@ -28,6 +29,12 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, canOver
   const [openedIntake, setOpenedIntake] = useState(false);
   const [openedPacket, setOpenedPacket] = useState(false);
   const [preview, setPreview] = useState<"intake" | "packet" | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
+  useEffect(() => {
+    if (!celebrate) return;
+    const timer = setTimeout(() => setCelebrate(false), 6500);
+    return () => clearTimeout(timer);
+  }, [celebrate]);
   const load = async () => {
     const q = new URLSearchParams({ lead_id: leadId, claim_id: claimId });
     const [r, fileResponse] = await Promise.all([
@@ -88,7 +95,8 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, canOver
       }) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.ok || body.skipped) throw new Error(body.error || body.skipped || "Firm delivery was not confirmed. Nothing should be marked sent.");
-      await load();
+      const confirmed = await load();
+      if (confirmed.confirmed_firm_sent_at) setCelebrate(true);
     } catch (cause: any) {
       setError(cause?.message || "Delivery was not confirmed. Check this file before retrying.");
       try { await load(); } catch { /* preserve the delivery failure */ }
@@ -96,9 +104,10 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, canOver
   }
 
   return <section className={`final-handoff${sentAt ? " final-handoff-sent" : ""}`} aria-label="Final firm handoff">
+    {celebrate && sentAt && <div className="firm-send-celebration" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((n) => <span key={n} style={{ left: `${8 + n * 14}%`, animationDelay: `${n * 0.18}s` }}>🎈</span>)}</div>}
     <h2>{sentAt ? "Sent to firm" : "Final step: file ready for firm"}</h2>
     {loading && <p>Checking this file’s delivery record…</p>}
-    {sentAt ? <div role="status"><strong>Delivered {new Date(sentAt).toLocaleString()}.</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${returnEnd(sentAt).toLocaleString()}.` : "Seven-day return window cleared. Ready for billing review."}</p><p>Delivered to {state?.delivery?.to}; Brett received a copy.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Next call</button>}</div> : state && <>
+    {sentAt ? <div role="status"><strong>{celebrate ? "File sent! You’re all done." : `Delivered ${officeDateTime(sentAt)}.`}</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${officeDateTime(returnEnd(sentAt).toISOString())}.` : "Seven-day return window cleared. Ready for billing review."}</p><p>Delivered to {state?.delivery?.to}; Brett received a copy.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Back to my calls</button>}</div> : state && <>
       <p>The call is dispositioned. Review your own file, then send its two required PDFs together.</p>
       {missing.length > 0 && <div className="final-handoff-error" role="alert"><strong>Intake incomplete: {missing.length} required answer{missing.length === 1 ? "" : "s"} missing.</strong><p>Finish these before the file can go to the firm.</p><ul>{missing.map((item, index) => <li key={`${item.label}-${index}`}><button type="button" onClick={item.go}>{item.label} ↗</button></li>)}</ul></div>}
       <div className="final-handoff-docs" aria-label="Review the two PDFs before sending"><button type="button" onClick={() => openPreview("intake")}>1. Review intake PDF <span>{openedIntake ? "Opened ✓" : "Open PDF"}</span></button><button type="button" disabled={!packetUrl} onClick={() => openPreview("packet")}>2. Review signed retainer + HIPAA/HITECH <span>{!packetUrl ? "Packet pending" : openedPacket ? "Opened ✓" : "Open PDF"}</span></button></div>
@@ -119,3 +128,4 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, canOver
     {preview && <div className="final-handoff-preview-backdrop" role="presentation" onClick={() => setPreview(null)}><div className="final-handoff-preview" role="dialog" aria-modal="true" aria-label={preview === "intake" ? "Intake PDF" : "Signed retainer and HIPAA/HITECH packet"} onClick={(event) => event.stopPropagation()}><div className="final-handoff-preview-head"><strong>{preview === "intake" ? "Intake PDF" : "Signed retainer + HIPAA/HITECH"}</strong><div><a href={preview === "intake" ? intakePreviewUrl : packetUrl || "#"} target="_blank" rel="noopener noreferrer">Open in new tab ↗</a><button type="button" onClick={() => setPreview(null)}>Back to file review</button></div></div><iframe title={preview === "intake" ? "Intake PDF preview" : "Signed packet preview"} src={preview === "intake" ? intakePreviewUrl : packetUrl || undefined} /></div></div>}
   </section>;
 }
+

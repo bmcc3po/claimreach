@@ -5,13 +5,13 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { CallEngine } from "../../lib/mva-call/engine";
-import { applyAnswerDelta, isAnswerObject } from "../../lib/mva-call/answer-merge";
+import { applyAnswerDelta, isAnswerObject, CALL_VIEW_KEYS } from "../../lib/mva-call/answer-merge";
 
 globalThis.fetch = async () => { throw Error("Network forbidden"); };
 const file = path.resolve(__dirname, "CallConsole.tsx");
 const source = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const component = source.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === "MatterCallConsole") as ts.FunctionDeclaration;
-const funcs = ["save", "flushSave"].map(name => {
+const funcs = ["save", "performSave", "flushSave"].map(name => {
   const f = component.body!.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name);
   assert.ok(f, `actual ${name} callback`); return f.getText(source);
 }).join("\n");
@@ -19,10 +19,10 @@ const code = ts.transpileModule(`${funcs}\nexports.save = save; exports.flushSav
 function harness(raw: any = { story: { text: "Before" } }) {
   const noop = () => {};
   const engine = new CallEngine({ callerName: "Synthetic Caller", callerPhone: "", callerEmail: "", agentName: "Synthetic Agent", firmSpoken: "Synthetic Firm", textFrom: "", startedAt: Date.now(), reasons: { esign: [], dq: [], callback: [], ni: [] }, notifyDefaults: [], esign: { configured: false, status: "ready", pax: {} }, saved: raw }, { sendAgreement: noop, sendPax: noop, completeAgreement: noop, resendLink: noop, sendText: noop, saveDispo: noop, home: noop, ask: noop });
-  const refs = { saving: { current: false }, saveBlocked: { current: false }, lastSaved: { current: JSON.stringify(engine.persistable()) }, answerBase: { current: raw }, callId: { current: "call" }, saveTimer: { current: null } };
+  const refs = { saving: { current: false }, saveInFlight: { current: null as Promise<boolean> | null }, saveBlocked: { current: false }, lastSaved: { current: JSON.stringify(engine.persistable()) }, answerBase: { current: raw }, callId: { current: "call" }, saveTimer: { current: null } };
   const sent: any[] = [], timers: any[] = [];
   let handler: (body: any) => Promise<any> = async body => ({ call_id: "call", answers: body.answers });
-  const env: Record<string, any> = { ...refs, engine, init: { leadId: "lead", claimId: "claim" }, applyAnswerDelta, isAnswerObject,
+  const env: Record<string, any> = { ...refs, engine, init: { leadId: "lead", claimId: "claim" }, applyAnswerDelta, isAnswerObject, CALL_VIEW_KEYS,
     post: async (_url: string, body: any) => { sent.push(body); return handler(body); },
     setSavedAt: noop, setTimeout: (fn: any, delay: number) => { timers.push({ fn, delay, cancelled: false }); return timers.length; }, clearTimeout: (id: number) => { if (timers[id - 1]) timers[id - 1].cancelled = true; },
     window: { dispatchEvent: noop }, CustomEvent: class {}, console: { error: noop },
@@ -37,6 +37,30 @@ function harness(raw: any = { story: { text: "Before" } }) {
 let count = 0;
 async function check(name: string, fn: () => Promise<void>) { await fn(); count++; console.log("ok", name); }
 async function main() {
+  await check("finish waits for an already-running slow save instead of spending a four-second polling budget", async () => {
+    const h = harness(); let release!: (value: any) => void;
+    h.engine.set("story", "text", "Slow connection edit");
+    h.respond(() => new Promise(resolve => { release = resolve; }));
+    const saving = h.save(); let finished = false;
+    const finishing = h.flush().then((ok: boolean) => { finished = true; return ok; });
+    for (let i = 0; i < 40; i++) await Promise.resolve();
+    assert.equal(finished, false);
+    assert.equal(h.pendingTimers().length, 0, "no arbitrary polling deadline");
+    assert.equal(h.sent.length, 1, "the running request is shared, not duplicated");
+    release({ answers: h.sent[0].answers });
+    assert.equal(await saving, true); assert.equal(await finishing, true);
+  });
+  await check("another screen's saved position cannot create an endless acknowledgement loop", async () => {
+    const h = harness(); h.engine.set("story", "text", "My answer");
+    const here = h.engine.persistable().at;
+    h.respond(async body => ({ answers: { ...body.answers, at: "retainer", atQuestion: "signer", phase: "send", visited: { send: true } } }));
+    assert.equal(await h.flush(), true);
+    assert.equal(h.sent.length, 1);
+    assert.equal(h.engine.persistable().at, here);
+    assert.equal(h.answerBase.current.at, "retainer");
+    assert.equal(h.lastSaved.current, JSON.stringify(h.engine.persistable()));
+    assert.equal(h.pendingTimers().length, 0);
+  });
   await check("actual bootstrap chooses canonical claim over stale live session, including explicit empty document", async () => {
     const page = fs.readFileSync(path.resolve(__dirname, "../../app/(calls)/app/[id]/page.tsx"), "utf8");
     const start = page.indexOf("  const canonical = (claim.answers"), end = page.indexOf("  // A passenger's first call", start);
@@ -192,3 +216,4 @@ async function main() {
   console.log(`${count} passed`);
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });
+
