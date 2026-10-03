@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { netflyContext, netflyMatter } from "@/lib/netfly-server";
 import { NETFLY_RETAINER_TYPE } from "@/lib/netfly-ontake";
+import { netflyDocumentKey } from "@/lib/netfly-documents";
 export const runtime = "edge";
+
+// Resolve on click, rather than giving the agent a link that expires mid-call.
+export async function GET(req: NextRequest) {
+  const ctx = await netflyContext();
+  if (!ctx?.actor.can("leads.view")) return NextResponse.json({ error: "NETFLY document access is unavailable." }, { status: 403 });
+  const params = new URL(req.url).searchParams;
+  const matter = await netflyMatter(ctx, params.get("file") || "");
+  if (!matter) return NextResponse.json({ error: "NETFLY matter not found." }, { status: 404 });
+  const { data: doc, error } = await ctx.db.from("case_documents").select("storage_path")
+    .eq("id", params.get("document") || "").eq("firm_id", ctx.campaign.firm_id)
+    .eq("lead_id", matter.lead.id).eq("claim_id", matter.claim.id).eq("doc_type", NETFLY_RETAINER_TYPE).maybeSingle();
+  if (error) return NextResponse.json({ error: "Could not open the PDF. Please retry." }, { status: 503 });
+  const key = netflyDocumentKey(doc?.storage_path, ctx.campaign.firm_id, matter.lead.id);
+  if (!key) return NextResponse.json({ error: "Signed PDF not found on this file." }, { status: 404 });
+  const signed = await ctx.db.storage.from("case-docs").createSignedUrl(key, 300);
+  if (signed.error || !signed.data?.signedUrl) return NextResponse.json({ error: "Could not open the PDF. Please retry." }, { status: 503 });
+  const response = NextResponse.redirect(signed.data.signedUrl, 307);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
+}
 
 export async function POST(req: NextRequest) {
   const ctx = await netflyContext();

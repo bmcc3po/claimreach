@@ -62,8 +62,8 @@ export async function GET(req: NextRequest) {
   const safeDocs = await Promise.all((docs ?? []).map(async (doc) => {
     const prefix = `${ctx.campaign.firm_id}/${matter.lead.id}/`;
     if (!doc.storage_path?.startsWith(prefix) || /\.\.|%|\\|\/\//.test(doc.storage_path)) return { id: doc.id, file_name: doc.file_name, created_at: doc.created_at, url: null };
-    const { data } = await ctx.db.storage.from("case-docs").createSignedUrl(doc.storage_path, 300);
-    return { id: doc.id, file_name: doc.file_name, created_at: doc.created_at, uploaded_by_name: doc.uploaded_by_name, url: data?.signedUrl ?? null };
+    return { id: doc.id, file_name: doc.file_name, created_at: doc.created_at, uploaded_by_name: doc.uploaded_by_name,
+      url: `/api/netfly/retainer?file=${encodeURIComponent(key)}&document=${encodeURIComponent(doc.id)}` };
   }));
   let original_email_url: string | null = null;
   const originalId = (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.email_import?.original_document_id;
