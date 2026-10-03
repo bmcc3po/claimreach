@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { netflyContext, netflyMatter } from "@/lib/netfly-server";
 import { NETFLY_ANSWER_KEY } from "@/lib/netfly-ontake";
-import { NETFLY_NOTE_FIELDS, NETFLY_NOTES_SYSTEM, noteSuggestions } from "@/lib/netfly-note-suggestions";
+import { NETFLY_NOTE_FIELDS, NETFLY_NOTES_SYSTEM, noteSuggestions, noteFieldDescriptor } from "@/lib/netfly-note-suggestions";
 import { askRelay } from "@/lib/ai-relay";
 export const runtime = "edge";
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);
     let answer: string;
-    try { answer = await askRelay(NETFLY_NOTES_SYSTEM, JSON.stringify({ fields: NETFLY_NOTE_FIELDS.map(({ id, kind, choices }) => ({ id, kind, choices })), notes }), controller.signal); }
+    try { answer = await askRelay(NETFLY_NOTES_SYSTEM, JSON.stringify({ fields: NETFLY_NOTE_FIELDS.map(noteFieldDescriptor), notes }), controller.signal); }
     finally { clearTimeout(timer); }
     if (!answer) return fail("The notes helper is unavailable. Your notes are saved; you can keep using the quick choices.", 503);
     let parsed: any;

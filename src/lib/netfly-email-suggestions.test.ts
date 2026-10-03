@@ -5,9 +5,9 @@ import ts from 'typescript';
 import * as suggestions from './netfly-note-suggestions';
 import * as handoff from './netfly-handoff';
 
-let reply = '';
+let reply = '', requested: any;
 const modules: Record<string, any> = {
-  './ai-relay': { askRelay: async () => reply },
+  './ai-relay': { askRelay: async (_system: string, user: string) => { requested = JSON.parse(user); return reply; } },
   './netfly-note-suggestions': suggestions,
   './netfly-handoff': handoff,
 };
@@ -28,6 +28,18 @@ async function main() {
   const result = await loaded.netflyEmailSuggestions(note);
   assert.equal(result.available, true);
   assert.deepEqual(result.suggestions.map((row: any) => row.id), ['health_insured'], 'email helper cannot overwrite explicit facts, answer today’s care question, or invent identity');
+  const treatment = 'Injuries & Treatment: The client went to TEST Urgent Care on 09/27/2026. No ambulance transported them.';
+  reply = JSON.stringify({ suggestions: [
+    { id: 'seen_doctor', value: 'Yes', evidence: 'went to TEST Urgent Care on 09/27/2026' },
+    { id: 'first_provider', value: 'TEST Urgent Care', evidence: 'went to TEST Urgent Care' },
+    { id: 'first_visit', value: '2026-09-27', evidence: 'on 09/27/2026' },
+    { id: 'ambulance', value: 'No', evidence: 'No ambulance transported them' },
+  ] });
+  const completed = await loaded.netflyEmailSuggestions(treatment);
+  assert.equal(completed.suggestions.length, 4, 'completed visit and no ambulance are compatible answers');
+  assert.match(requested.fields.find((f: any) => f.id === 'seen_doctor').hint, /ER, urgent care/);
+  assert.deepEqual(requested.fields.find((f: any) => f.id === 'first_provider').when, { id: 'seen_doctor', is: 'Yes' });
+  assert.equal(suggestions.noteSuggestions(completed.suggestions, treatment, {}).length, 4, 'save validation must keep the dependent care fields together');
   reply = 'not JSON';
   assert.equal((await loaded.netflyEmailSuggestions(note)).available, false);
   reply = '';
