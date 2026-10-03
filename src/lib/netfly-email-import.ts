@@ -111,7 +111,7 @@ export async function importNetflyEmail(db: any, campaign: Campaign, email: Rece
     by: 'netfly_email', by_name: 'NETFLY email', channel: 'email', source_id: email.id,
   });
   const pdfs = (email.attachments || []).filter(a => /\.pdf$/i.test(a.filename || '') || a.content_type === 'application/pdf');
-  const warnings: string[] = [];
+  const warnings: string[] = [...extraction.warnings];
   const documentIds: string[] = [];
   if (!fields.confirmed_name) warnings.push('Client name missing');
   if (!fields.confirmed_phone) warnings.push('Client phone still needed');

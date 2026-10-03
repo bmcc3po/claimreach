@@ -27,6 +27,8 @@ const multiline = new Set(['Accident Summary', 'Insurance', 'Injuries & Treatmen
 /** HTML is converted to plain text only; no email markup is ever rendered. */
 export function emailPlainText(input: string): string {
   return input.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?<\/a>/gi,
+      (tag, href) => approvedAgreementUrl(href.replace(/&amp;/gi, '&')) ? `\n${href.replace(/&amp;/gi, '&')}\n` : tag)
     .replace(/<\/?(?:div|p|tr|li|blockquote)\b[^>]*>|<br\s*\/?\s*>/gi, '\n')
     .replace(/<\/(?:td|th)>/gi, ': ').replace(/<([^<>\s]+@[^<>\s]+)>/g, '$1').replace(/<[^>]+>/g, '')
     .replace(/&nbsp;|&#160;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
@@ -34,13 +36,44 @@ export function emailPlainText(input: string): string {
     .replace(/\r\n?/g, '\n');
 }
 
+/** Keep provider viewer links as evidence; never fetch arbitrary URLs from mail. */
+export function approvedAgreementUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hostname !== 'go.easyclaimcenter.com' || url.port || url.username || url.password ||
+      !/^\/documents\/v1\/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\/?$/i.test(url.pathname) ||
+      [...url.searchParams.keys()].some(key => key !== 'locale')) return null;
+    return url.toString();
+  } catch { return null; }
+}
+
+const cleanLine = (raw: string) => raw.trim().replace(/^>\s?/, '').replace(/\*\*/g, '').replace(/\\$/, '').trim();
+const contactNameKey = (name: string) => name.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+function handoffContactBlock(lines: string[]) {
+  const start = lines.findIndex(line => /^contact\s+information\s*:?$/i.test(line));
+  if (start < 0) return null;
+  const block: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!line) continue;
+    if (/^(?:(?:the\s+)?signed\s+agreement|accident\s+details|agent\s+comments|note|from|to|cc|subject|contact\s+information)\s*:/i.test(line) || block.length >= 8) break;
+    block.push(line);
+  }
+  const name = (block[0] || '').replace(/^(?:client(?:\/driver)?|client\s+name)\s*:\s*/i, '').trim();
+  if (!/^[\p{L}][\p{L} .’'-]{1,159}$/u.test(name)) return null;
+  const emails = [...new Set(block.slice(1).map(line => line.replace(/^\[([^\]]+)\]\(mailto:[^)]+\)$/, '$1'))
+    .filter(line => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(line)))];
+  const phones = [...new Set(block.slice(1).filter(line => /^\+?[\d() .-]+$/.test(line))
+    .map(line => line.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')).filter(line => /^\d{10}$/.test(line)))];
+  return { name, email: emails.length === 1 ? emails[0] : '', phone: phones.length === 1 ? phones[0] : '' };
+}
+
 export function parseNetflyHandoff(note: string): { label: string; value: string }[] {
   const headings = new Map<string, string>(NETFLY_HANDOFF_LABELS.map(label => [labelKey(label), label]));
   for (const [alias, label] of Object.entries(aliases)) headings.set(alias, label);
   const values = new Map<string, string>();
   let current: string | null = null;
-  for (const raw of emailPlainText(note).split('\n')) {
-    const line = raw.trim().replace(/^>\s?/, '').replace(/\*\*/g, '').replace(/\\$/, '').trim();
+  const lines = emailPlainText(note).split('\n').map(cleanLine);
+  for (const line of lines) {
     if (!line) continue;
     if (/^(?:--+|_{3,}|thanks(?:,|$)|thank you(?:,|$)|regards|sincerely|sent from|on .+ wrote:)/i.test(line)) { current = null; continue; }
     const match = /^([^:]{2,50}):\s*(.*)$/.exec(line);
@@ -55,6 +88,12 @@ export function parseNetflyHandoff(note: string): { label: string; value: string
     else if (current && (!values.get(current) || multiline.has(current))) {
       values.set(current, `${values.get(current) || ''} ${line}`.trim());
     }
+  }
+  const contact = handoffContactBlock(lines);
+  if (contact && (!values.get('Client/Driver') || contactNameKey(contact.name) === contactNameKey(values.get('Client/Driver')!))) {
+    if (!values.get('Client/Driver')) values.set('Client/Driver', contact.name);
+    if (contact.email && !values.get('Client Email')) values.set('Client Email', contact.email);
+    if (contact.phone && !values.get('Client Phone')) values.set('Client Phone', contact.phone);
   }
   return NETFLY_HANDOFF_LABELS.filter(label => values.get(label)).map(label => ({ label, value: values.get(label)! }));
 }
@@ -91,6 +130,28 @@ export type HandoffCandidate = { id: string; value: string; source: string };
 export function extractNetflyEmail(note: string) {
   const rows = parseNetflyHandoff(note);
   const source = Object.fromEntries(rows.map(row => [row.label, row.value]));
+  const lines = emailPlainText(note).split('\n').map(cleanLine);
+  const contact = handoffContactBlock(lines);
+  const mismatchedContact = !!contact && !!source['Client/Driver'] && contactNameKey(contact.name) !== contactNameKey(source['Client/Driver']);
+  const warnings: string[] = [];
+  if (mismatchedContact) warnings.push('The contact block names a different client. Its phone, email and agreement link were not applied. Check the original email.');
+  const agreementLinks: string[] = [];
+  let inAgreement = false;
+  for (const line of lines) {
+    if (/^(?:the\s+)?signed\s+agreement\s*:?$/i.test(line)) { inAgreement = true; continue; }
+    if (!line) continue;
+    if (inAgreement) {
+      for (const match of line.matchAll(/https:\/\/[^\s<>"')]+/g)) {
+        const url = approvedAgreementUrl(match[0]);
+        if (url && !mismatchedContact && !agreementLinks.includes(url)) agreementLinks.push(url);
+      }
+      // The provider's agreement section contains one link; do not search footers.
+      break;
+    }
+  }
+  if ((agreementLinks.length || /^(?:Subject:\s*)?(?:(?:Re|Fw|Fwd):\s*)*New Signing[!:]/im.test(note)) &&
+    /\b(?:(?:has\s+not|hasn't|not)\s+(?:yet\s+)?retained\s+(?:an?\s+)?(?:attorney|lawyer)|no\s+(?:attorney|lawyer)\s+retained)\b/i.test(source.Representation || ''))
+    warnings.push('The email says signed, but its representation note says no attorney retained. Check the signed PDF before approving the file.');
   const candidates: HandoffCandidate[] = [];
   const add = (id: string, label: string, value = source[label]) => {
     if (value?.trim() && !candidates.some(c => c.id === id)) candidates.push({ id, value: value.trim(), source: label });
@@ -126,7 +187,7 @@ export function extractNetflyEmail(note: string) {
   // Narrative ambiguity stays in the original source. Do not infer medical
   // answers, fault, representation, consent, or signing state from prose.
   add('health_carrier', 'Health Insurance');
-  return { rows, candidates, fields: Object.fromEntries(candidates.map(c => [c.id, c.value])) };
+  return { rows, candidates, fields: Object.fromEntries(candidates.map(c => [c.id, c.value])), agreementLinks, warnings };
 }
 
 /** Import into empty answers only. Explicit unavailable answers also win. */

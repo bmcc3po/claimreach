@@ -3,6 +3,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NetflyDocuments from "./NetflyDocuments";
 import HandoffImport from "./HandoffImport";
+import HandoffEvidence from "./HandoffEvidence";
 import NotesAssist from "./NotesAssist";
 import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, NETFLY_UNAVAILABLE_IDS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
 import { NETFLY_WELCOME_STEPS as VERIFY_STEPS, NETFLY_FIRST_CALL_SOURCE_LABELS, NETFLY_FOLLOWUP_FIELDS, NETFLY_CLOSING_REMINDERS, netflyCareGuidance, netflyFirstCallSources, netflyFirstConversationReview } from "@/lib/netfly-first-conversation";
@@ -214,6 +215,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       {stepIndex === 4 && <section className="nf-inline-retainer" aria-label="Original signed retainer">
         <h3>Already signed — review the NETFLY retainer</h3>
         <p>NETFLY collected this before the welcome call. Review the signed PDF after the call, before sending the completed file for supervisor review.</p>
+        <HandoffEvidence note={latestHandoff?.note || ""} hasPdf={!!latest} />
         {latest ? <>
           <p className="nf-muted">{latest.file_name} · received {new Date(latest.created_at).toLocaleString()}</p>
           <div className="nf-actions">
@@ -275,6 +277,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         {commandTab === "file" && <div className="nf-command-content">
     <div className="nf-retainer"><div><strong>Already signed with NETFLY</strong><p>{latest ? `Original PDF received ${new Date(latest.created_at).toLocaleString()} · ${detail.answers.review?.status || "Review needed"}` : "Original signed PDF missing — upload it before reviewing the agreement."}</p></div><div className="nf-actions"><label className="nf-secondary">{uploading ? "Uploading…" : "Upload signed PDF"}<input type="file" accept="application/pdf,.pdf" disabled={uploading} hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); }} /></label>{latest?.url && <a className="nf-secondary" href={latest.url} target="_blank" rel="noopener noreferrer">View signed PDF</a>}</div></div>
     {detail.retainer.length > 1 && <details className="nf-history"><summary>Earlier uploaded originals ({detail.retainer.length - 1})</summary>{detail.retainer.slice(1).map((d) => <p key={d.id}>{d.url ? <a href={d.url} target="_blank" rel="noopener noreferrer">{d.file_name}</a> : d.file_name} · {new Date(d.created_at).toLocaleString()}</p>)}</details>}
+    <HandoffEvidence note={latestHandoff?.note || ""} hasPdf={!!latest} />
     <section className="nf-panel nf-source"><div className="nf-source-heading"><div><p className="nf-eyebrow">Already collected by NETFLY</p><h2>Handoff note</h2><p className="nf-muted">Use this to verify the important facts. It is NETFLY's account, not the client's confirmed answers.</p></div>{latestHandoff && <span className="nf-source-time">Received {new Date(latestHandoff.at).toLocaleString()}</span>}</div>
       {sourceRows.length ? <div className="nf-source-grid">{sourceRows.map((row) => <div className="nf-source-item" key={row.label}><strong>{row.label}</strong><p>{row.value}</p></div>)}</div> : latestHandoff ? <p className="nf-source-note">{latestHandoff.note}</p> : <p className="nf-alert">No NETFLY handoff note is on this file yet. Add the note before the welcome call.</p>}
       {sourceFieldRows.length > 0 && <details className="nf-history"><summary>{sourceFieldRows.length} separate original form answers · {sourceFieldRevisions.length} source version(s)</summary><div className="nf-source-grid">{sourceFieldRows.map(([label, value]) => <div className="nf-source-item" key={label}><strong>{label}</strong><p>{value}</p></div>)}</div></details>}
@@ -306,4 +309,3 @@ function Question({ field, value, set, save, unavailable = false, onUnavailable,
     : <input id={`nf-${field.id}`} type={field.kind === "date" ? "date" : field.kind === "tel" ? "tel" : field.kind === "email" ? "email" : "text"} value={value} onChange={(e) => set(e.target.value)} onBlur={(e) => void save(e.target.value)} />}
     {onUnavailable && !value.trim() && <button type="button" className={`nf-unknown${unavailable ? " selected" : ""}`} aria-pressed={unavailable} onClick={onUnavailable}>{unavailable ? "Not available yet — follow up ✓" : "Not available yet"}</button>}</div>;
 }
-
