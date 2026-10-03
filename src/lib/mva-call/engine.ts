@@ -21,6 +21,7 @@ import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './
 import { QUESTION_ORDER, QUESTION_PATHS, questionPhase } from './question-spine';
 import { INTAKE_STEPS, stepIndexForPosition } from './step-layout';
 export { SOL };
+export const VEHICLE_YEARS = Array.from({ length: 2027 - 1990 + 1 }, (_, i) => String(2027 - i));
 export const REBS: any[] = [
   { id: 'report', phase: 'open', group: 'Opening', title: "I was just checking on my police report.", text: "Got it, and that's exactly why we have you. When that report gets requested it comes over to us too. We're the intake center for {FIRM}, and I was reaching out to see what kind of pain you've been dealing with since the accident. Tell me what happened out there." },
   { id: 'info', phase: 'open', group: 'Opening', title: "How did you get my information?", text: "You filled out an accident form, and that comes straight to us here at the firm's intake center. That's all it is. Tell me what happened." },
@@ -149,6 +150,7 @@ function fmtWhen(iso) {
 }
 export const FINE = "Says they're fine";
 export const SEATS: any[] = ['Driver', 'Passenger', 'Pedestrian', 'Other'];
+export const POLICE_CHOICES = ['Came out', 'No', 'Not sure'];
 // Short single-choice answers render as a segmented control when the words fit; everything else is an iOS check list.
 // "2026-09-14" -> "09/14/2026"
 function mdy(iso: any) {
@@ -865,15 +867,14 @@ export class CallEngine {
       var x = byKey(k), dv = this.dateBox(b, x);
       return { isInput: true, label: 'Or the date', lcls: 'q-l', ph: '', type: 'date', mode: 'text', value: dv.value, set: dv.set };
     };
-    var years = ['Year'];
-    for (var y = 2027; y >= 1990; y--) years.push(String(y));
+    var years = ['Year', ...VEHICLE_YEARS];
     var rows = [];
 
     rows.push(G('crash', 'Crash'));
     rows.push(C('Fault', 'story', 'fault', ['Other driver', 'Caller', 'Not clear'], 'Caller'));
     rows.push(C('The PNC was', 'story', 'seat', SEATS));
     if (st.seat === 'Other') rows.push(I('Explain', 'story', 'seatOther', 'What were they doing'));
-    rows.push(C('Police came', 'story', 'police', ['Came out', 'No', 'Not sure']));
+    rows.push(C('Police came', 'story', 'police', POLICE_CHOICES));
     rows.push(C('Date of wreck', 'story', 'when', ['Today', 'Yesterday', 'Pick a date']));
     if (st.when === 'Pick a date') rows.push(I('Date', 'story', 'date', '', 'date'));
     rows.push(I('City, State', 'story', 'city', 'City, State'));
@@ -1303,7 +1304,7 @@ export class CallEngine {
       }
       if (id === 'seat') return { kind: 'chips', opts: storyChip('seat', SEATS), other: st.seat === 'Other' ? { value: st.seatOther || '', set: (e: any) => this.set('story', 'seatOther', e.target.value), ph: 'What were they doing' } : null };
       if (id === 'fault') return { kind: 'chips', opts: storyChip('fault', ['Other driver', 'Caller', 'Not clear']), cue: st.fault === 'Caller' ? 'Do not go hunting.' : '' };
-      if (id === 'police') return { kind: 'chips', opts: storyChip('police', ['Came out', 'No', 'Not sure']) };
+      if (id === 'police') return { kind: 'chips', opts: storyChip('police', POLICE_CHOICES) };
       if (['road', 'report', 'policeAgency'].includes(id)) {
         const group = id === 'road' ? 'story' : 'file';
         const source = this.state[group];
@@ -1796,8 +1797,7 @@ export class CallEngine {
     if (hurtPax.length) fileSteps.push(['pax', 'Passengers']);
     var fIdx = fileSteps.findIndex((x) => x[0] === s.file.step);
 
-    var years = ['Year'];
-    for (var y = 2027; y >= 1990; y--) years.push(String(y));
+    var years = ['Year', ...VEHICLE_YEARS];
 
     // Send is never a dead grey button. Tapping it while something is missing
     // says what, right above the button, and it clears the moment it is fixed.
@@ -1890,7 +1890,7 @@ export class CallEngine {
       },
       storySeat: SEATS.map((o) => ({ label: o, cls: 'chip sm' + (st.seat === o ? ' on' : ''), pick: () => this.storyPick('seat', o) })),
       storyFault: ['Other driver', 'Caller', 'Not clear'].map((o) => ({ label: o, cls: 'chip' + (o === 'Caller' ? ' warn' : '') + (st.fault === o ? ' on' : ''), pick: () => this.storyPick('fault', o) })),
-      storyPolice: ['Came out', 'No', 'Not sure'].map((o) => ({ label: o, cls: 'chip sm' + (st.police === o ? ' on' : ''), pick: () => this.storyPick('police', o) })),
+      storyPolice: POLICE_CHOICES.map((o) => ({ label: o, cls: 'chip sm' + (st.police === o ? ' on' : ''), pick: () => this.storyPick('police', o) })),
       leadOpen: !!s.leadOpen,
       toggleLead: () => this.setState({ leadOpen: !this.state.leadOpen }),
       sayingFineFree: b.pain.indexOf(FINE) >= 0 && b.pain.length === 1,
@@ -1912,7 +1912,7 @@ export class CallEngine {
       faultCaller: st.fault === 'Caller',
       seat: this.chips('story', 'seat', SEATS, null, true),
       seatOther: st.seat === 'Other',
-      police: this.chips('story', 'police', ['Came out', 'No', 'Not sure'], null, true),
+      police: this.chips('story', 'police', POLICE_CHOICES, null, true),
       when: this.chips('story', 'when', ['Today', 'Yesterday', 'Pick a date']),
       pickDate: st.when === 'Pick a date',
       hasDays: days != null && st.when === 'Pick a date',

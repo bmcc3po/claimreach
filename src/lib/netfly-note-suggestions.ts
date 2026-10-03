@@ -5,14 +5,8 @@ const ids = new Set(["seen_doctor", "first_provider", "first_visit", "ambulance"
 export const NETFLY_NOTE_FIELDS = NETFLY_FIELDS.filter(f => ids.has(f.id));
 export const noteFieldDescriptor = ({ id, label, kind, choices, hint, when }: (typeof NETFLY_NOTE_FIELDS)[number]) => ({ id, label, kind, choices, hint, when });
 export type NoteSuggestion = { id: string; value: string; evidence: string; label: string };
-/** Mail transports wrap lines. Match only whitespace differences, and retain
- * the exact original span so provenance still points to the received note. */
-export function sourceEvidence(notes: string, quote: string): string | null {
-  if (quote.length < 3 || quote.length > 2000) return null;
-  if (notes.includes(quote)) return quote;
-  const words = quote.split(/\s+/).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return notes.match(new RegExp(words.join('\\s+')))?.[0] || null;
-}
+import { sourceEvidence } from './note-evidence';
+export { sourceEvidence } from './note-evidence';
 export function noteSuggestions(raw: unknown, notes: string, fields: Record<string, string>): NoteSuggestion[] {
   if (!Array.isArray(raw)) return [];
   const result: NoteSuggestion[] = [];

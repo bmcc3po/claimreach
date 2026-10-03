@@ -2223,5 +2223,14 @@ div.ws-row{cursor:default}
 .inline-client-contact .cc-field, .contract-actions .cc-field, .passenger-agreement .cc-field { width: 100%; min-width: 0; font-size: 16px; min-height: 44px; }
 .contract-actions .cc-btn, .passenger-agreement .cc-btn, .contract-actions .cc-chip { min-height: 44px; white-space: normal; }
 .contract-success { color: #126535; font-weight: 600; }
+.iq-story-assist { margin-top: 12px; display: grid; gap: 10px; }
+.iq-story-assist > .fi-add { justify-self: start; }
+.iq-story-assist p { margin: 0; }
+.iq-story-assist small { color: #536b89; font-size: 13px; line-height: 1.5; }
+.iq-story-review { padding-top: 12px; border-top: 1px solid #cbd8e8; display: grid; gap: 12px; }
+.iq-story-answer { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #dce5ef; cursor: pointer; }
+.iq-story-answer input { flex: 0 0 20px; width: 20px; height: 20px; margin: 2px 0; accent-color: #214f88; }
+.iq-story-answer > span { min-width: 0; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.iq-story-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 @media (max-width: 600px) { .agreement-resend .cc-btn, .passenger-agreement .cc-btn, .contract-correction .cc-btn { width: 100%; } }
 
