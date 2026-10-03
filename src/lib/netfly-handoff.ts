@@ -77,7 +77,10 @@ export function parseNetflyHandoff(note: string): { label: string; value: string
     if (!line) continue;
     if (/^(?:--+|_{3,}|thanks(?:,|$)|thank you(?:,|$)|regards|sincerely|sent from|on .+ wrote:)/i.test(line)) { current = null; continue; }
     const match = /^([^:]{2,50}):\s*(.*)$/.exec(line);
-    const label = headings.get(labelKey(match ? match[1] : line));
+    const heading = headings.get(labelKey(match ? match[1] : line));
+    // Mail clients wrap prose: a line ending "client." is not a new client.
+    // Only narrative section titles can omit the colon.
+    const label = match || (heading && multiline.has(heading) && !/[.!?]$/.test(line)) ? heading : undefined;
     if (label) {
       // A second client starts a separate account, not missing fields for the first.
       if (label === 'Client/Driver' && values.has(label)) break;

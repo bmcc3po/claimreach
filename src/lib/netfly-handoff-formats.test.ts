@@ -34,6 +34,10 @@ async function main() {
   assert.equal(enRoute.fields.incident_story, 'Stopped in traffic.');
   assert.equal(enRoute.rows.find(row => row.label === 'Injuries & Treatment')!.value, 'On her way to the hospital.');
   assert.equal(enRoute.rows.find(row => row.label === 'Additional Information')!.value, 'Wrist pain.');
+  const wrapped = extractNetflyEmail('Client: Synthetic Client\nNext Steps: Contact the\nclient.\nClient Address: 100 Test Street, Atlanta, GA 30303\nHealth Insurance: Example Health');
+  assert.equal(wrapped.fields.mailing_address, '100 Test Street, Atlanta, GA 30303', 'wrapped prose must not hide later contact fields');
+  assert.equal(wrapped.fields.health_carrier, 'Example Health');
+  assert.equal(wrapped.rows.find(row => row.label === 'Next Steps')!.value, 'Contact the client.');
   assert.equal(parseNetflyHandoff('Client: First Client\nAccident Summary\nFirst account.\nClient: Second Client\nCase #: SECOND').some(row => row.label === 'Case #'), false, 'never borrow missing fields from another client');
   assert.deepEqual(handoffFirmNames(note), ['Example Law']);
   assert.deepEqual(handoffFirmNames('Representation: Previously spoke with Another Law.'), [], 'a former lawyer is not a routing declaration');
