@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { extractNetflyEmail, parseNetflyHandoff, planHandoffFields, emailDate } from './netfly-handoff';
-import { verifyResendWebhook, receiveAllowed, receivedPdf, cappedBytes, type ReceivedEmail } from './resend-inbound';
+import { verifyResendWebhook, receiveAllowed, receivedPdf, resendGet, cappedBytes, type ReceivedEmail } from './resend-inbound';
 import { NETFLY_FIELD_IDS } from './netfly-ontake';
 import { saveNetflyHandoff } from './netfly-handoff-save';
 import { FakeDb } from './test-fake-db';
@@ -68,11 +68,28 @@ async function main() {
   assert.equal(receiveAllowed({ ...email, to: ['netfly@innovativeintake.com'], received_for: ['netfly@example.resend.app'] }, 'netfly@example.resend.app', ['netflydigital.com']), null);
   const payload = '%PDF-1.7\n' + 'synthetic '.repeat(20) + '\n%%EOF';
   const calls: { url: string; init?: RequestInit }[] = [];
-  const fetcher = (async (url: any, init?: RequestInit) => { assert.equal(init?.cache, undefined, "Cloudflare native fetch rejects Request.cache"); calls.push({ url: String(url), init });
+  const fetcher = (async (url: any, init?: RequestInit) => { assert.equal(init?.cache, undefined, "Cloudflare native fetch rejects Request.cache"); assert.equal(init?.redirect, 'manual', 'Cloudflare supports manual redirect rejection'); calls.push({ url: String(url), init });
     return String(url).startsWith('https://api.resend.com/') ? Response.json({ download_url: 'https://cdn.resend.app/receiving/email/attachments/pdf?signature=test', size: payload.length }) : new Response(payload); }) as typeof fetch;
   assert.equal((await receivedPdf('email-1', 'pdf-1', 'test-key', fetcher)).length, payload.length);
   assert.equal((calls[1].init?.headers as any)?.Authorization, undefined, 'API credential never goes to attachment CDN');
-  assert.equal(calls[1].init?.redirect, 'error');
+  assert.equal(calls[0].init?.redirect, 'manual');
+  assert.equal(calls[1].init?.redirect, 'manual');
+  for (const status of [301, 302, 303, 307, 308]) {
+    let apiCalls = 0;
+    await assert.rejects(() => resendGet('/emails/receiving/email-1', 'test-key', (async (_url, init) => {
+      apiCalls++; assert.equal(init?.redirect, 'manual');
+      return new Response(null, { status, headers: { Location: 'https://attacker.test/secret' } });
+    }) as typeof fetch), /could not provide/);
+    assert.equal(apiCalls, 1, 'API redirects are rejected without a follow-up request');
+    let pdfCalls = 0;
+    await assert.rejects(() => receivedPdf('email-1', 'pdf-1', 'test-key', (async (_url, init) => {
+      pdfCalls++; assert.equal(init?.redirect, 'manual');
+      if (pdfCalls === 1) return Response.json({ download_url: 'https://cdn.resend.app/pdf' });
+      assert.equal((init?.headers as any)?.Authorization, undefined);
+      return new Response(null, { status, headers: { Location: 'https://attacker.test/pdf' } });
+    }) as typeof fetch), /could not be downloaded/);
+    assert.equal(pdfCalls, 2, 'PDF redirects cannot bypass the download-host allowlist');
+  }
   let fetchCount = 0;
   await assert.rejects(() => receivedPdf('email-1', 'pdf-1', 'test-key', (async () => { fetchCount++; return Response.json({ download_url: 'https://127.0.0.1/private' }); }) as typeof fetch), /host/);
   assert.equal(fetchCount, 1, 'email cannot send a request to arbitrary hosts');
@@ -98,4 +115,3 @@ async function main() {
   console.log('NETFLY email parser, signature, recipient, PDF and blank-field import tests passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
-
