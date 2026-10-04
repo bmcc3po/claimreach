@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { netflyContext, netflyMatter } from "@/lib/netfly-server";
 import { NETFLY_ANSWER_KEY } from "@/lib/netfly-ontake";
-import { NETFLY_NOTE_FIELDS, NETFLY_NOTES_SYSTEM, noteSuggestions, noteFieldDescriptor } from "@/lib/netfly-note-suggestions";
+import { NETFLY_NOTES_SYSTEM, noteSuggestions, noteRequestFields } from "@/lib/netfly-note-suggestions";
 import { askRelay } from "@/lib/ai-relay";
 export const runtime = "edge";
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
@@ -18,10 +18,12 @@ export async function POST(req: NextRequest) {
   const saved = (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] || {};
   if (String(saved.fields?.final_notes || "").trim() !== notes) return fail("Save your latest notes first, then try again.", 409);
   if (body.op === "suggest") {
+    const request = noteRequestFields(saved.fields || {});
+    if (!request.fields.length) return NextResponse.json({ suggestions: [] });
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25000);
+    const timer = setTimeout(() => controller.abort(), 18000);
     let answer: string;
-    try { answer = await askRelay(NETFLY_NOTES_SYSTEM, JSON.stringify({ fields: NETFLY_NOTE_FIELDS.map(noteFieldDescriptor), notes }), controller.signal); }
+    try { answer = await askRelay(NETFLY_NOTES_SYSTEM, JSON.stringify({ ...request, notes }), controller.signal, { preferProxy: true }); }
     finally { clearTimeout(timer); }
     if (!answer) return fail("The notes helper is unavailable. Your notes are saved; you can keep using the quick choices.", 503);
     let parsed: any;
