@@ -29,4 +29,9 @@ const filtered=compactNotesRequest(notes,{seen_doctor:'Yes',first_provider:'Save
 assert.ok(!filtered.fields.some(f=>['first_provider','seen_doctor','police_report','dob','ssn','fault','confirmed_phone'].includes(f.id)));
 assert.ok(!JSON.stringify(filtered.payload).includes('private'));
 assert.equal(filtered.payload.existing.seen_doctor,'Yes');
+const unpunctuated = 'test shorthand '.repeat(300).trim();
+const longRequest = compactNotesRequest(unpunctuated,{});
+assert.ok(longRequest.sources.length > 1);
+assert.ok(longRequest.sources.every(s => s.length <= 900 && unpunctuated.includes(s)));
+assert.equal(longRequest.sources.join(' '),unpunctuated);
 console.log('NETFLY compact notes: source indexes, choices, dates, protected fields, dependencies, replay and malformed output passed');

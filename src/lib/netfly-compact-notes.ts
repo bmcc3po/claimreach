@@ -4,7 +4,18 @@ import { noteRequestFields, noteSuggestions } from './netfly-note-suggestions';
 // copying the same long evidence and JSON keys for every extracted answer.
 export function compactNotesRequest(notes: string, saved: Record<string, string>) {
   const { fields, existing } = noteRequestFields(saved);
-  const sources = notes.split(/(?<=[.!?;])\s+|[\r\n]+/).map(s => s.trim()).filter(Boolean);
+  const sources = notes.split(/(?<=[.!?;])\s+|[\r\n]+/).flatMap(part => {
+    let sentence = part.trim();
+    const chunks: string[] = [];
+    // Shorthand may have no punctuation. Keep copied text and evidence within
+    // the existing validator limits without losing any source characters.
+    while (sentence.length > 900) {
+      const space = sentence.lastIndexOf(' ', 900), end = space > 0 ? space : 900;
+      chunks.push(sentence.slice(0, end)); sentence = sentence.slice(end).trimStart();
+    }
+    if (sentence) chunks.push(sentence);
+    return chunks;
+  });
   const payload = {
     fields: fields.map((f, index) => [index, f.id, f.label, f.choices || f.kind || 'text', ...(f.when ? [f.when] : [])]),
     existing,
