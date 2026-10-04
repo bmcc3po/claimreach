@@ -9,7 +9,11 @@ export function pilotStaffPageAllowed(path: string): boolean {
 
 export function pilotStaffApiAllowed(path: string, method = "GET"): boolean {
   if (path === "/api/netfly") return method === "GET" || method === "POST";
-  if (path === "/api/netfly/retainer") return method === "POST";
+  // These exact handlers enforce the internal organization, NETFLY matter,
+  // document scope and current packet review. Let agents reach those checks.
+  if (path === "/api/netfly/retainer") return ["GET", "HEAD", "POST"].includes(method);
+  if (path === "/api/netfly/delivery") return ["GET", "HEAD", "POST"].includes(method);
+  if (path === "/api/netfly/agreement-import") return method === "POST";
   if (path === "/api/netfly/notes") return method === "POST";
   if (path === "/api/netfly/documents") return ["GET", "POST", "PATCH"].includes(method);
   // The handler limits non-exporting agents to one RLS-visible intake preview.

@@ -31,7 +31,14 @@ console.log("pilot password change exception is exact and POST-only");
 assert.equal(pilotStaffApiAllowed("/api/netfly", "GET"), true);
 assert.equal(pilotStaffApiAllowed("/api/netfly", "POST"), true);
 assert.equal(pilotStaffApiAllowed("/api/netfly/retainer", "POST"), true);
-assert.equal(pilotStaffApiAllowed("/api/netfly/retainer", "GET"), false);
+for (const path of ["/api/netfly/retainer", "/api/netfly/delivery"]) {
+  for (const method of ["GET", "HEAD", "POST"]) assert.equal(pilotStaffApiAllowed(path, method), true, `${method} ${path}`);
+  for (const method of ["PUT", "PATCH", "DELETE"]) assert.equal(pilotStaffApiAllowed(path, method), false, `${method} ${path}`);
+  assert.equal(pilotStaffApiAllowed(path + "/other", "POST"), false);
+}
+assert.equal(pilotStaffApiAllowed("/api/netfly/agreement-import", "POST"), true);
+for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE"]) assert.equal(pilotStaffApiAllowed("/api/netfly/agreement-import", method), false);
+assert.equal(pilotStaffApiAllowed("/api/netfly/agreement-import/other", "POST"), false);
 assert.equal(pilotStaffApiAllowed("/api/netfly/other", "POST"), false);
 assert.equal(pilotStaffApiAllowed("/api/calls/qa/ready", "POST"), true);
 assert.equal(pilotStaffApiAllowed("/api/qa", "POST"), false);
