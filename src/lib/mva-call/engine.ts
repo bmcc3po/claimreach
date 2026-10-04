@@ -2130,6 +2130,10 @@ export class CallEngine {
       dispoOpen: !!d.open,
       postCallReview: !!s.postCallReview,
       reviewIntake: () => this.setState({ postCallReview: true, dispo: { ...this.state.dispo, open: false } }),
+      returnToAgreement: () => {
+        this.setState({ postCallReview: false, dispo: { ...this.state.dispo, open: false } });
+        this.jumpTo('file');
+      },
       finishReview: () => this.setState({ postCallReview: false, dispo: { ...this.state.dispo, open: true } }),
       dispo: {
         back: () => this.setState({ postCallReview: !!this.state.dispo.saved, dispo: { ...this.state.dispo, open: false } }),

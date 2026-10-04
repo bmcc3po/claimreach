@@ -14,6 +14,8 @@ import { linkedFilesFor, paxParentId, sharedCrashFacts } from "@/lib/linked-file
 import { resolveMatter, matterRowsFilter } from "@/lib/matter";
 import { getMatterAgreement, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { joinUsAddress } from "@/lib/us-address";
+import { rehearsalTemplates, syntheticName } from '@/lib/mva-call/rehearsal';
+import RehearsalSetup from '@/components/calls/RehearsalSetup';
 
 export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ text?: string; claim?: string; review?: string }> }) {
   const { id: key } = await params;
@@ -180,10 +182,14 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   if (!emergency.ok) throw new Error(emergency.error);
   const mainStatus = mainRes.row?.status;
   const from = process.env.JUSTCALL_DEFAULT_FROM || "";
+  if (tplRes.error) throw new Error('Could not read agreement templates. Refresh before sending.');
+  const rehearsal = rehearsalTemplates(tplRes.data ?? [], lead);
 
   return (
     <>
     <CanonicalUrl path={`/app/${leadKeyOf(lead)}`} />
+    {rehearsal.rehearsal ? <p role="status" style={{ padding: 14, background: '#fff8db' }}><strong>NONBINDING TEST FILE.</strong> This file uses dummy signing documents and approved test contacts only.</p>
+      : me.role === 'owner' && campaignId && syntheticName(lead.claimant_name) && !paxParentId(lead.external_id) ? <RehearsalSetup leadId={lead.id} campaignId={campaignId} active={false} /> : null}
     <CallConsole init={{
       leadId: lead.id,
       claimId: claim.id,
@@ -218,8 +224,8 @@ export default async function CallPage({ params, searchParams }: { params: Promi
         notifyDefaults: (ownersRes.data ?? []).filter((o: any) => o.email).map((o: any) => ({ who: o.full_name || o.email, how: o.email })),
         esign: {
           status: !mainStatus ? "ready" : mainStatus === "completed" ? "signed" : ["failed", "declined", "expired", "voided"].includes(mainStatus) ? "ready" : mainStatus,
-          configured: docusealConfigured() && (tplRes.data ?? []).length > 0,
-          templateKeys: (tplRes.data ?? []).map((t: any) => String(t.key)),
+          configured: docusealConfigured() && rehearsal.templates.length > 0,
+          templateKeys: rehearsal.templates.map((t: any) => String(t.key)),
           templateKey: mainRes.row?.template_key ?? null,
           pax,
         },

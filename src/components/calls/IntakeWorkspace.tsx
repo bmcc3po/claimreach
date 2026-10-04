@@ -210,6 +210,13 @@ export function IxBar({ v }: { v: any }) {
 /** The one next step, for whichever view is showing. */
 function nextStep(v: any): { label: string; go: () => void; disabled?: boolean; muted?: boolean; finish?: boolean } | null {
   const fi = v.fi;
+  // Signature receipt is an intermediate step, in every intake layout.
+  // Keep all saves, reviews and sends in their existing handlers.
+  if (v.signed && v.dispo?.saved) return { label: "Continue to firm delivery", go: v.openDispo, finish: true };
+  if (v.signed && !v.dispo?.saved) return {
+    label: v.fileAgreementDone ? "Next: save call & review" : "Next: finish the agreement",
+    go: v.fileAgreementDone ? v.openDispo : () => v.jumpTo("file"), finish: true,
+  };
   if (v.stepView) return fi.step.next;
   if (v.choreView || v.formView) {
     const ch = fi.chore;
@@ -288,8 +295,8 @@ export function IxFoot({ v }: { v: any }) {
     </>)}
     {v.stepView && fi.step.back && <button type="button" className="step-intake-back" onClick={fi.step.back.go}>Back</button>}
     {!!n && (
-      <button type="button" className={`ix-next${n.muted ? " ix-muted" : ""}${n.finish ? " ix-finish" : ""}`} disabled={!!n.disabled} onClick={n.go}>
-        <span>{n.label}</span><Chevron />
+      <button type="button" className={`ix-next${n.muted ? " ix-muted" : ""}${n.finish ? " ix-finish" : ""}${v.signed && !v.dispo?.saved ? " finish-file-pulse" : ""}`} disabled={!!n.disabled} onClick={n.go}>
+        <span>{v.signed && !v.dispo?.saved && <small className="finish-file-hint">Signature received · keep going</small>}{n.label}</span><Chevron />
       </button>
     )}
   </>);

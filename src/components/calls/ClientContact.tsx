@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useFieldAutosave } from "../useFieldAutosave";
 import { splitUsAddress, joinUsAddress, mailColumnsFrom } from "@/lib/us-address";
+import AddressLookup from "../AddressLookup";
 
 type ContactSaveRef = MutableRefObject<(() => Promise<boolean>) | null>;
 export default function ClientContact({ leadId, claimId, saveRef }: { leadId: string; claimId: string; saveRef: ContactSaveRef }) {
@@ -153,7 +154,7 @@ function ContactCard({ leadId, initial, saveRef }: { leadId: string; initial: Re
         <div className="cc-lab" style={{ marginTop: 8 }}>EMAIL</div>
         <input className="cc-field" type="email" inputMode="email" autoComplete="off" aria-label="Email" value={f.email} onChange={set("email")} />
         <div className="cc-lab" style={{ marginTop: 8 }}>STREET</div>
-        <input className="cc-field" type="text" placeholder="Street, or paste the whole address" aria-label="Street address" value={f.mail_addr1} onChange={set("mail_addr1")} />
+        <AddressLookup value={f.mail_addr1} near={[f.mail_city, f.mail_state].filter(Boolean).join(", ")} onText={value => set("mail_addr1")({ target: { value } })} onPick={a => edit({ mail_addr1: a.addr1, mail_city: a.city, mail_state: a.state, mail_zip: a.zip })} />
         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
           <input className="cc-field" style={{ flex: 2, minWidth: 0 }} type="text" placeholder="City" aria-label="City" value={f.mail_city} onChange={set("mail_city")} />
           <input className="cc-field" style={{ flex: 1, minWidth: 0 }} type="text" placeholder="ST" maxLength={2} aria-label="State" value={f.mail_state} onChange={set("mail_state")} />

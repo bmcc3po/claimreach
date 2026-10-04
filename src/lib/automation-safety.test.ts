@@ -102,6 +102,7 @@ async function main() {
   for (const [name, change] of [
     ['archived', (db: Db) => { db.tables.leads[0].archived_at = NOW; }],
     ['test', (db: Db) => { db.tables.claims[0].status = 'test'; }],
+    ['nonbinding rehearsal', (db: Db) => { db.tables.leads[0].source_key = 'test_lead'; }],
     ['DQ', (db: Db) => { db.tables.claims[0].status = 'dq'; }],
     ['custom DQ', (db: Db) => { db.tables.claims[0].status = 'custom_dq'; }],
     ['signed status', (db: Db) => { db.tables.claims[0].status = 'signed_qa'; }],

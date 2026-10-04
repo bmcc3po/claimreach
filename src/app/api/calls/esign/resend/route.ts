@@ -6,6 +6,7 @@ import { normPhone } from "@/lib/comms";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided } from "@/lib/mva-call/signing-matter";
 import { recordAudit } from "@/lib/audit";
 import { readPendingSendAttempt, SEND_HELD_MESSAGE } from "@/lib/mva-call/send-attempt";
+import { readRehearsal, rehearsalRecipientAllowed } from '@/lib/mva-call/rehearsal';
 
 export const runtime = "edge";
 
@@ -37,11 +38,16 @@ export async function POST(req: NextRequest) {
   if (alternate && b?.recipient_confirmed !== true) return NextResponse.json({ error: "Confirm the client wants their agreement sent to this number.", needs_recipient_confirm: true }, { status: 400 });
 
   if (context.lead.perm_text === false) return NextResponse.json({ error: "The PNC asked not to be texted." }, { status: 409 });
+  let rehearsal;
+  try { rehearsal = await readRehearsal(sb, context.lead, context.campaignId); }
+  catch { return NextResponse.json({ error: 'Could not verify the agreement type. Nothing was sent.' }, { status: 503 }); }
+  if (rehearsal && !rehearsalRecipientAllowed(rehearsal, 'Text', phone))
+    return NextResponse.json({ error: 'This nonbinding test link can only go to the approved test phone.' }, { status: 409 });
   const admin = supabaseAdmin();
   const { data: firm } = await admin.from("firms").select("name").eq("id", row.firm_id).maybeSingle();
   const from = process.env.JUSTCALL_DEFAULT_FROM || "";
   if (!from) return NextResponse.json({ error: "No JustCall number is set (JUSTCALL_DEFAULT_FROM)." }, { status: 500 });
-  const body = `${firmSpoken(firm?.name)}: here is your agreement link again. ${row.sign_url}`;
+  const body = rehearsal ? `NONBINDING TEST for ${row.signer_name}: software rehearsal link. No representation or medical authorization. ${row.sign_url}` : `${firmSpoken(firm?.name)}: here is your agreement link again. ${row.sign_url}`;
   const sent = await sendJustCallSms({ to: phone, from, body });
   if (!sent.ok) return NextResponse.json({ error: sent.error }, { status: 502 });
   const logged = await admin.from("communications").insert({

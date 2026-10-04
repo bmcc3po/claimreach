@@ -1,4 +1,5 @@
 "use client";
+import AddressLookup from "../AddressLookup";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -551,7 +552,7 @@ function AddContact({
         <>
           <label className="m6-field">
             <span>Street</span>
-            <input value={street} onChange={(e) => setStreet(e.target.value)} />
+            <AddressLookup value={street} near={[city, state].filter(Boolean).join(", ")} onText={setStreet} onPick={a => { setStreet(a.addr1); setCity(a.city); setState(a.state); setZip(a.zip); }} />
           </label>
           <div className="m6-lor-grid">
             <label className="m6-field">

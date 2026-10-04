@@ -33,14 +33,14 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   // separate signed upload and must never appear as an INNO payable deal.
   const { data: submissions, error } = await sb.from("esign_submissions")
     .select("id,lead_id,claim_id,call_id,sent_by,signer_name,signed_at,completed_at,created_at,status,voided_at,replacement_requested_at,agent_reviewed_at,completed_pdf_path,cert_pdf_path,pax_index")
-    .is("pax_index", null).order("created_at", { ascending: false }).limit(3000);
+    .order("created_at", { ascending: false }).limit(3000);
   if (error) throw new Error(`Could not load signed packets: ${error.message}`);
   const leadIds = [...new Set((submissions || []).map((row) => row.lead_id))];
   const claimIds = [...new Set((submissions || []).map((row) => row.claim_id).filter(Boolean))] as string[];
   const callIds = [...new Set((submissions || []).map((row) => row.call_id).filter(Boolean))] as string[];
   const userIds = [...new Set((submissions || []).map((row) => row.sent_by).filter(Boolean))] as string[];
   const [leads, claims, calls, users, deliveries] = await Promise.all([
-    inChunks(sb, "leads", "id,lead_no,claimant_name,campaign,case_type,firm_id,firm_sent_at,archived_at", "id", leadIds),
+    inChunks(sb, "leads", "id,lead_no,claimant_name,campaign,case_type,firm_id,firm_sent_at,archived_at,external_id", "id", leadIds),
     inChunks(sb, "claims", "id,lead_id,campaign,campaign_id,claim_type,status,firm_id,firm_sent_at", "id", claimIds),
     inChunks(sb, "intake_calls", "id,agent_id,agent_name", "id", callIds),
     inChunks(sb, "app_users", "id,full_name", "id", userIds),

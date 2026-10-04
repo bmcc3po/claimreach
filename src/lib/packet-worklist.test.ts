@@ -2,6 +2,24 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mondayOf, packetWorklist, pacificDay, pacificCalendarDay, pacificDayStartUtc } from "./packet-worklist";
 
+test("each passenger's own signed file remains visible without signing or delivering the driver", () => {
+  const driver = "00000000-0000-4000-8000-000000000001";
+  const rows = packetWorklist({
+    submissions: [
+      { id: "driver-unsent", lead_id: driver, claim_id: "driver-claim", pax_index: null, created_at: "2026-10-01T00:00:00Z", status: "sent" },
+      ...["one", "two"].map((id, i) => ({ id, lead_id: id, claim_id: `${id}-claim`, pax_index: i, signed_at: "2026-10-02T00:00:00Z", created_at: "2026-10-02T00:00:00Z", status: "signed" })),
+      { id: "legacy", lead_id: driver, claim_id: "driver-claim", pax_index: 2, signed_at: "2026-10-01T00:00:00Z", created_at: "2026-10-01T00:00:00Z", status: "signed" },
+    ],
+    leads: [{ id: driver, case_type: "mva", claimant_name: "TEST driver" }, ...["one", "two"].map(id => ({ id, case_type: "mva", claimant_name: `TEST passenger ${id}`, external_id: `${driver}:pax:${id}` }))],
+    claims: ["one", "two"].map(id => ({ id: `${id}-claim`, lead_id: id, claim_type: "mva", status: "signed_grievous" })),
+    calls: [], users: [], firms: [], deliveries: [{ lead_id: "one", claim_id: "one-claim", ok: true, created_at: "2026-10-03T00:00:00Z" }],
+  });
+  assert.deepEqual(rows.map(row => row.leadId).sort(), ["one", "two"]);
+  assert.equal(rows.find(row => row.leadId === "one")?.stage, "delivered");
+  assert.equal(rows.find(row => row.leadId === "two")?.stage, "finish");
+  assert.ok(rows.every(row => row.name.startsWith("TEST passenger")));
+});
+
 test("archived signed packet stays visible until firm delivery is verified", () => {
   const rows = packetWorklist({
     submissions: [{ id: "s1", lead_id: "l1", claim_id: "c1", call_id: "i1", pax_index: null, signed_at: "2026-09-30T22:00:00Z", created_at: "2026-09-30T22:00:00Z", status: "completed", completed_pdf_path: "signed.pdf", cert_pdf_path: "cert.pdf", agent_reviewed_at: "2026-09-30T23:00:00Z" }],

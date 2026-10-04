@@ -6,6 +6,7 @@ import { packetsFor } from "@/lib/mva-call/esign";
 import { stampPreview } from "@/lib/mva-call/preview";
 import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
 import { getIdentityMetadata } from "@/lib/mva-call/identity";
+import { REHEARSAL_PACKET, rehearsalTemplates } from '@/lib/mva-call/rehearsal';
 
 export const runtime = "edge";
 
@@ -34,7 +35,8 @@ export async function GET(req: NextRequest) {
   if (!campaign || (campaign.firm_id && campaign.firm_id !== context.lead.firm_id)) return NextResponse.json({ error: "This matter's campaign is not available for its firm." }, { status: 409 });
   const templates = await sb.from("esign_templates").select("key").eq("campaign_id", context.campaignId).eq("provider", "docuseal");
   if (templates.error) return NextResponse.json({ error: "Could not read this campaign's agreement setup." }, { status: 503 });
-  const choice = agreementChoice(q("city"), q("nv_variant"), (templates.data ?? []).map((t: any) => String(t.key)));
+  const rehearsal = rehearsalTemplates(templates.data ?? [], context.lead);
+  const choice = agreementChoice(q("city"), q("nv_variant"), rehearsal.templates.map((t: any) => String(t.key)));
   if (!choice.available || !choice.key) return NextResponse.json({ error: choice.error }, { status: !choice.key || choice.variantError ? 400 : 409 });
   if (q("template_key") && q("template_key") !== choice.key) return NextResponse.json({ error: "Choose a contract permitted for the state where the wreck happened." }, { status: 400 });
   const { data: firm, error: firmError } = await sb.from("firms").select("slug").eq("id", context.lead.firm_id).maybeSingle();
@@ -42,7 +44,7 @@ export async function GET(req: NextRequest) {
   const packets = packetsFor(firm?.slug, context.matter.claim.claim_type ?? context.lead.case_type);
   if (!packets) return NextResponse.json({ error: "This campaign has no agreement set up to preview." }, { status: 404 });
   const key = choice.key;
-  const packet = (packets as any)[key];
+  const packet = rehearsal.rehearsal ? REHEARSAL_PACKET : (packets as any)[key];
   if (!packet) return NextResponse.json({ error: "This campaign's selected agreement has no preview packet." }, { status: 404 });
 
   // Show early DOB and saved-SSN presence without decrypting identity into a

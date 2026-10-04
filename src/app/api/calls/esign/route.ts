@@ -15,6 +15,7 @@ import { readIdentityForSigning } from "@/lib/mva-call/identity";
 import { UNSIGNED_AGREEMENT_STATUSES, agreementSendStatus } from "@/lib/mva-call/replacement";
 import { bindSendAttempt, finalizeSendAttempt, holdSendAttempt, markSendPending, readPendingSendAttempt, rejectSendAttempt, reserveSendAttempt, safeSendAttempt, SEND_HELD_MESSAGE } from "@/lib/mva-call/send-attempt";
 import { officeDateUS } from "@/lib/office-clock";
+import { REHEARSAL_PACKET, rehearsalKey, rehearsalRoot, rehearsalTemplates, rehearsalRecipientAllowed, syntheticName } from '@/lib/mva-call/rehearsal';
 
 export const runtime = "edge";
 
@@ -98,7 +99,15 @@ async function send(req: NextRequest) {
 
   const configured = await sb.from("esign_templates").select("key").eq("campaign_id", context.campaignId).eq("provider", "docuseal");
   if (configured.error) return NextResponse.json({ error: "Could not read this campaign's DocuSeal templates." }, { status: 503 });
-  const keys = (configured.data ?? []).map((t: any) => String(t.key));
+  const rehearsal = rehearsalTemplates(configured.data ?? [], lead);
+  const keys = rehearsal.templates.map((t: any) => String(t.key));
+  if (syntheticName(signer) && !rehearsal.rehearsal)
+    return NextResponse.json({ error: 'An owner must prepare the nonbinding rehearsal packet before sending a TEST agreement.' }, { status: 409 });
+  if (rehearsal.rehearsal) {
+    const root = await sb.from('leads').select('vendor_fields').eq('id', rehearsalRoot(lead)).eq('firm_id', lead.firm_id).eq('campaign_id', context.campaignId).maybeSingle();
+    if (root.error || !syntheticName(signer) || !syntheticName(injured) || !rehearsalRecipientAllowed(root.data?.vendor_fields?.signing_rehearsal, via, via === 'Text' ? phone || '' : email))
+      return NextResponse.json({ error: 'This nonbinding rehearsal only sends to its owner-approved test contacts, with TEST signer names.' }, { status: 409 });
+  }
   const choice = isMva ? agreementChoice(b?.city, b?.nv_variant, keys) : null;
   if (choice && !choice.available) return NextResponse.json({ error: choice.error }, { status: !choice.key || choice.variantError ? 400 : 409 });
   let key: string | null = choice?.key ?? String(b?.template_key || "").trim();
@@ -170,6 +179,7 @@ async function send(req: NextRequest) {
         created_by: me.id, assigned_agent: me.id, intake_agent_id: me.id,
         caller_is_self: signer === injured, caller_first: signer.split(/\s+/)[0] || null,
       };
+      if (rehearsal.rehearsal) ins.source_key = 'test_lead';
       // Same household: prefill the passenger's mailing address from this file.
       if (b?.pax_same_addr === true) {
         for (const k of ["mail_addr1", "mail_city", "mail_state", "mail_zip"]) {
@@ -225,10 +235,10 @@ async function send(req: NextRequest) {
 
   // Resolve the template only after the parent/child matter is validated.
   const packets = packetsFor(firm?.slug, target.matter.claim.claim_type ?? lead.case_type);
-  const packet = packets ? (packets as any)[key] : null;
+  const packet = rehearsal.rehearsal ? REHEARSAL_PACKET : packets ? (packets as any)[key] : null;
   let tpl: { template_id: string } | null = null;
   if (packet) {
-    const t = await templateFor(admin, { firmId: lead.firm_id, campaignId: context.campaignId, key, packet, origin: new URL(req.url).origin, actorId: me.id });
+    const t = await templateFor(admin, { firmId: lead.firm_id, campaignId: context.campaignId, key: rehearsal.rehearsal ? rehearsalKey(rehearsalRoot(lead)) : key, packet, origin: new URL(req.url).origin, actorId: me.id });
     if (!t.ok) return t.missing ? NextResponse.json({ error: t.error }, { status: 409 }) : failed(lead, me, t.error, { stage: "template", key });
     tpl = { template_id: t.templateId };
   } else {
@@ -379,7 +389,7 @@ async function send(req: NextRequest) {
   let textError: string | null = null;
   if (via === "Text") {
     const from = process.env.JUSTCALL_DEFAULT_FROM || "";
-    const body = `${firmSpoken(firm?.name)}: your agreement is ready to sign. ${client.embed_src}`;
+    const body = rehearsal.rehearsal ? `NONBINDING TEST for ${signer}: please complete this software rehearsal. No representation or medical authorization. ${client.embed_src}` : `${firmSpoken(firm?.name)}: your agreement is ready to sign. ${client.embed_src}`;
     const sent = from ? await sendJustCallSms({ to: phone!, from, body }) : { ok: false as const, error: "No JustCall number is set (JUSTCALL_DEFAULT_FROM)." };
     if (!sent.ok) textError = sent.error;
     else {
@@ -401,7 +411,7 @@ async function send(req: NextRequest) {
   await recordAudit({
     firm_id: lead.firm_id, lead_id: fileLeadId, actor: me.id, actor_name: me.name ?? "Agent", category: "retainer",
     description: `Sent the ${key === "OTHER" ? "AL/GA" : key === "NV" ? "Nevada tiered" : key === "NV_FLAT" ? "Nevada NON-TIERED" : key} agreement by ${via.toLowerCase()} to ${signer}.${replaced ? ` Replaces ${replaced.template_key || "prior agreement"}; correction: ${replacementReason}.` : ""}${nvReason ? ` Non-tiered approved: ${nvReason}.` : ""}`,
-    meta: { esign_id: row.id, submission_id: client.submission_id, via, ...(replaced ? { replacement_of: replaced.id, replacement_reason: replacementReason, supervisor_review_required: signedReplacement } : {}), ...(emergencyResign ? { emergency_resign_group: emergency.row.packet_group } : {}), ...(nvReason ? { nv_variant: "flat", nv_reason: nvReason } : {}) },
+    meta: { esign_id: row.id, submission_id: client.submission_id, via, ...(rehearsal.rehearsal ? { test_only: true } : {}), ...(replaced ? { replacement_of: replaced.id, replacement_reason: replacementReason, supervisor_review_required: signedReplacement } : {}), ...(emergencyResign ? { emergency_resign_group: emergency.row.packet_group } : {}), ...(nvReason ? { nv_variant: "flat", nv_reason: nvReason } : {}) },
   });
 
   const identity = { claim_id: signClaimId, agreement_id: row.id, lead_id: fileLeadId, template_key: key, replacement_of: replaced?.id || null, owner_review_required: signedReplacement };
@@ -480,7 +490,7 @@ export async function GET(req: NextRequest) {
   const templates = context.campaignId ? await sb.from("esign_templates").select("key, name").eq("campaign_id", context.campaignId).eq("provider", "docuseal") : { data: [], error: null };
   if (templates.error) return NextResponse.json({ error: "Could not read this campaign's agreement setup." }, { status: 503 });
   return NextResponse.json({ status: status === "completed" ? "signed" : agreementSendStatus(status), complete: status === "completed", pax,
-    claim_id: context.matter.claim.id, agreement_id: main?.id ?? null, templates: templates.data ?? [], case_type: context.matter.claim.claim_type, read_only: !!context.lead.archived_at,
+    claim_id: context.matter.claim.id, agreement_id: main?.id ?? null, templates: rehearsalTemplates(templates.data ?? [], context.lead).templates, case_type: context.matter.claim.claim_type, read_only: !!context.lead.archived_at,
     send_attempt: pending.attempt, pax_send_attempts: paxSendAttempts,
     emergency: emergency.row ? { group: emergency.row.packet_group, status: emergency.row.status, needs_resign: emergencySupersedes(main, emergency.row) } : null,
     agreement: main ? { id: main.id, status: main.status, via: main.via, phone: main.phone, email: main.email, template_key: main.template_key, sent_at: main.created_at, signed_at: main.signed_at, voided_at: main.voided_at, void_reason: main.void_reason } : null });

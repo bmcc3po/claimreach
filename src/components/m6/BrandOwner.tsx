@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import PlaceField from "../calls/PlaceField";
 import { guessBrand, isG6Property } from "@/lib/property-brand";
 import { brandHistoryForYear, type BrandHistoryEntry } from "@/lib/property-tool";
 import { huntQueries, openCorporatesPublicSearchUrl, OPENCORPORATES_PUBLIC_SEARCH, type HuntHit } from "@/lib/property-hunt";
@@ -286,7 +287,7 @@ export default function BrandOwner({ g6Only: g6Start = true }: { g6Only?: boolea
           </label>
           <label className="pt-field">
             <span>Last known address (recorded)</span>
-            <input value={llcAddress} onChange={(e) => setLlcAddress(e.target.value)} placeholder="123 Happy St, Gary IN" />
+            <PlaceField kind="address" label="Last known owner address" value={llcAddress} onChange={setLlcAddress} placeholder="123 Happy St, Gary IN" />
           </label>
           <button type="button" className="pt-btn" disabled={!!busy} onClick={() => void save()}>
             {busy === "save" ? "Saving…" : "Save recorded history"}

@@ -20,6 +20,7 @@ import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
 import ContractActions from "./ContractActions";
 import PassengerAgreement from "./PassengerAgreement";
+import FinishFileSteps from "./FinishFileSteps";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
@@ -576,11 +577,12 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-dsp" role="dialog" aria-label="Dispo">
 <div className="cc-dsp-n">
 <button className="cc-dsp-back" onClick={v.dispo.back}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>{v.dispo.saved ? "Review intake" : "Back to intake"}</button>
-<span className="cc-caller">Dispo</span>
+<span className="cc-caller">{v.dispo.isSigned ? "Finish this file" : "Call outcome"}</span>
 <span></span>
 </div>
 <div className="cc-dsp-b">
 {!!(v.dispo.editing) && (<>
+{v.dispo.isSigned && <FinishFileSteps current="call" />}
 <div className="cc-sec-h cc-first">How the call ended</div>
 <div className="cc-grp" role="radiogroup" aria-label="How the call ended">
 {(v.dispo.opts || []).map((o: any, i45: number) => (<Fragment key={i45}><button className={cx(o.cls)} role="radio" aria-checked={!!o.on} onClick={o.pick}><span>{o.label}</span>{!!(o.showCheck) && (<><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg></>)}{!!(o.showChange) && (<><span className="cc-d-change">Change<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span></>)}</button></Fragment>))}
@@ -607,14 +609,14 @@ function Dispo({ v }: { v: any }) {
 {!!(v.dispo.saved) && (<>
 <div className="cc-card" style={{alignItems: "center", textAlign: "center", gap: "8px", padding: "24px 16px"}}>
 <div className="cc-d-ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></div>
-<div className="cc-card-h">Dispo saved</div>
+<div className="cc-card-h">{v.dispo.isSigned ? "Call saved · continue below" : "Call saved"}</div>
 <div className="cc-cue" style={{margin: "0"}}>{v.dispo.savedNote}</div>
 {v.dispo.isSigned && <button type="button" className="cc-btn cc-go" onClick={v.reviewIntake}>Review intake answers</button>}
 </div>
 <div className="cc-grp">
 {(v.dispo.summary || []).map((r: any, i49: number) => (<Fragment key={i49}><div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">{r.k}</span><span className="cc-done-v">{r.v}</span></div></Fragment>))}
 </div>
-{v.dispo.isSigned && <FinalHandoff key={`${v.leadId}:${v.claimId}`} leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} canOverrideDownload={v.canOverrideDownload} />}
+{v.dispo.isSigned && <FinalHandoff key={`${v.leadId}:${v.claimId}`} leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} onAgreement={v.returnToAgreement} canOverrideDownload={v.canOverrideDownload} />}
 </>)}
 {!!v.dispo.hasError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.dispo.error}</div></div>}
 </div>

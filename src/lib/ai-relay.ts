@@ -36,15 +36,17 @@ export async function callProxy(system: string, user: string, signal?: AbortSign
   return { answer: d.answer ?? "" };
 }
 
-export async function askRelay(system: string, user: string, signal?: AbortSignal): Promise<string> {
-  try {
-    const d = await callRelayDirect(system, user, signal);
-    if (d.answer) return d.answer;
-  } catch { /* edge couldn't reach .ts.net */ }
-  try {
-    const d = await callProxy(system, user, signal);
-    if (d.answer) return d.answer;
-  } catch { /* both failed */ }
+export async function askRelay(system: string, user: string, signal?: AbortSignal, options: { preferProxy?: boolean } = {}): Promise<string> {
+  // Interactive extraction uses the configured public bridge first. Waiting
+  // for a private-network connection can otherwise consume its whole budget.
+  const calls = options.preferProxy && PROXY_URL ? [callProxy, callRelayDirect] : [callRelayDirect, callProxy];
+  for (const call of calls) {
+    if (signal?.aborted) break;
+    try {
+      const d = await call(system, user, signal);
+      if (d.answer) return d.answer;
+    } catch { /* try the other configured transport within the same deadline */ }
+  }
   return "";
 }
 

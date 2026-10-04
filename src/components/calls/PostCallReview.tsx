@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import IntakeQuestion from "./IntakeQuestion";
 import { DobField, SsnField } from "./SsnDob";
 import { SsnRefusal } from "./SsnRefusal";
+import PlaceField from "./PlaceField";
+import FinishFileSteps from "./FinishFileSteps";
 
 /** A quiet, editable answer sheet between disposition and final firm QA. */
 export default function PostCallReview({ v }: { v: any }) {
@@ -14,16 +16,18 @@ export default function PostCallReview({ v }: { v: any }) {
   const field = (label: string, value: any, type = "text") => <div className="post-review-row" key={label}>
     <label>{label}</label><input type={type} value={value.value ?? ""} onChange={value.set} aria-label={label} />
   </div>;
-  const finalQa = <button type="button" className="post-review-next" disabled={!!v.reviewBusy} onClick={() => void v.returnToFinalQa()}>
-    {v.reviewBusy ? "Saving answers…" : "Continue to final QA & send"}
+  const finalQa = <button type="button" className="post-review-next finish-file-pulse" disabled={!!v.reviewBusy} onClick={() => void v.returnToFinalQa()}>
+    {v.reviewBusy ? "Saving answers…" : "Next: review PDFs & send →"}
   </button>;
 
   return <main className="post-review" aria-label="Review intake answers">
     <header className="post-review-header">
-      <div><span className="post-review-eyebrow">Call disposition saved</span><h1>Review intake</h1><p>{v.callerName} · {v.leadNo}</p></div>
+      <div><span className="post-review-eyebrow">Finish this file</span><h1>Review intake</h1><p>{v.callerName} · {v.leadNo}</p></div>
       {finalQa}
     </header>
     <div className="post-review-body">
+      <FinishFileSteps current="review" />
+      <p className="finish-file-instruction">Check the answers, then continue to the PDFs and send. Look for <b>Sent to firm</b> before moving to your next file.</p>
       <div className="post-review-status" role="status">
         <strong>{missing.length ? `${missing.length} required answer${missing.length === 1 ? "" : "s"} missing` : "All required answers captured"}</strong>
         <span>{v.saveBad ? v.saveError : v.saveText || "Answers save as you go"}</span>
@@ -49,7 +53,7 @@ export default function PostCallReview({ v }: { v: any }) {
         <div id="sf-q-contact-email">{field("Email", v.f.email, "email")}</div>
         <div className="post-review-row"><label>Date of birth</label><DobField value={v.f.dob.value ?? ""} onChange={(value: string) => v.f.dob.set({ target: { value } })} /></div>
         <div className="post-review-row"><label>Social Security number</label><div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(mode: string) => v.f.ssnMode.set({ target: { value: mode } })} onChange={(value: string) => v.f.ssn.set({ target: { value } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /><SsnRefusal v={v} /></div></div>
-        <div id="sf-q-contact-address">{field("Home address", v.f.addr)}</div>
+        <div id="sf-q-contact-address" className="post-review-row"><label>Home address</label><PlaceField kind="address" label="Home address" value={v.f.addr.value || ""} onChange={value => v.f.addr.set({ target: { value } })} /></div>
         {field("Driver’s license", v.f.dl)}
         {field("Emergency contact", v.f.ecName)}
         {field("Emergency phone", v.f.ecPhone, "tel")}

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import PlaceField from "./calls/PlaceField";
 
 export function VitalsCard({ lead }: { lead: any }) {
   const [edit, setEdit] = useState(false);
@@ -26,7 +27,7 @@ export function VitalsCard({ lead }: { lead: any }) {
         {[["phone","Phone"],["email","Email"],["address","Address"],["best_time","Best time"],["language","Language"],["est_value","Est. value"]].map(([k,l]) => (
           <div className="field" key={k} style={{ marginBottom: 8 }}>
             <label style={{ fontSize: 12 }}>{l}</label>
-            <input value={f[k]} onChange={(e) => set(k, e.target.value)} />
+            {k === "address" ? <PlaceField kind="address" label={l} value={f[k]} onChange={v => set(k, v)} /> : <input value={f[k]} onChange={(e) => set(k, e.target.value)} />}
           </div>
         ))}
       </div>

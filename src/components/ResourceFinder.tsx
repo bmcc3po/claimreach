@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import PlaceField from "./calls/PlaceField";
 
 const CATEGORIES = [
   { id: "police", label: "Police", icon: "🚓" },
@@ -40,7 +41,7 @@ export default function ResourceFinder({ defaultAddress = "" }: { defaultAddress
         <div className="card" style={{ padding: 16, marginBottom: 14 }}>
           <label>Client address or city</label>
           <div className="row" style={{ gap: 8, marginTop: 6 }}>
-            <input placeholder="123 Main St, Las Vegas NV" value={near} onChange={(e) => setNear(e.target.value)} />
+            <PlaceField kind="address" label="Client address or city" placeholder="123 Main St, Las Vegas NV" value={near} onChange={setNear} />
             <button className="btn" onClick={() => search()} disabled={loading}>{loading ? "…" : "Search"}</button>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
@@ -78,7 +79,7 @@ export default function ResourceFinder({ defaultAddress = "" }: { defaultAddress
           <h3>Add your own</h3>
           <input placeholder="Name" value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} style={{ marginBottom: 6 }} />
           <input placeholder="Phone" value={custom.phone} onChange={(e) => setCustom({ ...custom, phone: e.target.value })} style={{ marginBottom: 6 }} />
-          <input placeholder="Address / notes" value={custom.address} onChange={(e) => setCustom({ ...custom, address: e.target.value })} style={{ marginBottom: 8 }} />
+          <PlaceField kind="address" label="Resource address" placeholder="Address / notes" value={custom.address} onChange={address => setCustom({ ...custom, address })} />
           <button className="btn ghost" onClick={addCustom}>+ Add resource</button>
         </div>
       </div>

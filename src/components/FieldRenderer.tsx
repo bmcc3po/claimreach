@@ -132,7 +132,7 @@ export default function FieldRenderer({
       : (field.options ?? []).map((o) => ({ value: o, label: o }));
 
   const body = (() => {
-  switch (field.kind) {
+  switch (field.kind === "text" && ["mail_addr1", "ec_mail", "ec_address"].includes(field.id) ? "address" : field.kind) {
     case "text":
     case "monthyear": {
       if (field.lookup === "city") {
@@ -190,6 +190,7 @@ export default function FieldRenderer({
       return (
         <div className="field">{label}{spoken}{note}
           <AddressLookup
+            label={field.label}
             value={String(value ?? "")}
             near={answers?.incident_city_state}
             onText={(a1) => onChange(a1)}
@@ -205,9 +206,9 @@ export default function FieldRenderer({
               const sib = SIBLINGS[field.id];
               if (sib && onSetField) {
                 onChange(a.addr1);
-                if (a.city) onSetField(sib.city, a.city);
-                if (a.state) onSetField(sib.state, a.state);
-                if (a.zip) onSetField(sib.zip, a.zip);
+                onSetField(sib.city, a.city);
+                onSetField(sib.state, a.state);
+                onSetField(sib.zip, a.zip);
               } else {
                 // Nowhere to split it, so keep the whole address in one field
                 // rather than silently dropping the city and zip.
