@@ -5,9 +5,11 @@ import ts from "typescript";
 import { FakeDb } from "../../../../lib/test-fake-db";
 import { isInternalRole } from "../../../../lib/permissions";
 import { nullifyEmpty } from "../../../../lib/coerce";
+import { intakeFirmScope } from "../../../../lib/intake-firm-scope";
 
 function harness(options: { role?: string; editable?: boolean; firm?: string; campaign?: string; hidden?: boolean } = {}) {
   const db = new FakeDb({
+    firms: [{ id: "firm", slug: "tmp" }, { id: "intake-team", slug: "inno" }],
     leads: options.hidden ? [] : [{ id: "lead", firm_id: "firm", campaign_id: options.campaign ?? "campaign", case_type: "mva", archived_at: null, marketing_source: null, esign_date: null }],
     campaigns: [{ id: "campaign", firm_id: "firm", name: "INNO MVA", case_type: "mva", active: true }, { id: "other", firm_id: "firm", name: "OTHER", case_type: "mva", active: true }],
   });
@@ -21,6 +23,7 @@ function harness(options: { role?: string; editable?: boolean; firm?: string; ca
     "@/lib/gate": { gateUser: async () => user },
     "@/lib/permissions": { isInternalRole },
     "@/lib/coerce": { nullifyEmpty },
+    "@/lib/intake-firm-scope": { intakeFirmScope },
     "@/lib/audit": { recordAudit: async (entry: any) => { audit.push(entry); } },
   };
   const out: any = {};
@@ -32,6 +35,15 @@ function harness(options: { role?: string; editable?: boolean; firm?: string; ca
 }
 
 async function main() {
+  const staff = harness({ firm: "intake-team" });
+  assert.equal((await staff.save({ case_summary: "Synthetic summary" })).status, 200);
+  assert.equal(staff.db.tables.leads[0].case_summary, "Synthetic summary");
+  assert.equal(staff.audit[0].firm_id, "firm");
+  for (const mutation of [(h: any) => h.db.tables.firms[0].slug = "tmt", (h: any) => h.db.tables.firms[1].slug = "other-org"]) {
+    const h = harness({ firm: "intake-team" }); mutation(h);
+    assert.equal((await h.save({ case_summary: "Blocked" })).status, 403);
+    assert.equal(h.audit.length, 0);
+  }
   for (const options of [{ role: "firm" }, { editable: false }, { firm: "other-firm" }, { campaign: "other" }, { hidden: true }]) {
     const h = harness(options);
     const result = await h.save({ marketing_source: "Synthetic" });

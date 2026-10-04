@@ -13,6 +13,7 @@ import { setClaimStatusForLeads } from "../../../lib/claim-status";
 import { DEFAULT_STATUSES, manualIntakeStatusAllowed } from "../../../lib/statuses";
 import { intakeStatusTransitionBlock } from "../../../lib/intake-status-guard";
 import * as mailTimeZone from "../../../lib/mail-time-zone";
+import { intakeFirmScope } from "../../../lib/intake-firm-scope";
 
 function harness(role = "agent") {
   const db = new FakeDb({
@@ -61,6 +62,7 @@ function harness(role = "agent") {
     "@/lib/intake-status-guard": { intakeStatusTransitionBlock },
     "@/lib/permissions": { can, isInternalRole },
     "@/lib/mail-time-zone": mailTimeZone,
+    "@/lib/intake-firm-scope": { intakeFirmScope },
     "@/lib/claim-properties": { coercePropCol: () => { throw new Error("Unexpected property write"); } },
   };
   const source = fs.readFileSync(path.resolve(__dirname, "route.ts"), "utf8");
@@ -79,6 +81,43 @@ function harness(role = "agent") {
 
 const tests: [string, () => Promise<void>][] = [];
 const test = (name: string, fn: () => Promise<void>) => tests.push([name, fn]);
+
+test("Innovative intake agent saves TMP contacts and ordinary status with the recipient firm's audit", async () => {
+  const h = harness();
+  h.db.tables.app_users[0].firm_id = "intake-team";
+  h.db.tables.firms.push({ id: "intake-team", slug: "inno" });
+  const patch = { phone: "2025550199", email: "test@example.invalid", mail_addr1: "1 Test Rd", mail_city: "Test City", mail_state: "CA", mail_zip: "94043" };
+  assert.equal((await h.save(patch)).status, 200);
+  for (const [key, value] of Object.entries(patch)) assert.equal(h.row()[key], value);
+  assert.equal(h.audit[0].firm_id, "firm", "contact audit follows the matter, not the staff organization");
+  assert.equal((await h.status()).status, 200);
+  assert.equal(h.db.tables.claims[0].status, "contacting");
+});
+
+test("intake organization exception never admits a different team, firm, campaign or archived file", async () => {
+  for (const change of [
+    (h: any) => h.db.tables.firms[1].slug = "other-team",
+    (h: any) => h.db.tables.firms[0].slug = "tmt",
+    (h: any) => h.db.tables.campaigns[0].name = "NETFLY ONTAKE",
+    (h: any) => h.db.tables.campaigns[0].active = false,
+    (h: any) => h.db.tables.campaigns[0].firm_id = "foreign-firm",
+    (h: any) => h.row().archived_at = "2026-10-04T00:00:00Z",
+  ]) {
+    const h = harness(); h.db.tables.app_users[0].firm_id = "intake-team";
+    h.db.tables.firms.push({ id: "intake-team", slug: "inno" }); change(h);
+    assert.ok([403, 409].includes((await h.save({ phone: "2025550199" })).status));
+    assert.equal(h.writes().length, 0);
+  }
+});
+
+test("unreadable or hidden intake organization fails closed without losing contact data", async () => {
+  for (const fail of [false, true]) {
+    const h = harness(); h.db.tables.app_users[0].firm_id = "intake-team";
+    if (fail) h.db.failOn = op => op.table === "firms" ? "Organization lookup failed" : null;
+    assert.equal((await h.save({ phone: "2025550199" })).status, fail ? 503 : 403);
+    assert.equal(h.writes().length, 0); assert.equal(h.row().phone, "2025550110");
+  }
+});
 
 test("contact and stage mutations reject another firm and another campaign before writing", async () => {
   for (const mutate of [(h: any) => { h.row().firm_id = "other"; }, (h: any) => {

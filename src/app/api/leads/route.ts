@@ -10,6 +10,7 @@ import { can, isInternalRole } from "@/lib/permissions";
 import { manualIntakeStatusAllowed } from "@/lib/statuses";
 import { intakeStatusTransitionBlock } from "@/lib/intake-status-guard";
 import { inferMailTimeZone } from "@/lib/mail-time-zone";
+import { intakeFirmScope } from "@/lib/intake-firm-scope";
 
 export const runtime = "edge";
 
@@ -29,7 +30,9 @@ async function editableLead(sb: Awaited<ReturnType<typeof supabaseServer>>, u: N
   if (!lead) return { error: "File not found.", status: 404 } as const;
   if (lead.archived_at) return { error: "Restore this file before editing it.", status: 409 } as const;
   if (u.role !== "owner") {
-    if (!u.firm_id || lead.firm_id !== u.firm_id || !lead.campaign_id || lead.case_type !== "mva")
+    const access = await intakeFirmScope(sb, { role: u.role, firmId: u.firm_id }, lead.firm_id);
+    if (!access.ok) return access;
+    if (!lead.campaign_id || lead.case_type !== "mva")
       return { error: "Only your firm's INNO MVA files are available.", status: 403 } as const;
     const { data: camp, error: campError } = await sb.from("campaigns")
       .select("id,firm_id,name,case_type,active").eq("id", lead.campaign_id).maybeSingle();
@@ -243,7 +246,7 @@ export async function POST(req: NextRequest) {
       const unique = Array.from(new Set(changed));
       if (unique.length) {
         const desc = unique.length <= 3 ? `Updated ${unique.join(", ")}.` : `Updated ${unique.length} contact fields.`;
-        await recordAudit({ firm_id: u.firm_id, lead_id, actor: u.uid, actor_name: (u as any).full_name, category: "contact", description: desc, meta: { fields: unique } });
+        await recordAudit({ firm_id: scope.lead.firm_id, lead_id, actor: u.uid, actor_name: (u as any).full_name, category: "contact", description: desc, meta: { fields: unique } });
       }
     }
 
@@ -291,7 +294,7 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     await sb.from("lead_activity").insert({
-      firm_id: u.firm_id, lead_id, kind: "stage_change",
+      firm_id: scope.lead.firm_id, lead_id, kind: "stage_change",
       actor: u.uid, body: stage, meta: { stage },
     });
     return NextResponse.json({ ok: true });
@@ -305,8 +308,8 @@ export async function POST(req: NextRequest) {
     // side effects. A guessed hidden lead/claim must never reach an admin query.
     const context = await resolveSigningMatter(sb, String(lead_id), { claimId: claim_id ? String(claim_id) : null });
     if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
-    if (u.role !== "owner" && context.lead.firm_id !== u.firm_id)
-      return NextResponse.json({ error: "This file belongs to another firm." }, { status: 403 });
+    const access = await intakeFirmScope(sb, { role: u.role, firmId: u.firm_id }, context.lead.firm_id);
+    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
     if (u.role !== "owner") {
       const { lead, matter } = context;
       const [campaigns, firm] = await Promise.all([
