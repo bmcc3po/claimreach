@@ -2,6 +2,7 @@ import { resolveMatter, matterRowsFilter, rowBelongsToMatter, type MatterResult 
 import { paxParentId } from "@/lib/linked-files";
 import { LEAD_CALL_COLS } from "./server";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { CALLER_FIRST, clientSignatureConfirmed } from './passenger-signing';
 
 export type SigningMatter = Extract<MatterResult, { ok: true }>;
 type Failure = { ok: false; status: number; error: string; ambiguous?: boolean };
@@ -82,4 +83,18 @@ export async function getMatterEmergency(db: any, lead: any, matter: SigningMatt
 export function emergencySupersedes(primary: any, emergency: any): boolean {
   if (!emergency || ["cancelled", "declined"].includes(emergency.status)) return false;
   return !primary || Date.parse(emergency.created_at) > Date.parse(primary.created_at);
+}
+
+/** Check current, matter-scoped evidence before a passenger file or send is created. */
+export async function requireCallerSignatureForPassenger(db: any, context: SigningContext): Promise<{ ok: true } | Failure> {
+  const agreement = await getMatterAgreement(db, context.lead, context.matter);
+  if (!agreement.ok) return agreement;
+  const row = agreement.row;
+  if (!row || agreementIsVoided(row) || !row.signed_at || !clientSignatureConfirmed(row.status)) {
+    return { ok: false, status: 409, error: CALLER_FIRST };
+  }
+  const emergency = await getMatterEmergency(db, context.lead, context.matter);
+  if (!emergency.ok) return emergency;
+  if (emergencySupersedes(row, emergency.row)) return { ok: false, status: 409, error: CALLER_FIRST };
+  return { ok: true };
 }
