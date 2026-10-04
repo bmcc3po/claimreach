@@ -234,7 +234,7 @@
 }
 
 /* A single form with a visible sequence, on desktop and on phones. */
-.nf-flow{max-width:920px;min-height:100vh;background:#fff;padding:24px 32px 90px}
+.nf-flow{width:100%;max-width:1600px;min-height:100vh;background:#fff;padding:28px clamp(24px,4vw,64px) 90px}
 .nf-flow .nf-head{margin:0 0 12px}
 .nf-flow .nf-head h1{margin:10px 0 5px}
 .nf-flow .nf-head p{font-size:14px}
