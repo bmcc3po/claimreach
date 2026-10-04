@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import * as callNowSort from "../../lib/mva-call/call-now-sort";
+import * as navigation from "../../lib/navigation";
 import * as links from "../../lib/mva-call/links";
 import * as deskTypes from "../../lib/mva-call/desk-types";
 import { pilotStaffPageAllowed } from "../../lib/inno-pilot-access";
@@ -29,6 +31,8 @@ const text = (tree: any): string => Array.isArray(tree) ? tree.map(text).join(""
 const events = new EventTarget();
 const fakeWindow = { location: { pathname: "/app/TMP-SYNTH", search: "?claim=exact-claim&text=1" }, dispatchEvent: events.dispatchEvent.bind(events), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), history: { replaceState() {} } };
 const modules: Record<string, any> = {
+  "@/lib/mva-call/call-now-sort": callNowSort,
+  "@/lib/navigation": navigation,
   react: React, "@/components/ui/Icon": { default: () => null },
   "@/components/SignOut": { default: function SignOut() { return null; } },
   "@/lib/mva-call/links": links, "@/lib/mva-call/desk-types": deskTypes,
@@ -43,14 +47,23 @@ function load(file: string) {
   return exports.default;
 }
 const Chrome = load("DeskChrome.tsx");
+for (const route of ["/leads", "/signed", "/packets", "/leads/TMP-SYNTH?claim=exact-claim"]) {
+  assert.equal(navigation.activeNavigation(route, navigation.primaryNavigation(true)), "/leads");
+}
+assert.equal(navigation.activeNavigation("/app/help/netfly", navigation.primaryNavigation(false)), "/app/help");
+assert.equal(navigation.activeNavigation("/app/netfly/TMP-SYNTH", navigation.primaryNavigation(false)), "/app");
+assert.equal(navigation.activeNavigation("/application", navigation.primaryNavigation(false)), "");
+assert.deepEqual(navigation.FILE_VIEWS.map(view => view.href), ["/leads", "/signed", "/packets"], "all existing file queries stay reachable");
 for (const role of ["agent", "qa", "manager", "admin", "owner"]) {
   const instance = fresh(), props = { name: "Synthetic Operator", role };
   const tree = render(instance, Chrome, props);
   const hrefs = nodes(tree).filter(n => n.type === "a").map(n => n.props.href);
-  if (role === "owner") assert.ok(hrefs.includes("/leads") && hrefs.includes("/signed") && hrefs.includes("/profile"));
+  if (role === "owner") assert.ok(hrefs.includes("/leads") && hrefs.includes("/profile"));
   else {
     for (const href of hrefs) assert.ok(pilotStaffPageAllowed(new URL(href, "https://example.invalid").pathname), `${role}: ${href}`);
-    assert.ok(hrefs.includes("/app?tab=signed")); assert.ok(hrefs.includes("/app?tab=due"));
+    assert.ok(hrefs.includes("/app"));
+    assert.equal(hrefs.includes("/leads"), false);
+    assert.equal(hrefs.includes("/packets"), false);
     assert.equal(hrefs.includes("/profile"), false);
     assert.ok(nodes(tree).some(n => n.type?.name === "SignOut"), "staff retain the existing account sign-out action");
   }

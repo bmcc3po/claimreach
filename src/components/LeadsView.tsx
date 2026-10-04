@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
+import FileNavigation from "./FileNavigation";
 import TierBadge from "./TierBadge";
 import Icon from "./ui/Icon";
 import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, resolveStatus, type StatusDef, type DqReason } from "@/lib/statuses";
@@ -270,6 +271,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
 
   return (
     <div>
+      {ownerWorklist && !isFirm && <FileNavigation />}
       <div className="cl-head">
         <div>
           <h1 className="cl-h1">{title}<small>{rows.length}{rows.length !== leads.length ? ` of ${leads.length}` : ""}</small></h1>
@@ -283,7 +285,6 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
             </div>
           )}
           {!isFirm && <a className="cl-btn" href={exportHref} title={active.length ? "Every standard field for the matters these filters show (the tab and search box are not applied)" : "Every standard field, the same names every webhook uses"}><Icon name="download" size={16} />Export</a>}
-          {ownerWorklist && <Link className="cl-btn" href="/packets">Signed packets waiting to send</Link>}
           {!isFirm && <a className="cl-btn" href="/api/export?format=neos" title="The older NEOS column layout">NEOS export</a>}
           {!isFirm && addPath && addPath !== basePath && <Link className="cl-btn" href={addPath}><Icon name="userplus" size={16} />Add lead</Link>}
         </div>

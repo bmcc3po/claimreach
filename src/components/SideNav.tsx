@@ -14,31 +14,25 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Icon from "./ui/Icon";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { primaryNavigation, activeNavigation, type PrimaryNavItem } from "@/lib/navigation";
 
-type NavItem = { href: string; icon: string; label: string; adminOnly?: boolean; ownerOnly?: boolean; qaOnly?: boolean; staffOnly?: boolean; why?: string };
+type NavItem = PrimaryNavItem & { adminOnly?: boolean; ownerOnly?: boolean; qaOnly?: boolean; staffOnly?: boolean; why?: string };
 type NavGroup = { id: string; label: string | null; items: NavItem[]; staffOnly?: boolean; folded?: boolean };
 
 const STAFF_GROUPS: NavGroup[] = [
-  { id: "main", label: null, items: [
-    { href: "/dashboard", icon: "home", label: "Dashboard" },
-    { href: "/leads", icon: "files", label: "Leads" },
-    { href: "/signed", icon: "signed", label: "Signed" },
-    { href: "/packets", icon: "files", label: "Signed packets to firm", ownerOnly: true },
-    { href: "/call-activity", icon: "chart", label: "Call activity" },
-    { href: "/queue", icon: "queue", label: "My queue" },
-    { href: "/app/help", icon: "book", label: "Agent guides" },
+  { id: "main", label: null, items: primaryNavigation(true) },
+  { id: "reporting-v2", label: "Reports & activity", folded: true, items: [
+    { href: "/reports", icon: "chart", label: "Reports", why: "Reads live data. Saved views and scheduled sends are not built." },
+    { href: "/call-activity", icon: "phone", label: "Call activity" },
     { href: "/qa", icon: "shield", label: "QA queue", qaOnly: true },
   ]},
-  { id: "calls", label: "Desk", items: [
-    { href: "/app", icon: "mobile", label: "ClaimReach Desk" },
-    { href: "/app?new=1", icon: "headset", label: "Take a call" },
-    { href: "/intake", icon: "userplus", label: "Add lead", staffOnly: true },
-  ]},
-  { id: "ai", label: "AI tools", items: [
+  { id: "tools-v2", label: "Help & tools", folded: true, items: [
     { href: "/crissi", icon: "life", label: "Crissi", why: "Live answers need the AI relay up." },
     { href: "/maverick", icon: "spark", label: "Maverick", why: "Coaching needs the AI relay." },
+    { href: "/board", icon: "chart", label: "Delivery Board", why: "Nothing feeds the clocks yet." },
+    { href: "/grievous", icon: "shield", label: "Grievous", why: "The QA pipeline runs outside the app." },
   ]},
-  { id: "admin", label: "Admin", staffOnly: true, items: [
+  { id: "management-v2", label: "Manage", staffOnly: true, folded: true, items: [
     { href: "/team", icon: "people", label: "Team", staffOnly: true },
     { href: "/users", icon: "user", label: "Users", adminOnly: true },
     { href: "/firms", icon: "building", label: "Firms", adminOnly: true },
@@ -46,25 +40,10 @@ const STAFF_GROUPS: NavGroup[] = [
     { href: "/integrations", icon: "plug", label: "Integrations", adminOnly: true, why: "Timed automations (drips, delayed steps) do not run yet." },
     { href: "/settings", icon: "gear", label: "Settings", staffOnly: true },
   ]},
-  // Screens that exist but are not doing the job their label implies. Kept
-  // reachable, folded away so they cannot be mistaken for finished.
-  { id: "more", label: "More", staffOnly: true, folded: true, items: [
-    { href: "/reports", icon: "chart", label: "Reports", why: "Reads live data. Saved views and scheduled sends are not built." },
-    { href: "/board", icon: "chart", label: "Delivery Board", why: "Nothing feeds the clocks yet." },
-    { href: "/grievous", icon: "shield", label: "Grievous", why: "The QA pipeline runs outside the app." },
-  ]},
 ];
 
 const PILOT_GROUPS: NavGroup[] = [
-  { id: "main", label: null, items: [
-    { href: "/dashboard", icon: "home", label: "Dashboard" },
-    { href: "/queue", icon: "queue", label: "My queue" },
-    { href: "/app/help", icon: "book", label: "Agent guides" },
-  ]},
-  { id: "calls", label: "Desk", items: [
-    { href: "/app", icon: "mobile", label: "ClaimReach Desk" },
-    { href: "/app?new=1", icon: "headset", label: "Take a call" },
-  ]},
+  { id: "main", label: null, items: primaryNavigation(false) },
 ];
 
 const FIRM_GROUPS: NavGroup[] = [
@@ -83,17 +62,6 @@ const FIRM_GROUPS: NavGroup[] = [
 // Role titles as people say them. The owner account is the Operator.
 const ROLE_TITLE: Record<string, string> = { owner: "Operator", admin: "Admin", manager: "Manager", qa: "QA", agent: "Agent" };
 
-function navMatch(pathname: string, href: string) {
-  const path = href.split("?")[0];
-  if (href.includes("?")) return false;
-  if (pathname === path) return true;
-  return path !== "/" && pathname.startsWith(path + "/");
-}
-function bestHref(pathname: string, hrefs: string[]) {
-  const m = hrefs.filter((h) => navMatch(pathname, h));
-  m.sort((a, b) => b.length - a.length);
-  return m[0] ?? "";
-}
 const initials = (name: string) => (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
 const fmtPhone = (raw?: string | null) => {
   const d = String(raw || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
@@ -118,7 +86,7 @@ export default function SideNav({
   const GROUPS = isFirm ? FIRM_GROUPS : pilot ? PILOT_GROUPS : STAFF_GROUPS;
   const homeHref = isFirm ? "/portal" : "/dashboard";
   const allItems = GROUPS.flatMap((g) => g.items);
-  const current = bestHref(pathname, allItems.map((n) => n.href));
+  const current = activeNavigation(pathname, allItems);
   const currentLabel = allItems.find((n) => n.href === current)?.label ?? "";
 
   const [min, setMin] = useState(false);
@@ -179,7 +147,11 @@ export default function SideNav({
             const items = g.items.filter(allowed);
             if (!items.length) return null;
             const holdsCurrent = items.some((n) => n.href === current);
-            const isClosed = !!g.label && !!closed[g.id] && !holdsCurrent && !min;
+            const isClosed = !!g.label && !!closed[g.id] && !holdsCurrent;
+            if (min && !open && g.label) return <div key={g.id} className="cl-sec"><button className="cl-nl cl-mini-group" title={g.label} aria-label={g.label} onClick={() => {
+              setMin(false); write("cr-nav-min", "0");
+              setClosed((c) => ({ ...c, [g.id]: false }));
+            }}><Icon name={g.id === "management-v2" ? "gear" : g.id === "reporting-v2" ? "chart" : "toolbox"} /></button></div>;
             return (
               <div key={g.id} className="cl-sec">
                 {g.label && (
@@ -204,7 +176,6 @@ export default function SideNav({
             <div className="cl-menu" role="menu">
               <a role="menuitem" href={isFirm ? "/portal/profile" : "/profile"}><Icon name="user" size={16} />Profile</a>
               <button role="menuitem" onClick={toggleTheme}><Icon name={theme === "light" ? "moon" : "sun"} size={16} />{theme === "light" ? "Dark mode" : "Light mode"}</button>
-              {!isFirm && <a role="menuitem" href="/app"><Icon name="mobile" size={16} />ClaimReach Desk</a>}
               <div className="cl-menu-sep" />
               <button role="menuitem" onClick={signOut}><Icon name="logout" size={16} />Sign out</button>
             </div>
@@ -220,13 +191,13 @@ export default function SideNav({
 
       <div className="cl-main">
         <header className="cl-top">
-          <button className="cl-iconbtn cl-burger" onClick={() => setOpen((o) => !o)} aria-label="Open the menu"><Icon name="menu" size={20} /></button>
+          <button className="cl-iconbtn cl-burger" onClick={() => setOpen((o) => !o)} aria-label={open ? "Close the menu" : "Open the menu"} aria-expanded={open}><Icon name="menu" size={20} /></button>
           <button className="cl-iconbtn cl-collapse" onClick={toggleMin} aria-label={min ? "Show the full menu" : "Shrink the menu"} title={min ? "Show the full menu" : "Shrink the menu"}><Icon name="sidebar" size={18} /></button>
           <span className="cl-crumb">{currentLabel}</span>
           {!isFirm ? <LeadSearch basePath={pilot ? "/app" : "/leads"} /> : <span style={{ flex: 1 }} />}
           <div className="cl-top-r">
             {!isFirm && role !== "firm" && (
-              <a className="cl-btn cl-gold" href="/app?new=1"><Icon name="headset" size={16} /><span className="cl-hide-sm">CREATE NEW LEAD</span></a>
+              <a className="cl-btn cl-gold" href="/app?new=1" aria-label="New call"><Icon name="headset" size={16} /><span className="cl-hide-sm">New call</span></a>
             )}
             {topRight}
           </div>
