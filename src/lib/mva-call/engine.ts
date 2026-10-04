@@ -897,18 +897,8 @@ export class CallEngine {
     rows.push(G('car', 'Others in the car'));
     rows.push({ isChips: true, label: 'Passengers', lcls: lc('who'), chipsCls: 'chips list', chips: [
       { label: 'Just me', cls: 'chip sm' + (s.car.justMe ? ' on' : ''), pick: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }) },
-      { label: 'Add passenger', cls: 'chip add', pick: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ name: '', rel: null, age: null, hurt: null }]) } }) }
+      { label: 'Yes — details later', cls: 'chip' + (s.car.othersPresent || s.car.people.length ? ' on' : ''), pick: () => this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true } }) }
     ] });
-    s.car.people.forEach((p, i) => {
-      var opt = (key: any, pairs: any) => pairs.map((v) => ({ label: v[1], cls: 'chip sm' + (p[key] === v[0] ? ' on' : ''), pick: () => this.setPerson(i, key, p[key] === v[0] ? null : v[0]) }));
-      rows.push({ isPerson: true, p: {
-        name: p.name, setName: (e: any) => this.setPerson(i, 'name', e.target.value),
-        remove: () => this.setState({ car: Object.assign({}, this.state.car, { people: this.state.car.people.filter((x, j) => j !== i) }) }),
-        ages: opt('age', [['Under 18', 'Under 18'], ['Adult', 'Adult']]),
-        hurts: opt('hurt', [['Yes', 'Hurt'], ['No', 'Not hurt']])
-      } });
-    });
-
     rows.push(G('send', 'Agreement'));
     rows.push({ isInfo: true, label: 'Agreement', value: this.agreementFor(st.city) || 'Needs where the wreck happened (city, state)' });
     rows.push(I('Signer full name', 'send', 'client', ''));
@@ -1394,7 +1384,7 @@ export class CallEngine {
             editing: editing, flash: fi.flash === id,
             showAsk: !!x.ask,
             paths: QUESTION_PATHS[id],
-            cue: (BODYQ.find(q => q.key === id) || {}).cue || (id === 'people' ? 'Ask when possible. If there was a passenger, add them to their own file and agreement.' : ''),
+            cue: (BODYQ.find(q => q.key === id) || {}).cue || (id === 'people' ? 'Ask whether anyone else was in the car.' : ''),
             soreness: id === 'pain' && b.pain.includes(FINE) ? this.firmText(REBS.find(r => r.id === 'soreness').text) : '',
             focus: () => { if (this.state.fi.cq !== id) this.setFi({ cq: id, sec: sec.id, target: id }); },
             edit: () => this.setFi({ cq: id, target: id, sec: sec.id, edit: fi.edit === id ? null : id, flash: null }),
@@ -1946,6 +1936,7 @@ export class CallEngine {
       sayingFine: b.pain.indexOf(FINE) >= 0 && !b.done.pain,
       soreness: this.firmText(REBS.find((r: any) => r.id === 'soreness').text),
       bodyComplete: !q && (b.rep !== 'Yes' || this.repGood(b)),
+      passengersPresent: !!s.car.othersPresent || s.car.people.length > 0,
       justMeCls: 'chip' + (s.car.justMe ? ' on' : ''),
       justMe: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }),
       addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, dob: '', cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
