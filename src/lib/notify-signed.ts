@@ -46,6 +46,7 @@ import { leadKeyOf } from "@/lib/lead-key";
 import { resolveSigningMatter, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { matterRowsFilter, rowBelongsToMatter } from "@/lib/matter";
 import { paxParentId } from "@/lib/linked-files";
+import { readRehearsal, syntheticName } from '@/lib/mva-call/rehearsal';
 
 export interface NotifyRoute {
   event: string;
@@ -198,6 +199,13 @@ export async function notifySigned(admin: any, row: any, origin = "https://claim
     }
     const lead = { ...context.lead, campaign_id: context.campaignId,
       campaign: context.matter.claim.campaign, case_type: context.matter.claim.claim_type };
+    if (syntheticName(row.signer_name)) {
+      const rehearsal = await readRehearsal(admin, lead, context.campaignId);
+      if (rehearsal) {
+        await settle({ notify_state: 'no_recipient', notify_error: 'Nonbinding rehearsal: team notices suppressed. Use manual final delivery to approved test recipients.' });
+        return 'no_recipient';
+      }
+    }
     const { data: routes, error: routeErr } = await admin.from("notify_routes")
       .select("event, case_type, campaign_id, to_emails, cc_emails, active").eq("event", "signed").eq("active", true);
     if (routeErr) {

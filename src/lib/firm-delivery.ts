@@ -38,6 +38,7 @@ import { beginFirmDispatch, finishFirmDispatch } from "@/lib/firm-delivery-dispa
 import { sameName, paxParentId } from "@/lib/linked-files";
 import { importedOriginals, verifiedImportedPdfs } from "@/lib/imported-packet";
 import { netflyPacketReview, netflyPacketBytes } from "@/lib/netfly-packet";
+import { readRehearsal, rehearsalRecipientAllowed } from '@/lib/mva-call/rehearsal';
 
 interface Attachment { filename: string; content: string; kind: string; } // content = base64
 
@@ -342,6 +343,17 @@ export async function deliverLeadToFirm(opts: {
   }
 
   // Tokens for mail-merge (client + case + campaign), from THIS claim.
+  // Synthetic signing exercises use the normal packet/review/delivery checks,
+  // but cannot email an unapproved destination or trigger an automatic send.
+  let testDelivery = false;
+  if (lead.source_key === 'test_lead') {
+    let rehearsal;
+    try { rehearsal = await readRehearsal(db, lead, claim.campaign_id || null); }
+    catch (e) { return refuse(errText(e)); }
+    if (!rehearsal || opts.triggeredBy !== 'manual' || [to, ...cc].some(address => !rehearsalRecipientAllowed(rehearsal, 'Email', address)))
+      return refuse('This nonbinding rehearsal can only be manually delivered to the owner-approved test emails.');
+    testDelivery = true;
+  }
   const answers: Record<string, any> = (claim.answers ?? {}) as Record<string, any>;
   const tokens = retainerTokens(lead, answers);
   tokens["campaign.name"] = cfg.name || claim.campaign || lead.campaign || "";
@@ -350,6 +362,10 @@ export async function deliverLeadToFirm(opts: {
 
   subject = fillTemplate(String(cfg.firm_subject_tpl || DEFAULT_SUBJECT), tokens);
   let bodyHtml = fillTemplate(String(cfg.firm_body_tpl || DEFAULT_BODY), tokens);
+  if (testDelivery) {
+    subject = `[NONBINDING TEST] ${subject}`;
+    bodyHtml = '<p><strong>SOFTWARE REHEARSAL ONLY. No client representation or medical authorization. All enclosed signing pages are nonbinding test documents.</strong></p>' + bodyHtml;
+  }
 
   // ---- Assemble the selected attachments ----
   const nameBase = safeName(lead.claimant_name || lead.lead_no || "claimant");

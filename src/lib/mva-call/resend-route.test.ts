@@ -5,6 +5,7 @@ import path from "node:path";
 import ts from "typescript";
 import { toE164 } from "../justcall-send";
 import { normPhone } from "../comms";
+import { rehearsalRecipientAllowed } from './rehearsal';
 
 globalThis.fetch = async () => { throw Error("Network forbidden"); };
 function harness(change: Record<string, any> = {}) {
@@ -21,6 +22,10 @@ function harness(change: Record<string, any> = {}) {
     "@/lib/mva-call/server": { requireStaff: async () => change.unauthorized ? null : ({ id: "agent", name: "Synthetic Agent" }), firmSpoken: (s: string) => s },
     "@/lib/justcall-send": { toE164, sendJustCallSms: async (sms: any) => { sent.push(sms); return change.providerFailure ? { ok: false, error: "Provider rejected this number" } : { ok: true }; } },
     "@/lib/comms": { normPhone },
+    "@/lib/mva-call/rehearsal": { rehearsalRecipientAllowed, readRehearsal: async () => {
+      if (change.rehearsalReadFailure) throw Error('Rehearsal read failed');
+      return change.rehearsal ? { version: 1, phone: '+12025550100', emails: [] } : null;
+    } },
     "@/lib/audit": { recordAudit: async (data: any) => audits.push(data) },
     "@/lib/mva-call/send-attempt": { SEND_HELD_MESSAGE: "Send held", readPendingSendAttempt: async () => change.reservationFailure ? { ok: false, status: 503, error: "Could not verify reservation" } : { ok: true, attempt: change.held ? { id: "pending" } : null } },
     "@/lib/mva-call/signing-matter": {
@@ -58,6 +63,13 @@ async function main() {
     const h = harness(change); assert.ok((await h.post({ phone: "2025550101", recipient_confirmed: true })).status >= 400); assert.equal(h.sent.length, 0);
   }
   const fail = harness({ providerFailure: true }); assert.equal((await fail.post()).status, 502); assert.equal(fail.logged.length, 0); assert.equal(fail.audits.length, 0);
+  const rehearsal = harness({ rehearsal: true });
+  assert.equal((await rehearsal.post({ phone: '2025550101', recipient_confirmed: true })).status, 409);
+  assert.equal(rehearsal.sent.length, 0);
+  assert.equal((await rehearsal.post()).status, 200);
+  assert.match(rehearsal.sent[0].body, /NONBINDING TEST/);
+  const unreadable = harness({ rehearsalReadFailure: true });
+  assert.equal((await unreadable.post()).status, 503); assert.equal(unreadable.sent.length, 0);
   const logging = harness({ logFailure: true }), success = await logging.post(); assert.equal(success.body.ok, true); assert.match(success.body.warning, /text was sent/); assert.equal(logging.sent.length, 1);
   console.log("20 same-link resend, alternate recipient, authorization and failure scenarios passed");
 }
