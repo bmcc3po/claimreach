@@ -57,8 +57,27 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
       {c.unavailable && choices([c.unavailable])}
     </>;
     case "people": return <>
-      {!review && <p className="iq-cue">Every passenger is their own file if they want representation. Capture their details here while you are on the phone.</p>}
-      {choices([c.justMe, ...(c.others ? [c.others] : [])])}<button type="button" className="fi-add" onClick={c.add}>+ Add a passenger</button>
+      {choices([c.justMe, ...(c.others ? [c.others] : [])])}
+      {!review && <p className="iq-cue">Passenger details come after the caller signs, in Retainer.</p>}
+      {review && <PassengerDetails c={c} v={v} presentation={presentation} review />}
+    </>;
+    case "car": return <div className="fi-car">
+      <select className={input} aria-label="Vehicle year" value={c.year.value} onChange={c.year.set}>{c.year.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
+      <input className={input} placeholder="Make" aria-label="Vehicle make" value={c.make.value ?? ""} onChange={c.make.set} />
+      <input className={input} placeholder="Model" aria-label="Vehicle model" value={c.model.value ?? ""} onChange={c.model.set} />
+    </div>;
+    default: return null;
+  }
+}
+
+/** The same saved passenger controls, shown after signing or in file review. */
+export function PassengerDetails({ c, v, presentation = "full", review = false, agreement }: { c: any; v: any; presentation?: IntakePresentation; review?: boolean; agreement?: (person: any) => React.ReactNode }) {
+  const p = presentation === "form" ? "sf" : presentation === "chore" ? "ch" : "fi";
+  const input = `${p}-in`;
+  const choices = (opts: any[]) => <IntakeChoices opts={opts} presentation={presentation} />;
+  const field = (label: string, content: React.ReactNode) => <div className="iq-field"><div className="iq-field-label">{label}</div>{content}</div>;
+  return <>
+      <button type="button" className="fi-add" onClick={c.add}>+ Add a passenger</button>
       {(c.people || []).map((person: any, i: number) => <div key={person.id || i} className={`${p}-person iq-person`}>
         <div className="fi-addrow"><input className={input} placeholder="Passenger's name" aria-label="Passenger's name" value={person.name ?? ""} onChange={person.setName} /><button type="button" className="fi-add" onClick={person.remove}>Remove</button></div>
         {field("Relationship", choices(choicesFromClasses(person.rels)))}
@@ -75,20 +94,13 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
             </> : !review && <div className="iq-cue">The parent or guardian signs. The child goes on the HIPAA pages.</div>}
             {field("Willing to treat", choices(choicesFromClasses(person.willings)))}
             {field("Home address", choices(choicesFromClasses(person.sameAddrs)))}
-            {!review && <p className="iq-cue">Finish the caller’s signature first. Passenger agreements follow in Retainer.</p>}
             {review && v.passengerLinks?.[person.id] && <a className="iq-passenger-link" href={`/app/${v.passengerLinks[person.id]}`} target="_blank" rel="noopener noreferrer">Open {person.first}'s file ↗</a>}
           </div>}
           {person.wantsRep === "No" && !review && <div className="iq-cue iq-warning">They declined representation. Do not send an agreement.</div>}
         </>}
+        {agreement?.(person)}
       </div>)}
-    </>;
-    case "car": return <div className="fi-car">
-      <select className={input} aria-label="Vehicle year" value={c.year.value} onChange={c.year.set}>{c.year.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
-      <input className={input} placeholder="Make" aria-label="Vehicle make" value={c.make.value ?? ""} onChange={c.make.set} />
-      <input className={input} placeholder="Model" aria-label="Vehicle model" value={c.model.value ?? ""} onChange={c.model.set} />
-    </div>;
-    default: return null;
-  }
+  </>;
 }
 
 export function QuestionDetails({ q, v, presentation = "full", review = false }: { q: any; v: any; presentation?: IntakePresentation; review?: boolean }) {

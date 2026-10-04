@@ -22,7 +22,7 @@ import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
 import ContractActions from "./ContractActions";
-import PassengerAgreement from "./PassengerAgreement";
+import PassengerFollowup from "./PassengerFollowup";
 
 const isOn = (cls: string) => / on(\s|$)/.test(" " + String(cls || "") + " ");
 
@@ -132,7 +132,7 @@ function Retainer({ v }: { v: any }) {
       </div>
     </>)}
     {v.signed && <><Say label={SIGNED.label} line={SIGNED.line} /><SignedInlineReview v={v} /></>}
-    {(v.paxSend || []).map((p: any) => <PassengerAgreement key={p.id} p={p} v={v} />)}
+    <PassengerFollowup v={v} presentation="chore" />
     {/* Identity stays editable after sending; completion still uses the
         signature/review lock supplied by the shared engine. */}
     <>

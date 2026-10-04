@@ -53,7 +53,7 @@ test('post-call review shows the same editable answers and missing links without
   const v = { ...e.renderVals(), leadNo: 'SYN-1', identityStatus: '', f: e.renderVals().f };
   const html = renderToStaticMarkup(<PostCallReview v={v} />);
   assert.ok(html.includes('Rear ended at a stoplight.') && html.includes('Accident story notes'));
-  assert.ok(html.includes('Show missing answers') && html.includes('Continue to final QA &amp; send'));
+  assert.ok(html.includes('Show missing answers') && html.includes('Next: review PDFs &amp; send →'));
   assert.ok(!html.includes('Say it with') && !html.includes('Tell me what happened.') && !html.includes('Stay on the line'));
 });
 
@@ -84,20 +84,48 @@ test('representation followups, good-case condition and send gate agree in every
   for (const mode of modes) assert.ok(!text(question(render(e, mode, 'rep'), 'rep')).includes('Fender bender, low limits'));
 });
 
-test('hurt adult and minor passenger branches expose identical relationship, contact and representation fields', () => {
+test('passenger question stays early; saved details appear only after caller signature in every view', () => {
   const e = make();
+  const before = JSON.stringify(e.persistable().car);
   for (const mode of modes) {
-    const html = question(render(e, mode, 'people'), 'people');
-    for (const value of ['Relationship', 'Their own cell', 'Their own email', 'Wants representation', 'Willing to treat', 'Home address']) assert.ok(text(html).includes(value), `${mode}: ${value}`);
-    assert.ok(html.includes('type="email"'));
+    e.setState({ phase: 'car' });
+    const early = question(render(e, mode, 'people'), 'people');
+    assert.match(text(early), /Who else was in the car with you/);
+    assert.match(text(early), /Yes — details later/);
+    assert.doesNotMatch(early, /Passenger&#x27;s name|Their own cell|Their own email|Add a passenger/);
+    e.jumpTo('file');
+    assert.doesNotMatch(render(e, mode), /aria-label="Passenger details and agreements"/);
+  }
+  assert.equal(JSON.stringify(e.persistable().car), before, 'hidden fields keep saved answers');
+  e.setState({ send: { ...e.state.send, status: 'signed' } });
+  const followup = (mode: string) => { e.jumpTo('file'); return render(e, mode); };
+  for (const mode of modes) {
+    const html = followup(mode);
+    assert.match(html, /aria-label="Passenger details and agreements"/);
+    for (const value of ['Relationship', 'Their own cell', 'Their own email', 'Wants representation', 'Willing to treat', 'Home address']) assert.ok(text(html).includes(value), mode + ': ' + value);
+    assert.equal((html.match(/aria-label="Passenger&#x27;s name"/g) || []).length, 1);
   }
   e.setPerson(0, 'age', 'Under 18');
   for (const mode of modes) {
-    const html = question(render(e, mode, 'people'), 'people');
+    const html = followup(mode);
     assert.ok(!text(html).includes('Their own email')); assert.ok(text(html).includes('parent or guardian'));
   }
   e.setPerson(0, 'hurt', 'No');
-  for (const mode of modes) assert.ok(!text(question(render(e, mode, 'people'), 'people')).includes('Wants representation'));
+  for (const mode of modes) assert.ok(!text(followup(mode)).includes('Wants representation'));
+});
+
+test('yes without creating a passenger is saved and offers capture after signing', () => {
+  const e = make();
+  e.setState({ car: { justMe: false, people: [] } });
+  const q = () => e.renderVals().fi.sections.flatMap((s: any) => s.questions).find((q: any) => q.id === 'people');
+  q().c.others.pick();
+  assert.equal(q().answered, true);
+  const fresh = new CallEngine({ ...e.props, esign: { ...e.props.esign, status: 'signed' }, saved: e.persistable() }, api);
+  fresh.jumpTo('file');
+  assert.match(render(fresh, 'steps'), /Add a passenger/);
+  fresh.renderVals().addPerson();
+  fresh.renderVals().people[0].setName({ target: { value: 'New Synthetic Friend' } });
+  assert.equal(fresh.persistable().car.people[0].name, 'New Synthetic Friend');
 });
 
 test('pain soreness script, notes, date validation and conditional omissions match', () => {
@@ -206,7 +234,7 @@ test('five stages cover the canonical spine exactly once and render only the act
     assert.ok(!html.includes('aria-label="Call steps"'), 'no obsolete eight-phase navigation');
     assert.ok(!html.includes('Next section:'), 'no ungrouped section next action');
     if (index === 0) assert.ok(text(html).includes(openLine(e.callerFirst(), 'Test', 'Synthetic Firm')));
-    if (index === 3) assert.ok(html.includes("Every passenger is their own file"));
+    if (index === 3) assert.ok(html.includes("Passenger details come after the caller signs"));
     if (index === 4) assert.ok(html.includes('DOB and SSN are optional before sending') && html.includes('Send the agreement'));
   }
   assert.deepEqual([...rendered].sort(), QUESTION_ORDER.filter(id => e.fiInfo(id).applies).sort());
@@ -249,7 +277,7 @@ test('step layout keeps notes, missing-question jumps and signed passenger docum
   e.setState({ send: { ...e.state.send, status: 'signed' } });
   const v = { ...e.renderVals(), openFile() {}, ssnRequireFull: false };
   const html = renderToStaticMarkup(<CallView v={v} />);
-  assert.ok(html.includes('Review the signed retainer'));
+  assert.ok(html.includes('Next: review the signed retainer'));
   assert.ok(html.includes('Refresh signed copy'));
   assert.ok(html.includes('Synthetic Passenger'));
   assert.ok(html.includes('Walk') || html.includes('Before you hang up, say'));

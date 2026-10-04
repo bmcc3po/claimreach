@@ -16,7 +16,7 @@ import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
 import ContractActions from "./ContractActions";
-import PassengerAgreement from "./PassengerAgreement";
+import PassengerFollowup from "./PassengerFollowup";
 
 // Plain radio buttons (checkboxes for a pick-several question), like the
 // firm report: no pills (Brett, Sep 28).
@@ -154,7 +154,7 @@ export default function FormView({ v }: { v: any }) {
             {v.sendReady ? <div className="iq-script"><div className="iq-field-label">{MONEY.label}</div><p>{MONEY.line}</p><div className="iq-cue">{MONEY.cue}</div><p>{SEND_LINE}</p></div> : v.notSigned ? <div className="iq-script"><div className="iq-field-label">{STAY.label}</div><p>{STAY.line}</p>{walkThrough(v.firmSpoken).map((line: string, i: number) => <p key={i}>{line}</p>)}<div className="iq-cue">{NO_DEAD_AIR.map((line: string, i: number) => <p key={i}>{line}</p>)}</div></div> : <div className="iq-script"><div className="iq-field-label">{SIGNED.label}</div><p>{SIGNED.line}</p><div className="iq-cue">{SIGNED.cue}</div></div>}
             {v.signed && <SignedInlineReview v={v} />}
             <SignatureWaiting v={v} />
-            {(v.paxSend || []).map((p: any) => <PassengerAgreement key={p.id} p={p} v={v} />)}
+            <PassengerFollowup v={v} presentation="form" />
             {v.sendReady && <SendBlock v={v} where={where} />}
             {!!v.currentAgreement && <div className="cc-agreement-current"><span>Contract already sent</span><strong>{v.currentAgreement.label}</strong></div>}
             <FileBlock v={v} finish={r.next ? null : fi.chore?.finish} />
