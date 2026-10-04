@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import FinishFileSteps from "./FinishFileSteps";
 
 type Agreement = {
   id: string;
@@ -64,17 +65,18 @@ export default function SignedInlineReview({ v }: { v: any }) {
   const reviewable = agreement?.status === "signed" && !agreement.replacement_requested_at;
   const officeComplete = agreement?.status === "completed";
   const reviewed = !!agreement?.agent_reviewed_at;
-  const step = !reviewed ? 1 : !officeComplete ? 2 : !v.dispo?.saved ? 3 : 4;
-  const next = step === 1 ? "Review the signed retainer" : step === 2 ? "Finish the retainer" : step === 3 ? "Finish and disposition the call" : "QA and send the packet";
+  const step = officeComplete ? (!v.dispo?.saved ? 3 : 4) : !reviewed ? 1 : 2;
+  const next = step === 1 ? "Next: review the signed retainer" : step === 2 ? "Next: finish the agreement below" : step === 3 ? "Next: save the call and review" : "Next: review and send to the firm";
   const help = step === 1 ? "Open the PDF and approve the client's signature." : step === 2 ? "Collect DOB and SSN, or record SSN refusal. Complete the office step below." : step === 3 ? "Close the call, then record its outcome." : "Check your work and send the two PDFs from the final step.";
   return <section className="signed-inline" aria-label="Review signed retainer">
-    <div className="signed-inline-focus"><span>Signed retainer · Step {step} of 4</span><strong>{next}</strong><p>{help}</p></div>
+    <div className="signed-inline-focus"><span>Signature received · keep going</span><strong>{next}</strong><p>{help}</p><p>The finish line is <b>Sent to firm</b>.</p></div>
+    {!loading && agreement && ["signed", "completed"].includes(agreement.status) && <FinishFileSteps current={step <= 2 ? "agreement" : step === 3 ? "call" : "review"} />}
     {loading ? <p role="status">Loading signed copy…</p> : !agreement ? <p role="status">No signed agreement is on this file. Refresh before continuing.</p> : <>
       {previewUrl && step <= 2 ? <a className="signed-inline-preview" href={previewUrl} target="_blank" rel="noopener noreferrer" onClick={() => setOpened(agreement.id)}>{agreement.status === "signed" ? "Open client-signed retainer ↗" : "Open completed signed retainer ↗"}</a> : !previewUrl ? <p role="status">{["voided", "cancelled"].includes(agreement.status) ? "The latest agreement was voided. Correct it before continuing." : ["sent", "opened"].includes(agreement.status) ? "The latest agreement is awaiting the client's signature." : "The signed PDF is still being retrieved. Refresh before you approve or finish this file."}</p> : null}
       {reviewable && !agreement.agent_reviewed_at && <button type="button" className="signed-inline-approve" disabled={!previewUrl || opened !== agreement.id || busy} onClick={review}>{busy ? "Saving review…" : "Approve signed copy"}</button>}
       {step === 2 && <p className="signed-inline-done" role="status">Signature approved.</p>}
-      {step === 3 && <button type="button" className="signed-inline-next" onClick={v.openDispo}>Finish call and record outcome</button>}
-      {step === 4 && <button type="button" className="signed-inline-next" onClick={v.openDispo}>Open final QA and send</button>}
+      {step === 3 && <button type="button" className="signed-inline-next finish-file-pulse" onClick={v.openDispo}>Save call & review intake →</button>}
+      {step === 4 && <button type="button" className="signed-inline-next finish-file-pulse" onClick={v.openDispo}>Continue to firm delivery →</button>}
       {agreement.replacement_requested_at && <p className="signed-inline-error" role="status">Correction requested. Firm delivery is held for supervisor review.</p>}
     </>}
     {!!error && <p className="signed-inline-error" role="alert">{error}</p>}

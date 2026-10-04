@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import OwnerFirmDownload from "./OwnerFirmDownload";
 import { officeDateTime } from "@/lib/office-clock";
+import FinishFileSteps from "./FinishFileSteps";
 
 type DeliveryState = {
   claim_id: string;
@@ -18,7 +19,7 @@ const email = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 const returnEnd = (sentAt: string) => new Date(Date.parse(sentAt) + 7 * 86400000);
 
 /** The only post-call firm handoff in Desk. Status always comes from the server. */
-export default function FinalHandoff({ leadId, claimId, missing, onNext, canOverrideDownload = false }: { leadId: string; claimId: string; missing: { label: string; go: () => void }[]; onNext?: () => void; canOverrideDownload?: boolean }) {
+export default function FinalHandoff({ leadId, claimId, missing, onNext, onAgreement, canOverrideDownload = false }: { leadId: string; claimId: string; missing: { label: string; go: () => void }[]; onNext?: () => void; onAgreement?: () => void; canOverrideDownload?: boolean }) {
   const [state, setState] = useState<DeliveryState | null>(null);
   const [checks, setChecks] = useState([false, false, false]);
   const [extra, setExtra] = useState("");
@@ -63,6 +64,9 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, canOver
   const daysLeft = sentAt ? Math.max(0, Math.ceil((returnEnd(sentAt).getTime() - Date.now()) / 86400000)) : null;
   const intakeUrl = `/api/export/intake-pdf?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`;
   const intakePreviewUrl = `${intakeUrl}&preview=1`;
+  const nextReview = missing.length ? "answers" : !openedIntake ? "intake" : !packetUrl ? "packet-pending" : !openedPacket ? "packet" : !checks.every(Boolean) ? "checks" : "send";
+  const guideActive = !loading && !pending && !busy && !error;
+  const cue = (step: string) => guideActive && nextReview === step ? " finish-file-pulse" : "";
   const openPreview = (kind: "intake" | "packet") => {
     setPreview(kind);
     if (kind === "intake") setOpenedIntake(true);
@@ -105,23 +109,25 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, canOver
 
   return <section className={`final-handoff${sentAt ? " final-handoff-sent" : ""}`} aria-label="Final firm handoff">
     {celebrate && sentAt && <div className="firm-send-celebration" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((n) => <span key={n} style={{ left: `${8 + n * 14}%`, animationDelay: `${n * 0.18}s` }}>🎈</span>)}</div>}
-    <h2>{sentAt ? "Sent to firm" : "Final step: file ready for firm"}</h2>
+    <h2>{sentAt ? "Sent to firm" : "Last step: send this file"}</h2>
+    {!loading && state && <FinishFileSteps current={sentAt ? "sent" : "send"} />}
     {loading && <p>Checking this file’s delivery record…</p>}
     {sentAt ? <div role="status"><strong>{celebrate ? "File sent! You’re all done." : `Delivered ${officeDateTime(sentAt)}.`}</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${officeDateTime(returnEnd(sentAt).toISOString())}.` : "Seven-day return window cleared. Ready for billing review."}</p><p>Delivered to {state?.delivery?.to}; Brett received a copy.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Back to my calls</button>}</div> : state && <>
-      <p>The call is dispositioned. Review your own file, then send its two required PDFs together.</p>
+      <p className="finish-file-instruction" role="status">{nextReview === "answers" ? "Next: finish the missing answers below." : nextReview === "intake" ? "Next: open and check the intake PDF." : nextReview === "packet-pending" ? "Next: finish the agreement to make the signed packet available." : nextReview === "packet" ? "Next: open and check the signed packet." : nextReview === "checks" ? "Next: check the three review items below." : "Ready for your final send. Check the recipients below."} Look for <b>Sent to firm</b> to confirm you’re done.</p>
       {missing.length > 0 && <div className="final-handoff-error" role="alert"><strong>Intake incomplete: {missing.length} required answer{missing.length === 1 ? "" : "s"} missing.</strong><p>Finish these before the file can go to the firm.</p><ul>{missing.map((item, index) => <li key={`${item.label}-${index}`}><button type="button" onClick={item.go}>{item.label} ↗</button></li>)}</ul></div>}
-      <div className="final-handoff-docs" aria-label="Review the two PDFs before sending"><button type="button" onClick={() => openPreview("intake")}>1. Review intake PDF <span>{openedIntake ? "Opened ✓" : "Open PDF"}</span></button><button type="button" disabled={!packetUrl} onClick={() => openPreview("packet")}>2. Review signed retainer + HIPAA/HITECH <span>{!packetUrl ? "Packet pending" : openedPacket ? "Opened ✓" : "Open PDF"}</span></button></div>
+      <div className="final-handoff-docs" aria-label="Review the two PDFs before sending"><button type="button" className={cue("intake")} onClick={() => openPreview("intake")}>1. Review intake PDF <span>{openedIntake ? "Opened ✓" : "Open PDF"}</span></button><button type="button" className={cue("packet")} disabled={!packetUrl} onClick={() => openPreview("packet")}>2. Review signed retainer + HIPAA/HITECH <span>{!packetUrl ? "Packet pending" : openedPacket ? "Opened ✓" : "Open PDF"}</span></button></div>
+      {!packetUrl && onAgreement && <button type="button" className={`signed-inline-next${cue("packet-pending")}`} onClick={onAgreement}>Open agreement — finish or check status →</button>}
       {[
         "I checked the intake answers and contact details.",
         "I opened and approved the client-signed agreement and completed the office step.",
         "I checked the case criteria and there is no unresolved correction.",
-      ].map((label, index) => <label className="final-handoff-check" key={label}><input type="checkbox" checked={checks[index]} onChange={() => setChecks((old) => old.map((value, i) => i === index ? !value : value))} />{label}</label>)}
+      ].map((label, index) => <label className={`final-handoff-check${index === checks.indexOf(false) ? cue("checks") : ""}`} key={label}><input type="checkbox" checked={checks[index]} onChange={() => setChecks((old) => old.map((value, i) => i === index ? !value : value))} />{label}</label>)}
       <div className="final-handoff-address"><b>To firm:</b> {state.delivery.to || "Not configured"}<br /><b>Copy to Brett:</b> {owner || "Not configured"}</div>
       {state.prior_owner_only && <p className="final-handoff-error" role="status">An earlier email reached Brett only. The firm has not received the packet; the seven-day clock has not started.</p>}
       <label className="final-handoff-extra">Additional email addresses (optional)<input type="text" value={extra} onChange={(event) => setExtra(event.target.value)} placeholder="name@example.com, second@example.com" /></label>
       {!recipientsReady && <p className="final-handoff-error" role="alert">Firm delivery is held: the configured firm address is {firm === owner ? "Brett’s address" : "missing"}. Set the separate Turnbull delivery address first.</p>}
       {pending && <p className="final-handoff-error" role="alert">The last delivery outcome needs owner review. Do not retry it.</p>}
-      <button type="button" className="final-handoff-send" disabled={busy || pending || !recipientsReady || missing.length > 0} onClick={() => void send()}>{busy ? "Confirming and sending…" : "FILE IS READY FOR FIRM — SEND PACKET"}</button>
+      <button type="button" className={`final-handoff-send${recipientsReady ? cue("send") : ""}`} disabled={busy || pending || !recipientsReady || missing.length > 0} onClick={() => void send()}>{busy ? "Confirming and sending…" : "Send file to firm →"}</button>
     </>}
     {error && <p className="final-handoff-error" role="alert">{error}</p>}
     {canOverrideDownload && <OwnerFirmDownload leadId={leadId} claimId={claimId} />}
