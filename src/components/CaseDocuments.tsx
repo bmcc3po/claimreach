@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const DOC_TYPES = [{ id: "lor", label: "LOR" }, { id: "retainer", label: "Retainer" }, { id: "records", label: "Records" }, { id: "other", label: "Other" }];
 
@@ -8,21 +8,45 @@ export default function CaseDocuments({ leadId, claimId }: { leadId: string; cla
   const [docType, setDocType] = useState("lor");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const [loadedScope, setLoadedScope] = useState("");
+  const currentScope = useRef("");
+  currentScope.current = `${leadId}/${claimId ?? ""}`;
+  const scopeMatches = loadedScope === currentScope.current;
 
-  async function load() {
-    setLoading(true);
-    try { const r = await fetch(`/api/documents?lead=${leadId}`); const d = await r.json(); setDocs(d.docs ?? []); } catch {}
-    setLoading(false);
-  }
-  useEffect(() => { load(); }, [leadId]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const requestedScope = `${leadId}/${claimId ?? ""}`;
+    setLoading(true); setDocs([]); setError("");
+    const params = new URLSearchParams({ lead: leadId });
+    if (claimId) params.set("claim", claimId);
+    (async () => {
+      try {
+        const r = await fetch(`/api/documents?${params}`, { signal: controller.signal, cache: "no-store" });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Could not load documents.");
+        if (!controller.signal.aborted) setDocs(d.docs ?? []);
+      } catch (e: any) {
+        if (!controller.signal.aborted) setError(e.message || "Could not load documents.");
+      } finally { if (!controller.signal.aborted) { setLoadedScope(requestedScope); setLoading(false); } }
+    })();
+    return () => controller.abort();
+  }, [leadId, claimId, refresh]);
 
   async function upload(file: File) {
-    setBusy(true);
+    setBusy(true); setError("");
+    const startedScope = currentScope.current;
     const fd = new FormData();
     fd.append("file", file); fd.append("lead_id", leadId); if (claimId) fd.append("claim_id", claimId); fd.append("doc_type", docType);
-    const r = await fetch("/api/documents", { method: "POST", body: fd });
-    if (r.ok) await load();
-    setBusy(false);
+    try {
+      const r = await fetch("/api/documents", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Upload failed. Try again.");
+      if (currentScope.current === startedScope) setRefresh(n => n + 1);
+    } catch (e: any) {
+      if (currentScope.current === startedScope) setError(e.message || "Upload failed. Try again.");
+    } finally { setBusy(false); }
   }
 
   return (
@@ -39,9 +63,10 @@ export default function CaseDocuments({ leadId, claimId }: { leadId: string; cla
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Stored securely. Visible to both teams on this case.</p>
       </div>
 
-      {loading && <p className="muted">Loading…</p>}
-      {!loading && docs.length === 0 && <p className="muted">No documents yet.</p>}
-      {docs.map((d) => (
+      {(!scopeMatches || loading) && <p className="muted">Loading…</p>}
+      {scopeMatches && error && <p role="alert">{error} <button className="btn ghost sm" onClick={() => setRefresh(n => n + 1)}>Reload documents</button></p>}
+      {scopeMatches && !loading && !error && docs.length === 0 && <p className="muted">No documents yet.</p>}
+      {(scopeMatches ? docs : []).map((d) => (
         <div key={d.id} className="qcard row" style={{ justifyContent: "space-between" }}>
           <div>
             <span className="badge gold" style={{ marginRight: 8 }}>{d.doc_type}</span>
