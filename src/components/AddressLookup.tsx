@@ -10,4 +10,3 @@ export default function AddressLookup({ value, near, onText, onPick, label = "St
   return <PlaceField kind="address" streetOnly value={value || ""} near={near} label={label}
     placeholder="Start typing the street address" onChange={onText} onAddress={onPick} />;
 }
-

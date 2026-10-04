@@ -18,4 +18,3 @@ export function placeText(candidate: PlaceCandidate, kind: "address" | "city", t
   if (streetOnly) return parsed?.addr1 || "";
   return parsed ? joinUsAddress({ street: parsed.addr1, city: parsed.city, state: parsed.state, zip: parsed.zip }) : (candidate.address || "").replace(/,\s*(USA|United States)$/i, "");
 }
-

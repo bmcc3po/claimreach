@@ -79,4 +79,3 @@ export default function PlaceField({ kind, value, onChange, onPick, onAddress, o
     <style>{`.cr-place{position:relative;min-width:0;width:100%}.cr-place>input{width:100%;box-sizing:border-box;min-width:0}.cr-place-list{margin-top:5px;border:1px solid #bdcbd5;border-radius:8px;background:#fff;overflow:hidden;box-shadow:0 5px 14px #172d4212}.cr-place-list>button{display:block!important;width:100%;border:0!important;border-bottom:1px solid #e5ebef!important;border-radius:0!important;padding:12px!important;background:white!important;color:#172d42!important;text-align:left;font:inherit;line-height:1.4;cursor:pointer;overflow-wrap:anywhere}.cr-place-list>button:hover,.cr-place-list>button[aria-selected=true]{background:#edf7f3!important}.cr-place-list>small,.cr-place-status{display:block;padding:6px 10px;color:#586b79;font-size:12px}`}</style>
   </div>;
 }
-
