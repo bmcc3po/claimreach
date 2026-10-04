@@ -1,0 +1,63 @@
+.nf-home{max-width:1600px;min-height:100vh;padding:36px clamp(20px,4vw,64px) 64px;color:#202b2b;background:#fff}
+.nf-home .nf-back{color:#677572;font-size:13px;font-weight:500}
+.nf-home-heading{display:flex;justify-content:space-between;align-items:center;gap:24px;margin:32px 0 38px}
+.nf-home-heading h1{font-size:38px;letter-spacing:-.055em;line-height:1.1;margin:9px 0 12px;color:#202b2b}
+.nf-home-heading p{font-size:14px;color:#697572;margin:0;line-height:1.5}
+.nf-home-heading p:first-child{font-size:12px;letter-spacing:.025em}
+.nf-home-tools{display:flex;gap:18px;align-items:center}
+.nf-home button{font:inherit;cursor:pointer}
+.nf-home .nf-primary{background:#1f6254;border-color:#1f6254;border-radius:7px;font-size:14px;font-weight:600;box-shadow:none}
+.nf-home .nf-primary:hover{background:#174d42}
+.nf-home-settings,.nf-home-foot button{border:0;background:transparent;color:#65716e;padding:10px 0;font-size:13px!important}
+.nf-home button:focus-visible,.nf-home a:focus-visible{outline:2px solid #247a66;outline-offset:4px}
+.nf-home-filter{display:flex;align-items:center;justify-content:space-between;gap:22px;border-bottom:1px solid #e1e6e3}
+.nf-home-filter nav{display:flex;align-self:stretch;gap:26px}
+.nf-home-filter nav button{display:flex;align-items:center;gap:8px;min-height:52px;border:0;border-bottom:2px solid transparent;background:transparent;color:#6c7573;padding:10px 0;font-size:14px;white-space:nowrap}
+.nf-home-filter nav button[aria-pressed=true]{border-bottom-color:#1f6254;color:#214d42;font-weight:650}
+.nf-home-filter nav button span{font-size:11px;color:#71807a;background:#f1f4f2;padding:3px 6px;border-radius:4px;min-width:20px;text-align:center}
+.nf-home-filter input{width:230px;min-width:0;min-height:40px;margin-bottom:10px;border:1px solid #e0e5e2;border-radius:6px;padding:9px 12px;background:#fff;color:#243c34;font:inherit;font-size:14px}
+.nf-work-columns,.nf-work-row{display:grid;grid-template-columns:minmax(190px,1.15fr) minmax(180px,1.35fr) 172px;gap:28px;align-items:center}
+.nf-work-columns{padding:20px 0 12px;color:#83908a;font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+.nf-work-columns span:last-child{text-align:right}
+.nf-work-row{padding:25px 0;border-bottom:1px solid #e8ece9;text-decoration:none;color:inherit}
+.nf-work-row:hover{background:#fafcfb}
+.nf-work-client,.nf-work-status{display:grid;gap:7px;min-width:0;overflow-wrap:anywhere}
+.nf-work-client strong{font-size:16px;font-weight:650;letter-spacing:-.015em}
+.nf-work-row small{font-size:12px;color:#7a8780;line-height:1.45}
+.nf-work-status{font-size:13px;color:#61736a;line-height:1.5}
+.nf-work-presence{font-size:12px;color:#24765a;font-weight:650}
+.nf-work-presence::before{content:'●';font-size:9px;margin-right:6px}
+.nf-work-action{font-size:13px;font-weight:600;color:#24604f;text-align:right;display:flex;justify-content:flex-end;gap:12px;line-height:1.5}
+.nf-home-empty{color:#7b8681;font-size:15px;padding:60px 0;text-align:center}
+.nf-home-foot{display:flex;justify-content:space-between;gap:18px;align-items:center;padding-top:24px;color:#87928d;font-size:12px}
+.nf-home-foot button{font-size:12px!important;overflow-wrap:anywhere;text-align:right}
+.nf-home-import-warning{padding:13px 0;margin-bottom:20px;color:#875917;font-size:13px;border-bottom:1px solid #ede3d2;line-height:1.6}
+.nf-home-import-warning button{border:0;background:transparent;color:inherit;text-decoration:underline;padding:0 8px}
+.nf-home-dialog{width:min(620px,calc(100% - 28px));max-height:90dvh;padding:28px;border:1px solid #dce4df;border-radius:10px;color:#23352d;background:white;box-shadow:0 24px 80px #13282033;overflow:auto}
+.nf-home-dialog::backdrop{background:#172c2755}
+.nf-home-dialog>header{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:24px}
+.nf-home-dialog h2{font-size:21px;letter-spacing:-.03em;margin:0}
+.nf-home-dialog>header button{background:white;border:1px solid #dbe3de;border-radius:6px;padding:9px 13px;color:#53675b;min-height:44px}
+.nf-home-dialog .nf-panel{box-shadow:none;border:0;border-radius:0;padding:24px 0 0;margin:24px 0 0;border-top:1px solid #e1e7e3}
+.nf-home-dialog .nf-panel h2,.nf-home-dialog h3{font-size:16px}
+.nf-home-dialog p{font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.nf-home-dialog .nf-form{margin:0}
+.nf-home-dialog input,.nf-home-dialog textarea{border-color:#d8e1da;border-radius:6px}
+.nf-home-import h3{margin:0 0 8px}
+@media(max-width:760px){
+ .nf-home{padding:22px 20px 48px}
+ .nf-home-heading{align-items:flex-start;margin:28px 0 24px;gap:12px;flex-direction:column}
+ .nf-home-heading h1{font-size:32px}
+ .nf-home-tools{width:100%;justify-content:space-between;flex-direction:row-reverse}
+ .nf-home-filter{display:flex;flex-direction:column-reverse;gap:6px;align-items:stretch}
+ .nf-home-filter input{width:100%;margin:0}
+ .nf-home-filter nav{justify-content:space-between;gap:12px}
+ .nf-home-filter nav button{font-size:12px;gap:5px}
+ .nf-work-columns{display:none}
+ .nf-work-row{grid-template-columns:1fr;gap:12px;padding:22px 0}
+ .nf-work-client strong{font-size:16px}
+ .nf-work-action{justify-content:space-between;text-align:left;padding-top:4px}
+ .nf-home-foot{display:grid;gap:2px;padding-top:22px}
+ .nf-home-foot button{text-align:left}
+ .nf-home-dialog{padding:20px}
+}
