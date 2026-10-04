@@ -10,6 +10,7 @@ import NetflySendPacket from "./NetflySendPacket";
 import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, NETFLY_UNAVAILABLE_IDS, activeNetflyCall, netflyFlags, parseNetflyHandoff, validateNetflyCallClose, type NetflyCallClose, type NetflyField, type NetflyLiveCall } from "@/lib/netfly-ontake";
 import { NETFLY_WELCOME_STEPS as VERIFY_STEPS, NETFLY_FIRST_CALL_SOURCE_LABELS, NETFLY_FOLLOWUP_FIELDS, NETFLY_CLOSING_REMINDERS, netflyCareGuidance, netflyFirstCallSources, netflyFirstConversationReview } from "@/lib/netfly-first-conversation";
 import { joinUsAddress } from "@/lib/us-address";
+import PlaceField from "../calls/PlaceField";
 import { DEFAULT_DQ_REASONS } from "@/lib/statuses";
 import "./netfly.css";
 import "./netfly-workspace.css";
@@ -342,6 +343,7 @@ function Question({ field, value, set, save, unavailable = false, onUnavailable,
   return <div id={`nf-question-${field.id}`} className={`nf-question${active ? " nf-question-current" : ""}`} onFocusCapture={onEnter} onPointerDownCapture={onEnter}>{field.kind === "choice" ? <strong className="nf-question-label">{field.label}</strong> : <label htmlFor={`nf-${field.id}`}>{field.label}</label>}{field.hint && <p className="nf-muted">{field.hint}</p>}
     {field.kind === "choice" ? <div className="nf-options nf-quick-choices" role="radiogroup" aria-label={field.label}>{(field.choices || []).map(choice => <label key={choice} className={value === choice ? "selected" : ""}><input type="radio" name={field.id} checked={value === choice} onChange={() => choose(choice)} />{choice === "Not sure" ? "Not sure yet" : choice}</label>)}</div>
     : field.kind === "long" ? <textarea id={`nf-${field.id}`} value={value} onChange={(e) => set(e.target.value)} onBlur={(e) => void save(e.target.value)} />
+    : ["mailing_address", "first_provider_address", "current_provider_address", "road", "treatment_area"].includes(field.id) ? <PlaceField kind="address" id={`nf-${field.id}`} label={field.label} value={value} onChange={set} onPick={save} onBlur={save} />
     : <input id={`nf-${field.id}`} type={field.kind === "date" ? "date" : field.kind === "tel" ? "tel" : field.kind === "email" ? "email" : "text"} value={value} onChange={(e) => set(e.target.value)} onBlur={(e) => void save(e.target.value)} />}
     {onUnavailable && !value.trim() && <button type="button" className={`nf-unknown${unavailable ? " selected" : ""}`} aria-pressed={unavailable} onClick={onUnavailable}>{unavailable ? "Not available yet — follow up ✓" : "Not available yet"}</button>}</div>;
 }

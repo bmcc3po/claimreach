@@ -17,7 +17,7 @@ const LEAD = {
   email: "old@example.invalid", mail_addr1: "10 Test St", mail_city: "Las Vegas", mail_state: "NV", mail_zip: "89101",
   case_summary: "OLD_SUMMARY", call_outcome: "OLD_OUTCOME", case_tags: ["old"],
 };
-const type = (el: Node, value: any) => () => el.props.onChange({ target: { value } });
+const type = (el: Node, value: any) => () => el.props.onText ? el.props.onText(value) : el.props.onChange({ target: { value } });
 
 // ---------------------------------------------------------------- ContactInfo
 function contactInfo(lead: any = LEAD) {
@@ -294,9 +294,9 @@ t("CaseDetails: an in-flight old save cannot carry its queued tags onto the next
 const CARD_INITIAL = { phone: "2025550101", email: "old@example.invalid", mail_addr1: "10 Test St", mail_city: "Las Vegas", mail_state: "NV", mail_zip: "89101" };
 function contactCard(initial: Record<string, string> = CARD_INITIAL) {
   const rt = createRuntime();
-  const C = rt.load("src/components/calls/DeskPanel.tsx", ["ContactCard"]).__ContactCard;
-  const view = rt.mount(C, { leadId: "lead-1", initial });
-  const box = (label: string) => one(view.tree, (n) => n.type === "input" && n.props["aria-label"] === label, label);
+  const C = rt.load("src/components/calls/ClientContact.tsx", ["ContactCard"]).__ContactCard;
+  const view = rt.mount(C, { leadId: "lead-1", initial, saveRef: { current: null } });
+  const box = (label: string) => one(view.tree, (n) => label === "Street address" ? n.type?.name === "AddressLookup" : n.type === "input" && n.props["aria-label"] === label, label);
   const openEdit = () => view.act(() => one(view.tree, (n) => n.type === "button" && n.props.children === "Edit contact", "Edit contact button").props.onClick());
   return { rt, view, box, openEdit };
 }
@@ -402,6 +402,14 @@ t("ContactCard: pasting an address with a ZIP fills it", async () => {
   assert.equal(box("ZIP").props.value, "60477");
   await rt.advance(900);
   assert.deepEqual(rt.posts()[0].body.lead, { mail_addr1: "18475 Zurich Ln", mail_city: "Tinley Park", mail_state: "IL", mail_zip: "60477" });
+});
+
+t("ContactCard: a Google selection saves all address columns together and clears an obsolete ZIP", async () => {
+  const { rt, view, box, openEdit } = contactCard();
+  openEdit();
+  view.act(() => box("Street address").props.onPick({ addr1: "22 New Rd, Apt 4B", city: "Houston", state: "TX", zip: "" }));
+  await rt.advance(900);
+  assert.deepEqual(rt.posts()[0].body.lead, { mail_addr1: "22 New Rd, Apt 4B", mail_city: "Houston", mail_state: "TX", mail_zip: "" });
 });
 
 t("ContactCard: a one-line address stays read-only on mount and edit-open, then normalizes with an address edit", async () => {
