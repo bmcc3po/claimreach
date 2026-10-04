@@ -23,6 +23,7 @@ import { savedCallView } from "@/lib/mva-call/step-layout";
 import { OPEN_DESK_FILE_EVENT } from "@/lib/mva-call/links";
 import { officeDateUS } from "@/lib/office-clock";
 import { activeCallPresence, type LiveCallPresence } from "@/lib/call-presence";
+import { passengerFileLinks, type LinkedFile } from "@/lib/linked-files";
 
 export interface ConsoleInit {
   leadId: string;
@@ -47,7 +48,7 @@ export interface ConsoleInit {
   /** Firm lines for a 3-way (routing rules with a transfer number). */
   threeWay?: { label: string; number: string }[];
   /** Other files on this same wreck (driver/passengers), linked both ways. */
-  linked?: { id: string; lead_no: string | null; name: string; label: string }[];
+  linked?: LinkedFile[];
   props: Omit<CallProps, "startedAt" | "now">;
 }
 
@@ -124,7 +125,7 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [identityError, setIdentityError] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
-  const [passengerLinks, setPassengerLinks] = useState<Record<string, string>>({});
+  const [passengerLinks, setPassengerLinks] = useState<Record<string, string>>(() => passengerFileLinks(init.linked));
   const [, setIdentityRevision] = useState(0);
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileMessage, setReconcileMessage] = useState("");
