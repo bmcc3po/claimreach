@@ -1957,6 +1957,12 @@ div.ws-row{cursor:default}
 .final-handoff-extra input{display:block;width:100%;box-sizing:border-box;margin:7px 0 13px;padding:11px;border:1px solid #8aa6c8;border-radius:9px;font:inherit;background:#fff;color:#142945}
 .final-handoff-send{display:block;width:100%;padding:15px 18px;border:0;border-radius:10px;background:#174b8b;color:#fff;font-size:16px;font-weight:800;cursor:pointer}
 .final-handoff-send:disabled{background:#97a7bc;cursor:not-allowed}
+.final-handoff-confirm{padding:18px;border:2px solid #295894;border-radius:12px;background:#fff;overflow-wrap:anywhere}
+.final-handoff-confirm h3{margin:0 0 10px;font-size:20px}
+.final-handoff-confirm ul{padding-left:20px;line-height:1.6}
+.final-handoff-confirm>div{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.final-handoff-confirm>div>button{flex:1;min-width:130px;padding:14px;border:1px solid #295894;border-radius:10px;font:inherit;font-weight:750;cursor:pointer}
+.final-handoff-confirm>div>button:first-child{background:#fff;color:#174b8b}
 .final-handoff-error{padding:10px 12px;border-left:4px solid #b54037;border-radius:4px;background:#fff2ed;color:#812d28;font-weight:650}
 .final-handoff-sent{border-color:#24815d;background:#edf8f2}
 .final-handoff-docs{display:grid;gap:10px;margin:16px 0 18px}
