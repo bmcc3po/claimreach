@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import IntakeQuestion from "./IntakeQuestion";
 import { DobField, SsnField } from "./SsnDob";
 import { SsnRefusal } from "./SsnRefusal";
+import PlaceField from "./PlaceField";
 
 /** A quiet, editable answer sheet between disposition and final firm QA. */
 export default function PostCallReview({ v }: { v: any }) {
@@ -49,7 +50,7 @@ export default function PostCallReview({ v }: { v: any }) {
         <div id="sf-q-contact-email">{field("Email", v.f.email, "email")}</div>
         <div className="post-review-row"><label>Date of birth</label><DobField value={v.f.dob.value ?? ""} onChange={(value: string) => v.f.dob.set({ target: { value } })} /></div>
         <div className="post-review-row"><label>Social Security number</label><div><SsnField value={v.f.ssn.value ?? ""} requireFull={!!v.ssnRequireFull} storedMode={v.f.ssnMode.value ?? null} onMode={(mode: string) => v.f.ssnMode.set({ target: { value: mode } })} onChange={(value: string) => v.f.ssn.set({ target: { value } })} savedMode={v.identitySavedMode} saveStatus={v.identityStatus} saveError={v.identitySaveError} onRetry={v.identityRetry} /><SsnRefusal v={v} /></div></div>
-        <div id="sf-q-contact-address">{field("Home address", v.f.addr)}</div>
+        <div id="sf-q-contact-address" className="post-review-row"><label>Home address</label><PlaceField kind="address" label="Home address" value={v.f.addr.value || ""} onChange={value => v.f.addr.set({ target: { value } })} /></div>
         {field("Driver’s license", v.f.dl)}
         {field("Emergency contact", v.f.ecName)}
         {field("Emergency phone", v.f.ecPhone, "tel")}
