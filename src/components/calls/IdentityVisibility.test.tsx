@@ -23,14 +23,13 @@ const modules: Record<string, any> = {
   "./AgreementActions": { default: () => null },
   "./SignatureWaiting": { default: () => null },
   "./FinalHandoff": { default: () => null },
-  "./IntakeQuestion": { default: () => null, QuestionControl: () => null, AgreementRecipient: () => null, IntakeChoices: () => null, choicesFromClasses: () => [] },
   "./PlaceField": { default: () => null }, "./WhereField": { default: () => null },
   "./FullIntake": { FiBody: () => null }, "./OneQuestion": { GuidedIntake: () => null },
   "./IntakeWorkspace": { WsLeft: () => null, WsHelper: () => null, IxTop: () => null, IxFoot: () => null },
 };
 function load(name: string): any {
   if (name in modules) return modules[name];
-  assert.ok(["./FinishFileSteps","./ContractActions","./PassengerAgreement","./AgreementChoice","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
+  assert.ok(["./IntakeQuestion","./PassengerFollowup","./FinishFileSteps","./ContractActions","./PassengerAgreement","./AgreementChoice","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
   const source=fs.readFileSync(path.join(__dirname,`${name}.tsx`),"utf8");
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
   const exports: any={}; new Function("require","exports",code)(load,exports);

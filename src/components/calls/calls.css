@@ -2077,6 +2077,10 @@ div.ws-row{cursor:default}
 .iq-field { margin-top: 12px; }
 .iq-field-label { margin: 6px 0; font-size: 13px; font-weight: 600; }
 .iq-person { margin-top: 12px; padding: 14px; border: 1px solid #dbe2eb; border-radius: 10px; min-width: 0; }
+.passenger-followup { min-width: 0; }
+.iq-person .fi-addrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.iq-person input { width: 100%; min-width: 0; box-sizing: border-box; }
+@media (max-width: 600px) { .iq-person .fi-addrow { grid-template-columns: minmax(0, 1fr); } }
 .iq-passenger-next{margin-top:14px;padding:14px;border:2px solid #a8c1e1;border-radius:10px;background:#f3f7fd}
 .iq-passenger-next>strong{display:block;color:#143866;font-size:15px;line-height:1.45}
 .iq-passenger-link{display:block;margin-top:14px;padding:12px;border-radius:9px;background:#174b8b;color:#fff;font-weight:750;text-decoration:none;text-align:center}

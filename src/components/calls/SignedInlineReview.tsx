@@ -41,7 +41,7 @@ export default function SignedInlineReview({ v }: { v: any }) {
     finally { setLoading(false); }
   }, [leadId, claimId]);
 
-  useEffect(() => { void load(); }, [load, v.agreementStatus]);
+  useEffect(() => { void load(); }, [load, v.agreementStatus, v.agreementClosed]);
   useEffect(() => {
     const refresh = () => { void load(); };
     window.addEventListener("focus", refresh);

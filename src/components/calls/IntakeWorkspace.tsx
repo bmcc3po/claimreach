@@ -332,7 +332,7 @@ export function WsLeft({ v }: { v: any }) {
     window.addEventListener("cr:firm-handoff", onChange);
     return () => { live = false; window.removeEventListener("focus", onChange); window.removeEventListener("cr:agreement-reviewed", onChange);
       window.removeEventListener("cr:esign-reconciled", onChange); window.removeEventListener("cr:firm-handoff", onChange); };
-  }, [v.leadId, v.claimId, v.agreementStatus, v.dispo?.saved]);
+  }, [v.leadId, v.claimId, v.agreementStatus, v.agreementClosed, v.dispo?.saved]);
   const guide = (() => {
     if (fileStep.error && v.dispo?.saved) return { label: "CHECK DELIVERY STATUS", note: "The file status could not be verified. Refresh before another send.", go: () => window.dispatchEvent(new Event("cr:firm-handoff")), tone: "hold" };
     if (fileStep.sentAt) return { label: "SENT TO FIRM", note: `Confirmed ${new Date(fileStep.sentAt).toLocaleString()}. The seven-day return clock is running.`, tone: "done" };
@@ -342,7 +342,7 @@ export function WsLeft({ v }: { v: any }) {
     if (v.dispo?.saved && v.dispo?.isSigned) return fileStep.qa
       ? { label: "SEND TO FIRM", note: "Your file review passed. Confirm the recipients and send the complete packet in the center.", go: v.openDispo, tone: "urgent" }
       : { label: "QA YOUR FILE", note: "Open the intake and completed signed packet, then check your work in the center.", go: v.openDispo, tone: "urgent" };
-    if (v.agreementStatus === "completed") return { label: "END & DISPOSITION CALL", note: "The signed packet is complete. Close the call before reviewing the file for delivery.", go: v.openDispo, tone: "urgent" };
+    if (fileStep.complete) return { label: "END & DISPOSITION CALL", note: "The signed packet is complete. Close the call before reviewing the file for delivery.", go: v.openDispo, tone: "urgent" };
     if (["sent", "opened", "sending"].includes(v.agreementStatus)) return { label: "WAIT FOR SIGNATURE", note: "The agreement is out. Confirm when the signed copy comes back.", tone: "wait" };
     return { label: "SEND AGREEMENT", note: "Finish the intake and send the correct state packet from the center.", go: () => v.jumpTo("send"), tone: "ask" };
   })();

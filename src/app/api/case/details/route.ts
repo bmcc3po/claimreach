@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { gateUser } from "@/lib/gate";
 import { isInternalRole } from "@/lib/permissions";
 import { nullifyEmpty } from "@/lib/coerce";
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!lead) return NextResponse.json({ error: "File not found." }, { status: 404 });
   if (lead.archived_at) return NextResponse.json({ error: "Restore this file before editing it." }, { status: 409 });
   if (user.role !== "owner") {
-    const access = await intakeFirmScope(sb, user, lead.firm_id);
+    const access = await intakeFirmScope(sb, user, lead.firm_id, supabaseAdmin);
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
     if (!lead.campaign_id || lead.case_type !== "mva")
       return NextResponse.json({ error: "Only your firm's INNO MVA files are available." }, { status: 403 });
