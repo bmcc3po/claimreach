@@ -136,7 +136,7 @@ export const NETFLY_CASE_MANAGER_FIELDS: NetflyField[] = [
   { id: "contact_accuracy", label: "Let me read back your contact details. Does everything sound right?", hint: "Confirm name, phone, email and address; ask only for corrections or missing details.", kind: "choice", choices: ["Yes", "Needs correction"] },
   { id: "insurance_info_available", label: "Do you have your insurance details handy, or the other driver's?", kind: "choice", choices: ["Client's insurance", "Other driver's insurance", "Both", "No details available yet"] },
   { id: "care_today", label: "Would you be able to get checked out today?", kind: "choice", choices: ["Yes", "No", "Already in care", "Not sure"] },
-  { id: "care_today_setting", label: "Where can you be seen today?", kind: "choice", choices: ["Emergency room", "Urgent care", "Other provider", "Not sure"] },
+  { id: "care_today_setting", label: "Where can you be seen today?", kind: "choice", choices: ["Emergency room", "Urgent care", "Other provider", "Not sure"], when: { id: "care_today", is: "Yes" } },
   { id: "care_today_plan", label: "What would work better for you?", hint: "Note when they can go and anything they need help with.", kind: "long" },
   { id: "treatment_location", label: "Would treatment near home or work be easier?", kind: "choice", choices: ["Near home", "Near work", "Either", "Needs help deciding"] },
   { id: "treatment_area", label: "And what ZIP code or area should we look near?", hint: "Use the home or work location they just chose.", kind: "text" },
