@@ -65,6 +65,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const [saveState, setSaveState] = useState("");
   const answerQueue = useRef<Promise<unknown>>(Promise.resolve());
   const failedAnswers = useRef(new Set<string>());
+  const lastSavedAnswers = useRef<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
   const [verificationNote, setVerificationNote] = useState("");
@@ -82,7 +83,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   async function load(forceCall = false) {
     await answerQueue.current;
     if (failedAnswers.current.size) { setError("An answer did not save. Use Retry saving answers below before refreshing this file."); return; }
-    try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); actorRef.current = d.actor_id; liveCallRef.current = d.live_call || null; setDetail(d); setLiveCall(d.live_call || null); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { const saved = d.answers?.call_close; setCallClose(saved ? { ...emptyCallClose, ...saved, closeout_version: 2, callback_promised_24_48_hours: saved.closeout_version === 2 && saved.callback_promised_24_48_hours === true } : emptyCallClose); setCallCloseDirty(false); } }
+    try { const r = await fetch(`/api/netfly?file=${encodeURIComponent(fileKey)}`, { cache: "no-store" }); const d = await r.json(); if (!r.ok) throw new Error(d.error); actorRef.current = d.actor_id; liveCallRef.current = d.live_call || null; lastSavedAnswers.current = { ...(d.answers?.fields || {}) }; setDetail(d); setLiveCall(d.live_call || null); setValues(d.answers?.fields || {}); setReviewNote(d.answers?.review?.note || ""); if (forceCall || !callCloseDirty) { const saved = d.answers?.call_close; setCallClose(saved ? { ...emptyCallClose, ...saved, closeout_version: 2, callback_promised_24_48_hours: saved.closeout_version === 2 && saved.callback_promised_24_48_hours === true } : emptyCallClose); setCallCloseDirty(false); } }
     catch (e: any) { setError(e.message || "NETFLY file did not load."); }
   }
   useEffect(() => { void load(); }, [fileKey]);
@@ -116,9 +117,13 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     return pending;
   }
   async function saveAnswer(id: string, value: string) {
+    // Leaving the notes box and pressing Fill both request a save. The queue
+    // checks the acknowledged value at execution time so the second is free.
+    if (lastSavedAnswers.current[id] === value.trim() && !failedAnswers.current.has(id)) return true;
     setSaveState("Saving…"); setError("");
     try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "answer", file: fileKey, field: id, value }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error);
       setDetail(old => old ? { ...old, answers: { ...old.answers, fields: { ...(old.answers.fields || {}), [id]: value.trim(), ...(value.trim() && NETFLY_UNAVAILABLE_IDS.has(id) ? { [`${id}_unavailable`]: "" } : {}) } }, file: { ...old.file, ...(["confirmed_name", "confirmed_phone", "confirmed_email"].includes(id) ? { [id === "confirmed_name" ? "claimant_name" : id === "confirmed_phone" ? "phone" : "email"]: value.trim() } : {}) } } : old);
+      lastSavedAnswers.current[id] = value.trim();
       failedAnswers.current.delete(id); setSaveState("Saved"); return true; }
     catch (e: any) { failedAnswers.current.add(id); setSaveState(""); setError(`${fieldById.get(id)?.label || id}: ${e.message || "Save failed"}. Your answer remains on screen; retry before leaving.`); return false; }
   }

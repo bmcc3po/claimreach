@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { netflyContext, netflyMatter } from "@/lib/netfly-server";
 import { NETFLY_ANSWER_KEY } from "@/lib/netfly-ontake";
-import { NETFLY_NOTE_FIELDS, NETFLY_NOTES_SYSTEM, noteSuggestions, noteFieldDescriptor } from "@/lib/netfly-note-suggestions";
+import { noteSuggestions } from "@/lib/netfly-note-suggestions";
+import { compactNotesRequest, expandCompactNotes, NETFLY_COMPACT_NOTES_SYSTEM } from "@/lib/netfly-compact-notes";
 import { askRelay } from "@/lib/ai-relay";
 export const runtime = "edge";
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
@@ -18,16 +19,19 @@ export async function POST(req: NextRequest) {
   const saved = (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] || {};
   if (String(saved.fields?.final_notes || "").trim() !== notes) return fail("Save your latest notes first, then try again.", 409);
   if (body.op === "suggest") {
+    const request = compactNotesRequest(notes, saved.fields || {});
+    if (!request.fields.length) return NextResponse.json({ suggestions: [] });
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25000);
     let answer: string;
-    try { answer = await askRelay(NETFLY_NOTES_SYSTEM, JSON.stringify({ fields: NETFLY_NOTE_FIELDS.map(noteFieldDescriptor), notes }), controller.signal); }
+    try { answer = await askRelay(NETFLY_COMPACT_NOTES_SYSTEM, JSON.stringify(request.payload), controller.signal); }
     finally { clearTimeout(timer); }
     if (!answer) return fail("The notes helper is unavailable. Your notes are saved; you can keep using the quick choices.", 503);
     let parsed: any;
     try { parsed = JSON.parse(answer.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "")); }
     catch { return fail("The helper could not read those notes reliably. Your notes are saved.", 502); }
-    return NextResponse.json({ suggestions: noteSuggestions(parsed.suggestions, notes, saved.fields || {}) });
+    if (!Array.isArray(parsed?.a)) return fail("The helper could not read those notes reliably. Your notes are saved.", 502);
+    return NextResponse.json({ suggestions: expandCompactNotes(parsed.a, request, notes, saved.fields || {}) });
   }
   for (let attempt = 0; attempt < 4; attempt++) {
     const current = await ctx.db.from("claims").select("answers, updated_at")
