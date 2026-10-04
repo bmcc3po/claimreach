@@ -20,6 +20,7 @@ import { canDirectVoid, agreementSendStatus, type SendAttemptHold } from './repl
 import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './intake';
 import { QUESTION_ORDER, QUESTION_PATHS, questionPhase } from './question-spine';
 import { INTAKE_STEPS, stepIndexForPosition } from './step-layout';
+import { passengerSigningWait } from './passenger-signing';
 export { SOL };
 export const VEHICLE_YEARS = Array.from({ length: 2027 - 1990 + 1 }, (_, i) => String(2027 - i));
 export const REBS: any[] = [
@@ -1097,9 +1098,16 @@ export class CallEngine {
     if (this.state.send.status === 'signed') this.api.completeAgreement();
   }
 
+  passengerSigningWait(i: number): string {
+    return passengerSigningWait(this.state.send.status, !!this.props.agreementSuperseded || !!this.state.send.nameReview || !!this.state.send.sentNameReview,
+      this.state.car.people, this.state.file.pax, i);
+  }
+
   passengerSendIssue(i: number): string {
     const hold = this.agreementHoldNotice();
     if (hold) return hold;
+    const wait = this.passengerSigningWait(i);
+    if (wait) return wait;
     const p = this.state.car.people[i];
     if (!p || !String(p.name || '').trim()) return "Add the passenger's full name.";
     if (this.state.file.pax[i]) return 'Their agreement is already being sent or is on file.';
@@ -2064,6 +2072,7 @@ export class CallEngine {
         var noRep = x.p.wantsRep !== 'Yes';
         return {
           id: x.p.pid || String(x.i),
+          sequenceWait: this.passengerSigningWait(x.i),
           title: nm + (minor ? ', under 18' : ''),
           note: minor ? this.callerFirst() + ' signs as parent or guardian. ' + nm + ' goes on the HIPAA pages.'
             : noRep ? 'Confirm that ' + nm + ' wants representation on the Passengers step before sending their agreement.'

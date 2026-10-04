@@ -8,7 +8,7 @@ import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
 import { normPhone } from "@/lib/comms";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { sameName, paxParentId } from "@/lib/linked-files";
-import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
+import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes, requireCallerSignatureForPassenger } from "@/lib/mva-call/signing-matter";
 import { recordAudit } from "@/lib/audit";
 import { ensureClientSignedSnapshot } from "@/lib/mva-call/client-signed";
 import { readIdentityForSigning } from "@/lib/mva-call/identity";
@@ -79,6 +79,10 @@ async function send(req: NextRequest) {
   const isMva = lead.case_type === "mva";
   if (isMva && !doi) return NextResponse.json({ error: "Add the date of the wreck. It prints on the agreement." }, { status: 400 });
   if (!isMva && paxIndex != null) return NextResponse.json({ error: "Open this person's own matter to send their agreement." }, { status: 400 });
+  if (paxIndex != null) {
+    const callerSigned = await requireCallerSignatureForPassenger(sb, context);
+    if (!callerSigned.ok) return NextResponse.json({ error: callerSigned.error }, { status: callerSigned.status });
+  }
   // An ADULT passenger's link goes to THEIR own phone or email, never falls
   // back to the caller's, and a destination equal to the caller's needs an
   // explicit "they share it" confirmation (Astra round 6). A minor's goes to
@@ -485,7 +489,8 @@ export async function GET(req: NextRequest) {
       pax[String(r.pax_index)] = LIVE.includes(r.status) ? await syncSubmission(admin, r, { origin: url.origin }) : r.status;
     }
   }
-  for (const k of Object.keys(pax)) if (!pax[k]) delete pax[k];
+  // Keep explicit empty statuses: polling merges these into saved passenger
+  // state, so a voided envelope must clear its earlier signed status.
   // The console shows signed for anything signed or complete.
   const templates = context.campaignId ? await sb.from("esign_templates").select("key, name").eq("campaign_id", context.campaignId).eq("provider", "docuseal") : { data: [], error: null };
   if (templates.error) return NextResponse.json({ error: "Could not read this campaign's agreement setup." }, { status: 503 });

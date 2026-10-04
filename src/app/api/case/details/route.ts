@@ -4,6 +4,7 @@ import { gateUser } from "@/lib/gate";
 import { isInternalRole } from "@/lib/permissions";
 import { nullifyEmpty } from "@/lib/coerce";
 import { recordAudit } from "@/lib/audit";
+import { intakeFirmScope } from "@/lib/intake-firm-scope";
 export const runtime = "edge";
 const FIELDS = ["marketing_source","referring_attorney","handling_attorney","intake_agent_id","qa_agent_id","case_manager_id","office_location","case_rating","call_outcome","case_summary","case_description","case_tags"];
 export async function POST(req: NextRequest) {
@@ -20,7 +21,9 @@ export async function POST(req: NextRequest) {
   if (!lead) return NextResponse.json({ error: "File not found." }, { status: 404 });
   if (lead.archived_at) return NextResponse.json({ error: "Restore this file before editing it." }, { status: 409 });
   if (user.role !== "owner") {
-    if (!user.firmId || lead.firm_id !== user.firmId || !lead.campaign_id || lead.case_type !== "mva")
+    const access = await intakeFirmScope(sb, user, lead.firm_id);
+    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
+    if (!lead.campaign_id || lead.case_type !== "mva")
       return NextResponse.json({ error: "Only your firm's INNO MVA files are available." }, { status: 403 });
     const { data: campaign, error: campaignError } = await sb.from("campaigns")
       .select("id,firm_id,name,case_type,active").eq("id", lead.campaign_id).maybeSingle();

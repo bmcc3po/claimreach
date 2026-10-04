@@ -33,7 +33,7 @@ function mk(over: Partial<CallProps> = {}) {
     notifyDefaults: [{ who: "Brett", how: "bmc@innovativeintake.com" }],
     esign: { status: "ready", configured: true, pax: {} }, ...over,
   };
-  const e = new CallEngine(props, api);
+  const e = new CallEngine(props, { ...api });
   return e;
 }
 let passed = 0;
@@ -969,12 +969,20 @@ t("terminal agreement states reopen selection on reload and polling without send
   }
 });
 
-t("passenger agreements are available before the caller signs, with their own destination", () => {
+t("passenger agreements wait for the caller signature, then keep their own destination", () => {
   const e = mk({ callerPhone: "2025550100", callerEmail: "caller@example.invalid" });
   e.setState({ story: { ...e.state.story, city: "Las Vegas, NV", when: "Pick a date", date: isoAgo(2) } });
   e.renderVals().addPerson();
   for (const [key, value] of Object.entries({ name: "Synthetic Friend", age: "Adult", hurt: "Yes", wantsRep: "Yes", cell: "2025550101" })) e.setPerson(0, key, value);
   assert.equal(e.state.send.status, "ready");
+  calls.length = 0;
+  for (const status of ['ready', 'sending', 'sent', 'opened']) {
+    e.setState({ send: { ...e.state.send, status } });
+    assert.equal(e.renderVals().paxSend[0].ready, false);
+    e.sendPax(0); assert.deepEqual(calls, []);
+    assert.match(e.state.file.error, /caller’s signature first/);
+  }
+  e.setState({ send: { ...e.state.send, status: 'signed' } });
   assert.equal(e.renderVals().paxSend[0].ready, true);
   calls.length = 0; e.sendPax(0); assert.deepEqual(calls, ["sendPax:0"]);
   e.setPerson(0, "cell", "2025550100"); assert.equal(e.renderVals().paxSend[0].ready, false);
@@ -985,6 +993,35 @@ t("passenger agreements are available before the caller signs, with their own de
   e.props.esign.sendGate = "held"; assert.equal(e.renderVals().paxSend[0].ready, false);
   e.props.esign.sendGate = "clear"; e.setPerson(0, "wantsRep", "No"); assert.equal(e.renderVals().paxSend[0].ready, false);
   e.setPerson(0, "wantsRep", "Yes"); e.setPerson(0, "age", ""); assert.match(e.passengerSendIssue(0), /adult or under 18/);
+});
+
+t("caller first then passenger one then two, with signature checks and no caller dependency on passengers", () => {
+  const e = mk({ callerPhone: '2025550199' });
+  e.setState({ story: { ...e.state.story, city: 'Birmingham, AL', when: 'Pick a date', date: isoAgo(2) } });
+  for (let i = 0; i < 2; i++) {
+    e.renderVals().addPerson();
+    for (const [key, value] of Object.entries({ name: `Friend ${i + 1}`, age: 'Adult', hurt: 'Yes', wantsRep: 'Yes', cell: `202555010${i + 1}` })) e.setPerson(i, key, value);
+  }
+  calls.length = 0; e.sendAgreement(); assert.deepEqual(calls, ['sendAgreement']);
+  e.setState({ send: { ...e.state.send, status: 'signed' } });
+  for (const view of ['chore', 'form', 'steps', 'full', 'guided']) {
+    e.setView(view);
+    assert.equal(e.renderVals().paxSend[0].ready, true);
+    assert.equal(e.renderVals().paxSend[1].ready, false);
+  }
+  calls.length = 0; e.sendPax(1); assert.deepEqual(calls, []);
+  for (const status of ['sending', 'sent', 'opened']) {
+    e.setState({ file: { ...e.state.file, pax: { 0: status } } });
+    assert.equal(e.renderVals().paxSend[1].ready, false);
+  }
+  e.setState({ file: { ...e.state.file, pax: { 0: 'signed' } } });
+  assert.equal(e.renderVals().paxSend[1].ready, true);
+  e.sendPax(1); assert.deepEqual(calls, ['sendPax:1']);
+  e.props.agreementSuperseded = true; assert.equal(e.renderVals().paxSend[1].ready, false);
+  e.props.agreementSuperseded = false;
+  e.setState({ file: { ...e.state.file, pax: {} } });
+  e.setPerson(0, 'wantsRep', 'No'); assert.equal(e.renderVals().paxSend[1].ready, true);
+  e.props.esign.sendGate = 'checking'; assert.equal(e.renderVals().paxSend[1].ready, false);
 });
 
 console.log(passed, "passed");

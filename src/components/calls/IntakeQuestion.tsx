@@ -2,7 +2,6 @@
 
 // The engine resolves the question once. These four presentations share every
 // label, option, branch and callback; only wrappers and control appearance vary.
-import PassengerAgreement from "./PassengerAgreement";
 import WhereField from "./WhereField";
 import StoryAssist from "./StoryAssist";
 
@@ -77,7 +76,8 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
             </> : !review && <div className="iq-cue">The parent or guardian signs. The child goes on the HIPAA pages.</div>}
             {field("Willing to treat", choices(choicesFromClasses(person.willings)))}
             {field("Home address", choices(choicesFromClasses(person.sameAddrs)))}
-            {!review ? <PassengerAgreement p={v.paxSend?.find((item: any) => item.id === person.id)} v={v} capture={false} /> : v.passengerLinks?.[person.id] && <a className="iq-passenger-link" href={`/app/${v.passengerLinks[person.id]}`} target="_blank" rel="noopener noreferrer">Open {person.first}'s file ↗</a>}
+            {!review && <p className="iq-cue">Finish the caller’s signature first. Passenger agreements follow in Retainer.</p>}
+            {review && v.passengerLinks?.[person.id] && <a className="iq-passenger-link" href={`/app/${v.passengerLinks[person.id]}`} target="_blank" rel="noopener noreferrer">Open {person.first}'s file ↗</a>}
           </div>}
           {person.wantsRep === "No" && !review && <div className="iq-cue iq-warning">They declined representation. Do not send an agreement.</div>}
         </>}
