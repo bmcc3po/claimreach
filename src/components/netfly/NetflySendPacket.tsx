@@ -11,7 +11,7 @@ export default function NetflySendPacket({ fileKey, revision, signedDocuments, u
   async function load() {
     const currentRequest = ++requestNumber.current;
     setError(''); setReviewed(false);
-    try { const r = await fetch(endpoint, { cache: 'no-store' }); const d = await r.json(); if (!r.ok) throw new Error(d.error); if (currentRequest === requestNumber.current) setPacket(d); }
+    try { const r = await fetch(endpoint, { cache: 'no-store' }); const d = await r.json().catch(() => null); if (!r.ok || !d) throw new Error(d?.error || (r.status === 403 ? 'This account cannot open delivery. Your file is saved; ask an administrator to check access.' : 'Could not check this packet. Refresh delivery status to try again.')); if (currentRequest === requestNumber.current) setPacket(d); }
     catch (e: any) { if (currentRequest === requestNumber.current) { setPacket(null); setError(e.message || 'Could not check this packet.'); } }
   }
   useEffect(() => { void load(); return () => { requestNumber.current++; }; }, [fileKey, revision]);
@@ -20,7 +20,7 @@ export default function NetflySendPacket({ fileKey, revision, signedDocuments, u
     setBusy(true); setError('');
     try {
       const r = await fetch('/api/netfly/delivery', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: fileKey, snapshot: packet.snapshot, reviewed }) });
-      const d = await r.json(); if (!r.ok || !d.ok) throw new Error(d.error || 'The packet was not sent.');
+      const d = await r.json().catch(() => null); if (!r.ok || !d?.ok) throw new Error(d?.error || 'The delivery result could not be checked. Refresh delivery status before trying again.');
       if (d.warning) setWarning(d.warning);
       if (!d.skipped) setSent(new Date().toISOString());
       await load();
