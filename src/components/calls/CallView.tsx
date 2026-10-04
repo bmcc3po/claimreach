@@ -298,7 +298,7 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-lab" style={{marginTop: "8px"}}>DATE OF BIRTH, IF AVAILABLE</div>
 <input className="cc-field" type="date" aria-label={`${p.first}'s date of birth`} value={p.dob.value ?? ""} onChange={p.dob.set} />
 {!p.minor && <><div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S OWN CELL</div><input className="cc-field" type="tel" inputMode="tel" placeholder="Their agreement texts to THEIR phone" aria-label={`${p.first}'s cell`} value={p.cell.value ?? ""} onChange={p.cell.set} /><div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S EMAIL</div><input className="cc-field" type="email" inputMode="email" aria-label={`${p.first}'s email`} value={p.email.value ?? ""} onChange={p.email.set} /></>}
-<PassengerAgreement p={v.paxSend?.find((item: any) => item.id === p.id)} v={v} capture={false} />
+<p className="cc-cue">Finish the caller’s signature first. Passenger agreements follow in Retainer.</p>
 </div>}
 <div className="cc-lab" style={{marginTop: "8px"}}>WILLING TO TREAT</div>
 <div className="cc-chips cc-seg">{(p.willings || []).map((c: any, i28c: number) => (<Fragment key={i28c}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
@@ -445,10 +445,9 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">Missed work</span><span className="cc-done-v">{v.missedWork}</span></div>
 </div>
 </>)}
-{!!(v.fsPax) && (<>
-{(v.paxSend || []).map((p: any) => <PassengerAgreement key={p.id} p={p} v={v} />)}
 </>)}
-</>)}
+
+{(v.showSend || v.showFile) && (v.paxSend || []).map((p: any) => <PassengerAgreement key={p.id} p={p} v={v} />)}
 
 {!!(v.showClose) && (<>
 {!!(v.free) && (<><div id="fs-close" className="cc-sec-h">Close</div></>)}

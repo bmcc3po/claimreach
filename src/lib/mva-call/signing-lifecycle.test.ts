@@ -1,7 +1,7 @@
 // Offline source tests. Never calls a database, DocuSeal, or an email provider.
 import assert from "node:assert/strict";
 import { FakeDb } from "../test-fake-db";
-import { resolveSigningMatter as resolveSigningMatterImpl, getMatterAgreement, getMatterEmergency, emergencySupersedes } from "./signing-matter";
+import { resolveSigningMatter as resolveSigningMatterImpl, getMatterAgreement, getMatterEmergency, emergencySupersedes, requireCallerSignatureForPassenger } from "./signing-matter";
 import { recoverSignedTransition, syncSubmission } from "./esign";
 
 const L = "10000000-0000-4000-8000-000000000001", C = "20000000-0000-4000-8000-000000000001", B = "20000000-0000-4000-8000-000000000002";
@@ -127,6 +127,27 @@ t("strict webhook sync rejects an unsaved signature transition", async () => {
   } finally {
     globalThis.fetch = priorFetch;
     if (priorKey === undefined) delete process.env.DOCUSEAL_API_KEY; else process.env.DOCUSEAL_API_KEY = priorKey;
+  }
+});
+
+t('passenger send requires the current caller signature in this matter, before any write', async () => {
+  for (const status of ['sent', 'opened', 'declined', 'voided', 'failed', 'expired', 'signed', 'completed']) {
+    const db = world(), row = db.tables.esign_submissions[0];
+    row.status = status; row.signed_at = '2026-09-28T10:05:00Z';
+    const context = await resolveSigningMatter(db, L); assert.ok(context.ok);
+    assert.equal((await requireCallerSignatureForPassenger(db, context as any)).ok, ['signed', 'completed'].includes(status));
+    assert.ok(db.ops.every(op => op.kind === 'select'));
+  }
+  for (const change of ['missing-time', 'replacement', 'foreign', 'emergency', 'read-failure']) {
+    const db = world(), row = db.tables.esign_submissions[0]; row.signed_at = '2026-09-28T10:05:00Z';
+    if (change === 'missing-time') row.signed_at = null;
+    if (change === 'replacement') db.tables.esign_submissions.push({ ...row, id: 'new', status: 'sent', signed_at: null, created_at: '2026-09-28T11:00:00Z' });
+    if (change === 'foreign') row.firm_id = 'foreign';
+    if (change === 'emergency') db.tables.signable_documents.push({ id: 'emergency', lead_id: L, firm_id: F, status: 'signed', created_at: '2026-09-28T11:00:00Z', audit: { emergency: { claim_id: C } } });
+    if (change === 'read-failure') db.failOn = op => op.table === 'esign_submissions' ? 'offline' : null;
+    const context = await resolveSigningMatter(db, L); assert.ok(context.ok);
+    assert.equal((await requireCallerSignatureForPassenger(db, context as any)).ok, false, change);
+    assert.ok(db.ops.every(op => op.kind === 'select'));
   }
 });
 

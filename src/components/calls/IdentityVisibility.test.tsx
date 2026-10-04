@@ -30,7 +30,7 @@ const modules: Record<string, any> = {
 };
 function load(name: string): any {
   if (name in modules) return modules[name];
-  assert.ok(["./ContractActions","./PassengerAgreement","./AgreementChoice","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
+  assert.ok(["./FinishFileSteps","./ContractActions","./PassengerAgreement","./AgreementChoice","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
   const source=fs.readFileSync(path.join(__dirname,`${name}.tsx`),"utf8");
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
   const exports: any={}; new Function("require","exports",code)(load,exports);
@@ -89,3 +89,24 @@ for (const view of ["chore", "form", "guided", "full", "steps"]) {
   assert.match(html, /Correct or send a new agreement/, `${view}: correction stays inline with client details`);
 }
 console.log("ok signed intake keeps corrections inline in every presentation");
+for (const view of ['chore', 'form', 'guided', 'full', 'steps']) {
+  const e = engine('opened');
+  for (let i = 0; i < 2; i++) {
+    e.renderVals().addPerson();
+    for (const [k, v] of Object.entries({ name: `Test Friend ${i + 1}`, age: 'Adult', hurt: 'Yes', wantsRep: 'Yes', cell: `202555010${i + 1}` })) e.setPerson(i, k, v);
+  }
+  const signingHtml = () => { e.setView(view); e.setState({ phase: 'file', file: { ...e.state.file, step: 'agreement' } }); return renderToStaticMarkup(jsx.jsx(View, { v: e.renderVals() })); };
+  let html = signingHtml();
+  assert.doesNotMatch(html, /Send Test Friend [12]&#x27;s agreement<\/button>/, `${view}: caller comes first`);
+  e.setState({ send: { ...e.state.send, status: 'signed' } });
+  html = signingHtml();
+  assert.match(html, /Send Test Friend 1&#x27;s agreement<\/button>/);
+  assert.doesNotMatch(html, /Send Test Friend 2&#x27;s agreement<\/button>/);
+  e.setState({ file: { ...e.state.file, pax: { 0: 'sent' } } });
+  html = signingHtml();
+  assert.match(html, /Check Test Friend 1’s signature/);
+  assert.doesNotMatch(html, /Send Test Friend 2&#x27;s agreement<\/button>/);
+  e.setState({ file: { ...e.state.file, pax: { 0: 'completed' } } });
+  assert.match(signingHtml(), /Send Test Friend 2&#x27;s agreement<\/button>/);
+}
+console.log('ok all five views keep caller / passenger one / passenger two in order');
