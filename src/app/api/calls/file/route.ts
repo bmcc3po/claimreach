@@ -9,6 +9,7 @@ import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
 import { matterRowsFilter } from "@/lib/matter";
 import { loadLawRulerProvenance } from "@/lib/lawruler-recovery";
 import { readPendingSendAttempt } from "@/lib/mva-call/send-attempt";
+import { paxParentId } from "@/lib/linked-files";
 
 export const runtime = "edge";
 
@@ -87,7 +88,12 @@ export async function GET(req: NextRequest) {
     send_check_error: pendingSend.ok ? null : pendingSend.error,
     imported,
     agreements: (esignRes.data ?? []).map((a: any) => ({
-      id: a.id, name: agreementName(a.template_key), signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status, pax: a.pax_index, doc_count: a.doc_count,
+      id: a.id, name: agreementName(a.template_key), signer: a.signer_name, injured: a.injured_name, via: a.via, status: a.status,
+      // This endpoint is already scoped to ONE lead and matter. On a linked
+      // passenger's own file its agreement is primary, even though the source
+      // call's passenger index remains on the database row for sequencing.
+      pax: paxParentId(context.lead.external_id) ? null : a.pax_index,
+      originating_pax_index: a.pax_index, doc_count: a.doc_count,
       voided: a.voided_at, void_reason: a.void_reason,
       replacement_requested_at: a.replacement_requested_at, replacement_reason: a.replacement_reason,
       replacement_requested_by: a.replacement_requested_by ? nameOf.get(a.replacement_requested_by) || "Staff" : null,
