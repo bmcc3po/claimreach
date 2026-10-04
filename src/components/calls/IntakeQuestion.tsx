@@ -58,7 +58,7 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
     </>;
     case "people": return <>
       {choices([c.justMe, ...(c.others ? [c.others] : [])])}
-      {!review && <p className="iq-cue">Passenger details come after the caller signs, in Retainer.</p>}
+      {!review && <PassengerNames c={c} presentation={presentation} signed={!!v.signed} />}
       {review && <PassengerDetails c={c} v={v} presentation={presentation} review />}
     </>;
     case "car": return <div className="fi-car">
@@ -70,6 +70,25 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
   }
 }
 
+function PassengerNameRow({ person, presentation }: { person: any; presentation: IntakePresentation }) {
+  const prefix = presentation === "form" ? "sf" : presentation === "chore" ? "ch" : "fi";
+  return <div className="fi-addrow"><input className={`${prefix}-in`} placeholder="Passenger's name" aria-label="Passenger's name" value={person.name ?? ""} onChange={person.setName} /><button type="button" className="fi-add" onClick={person.remove}>Remove</button></div>;
+}
+
+/** Save names while listening; all other passenger questions wait for signing. */
+function PassengerNames({ c, presentation, signed }: { c: any; presentation: IntakePresentation; signed: boolean }) {
+  if (!c.others?.on && !c.people?.length) return null;
+  const names = (c.people || []).map((person: any) => String(person.name || "").trim()).filter(Boolean);
+  const circleBack = names.length ? names.join(" and ") : "the passengers";
+  if (signed) return <p className="iq-cue">{circleBack}: continue their details and agreement in Retainer.</p>;
+  return <>
+    {(c.people || []).map((person: any, index: number) => <div key={person.id || index} className="iq-person"><PassengerNameRow person={person} presentation={presentation} /></div>)}
+    <button type="button" className="fi-add" onClick={c.add}>+ Add another passenger’s name</button>
+    <p className="iq-ask">Got it. Let’s get your information down first, then we’ll circle back to {circleBack}.</p>
+    <p className="iq-cue">Their details and agreement come after your caller’s signature is verified.</p>
+  </>;
+}
+
 /** The same saved passenger controls, shown after signing or in file review. */
 export function PassengerDetails({ c, v, presentation = "full", review = false, agreement }: { c: any; v: any; presentation?: IntakePresentation; review?: boolean; agreement?: (person: any) => React.ReactNode }) {
   const p = presentation === "form" ? "sf" : presentation === "chore" ? "ch" : "fi";
@@ -79,7 +98,8 @@ export function PassengerDetails({ c, v, presentation = "full", review = false, 
   return <>
       <button type="button" className="fi-add" onClick={c.add}>+ Add a passenger</button>
       {(c.people || []).map((person: any, i: number) => <div key={person.id || i} className={`${p}-person iq-person`}>
-        <div className="fi-addrow"><input className={input} placeholder="Passenger's name" aria-label="Passenger's name" value={person.name ?? ""} onChange={person.setName} /><button type="button" className="fi-add" onClick={person.remove}>Remove</button></div>
+        {!review && !!person.name?.trim() && <p className="iq-ask">You mentioned {person.name}. Were they hurt, and would they like our help with their claim?</p>}
+        <PassengerNameRow person={person} presentation={presentation} />
         {field("Relationship", choices(choicesFromClasses(person.rels)))}
         {field("Age", choices(choicesFromClasses(person.ages)))}
         {field("Hurt", choices(choicesFromClasses(person.hurts)))}

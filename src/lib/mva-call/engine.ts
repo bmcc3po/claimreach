@@ -485,8 +485,8 @@ export class CallEngine {
                started: !!(st.fault || st.seat || st.police || st.when || st.city) },
       injury: { missing: open(injKeys), started: touched(injKeys) },
       cover: { missing: open(covKeys), started: touched(covKeys) },
-      car: { missing: s.car.justMe ? [] : s.car.people.filter((p) => !p.age || !p.hurt).map((p, i) => 'p' + i),
-             started: s.car.justMe || s.car.people.length > 0 },
+      car: { missing: this.fiInfo('people').answered ? [] : ['who'],
+             started: !!(s.car.justMe || s.car.othersPresent || s.car.people.length) },
       send: { missing: s.send.status === 'signed' ? [] : ['signed'], started: s.send.status !== 'ready' },
       file: { missing: gaps([['dob', f.dob], ['ssn', f.ssn], ['addr', f.addr]]), started: !!(f.dob || f.ssn || f.addr || f.dl || f.ecName) },
       close: { missing: s.saved ? [] : ['saved'], started: !!s.saved }
@@ -895,10 +895,7 @@ export class CallEngine {
     }
 
     rows.push(G('car', 'Others in the car'));
-    rows.push({ isChips: true, label: 'Passengers', lcls: lc('who'), chipsCls: 'chips list', chips: [
-      { label: 'Just me', cls: 'chip sm' + (s.car.justMe ? ' on' : ''), pick: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }) },
-      { label: 'Yes — details later', cls: 'chip' + (s.car.othersPresent || s.car.people.length ? ' on' : ''), pick: () => this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true } }) }
-    ] });
+    rows.push({ isPassengerQuestion: true });
     rows.push(G('send', 'Agreement'));
     rows.push({ isInfo: true, label: 'Agreement', value: this.agreementFor(st.city) || 'Needs where the wreck happened (city, state)' });
     rows.push(I('Signer full name', 'send', 'client', ''));
@@ -1223,7 +1220,7 @@ export class CallEngine {
       return one('Insurance information', other || f.ownCarrier || f.insuranceUnavailable || f.carrier === 'Not sure yet', insurance || 'Not available yet — follow up');
     }
     if (id === 'people') {
-      var ok = car.justMe || car.othersPresent || (car.people.length > 0 && car.people.every((p) => p.age && p.hurt));
+      var ok = car.justMe || car.othersPresent || car.people.some((p) => String(p.name || '').trim());
       return { ...one('Passengers', ok, car.justMe ? 'Just them' : !car.people.length ? 'Yes — passenger details to follow' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers'),
         optional: !car.justMe && car.people.length === 0, ask: 'Who else was in the car with you?' };
     }
@@ -1334,7 +1331,7 @@ export class CallEngine {
           unavailable: !f.ownCarrier && (!f.carrier || ['Pick one', 'Not sure yet'].includes(f.carrier)) ? chip('No insurance details available yet — follow up', f.insuranceUnavailable, () => this.set('file', 'insuranceUnavailable', !this.state.file.insuranceUnavailable)) : null,
           opts: hits.map((c) => chip(c, f.carrier === c, () => pickC(c))).concat(typed && !exact ? [chip('Use "' + typed + '"', false, () => pickC(typed))] : []) };
       }
-      if (id === 'people') return { kind: 'people', justMe: chip('Just them', s.car.justMe, pre.justMe), others: chip('Yes — details later', s.car.othersPresent || s.car.people.length > 0, () => this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true } })), add: pre.addPerson, people: pre.people };
+      if (id === 'people') return { kind: 'people', justMe: chip('Just them', s.car.justMe, pre.justMe), others: chip('Yes — details later', s.car.othersPresent || s.car.people.length > 0, () => { if (!this.state.car.people.length) pre.addPerson(); else this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true } }); }), add: pre.addPerson, people: pre.people };
       if (id === 'car') return { kind: 'car', year: { value: f.vYear, set: (e: any) => this.set('file', 'vYear', e.target.value), options: pre.years }, make: { value: f.vMake || '', set: (e: any) => this.set('file', 'vMake', e.target.value) }, model: { value: f.vModel || '', set: (e: any) => this.set('file', 'vModel', e.target.value) } };
       if (id === 'notes') return { kind: 'notes', field: { value: st.text || '', set: (e: any) => this.set('story', 'text', e.target.value), ph: 'Jot down the client’s account in your own words. This saves as you go.' } };
       return { kind: 'none' };
@@ -1939,7 +1936,7 @@ export class CallEngine {
       passengersPresent: !!s.car.othersPresent || s.car.people.length > 0,
       justMeCls: 'chip' + (s.car.justMe ? ' on' : ''),
       justMe: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }),
-      addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, dob: '', cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
+      addPerson: () => this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, dob: '', cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
       people: s.car.people.map((p, i) => ({
         id: p.pid || String(i),
         title: p.name ? p.name : 'Passenger ' + (i + 1),

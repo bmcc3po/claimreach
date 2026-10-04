@@ -92,6 +92,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(r.isGap) && <GapCard g={r.g} alone />}
 {!!(r.isSteps) && (<><div className="cc-steps">{(r.steps || []).map((st: any, i9: number) => (<Fragment key={i9}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div></>)}
 {!!(r.isButton) && (<><button className="cc-btn cc-full" disabled={!!r.disabled} onClick={r.go}>{r.label}</button></>)}
+{!!r.isPassengerQuestion && <QuestionControl c={v.fi.sections.flatMap((section: any) => section.questions).find((q: any) => q.id === "people")?.c} v={v} presentation="guided" />}
 {!!(r.isPerson) && (<>
 <div className="cc-q-p">
 <div style={{display: "flex", gap: "8px", alignItems: "center"}}><input className="cc-field" type="text" placeholder="Name" aria-label="Passenger name" value={r.p.name ?? ""} onChange={r.p.setName} /><button className="cc-x" onClick={r.p.remove} aria-label="Remove passenger">Remove</button></div>
