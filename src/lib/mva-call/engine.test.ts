@@ -234,6 +234,21 @@ t("dispo: DNC saves with no reason", () => {
   assert.ok(!e.renderVals().dispo.cantSave);
 });
 
+t("unfinished agreement can reopen from final delivery without erasing the saved call", () => {
+  const e = mk({ esign: { status: "signed", configured: true, pax: {} } });
+  e.set('story', 'text', 'Synthetic signed file');
+  e.openDispo(); e.setState({ dispo: { ...e.state.dispo, saved: true } });
+  e.renderVals().reviewIntake();
+  const writes = calls.length;
+  e.renderVals().returnToAgreement();
+  assert.equal(e.renderVals().postCallReview, false);
+  assert.equal(e.renderVals().dispoOpen, false);
+  assert.equal(e.renderVals().dispo.saved, true);
+  assert.equal(e.state.phase, 'file');
+  assert.equal(e.persistable().story.text, 'Synthetic signed file');
+  assert.equal(calls.length, writes, 'navigation must not sign, save or send');
+});
+
 t("send and complete go to the api, never simulate", () => {
   const e = mk();
   e.setState({ phase: "send", story: { ...e.state.story, city: "Houston, TX", when: "Yesterday" }, send: { ...e.state.send, client: "Jane Doe", phone: "2055550142" } });
