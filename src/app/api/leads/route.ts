@@ -30,7 +30,7 @@ async function editableLead(sb: Awaited<ReturnType<typeof supabaseServer>>, u: N
   if (!lead) return { error: "File not found.", status: 404 } as const;
   if (lead.archived_at) return { error: "Restore this file before editing it.", status: 409 } as const;
   if (u.role !== "owner") {
-    const access = await intakeFirmScope(sb, { role: u.role, firmId: u.firm_id }, lead.firm_id);
+    const access = await intakeFirmScope(sb, { role: u.role, firmId: u.firm_id }, lead.firm_id, supabaseAdmin);
     if (!access.ok) return access;
     if (!lead.campaign_id || lead.case_type !== "mva")
       return { error: "Only your firm's INNO MVA files are available.", status: 403 } as const;
@@ -308,7 +308,7 @@ export async function POST(req: NextRequest) {
     // side effects. A guessed hidden lead/claim must never reach an admin query.
     const context = await resolveSigningMatter(sb, String(lead_id), { claimId: claim_id ? String(claim_id) : null });
     if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
-    const access = await intakeFirmScope(sb, { role: u.role, firmId: u.firm_id }, context.lead.firm_id);
+    const access = await intakeFirmScope(sb, { role: u.role, firmId: u.firm_id }, context.lead.firm_id, supabaseAdmin);
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
     if (u.role !== "owner") {
       const { lead, matter } = context;
