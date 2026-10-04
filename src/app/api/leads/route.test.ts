@@ -31,11 +31,14 @@ function harness(role = "agent") {
   const cardinalityDb = new FakeDb({});
   Object.defineProperty(cardinalityDb.tables, "claims", { get: () => [...db.tables.claims, ...hiddenClaims] });
   cardinalityDb.failOn = (op) => { assert.equal(op.table, "claims");assert.equal(op.kind, "select");return null; };
-  const aggregateDb = new FakeDb({ esign_submissions: [], signable_documents: [] });
+  const aggregateDb = new FakeDb({ esign_submissions: [], signable_documents: [], firms: [] });
   Object.defineProperty(aggregateDb.tables, "claims", { get: () => [...db.tables.claims, ...hiddenClaims] });
   aggregateDb.failOn = (op) => {
     assert.equal(op.kind, "select", "privileged DB must never mutate");
-    if (op.table === "claims") {
+    if (op.table === "firms") {
+      assert.deepEqual(op.filters, [["eq", "id", db.tables.app_users[0].firm_id]], "configuration lookup is only the authenticated staff organization");
+      assert.ok(db.ops.some(read => read.table === "leads" && read.kind === "select"), "authorize the file through RLS first");
+    } else if (op.table === "claims") {
       assert.ok(db.ops.some(write => write.table === "claims" && write.kind === "update"), "queue aggregate read occurs only after the session mutation");
     } else {
       assert.ok(["esign_submissions", "signable_documents"].includes(op.table), "privileged read stays on signature evidence");
@@ -82,10 +85,11 @@ function harness(role = "agent") {
 const tests: [string, () => Promise<void>][] = [];
 const test = (name: string, fn: () => Promise<void>) => tests.push([name, fn]);
 
-test("Innovative intake agent saves TMP contacts and ordinary status with the recipient firm's audit", async () => {
+test("Innovative agent saves TMP contacts and status when pilot RLS hides the staff organization", async () => {
   const h = harness();
   h.db.tables.app_users[0].firm_id = "intake-team";
-  h.db.tables.firms.push({ id: "intake-team", slug: "inno" });
+  h.aggregateDb.tables.firms.push({ id: "intake-team", slug: "inno" });
+  assert.equal(h.db.tables.firms.some(row => row.id === "intake-team"), false);
   const patch = { phone: "2025550199", email: "test@example.invalid", mail_addr1: "1 Test Rd", mail_city: "Test City", mail_state: "CA", mail_zip: "94043" };
   assert.equal((await h.save(patch)).status, 200);
   for (const [key, value] of Object.entries(patch)) assert.equal(h.row()[key], value);
@@ -96,7 +100,7 @@ test("Innovative intake agent saves TMP contacts and ordinary status with the re
 
 test("intake organization exception never admits a different team, firm, campaign or archived file", async () => {
   for (const change of [
-    (h: any) => h.db.tables.firms[1].slug = "other-team",
+    (h: any) => h.aggregateDb.tables.firms[0].slug = "other-team",
     (h: any) => h.db.tables.firms[0].slug = "tmt",
     (h: any) => h.db.tables.campaigns[0].name = "NETFLY ONTAKE",
     (h: any) => h.db.tables.campaigns[0].active = false,
@@ -104,18 +108,28 @@ test("intake organization exception never admits a different team, firm, campaig
     (h: any) => h.row().archived_at = "2026-10-04T00:00:00Z",
   ]) {
     const h = harness(); h.db.tables.app_users[0].firm_id = "intake-team";
-    h.db.tables.firms.push({ id: "intake-team", slug: "inno" }); change(h);
+    h.aggregateDb.tables.firms.push({ id: "intake-team", slug: "inno" }); change(h);
     assert.ok([403, 409].includes((await h.save({ phone: "2025550199" })).status));
     assert.equal(h.writes().length, 0);
   }
 });
 
-test("unreadable or hidden intake organization fails closed without losing contact data", async () => {
+test("missing or unreadable authoritative organization fails closed without losing contact data", async () => {
   for (const fail of [false, true]) {
     const h = harness(); h.db.tables.app_users[0].firm_id = "intake-team";
-    if (fail) h.db.failOn = op => op.table === "firms" ? "Organization lookup failed" : null;
+    if (fail) h.aggregateDb.failOn = op => op.table === "firms" ? "Organization lookup failed" : null;
     assert.equal((await h.save({ phone: "2025550199" })).status, fail ? 503 : 403);
     assert.equal(h.writes().length, 0); assert.equal(h.row().phone, "2025550110");
+  }
+});
+
+test("a hidden recipient or hidden file never reaches organization configuration or writes", async () => {
+  for (const hide of ["recipient", "file"]) {
+    const h = harness(); h.db.tables.app_users[0].firm_id = "intake-team";
+    h.aggregateDb.tables.firms.push({ id: "intake-team", slug: "inno" });
+    h.db.tables[hide === "recipient" ? "firms" : "leads"] = [];
+    assert.equal((await h.save({ phone: "2025550199" })).status, hide === "recipient" ? 403 : 404);
+    assert.equal(h.aggregateDb.ops.length, 0); assert.equal(h.writes().length, 0);
   }
 });
 
