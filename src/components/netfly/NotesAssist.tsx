@@ -10,7 +10,7 @@ export default function NotesAssist({ fileKey, notes, saveNotes, onApplied }: {
   async function request(op: "suggest" | "apply") {
     setBusy(true); setMessage("");
     const controller = new AbortController();
-    const timer = op === "suggest" ? setTimeout(() => controller.abort(), 22000) : null;
+    const timer = op === "suggest" ? setTimeout(() => controller.abort(), 30000) : null;
     try {
       if (op === "suggest" && !await saveNotes()) return;
       if (controller.signal.aborted) throw new Error("Saving took longer than expected. Your notes remain here; retry Fill from notes.");
