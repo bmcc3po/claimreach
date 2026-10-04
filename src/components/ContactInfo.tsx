@@ -3,6 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { fieldVisible, contactFieldsForType, US_STATES } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
+import AddressLookup from "./AddressLookup";
+import PlaceField from "./calls/PlaceField";
 import PhoneInput, { formatUsPhone } from "./PhoneInput";
 import { useFieldAutosave } from "./useFieldAutosave";
 import { inferMailTimeZone, timeZoneLabel } from "@/lib/mail-time-zone";
@@ -265,7 +267,8 @@ function ContactInfoRecord({ lead, claimType, editMode = true, onRequestEdit, po
       <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>US numbers only. Type the 10 digits, the +1 and formatting are added automatically so every file matches.</div>
 
       <div className="section-title" style={{ marginTop: 16 }}>Mailing Address</div>
-      <div className="field"><label style={{ fontSize: 13 }}>Address</label><input value={vals.mail_addr1} onChange={(e) => set("mail_addr1", e.target.value)} /></div>
+      <div className="field"><label style={{ fontSize: 13 }}>Address</label><AddressLookup value={vals.mail_addr1} near={[vals.mail_city, vals.mail_state].filter(Boolean).join(", ")} onText={v => set("mail_addr1", v)} onPick={a => edit({ mail_addr1: a.addr1, mail_city: a.city, mail_state: a.state, mail_zip: a.zip })} /></div>
+      <div className="field"><label style={{ fontSize: 13 }}>Apartment / unit</label><input aria-label="Apartment or unit" value={vals.mail_addr2} onChange={e => set("mail_addr2", e.target.value)} /></div>
       <div className="grid2">
         <div className="field"><label style={{ fontSize: 13 }}>City</label><input value={vals.mail_city} onChange={(e) => set("mail_city", e.target.value)} /></div>
         <div className="field"><label style={{ fontSize: 13 }}>State</label><PickOrKeep value={vals.mail_state} onChange={(v) => set("mail_state", v)} options={US_STATES} /></div>
@@ -294,7 +297,7 @@ function ContactInfoRecord({ lead, claimType, editMode = true, onRequestEdit, po
         <div className="field"><label style={{ fontSize: 13 }}>Phone</label><PhoneInput value={vals.ec_phone} onChange={(e164) => set("ec_phone", e164)} /></div>
         <div className="field"><label style={{ fontSize: 13 }}>Email</label><input value={vals.ec_email} onChange={(e) => set("ec_email", e.target.value)} /></div>
       </div>
-      <div className="field"><label style={{ fontSize: 13 }}>Mailing address</label><input value={vals.ec_mail} onChange={(e) => set("ec_mail", e.target.value)} /></div>
+      <div className="field"><label style={{ fontSize: 13 }}>Mailing address</label><PlaceField kind="address" label="Emergency contact mailing address" value={vals.ec_mail} onChange={v => set("ec_mail", v)} /></div>
       <label className="fld-row"><input type="checkbox" checked={!!vals.ec_permission_to_discuss} onChange={(e) => set("ec_permission_to_discuss", e.target.checked)} /> Permission to discuss the case with this contact</label>
 
       {points.length > 0 && <ContactPointsList points={points} />}

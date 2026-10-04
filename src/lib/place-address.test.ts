@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { pickedAddress, placeText } from "./place-address";
+const hit = { address: "123 Test St, Miami, FL 33101, USA", parsed: { addr1: "123 Test St", city: "Miami", state: "FL", zip: "33101" } };
+assert.equal(placeText(hit, "address", "123 Test St Apt 4B"), "123 Test St, Apt 4B, Miami, FL 33101");
+assert.equal(placeText(hit, "address", "123 Test St # 42", true), "123 Test St, # 42");
+assert.equal(placeText(hit, "address", hit.address), "123 Test St, Miami, FL 33101", "Florida/United States are not apartment identifiers");
+assert.equal(placeText(hit, "address", "123 Test St Suite 200"), "123 Test St, Suite 200, Miami, FL 33101");
+assert.equal(placeText({ parsed: { ...hit.parsed, addr1: "123 Test St, Unit 4B" } }, "address", "123 Test St Unit 4B", true), "123 Test St, Unit 4B");
+assert.equal(hit.parsed.addr1, "123 Test St", "preserving a unit never mutates the cached match");
+assert.equal(pickedAddress({ address: "Main St & 2nd Ave" }, "Main St"), undefined);
+assert.equal(placeText({ address: "Main St & 2nd Ave, Miami, FL, USA" }, "address", "Main St"), "Main St & 2nd Ave, Miami, FL");
+assert.equal(placeText({ city_state: "Miami, FL" }, "city", "Miami"), "Miami, FL");
+console.log("Address selections preserve units, city/state/ZIP, intersections and original candidates");
