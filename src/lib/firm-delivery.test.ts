@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { deliverLeadToFirm, matterSendState, type FirmEmail, type DeliverDeps } from "./firm-delivery";
 import { loadIntakeBundle, buildIntakeCsvSingle } from "./intake-render";
 import { netflyPacketReview } from './netfly-packet';
+import { rehearsalKey } from './mva-call/rehearsal';
 
 let pass = 0;
 const t = async (name: string, fn: () => Promise<void> | void) => { await fn(); pass++; console.log("ok", name); };
@@ -192,6 +193,21 @@ function deps(db: any, o: Partial<DeliverDeps> = {}): DeliverDeps & { sent: Firm
 const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed\.pdf$/.test(a.filename))?.content;
 
 (async () => {
+  await t('nonbinding rehearsal keeps normal packet checks and restricts every recipient', async () => {
+    for (const mode of ['allowed', 'unapproved-cc', 'automatic', 'unreadable', 'missing-designation']) {
+      const config = { version: 1, phone: '+12025550100', emails: ['intake-ca01@firm.test', 'copy@example.test'] };
+      const db = world({ lead: leadRow({ source_key: 'test_lead', claimant_name: 'TEST Driver', vendor_fields: { signing_rehearsal: config } }),
+        claims: [claimRow('aaa1', 'ca01')], campaigns: [camp('ca01', { firm_cc: mode === 'unapproved-cc' ? 'unapproved@example.test' : 'copy@example.test' })],
+        agreements: [agreement('e1', '5001', { claim_id: 'aaa1' })],
+        extra: { esign_templates: mode === 'missing-designation' ? [] : [{ key: rehearsalKey(L), firm_id: FIRM, campaign_id: 'ca01', provider: 'docuseal' }] },
+        failRead: mode === 'unreadable' ? ['esign_templates'] : [],
+      });
+      const d = deps(db);
+      const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: mode === 'automatic' ? 'auto' : 'manual' }, d);
+      assert.equal(result.ok, mode === 'allowed', `${mode}: ${result.error}`);
+      assert.equal(d.sent.length, mode === 'allowed' ? 1 : 0, mode);
+    }
+  });
   const netflyWorld = () => {
     const campaign = camp('ca01', { name: 'NETFLY ONTAKE', path: 'secondary', esign_required: false });
     const lead = leadRow();

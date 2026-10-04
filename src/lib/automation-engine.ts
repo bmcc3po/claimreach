@@ -159,7 +159,7 @@ export async function loadAutomationTarget(admin: any, leadId: string, claimId?:
   if (se || !definition) throw new Error("Could not verify automation status rules.");
   const key = String(claim.status).toLowerCase();
   const blocked = lead.archived_at ? "file archived" :
-    lead.is_test === true || key === "test" || key === "test_lead" ? "test file" :
+    lead.is_test === true || lead.source_key === "test_lead" || key === "test" || key === "test_lead" ? "test file" :
     definition?.qualify === "disqualify" || definition?.phase === "terminal" ||
       /^(?:dq(?:_|$)|external_dq_review$|signed_dropped$|not_interested$|dnc$|duplicate$|dead$|declined$|dropped$|wrong_number$|already_represented$)/.test(key) ? "file disqualified or closed" : null;
   return { lead, claim, soleClaim: claims.length === 1, blocked, statusDefinition: definition };

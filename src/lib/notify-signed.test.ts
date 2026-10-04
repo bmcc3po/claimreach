@@ -11,6 +11,7 @@ import {
 } from "./notify-signed";
 import { sendEmail } from "./email";
 import { FakeDb, type Row } from "./test-fake-db";
+import { rehearsalKey } from './mva-call/rehearsal';
 
 delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 process.env.RESEND_API_KEY = "test-key-offline";
@@ -122,6 +123,19 @@ function world(sub: Partial<Row> = {}, opts: { routes?: NotifyRoute[] } = {}) {
 }
 
 // ---------------------------------------------------------------- lifecycle
+t('nonbinding rehearsal never sends team notifications, even with mixed-case TEST names', async () => {
+  const w = world({ signer_name: 'test Driver' });
+  w.db.tables.esign_templates = [{ key: rehearsalKey(LEAD_ID), firm_id: 'firm-tmp', campaign_id: 'c-tmp', provider: 'docuseal' }];
+  w.db.tables.leads[0].vendor_fields = { signing_rehearsal: { version: 1 } };
+  assert.equal(await notifySigned(w.db, w.row), 'no_recipient');
+  assert.equal(sent.length, 0); assert.match(String(w.stored().notify_error), /Nonbinding rehearsal/);
+  assert.equal(w.stored().signed_notified_at, null);
+});
+t('unreadable rehearsal designation cannot send a team notice', async () => {
+  const w = world({ signer_name: 'TEST Driver' });
+  w.db.failOn = op => op.table === 'esign_templates' ? 'Rehearsal read failed' : null;
+  assert.equal(await notifySigned(w.db, w.row), 'failed'); assert.equal(sent.length, 0);
+});
 t("sends once, records sent, stamps signed_notified_at, uses the idempotency key", async () => {
   const w = world();
   assert.equal(await notifySigned(w.db, w.row), "sent");
