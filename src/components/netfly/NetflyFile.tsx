@@ -311,7 +311,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
           </button>)}
         </nav>
         <div className="nf-flow-actions">
-          <button type="button" aria-expanded={notesOpen} aria-controls="nf-notes-body" onClick={() => { setWorkspaceTab("call"); setNotesOpen(open => !open); }}>Notes</button>
+          <button type="button" aria-expanded={notesOpen} aria-controls="nf-notes-body" onClick={() => { setWorkspaceTab("call"); setNotesOpen(open => !open); }}>Notes &amp; autofill</button>
           <button type="button" aria-expanded={checksOpen} aria-controls="nf-checks" onClick={() => { setWorkspaceTab("call"); setChecksOpen(open => !open); }}>To check{firstConversationPending.length > 0 ? ` · ${firstConversationPending.length}` : ""}</button>
           <button type="button" aria-controls="netfly-command" aria-expanded={commandOpen} onClick={() => setCommandOpen(true)}>Tools</button>
         </div>

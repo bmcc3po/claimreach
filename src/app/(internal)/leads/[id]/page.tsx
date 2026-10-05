@@ -12,6 +12,7 @@ import { caseSummaryRows } from "@/lib/mva-call/server";
 import { caseReport } from "@/lib/mva-call/report";
 import { matterRowsFilter } from "@/lib/matter";
 import { mayOpenFullFile } from "@/lib/file-fence";
+import { netflyWorkspaceCall } from "@/lib/netfly-workspace";
 
 export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ classic?: string; claim?: string }> }) {
   const { id: key } = await params;
@@ -152,6 +153,13 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
       href: `/app/${leadKeyOf(lead)}?claim=${claim.id}`, hasOld: oldKeys.length > 0,
       when: lastCall?.updated_at ?? null, agent: lastCall?.agent_name ?? null, dispo: lastDisposition?.disposition ?? lastCall?.disposition ?? null,
     };
+  }
+
+  // NETFLY owns a separate answer namespace and welcome-call screen. Without
+  // this summary the owner falls into the earlier generic questionnaire.
+  for (const claim of claims ?? []) {
+    const netflyCall = netflyWorkspaceCall(leadKeyOf(lead), claim);
+    if (netflyCall) appCalls[claim.id] = netflyCall;
   }
 
   const { linkedFilesFor } = await import("@/lib/linked-files");
