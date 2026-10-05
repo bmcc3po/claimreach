@@ -18,7 +18,7 @@ export default async function FirmCaseDetail({ params, searchParams }: {
   // Lead-wide answers, internal notes and vendor payloads never cross this
   // boundary. Each workbench receives exactly its own released claim.
   const { data: lead, error: leadError } = await sb.from("leads")
-    .select("id, firm_id, lead_no, claimant_name, phone, case_type, firm_ref_no, stage")
+    .select("id, firm_id, lead_no, claimant_name, firm_ref_no")
     .eq("id", id).eq("firm_id", user.firmId).is("archived_at", null).maybeSingle();
   if (leadError) throw new Error("Could not load the file. Please try again.");
   if (!lead) notFound();
@@ -35,18 +35,11 @@ export default async function FirmCaseDetail({ params, searchParams }: {
   if (matter.claim.firm_id !== user.firmId) notFound();
   const unlocked = await firmMatterReleased(sb, matter.claim.status);
   if (!unlocked) {
-    return <FirmCaseWorkbench lead={lead} claims={[]} activity={[]} callLogs={[]} locked stageLabel="Awaiting file review" />;
+    return <FirmCaseWorkbench lead={lead} locked />;
   }
-  const [{ data: claim, error: claimError }, { data: activity, error: activityError }, { data: callLogs, error: callsError }] = await Promise.all([
-    sb.from("claims").select("id, lead_id, firm_id, claim_type, status, answers, tier_letter, tier_number")
-      .eq("id", matter.claim.id).eq("lead_id", id).eq("firm_id", user.firmId).maybeSingle(),
-    sb.from("audit_log").select("created_at, actor_name, category, description")
-      .eq("lead_id", id).eq("claim_id", matter.claim.id).eq("firm_id", user.firmId)
-      .order("created_at", { ascending: false }).limit(100),
-    sb.from("call_logs").select("*").eq("lead_id", id).eq("claim_id", matter.claim.id).eq("firm_id", user.firmId)
-      .order("created_at", { ascending: false }).limit(100),
-  ]);
-  if (claimError || activityError || callsError) throw new Error("Could not load the complete file. Please try again.");
+  const { data: claim, error: claimError } = await sb.from("claims").select("id, lead_id, firm_id, claim_type, status")
+    .eq("id", matter.claim.id).eq("lead_id", id).eq("firm_id", user.firmId).maybeSingle();
+  if (claimError) throw new Error("Could not load the file. Please try again.");
   if (!claim || claim.status !== matter.claim.status) notFound();
-  return <FirmCaseWorkbench key={claim.id} lead={lead} claims={[claim]} activity={activity ?? []} callLogs={callLogs ?? []} />;
+  return <FirmCaseWorkbench key={claim.id} lead={lead} claim={claim} />;
 }

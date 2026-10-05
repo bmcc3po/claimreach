@@ -46,15 +46,16 @@ const tests: [string, () => Promise<void>][] = [];
 const test = (name: string, fn: () => Promise<void>) => tests.push([name, fn]);
 test("a newer released claim never unlocks the requested pending sibling", async () => {
   const h = harness(), page = await h.page(pending);
-  assert.equal(page.props.locked, true); assert.deepEqual(page.props.claims, []);
-  assert.deepEqual(page.props.callLogs, []); assert.deepEqual(page.props.activity, []);
+  assert.equal(page.props.locked, true); assert.equal(page.props.claim, undefined);
+  assert.equal(page.props.callLogs, undefined); assert.equal(page.props.activity, undefined);
   assert.ok(!JSON.stringify(page).includes("PRIVATE PENDING"));
 });
-test("released page contains only that claim, calls and activity", async () => {
+test("released page names one matter without querying call or audit payloads", async () => {
   const h = harness(), page = await h.page(released);
-  assert.equal(page.props.claims.length, 1); assert.equal(page.props.claims[0].id, released);
-  assert.equal(page.props.callLogs.length, 1); assert.equal(page.props.callLogs[0].claim_id, released);
-  assert.equal(page.props.activity.length, 1); assert.equal(page.props.activity[0].claim_id, released);
+  assert.equal(page.props.claim.id, released);
+  assert.equal(page.props.callLogs, undefined); assert.equal(page.props.activity, undefined);
+  assert.ok(!h.selected.some(x => ["call_logs", "audit_log"].includes(x.table)));
+  assert.equal(h.selected.filter(x => x.table === "claims").at(-1)?.columns, "id, lead_id, firm_id, claim_type, status");
   assert.ok(!JSON.stringify(page).includes("PRIVATE PENDING"));
   assert.ok(h.selected.filter(x => x.table === "leads").every(x => !x.columns.includes("*") && !x.columns.includes("answers") && !x.columns.includes("vendor_fields")));
 });
@@ -65,7 +66,7 @@ test("multi-matter file without explicit claim presents a choice instead of gues
 });
 test("sole released matter remains reachable from existing file links", async () => {
   const h = harness(); h.db.tables.claims = h.db.tables.claims.filter(c => c.id === released);
-  assert.equal((await h.page()).props.claims[0].id, released);
+  assert.equal((await h.page()).props.claim.id, released);
 });
 test("foreign firm, archived file, inactive user and wrong role are denied", async () => {
   for (const change of [
@@ -88,9 +89,13 @@ test("inactive released status never unlocks the matter", async () => {
   const h = harness(); const releasedStatus = h.db.tables.statuses.find(s => s.key === "delivered");
   assert.ok(releasedStatus); releasedStatus.active = false;
   const page = await h.page(released); assert.equal(page.props.locked, true);
-  assert.deepEqual(page.props.claims, []);
+  assert.equal(page.props.claim, undefined);
 });
 test("query failures are not rendered as a complete but empty file", async () => {
-  for (const table of ["leads", "audit_log", "call_logs"]) { const h = harness(); h.db.failOn = op => op.table === table ? "offline" : null; await assert.rejects(h.page(released), /Could not load/); }
+  const h = harness(); h.db.failOn = op => op.table === "leads" ? "offline" : null;
+  await assert.rejects(h.page(released), /Could not load/);
+  const claimFailure = harness();
+  claimFailure.db.failOn = op => op.table === "claims" && claimFailure.selected.at(-1)?.columns === "id, lead_id, firm_id, claim_type, status" ? "offline" : null;
+  await assert.rejects(claimFailure.page(released), /Could not load/);
 });
 (async () => { for (const [name, fn] of tests) { await fn(); console.log(`PASS ${name}`); } console.log(`${tests.length} firm page tests passed`); })().catch(e => { console.error(e); process.exitCode = 1; });
