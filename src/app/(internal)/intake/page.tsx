@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { workArea, inWorkArea, areaHref } from '@/lib/work-area';
+import { currentIntakeHref, isNetflyIntake } from '@/lib/intake-links';
 
 export default function AddLead() {
   const area = workArea(useSearchParams().get('area'));
@@ -32,6 +33,7 @@ export default function AddLead() {
 
   async function create(thenIntake: boolean) {
     if (!campaign) { setErr("Pick a campaign first. If none exist, create one in Settings > Campaigns."); return; }
+    if (isNetflyIntake(campaign.case_type, campaign.name)) { router.push('/app/netfly#new-file'); return; }
     if (!firstName.trim() && !lastName.trim()) { setErr("Enter at least a first or last name."); return; }
     setBusy(true); setErr(null);
     try {
@@ -56,7 +58,7 @@ export default function AddLead() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "could not create lead");
-      router.push(thenIntake ? `/intake/${d.lead.id}` : areaHref("/leads", area));
+      router.push(thenIntake ? currentIntakeHref(d.lead.id, campaign.case_type, campaign.name) || `/intake/${d.lead.id}` : areaHref("/leads", area));
     } catch (e: any) { setErr(e.message); setBusy(false); }
   }
 
@@ -81,6 +83,10 @@ export default function AddLead() {
           {campaign && <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>Firm: {campaign.firms?.name || "—"} · Type: {campaign.case_type}{campaign.tier ? ` · Tier ${campaign.tier}` : ""}</p>}
         </div>
 
+        {isNetflyIntake(campaign?.case_type, campaign?.name) ? <>
+          <p>Start the NETFLY welcome file with their handoff email and signed agreement.</p>
+          <a className="btn" href="/app/netfly#new-file">Create NETFLY file</a>
+        </> : <>
         <div className="row">
           <div className="field" style={{ flex: 1 }}>
             <label>First name</label>
@@ -118,6 +124,7 @@ export default function AddLead() {
           <button className="btn" disabled={busy} onClick={() => create(false)}>{busy ? "Saving…" : "Save lead"}</button>
           <button className="btn secondary" disabled={busy} onClick={() => create(true)}>Save &amp; start intake</button>
         </div>
+        </>}
       </div>
     </div>
   );

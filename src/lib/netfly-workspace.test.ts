@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { netflyWorkspaceCall } from './netfly-workspace';
-import { NETFLY_FIELDS } from './netfly-ontake';
+import { NETFLY_FIELDS, NETFLY_CAMPAIGN } from './netfly-ontake';
 
-const claim = { claim_type: 'netfly_secondary', updated_at: '2026-10-05T12:00:00Z', answers: {
+const claim = { claim_type: 'mva', campaign: NETFLY_CAMPAIGN, updated_at: '2026-10-05T12:00:00Z', answers: {
   netfly_secondary: { fields: { seen_doctor: 'Yes', first_provider: 'TEST Clinic', final_notes: 'Synthetic call notes', unknown_field: 'Ignore', confirmed_email: '' }, call_close: { completion: 'complete', by_name: 'TEST Agent' } },
   mva_call: { first_provider: 'Wrong workflow' }, first_provider: 'Earlier generic answer',
 } };
@@ -15,8 +15,10 @@ assert.ok(!JSON.stringify(call).includes('Earlier generic') && !JSON.stringify(c
 assert.equal(call.hasOld, false, 'owner stays on the canonical answer summary, not the older questionnaire');
 assert.equal(call.agent, 'TEST Agent'); assert.equal(call.dispo, 'Ontake complete');
 assert.equal(JSON.stringify(claim), original, 'display must not rewrite answers');
-assert.equal(netflyWorkspaceCall('TMP', { ...claim, claim_type: 'mva' }), null);
-const sibling = netflyWorkspaceCall('TMP', { claim_type: 'netfly_secondary', answers: {} })!;
+assert.equal(netflyWorkspaceCall('TMP', { ...claim, campaign: 'INNO MVA' }), null);
+assert.equal(netflyWorkspaceCall('TMP', { ...claim, campaign: null }), null, 'answer namespace alone is not campaign identity');
+assert.equal(netflyWorkspaceCall('TMP', { ...claim, claim_type: 'motel_trafficking' }), null);
+const sibling = netflyWorkspaceCall('TMP', { claim_type: 'mva', campaign: NETFLY_CAMPAIGN, answers: {} })!;
 assert.deepEqual(sibling.rows, [], 'never borrow another matter’s answers');
 assert.equal(sibling.agent, null); assert.equal(sibling.dispo, null);
 assert.equal(netflyWorkspaceCall('TMP', { claim_type: 'netfly_secondary', answers: { netfly_secondary: { call_close: { completion: 'incomplete' } } } })?.dispo, 'Callback to finish');

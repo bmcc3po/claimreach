@@ -1,7 +1,8 @@
 export const runtime = "edge";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import IntakeSurface from "@/components/IntakeSurface";
+import { currentIntakeHref } from '@/lib/intake-links';
 
 export default async function IntakeEditor({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -12,8 +13,13 @@ export default async function IntakeEditor({ params }: { params: Promise<{ id: s
   // Resolve (or create) the active claim for this lead. A claim is the client's
   // enrollment under ONE campaign; the campaign drives intake + retainer + track.
   const { data: leadCampaign } = lead.campaign_id
-    ? await sb.from("campaigns").select("id, case_type, intake_template, esign_required, retainer_packet, retainer_template_id").eq("id", lead.campaign_id).maybeSingle()
+    ? await sb.from("campaigns").select("id, name, case_type, intake_template, esign_required, retainer_packet, retainer_template_id").eq("id", lead.campaign_id).maybeSingle()
     : { data: null };
+
+  // Old bookmarks and Save & start intake must not reopen the legacy runner
+  // for campaigns with a dedicated intake. Redirect before any claim write.
+  const currentIntake = currentIntakeHref(lead.id, leadCampaign?.case_type ?? lead.case_type, leadCampaign?.name ?? lead.campaign);
+  if (currentIntake) redirect(currentIntake);
 
   let { data: claims } = await sb.from("claims").select("*").eq("lead_id", id).order("created_at");
   if (!claims || claims.length === 0) {
