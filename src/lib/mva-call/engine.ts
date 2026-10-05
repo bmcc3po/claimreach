@@ -20,7 +20,9 @@ import { canDirectVoid, agreementSendStatus, type SendAttemptHold } from './repl
 import { INTAKE_SECTIONS, INTAKE_SEQUENCE, INTAKE_OPTIONAL, sectionOf } from './intake';
 import { QUESTION_ORDER, QUESTION_PATHS, questionPhase } from './question-spine';
 import { INTAKE_STEPS, stepIndexForPosition } from './step-layout';
+import { passengerSigningWait } from './passenger-signing';
 export { SOL };
+export const VEHICLE_YEARS = Array.from({ length: 2027 - 1990 + 1 }, (_, i) => String(2027 - i));
 export const REBS: any[] = [
   { id: 'report', phase: 'open', group: 'Opening', title: "I was just checking on my police report.", text: "Got it, and that's exactly why we have you. When that report gets requested it comes over to us too. We're the intake center for {FIRM}, and I was reaching out to see what kind of pain you've been dealing with since the accident. Tell me what happened out there." },
   { id: 'info', phase: 'open', group: 'Opening', title: "How did you get my information?", text: "You filled out an accident form, and that comes straight to us here at the firm's intake center. That's all it is. Tell me what happened." },
@@ -149,6 +151,7 @@ function fmtWhen(iso) {
 }
 export const FINE = "Says they're fine";
 export const SEATS: any[] = ['Driver', 'Passenger', 'Pedestrian', 'Other'];
+export const POLICE_CHOICES = ['Came out', 'No', 'Not sure'];
 // Short single-choice answers render as a segmented control when the words fit; everything else is an iOS check list.
 // "2026-09-14" -> "09/14/2026"
 function mdy(iso: any) {
@@ -484,8 +487,8 @@ export class CallEngine {
                started: !!(st.fault || st.seat || st.police || st.when || st.city) },
       injury: { missing: open(injKeys), started: touched(injKeys) },
       cover: { missing: open(covKeys), started: touched(covKeys) },
-      car: { missing: s.car.justMe ? [] : s.car.people.filter((p) => !p.age || !p.hurt).map((p, i) => 'p' + i),
-             started: s.car.justMe || s.car.people.length > 0 },
+      car: { missing: this.fiInfo('people').answered ? [] : ['who'],
+             started: !!(s.car.justMe || s.car.othersPresent || s.car.people.length) },
       send: { missing: s.send.status === 'signed' ? [] : ['signed'], started: s.send.status !== 'ready' },
       file: { missing: gaps([['dob', f.dob], ['ssn', f.ssn], ['addr', f.addr]]), started: !!(f.dob || f.ssn || f.addr || f.dl || f.ecName) },
       close: { missing: s.saved ? [] : ['saved'], started: !!s.saved }
@@ -865,15 +868,14 @@ export class CallEngine {
       var x = byKey(k), dv = this.dateBox(b, x);
       return { isInput: true, label: 'Or the date', lcls: 'q-l', ph: '', type: 'date', mode: 'text', value: dv.value, set: dv.set };
     };
-    var years = ['Year'];
-    for (var y = 2027; y >= 1990; y--) years.push(String(y));
+    var years = ['Year', ...VEHICLE_YEARS];
     var rows = [];
 
     rows.push(G('crash', 'Crash'));
     rows.push(C('Fault', 'story', 'fault', ['Other driver', 'Caller', 'Not clear'], 'Caller'));
     rows.push(C('The PNC was', 'story', 'seat', SEATS));
     if (st.seat === 'Other') rows.push(I('Explain', 'story', 'seatOther', 'What were they doing'));
-    rows.push(C('Police came', 'story', 'police', ['Came out', 'No', 'Not sure']));
+    rows.push(C('Police came', 'story', 'police', POLICE_CHOICES));
     rows.push(C('Date of wreck', 'story', 'when', ['Today', 'Yesterday', 'Pick a date']));
     if (st.when === 'Pick a date') rows.push(I('Date', 'story', 'date', '', 'date'));
     rows.push(I('City, State', 'story', 'city', 'City, State'));
@@ -894,20 +896,7 @@ export class CallEngine {
     }
 
     rows.push(G('car', 'Others in the car'));
-    rows.push({ isChips: true, label: 'Passengers', lcls: lc('who'), chipsCls: 'chips list', chips: [
-      { label: 'Just me', cls: 'chip sm' + (s.car.justMe ? ' on' : ''), pick: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }) },
-      { label: 'Add passenger', cls: 'chip add', pick: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ name: '', rel: null, age: null, hurt: null }]) } }) }
-    ] });
-    s.car.people.forEach((p, i) => {
-      var opt = (key: any, pairs: any) => pairs.map((v) => ({ label: v[1], cls: 'chip sm' + (p[key] === v[0] ? ' on' : ''), pick: () => this.setPerson(i, key, p[key] === v[0] ? null : v[0]) }));
-      rows.push({ isPerson: true, p: {
-        name: p.name, setName: (e: any) => this.setPerson(i, 'name', e.target.value),
-        remove: () => this.setState({ car: Object.assign({}, this.state.car, { people: this.state.car.people.filter((x, j) => j !== i) }) }),
-        ages: opt('age', [['Under 18', 'Under 18'], ['Adult', 'Adult']]),
-        hurts: opt('hurt', [['Yes', 'Hurt'], ['No', 'Not hurt']])
-      } });
-    });
-
+    rows.push({ isPassengerQuestion: true });
     rows.push(G('send', 'Agreement'));
     rows.push({ isInfo: true, label: 'Agreement', value: this.agreementFor(st.city) || 'Needs where the wreck happened (city, state)' });
     rows.push(I('Signer full name', 'send', 'client', ''));
@@ -1096,9 +1085,16 @@ export class CallEngine {
     if (this.state.send.status === 'signed') this.api.completeAgreement();
   }
 
+  passengerSigningWait(i: number): string {
+    return passengerSigningWait(this.state.send.status, !!this.props.agreementSuperseded || !!this.state.send.nameReview || !!this.state.send.sentNameReview,
+      this.state.car.people, this.state.file.pax, i);
+  }
+
   passengerSendIssue(i: number): string {
     const hold = this.agreementHoldNotice();
     if (hold) return hold;
+    const wait = this.passengerSigningWait(i);
+    if (wait) return wait;
     const p = this.state.car.people[i];
     if (!p || !String(p.name || '').trim()) return "Add the passenger's full name.";
     if (this.state.file.pax[i]) return 'Their agreement is already being sent or is on file.';
@@ -1225,7 +1221,7 @@ export class CallEngine {
       return one('Insurance information', other || f.ownCarrier || f.insuranceUnavailable || f.carrier === 'Not sure yet', insurance || 'Not available yet — follow up');
     }
     if (id === 'people') {
-      var ok = car.justMe || car.othersPresent || (car.people.length > 0 && car.people.every((p) => p.age && p.hurt));
+      var ok = car.justMe || car.othersPresent || car.people.some((p) => String(p.name || '').trim());
       return { ...one('Passengers', ok, car.justMe ? 'Just them' : !car.people.length ? 'Yes — passenger details to follow' : car.people.length === 1 ? '1 passenger' : car.people.length + ' passengers'),
         optional: !car.justMe && car.people.length === 0, ask: 'Who else was in the car with you?' };
     }
@@ -1303,7 +1299,7 @@ export class CallEngine {
       }
       if (id === 'seat') return { kind: 'chips', opts: storyChip('seat', SEATS), other: st.seat === 'Other' ? { value: st.seatOther || '', set: (e: any) => this.set('story', 'seatOther', e.target.value), ph: 'What were they doing' } : null };
       if (id === 'fault') return { kind: 'chips', opts: storyChip('fault', ['Other driver', 'Caller', 'Not clear']), cue: st.fault === 'Caller' ? 'Do not go hunting.' : '' };
-      if (id === 'police') return { kind: 'chips', opts: storyChip('police', ['Came out', 'No', 'Not sure']) };
+      if (id === 'police') return { kind: 'chips', opts: storyChip('police', POLICE_CHOICES) };
       if (['road', 'report', 'policeAgency'].includes(id)) {
         const group = id === 'road' ? 'story' : 'file';
         const source = this.state[group];
@@ -1336,7 +1332,7 @@ export class CallEngine {
           unavailable: !f.ownCarrier && (!f.carrier || ['Pick one', 'Not sure yet'].includes(f.carrier)) ? chip('No insurance details available yet — follow up', f.insuranceUnavailable, () => this.set('file', 'insuranceUnavailable', !this.state.file.insuranceUnavailable)) : null,
           opts: hits.map((c) => chip(c, f.carrier === c, () => pickC(c))).concat(typed && !exact ? [chip('Use "' + typed + '"', false, () => pickC(typed))] : []) };
       }
-      if (id === 'people') return { kind: 'people', justMe: chip('Just them', s.car.justMe, pre.justMe), others: chip('Yes — details later', s.car.othersPresent || s.car.people.length > 0, () => this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true } })), add: pre.addPerson, people: pre.people };
+      if (id === 'people') return { kind: 'people', justMe: chip('Just them', s.car.justMe, pre.justMe), others: chip('Yes — details later', s.car.othersPresent || s.car.people.length > 0, () => { if (!this.state.car.people.length) pre.addPerson(); else this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true } }); }), add: pre.addPerson, people: pre.people };
       if (id === 'car') return { kind: 'car', year: { value: f.vYear, set: (e: any) => this.set('file', 'vYear', e.target.value), options: pre.years }, make: { value: f.vMake || '', set: (e: any) => this.set('file', 'vMake', e.target.value) }, model: { value: f.vModel || '', set: (e: any) => this.set('file', 'vModel', e.target.value) } };
       if (id === 'notes') return { kind: 'notes', field: { value: st.text || '', set: (e: any) => this.set('story', 'text', e.target.value), ph: 'Jot down the client’s account in your own words. This saves as you go.' } };
       return { kind: 'none' };
@@ -1386,7 +1382,7 @@ export class CallEngine {
             editing: editing, flash: fi.flash === id,
             showAsk: !!x.ask,
             paths: QUESTION_PATHS[id],
-            cue: (BODYQ.find(q => q.key === id) || {}).cue || (id === 'people' ? 'Ask when possible. If there was a passenger, add them to their own file and agreement.' : ''),
+            cue: (BODYQ.find(q => q.key === id) || {}).cue || (id === 'people' ? 'Ask whether anyone else was in the car.' : ''),
             soreness: id === 'pain' && b.pain.includes(FINE) ? this.firmText(REBS.find(r => r.id === 'soreness').text) : '',
             focus: () => { if (this.state.fi.cq !== id) this.setFi({ cq: id, sec: sec.id, target: id }); },
             edit: () => this.setFi({ cq: id, target: id, sec: sec.id, edit: fi.edit === id ? null : id, flash: null }),
@@ -1796,8 +1792,7 @@ export class CallEngine {
     if (hurtPax.length) fileSteps.push(['pax', 'Passengers']);
     var fIdx = fileSteps.findIndex((x) => x[0] === s.file.step);
 
-    var years = ['Year'];
-    for (var y = 2027; y >= 1990; y--) years.push(String(y));
+    var years = ['Year', ...VEHICLE_YEARS];
 
     // Send is never a dead grey button. Tapping it while something is missing
     // says what, right above the button, and it clears the moment it is fixed.
@@ -1890,7 +1885,7 @@ export class CallEngine {
       },
       storySeat: SEATS.map((o) => ({ label: o, cls: 'chip sm' + (st.seat === o ? ' on' : ''), pick: () => this.storyPick('seat', o) })),
       storyFault: ['Other driver', 'Caller', 'Not clear'].map((o) => ({ label: o, cls: 'chip' + (o === 'Caller' ? ' warn' : '') + (st.fault === o ? ' on' : ''), pick: () => this.storyPick('fault', o) })),
-      storyPolice: ['Came out', 'No', 'Not sure'].map((o) => ({ label: o, cls: 'chip sm' + (st.police === o ? ' on' : ''), pick: () => this.storyPick('police', o) })),
+      storyPolice: POLICE_CHOICES.map((o) => ({ label: o, cls: 'chip sm' + (st.police === o ? ' on' : ''), pick: () => this.storyPick('police', o) })),
       leadOpen: !!s.leadOpen,
       toggleLead: () => this.setState({ leadOpen: !this.state.leadOpen }),
       sayingFineFree: b.pain.indexOf(FINE) >= 0 && b.pain.length === 1,
@@ -1912,7 +1907,7 @@ export class CallEngine {
       faultCaller: st.fault === 'Caller',
       seat: this.chips('story', 'seat', SEATS, null, true),
       seatOther: st.seat === 'Other',
-      police: this.chips('story', 'police', ['Came out', 'No', 'Not sure'], null, true),
+      police: this.chips('story', 'police', POLICE_CHOICES, null, true),
       when: this.chips('story', 'when', ['Today', 'Yesterday', 'Pick a date']),
       pickDate: st.when === 'Pick a date',
       hasDays: days != null && st.when === 'Pick a date',
@@ -1938,9 +1933,10 @@ export class CallEngine {
       sayingFine: b.pain.indexOf(FINE) >= 0 && !b.done.pain,
       soreness: this.firmText(REBS.find((r: any) => r.id === 'soreness').text),
       bodyComplete: !q && (b.rep !== 'Yes' || this.repGood(b)),
+      passengersPresent: !!s.car.othersPresent || s.car.people.length > 0,
       justMeCls: 'chip' + (s.car.justMe ? ' on' : ''),
       justMe: () => this.setState({ car: { justMe: !this.state.car.justMe, people: [] } }),
-      addPerson: () => this.setState({ car: { justMe: false, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, dob: '', cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
+      addPerson: () => this.setState({ car: { ...this.state.car, justMe: false, othersPresent: true, people: this.state.car.people.concat([{ pid: newPid(), name: '', rel: null, age: null, hurt: null, dob: '', cell: '', email: '', shareOk: false, wantsRep: null, willing: null, sameAddr: null }]) } }),
       people: s.car.people.map((p, i) => ({
         id: p.pid || String(i),
         title: p.name ? p.name : 'Passenger ' + (i + 1),
@@ -2064,6 +2060,7 @@ export class CallEngine {
         var noRep = x.p.wantsRep !== 'Yes';
         return {
           id: x.p.pid || String(x.i),
+          sequenceWait: this.passengerSigningWait(x.i),
           title: nm + (minor ? ', under 18' : ''),
           note: minor ? this.callerFirst() + ' signs as parent or guardian. ' + nm + ' goes on the HIPAA pages.'
             : noRep ? 'Confirm that ' + nm + ' wants representation on the Passengers step before sending their agreement.'
@@ -2130,6 +2127,10 @@ export class CallEngine {
       dispoOpen: !!d.open,
       postCallReview: !!s.postCallReview,
       reviewIntake: () => this.setState({ postCallReview: true, dispo: { ...this.state.dispo, open: false } }),
+      returnToAgreement: () => {
+        this.setState({ postCallReview: false, dispo: { ...this.state.dispo, open: false } });
+        this.jumpTo('file');
+      },
       finishReview: () => this.setState({ postCallReview: false, dispo: { ...this.state.dispo, open: true } }),
       dispo: {
         back: () => this.setState({ postCallReview: !!this.state.dispo.saved, dispo: { ...this.state.dispo, open: false } }),

@@ -19,7 +19,8 @@ import AgreementChoice from "./AgreementChoice";
 import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
 import ContractActions from "./ContractActions";
-import PassengerAgreement from "./PassengerAgreement";
+import PassengerFollowup from "./PassengerFollowup";
+import FinishFileSteps from "./FinishFileSteps";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
@@ -91,6 +92,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(r.isGap) && <GapCard g={r.g} alone />}
 {!!(r.isSteps) && (<><div className="cc-steps">{(r.steps || []).map((st: any, i9: number) => (<Fragment key={i9}><div className={cx(st.cls)}>{st.label}</div></Fragment>))}</div></>)}
 {!!(r.isButton) && (<><button className="cc-btn cc-full" disabled={!!r.disabled} onClick={r.go}>{r.label}</button></>)}
+{!!r.isPassengerQuestion && <QuestionControl c={v.fi.sections.flatMap((section: any) => section.questions).find((q: any) => q.id === "people")?.c} v={v} presentation="guided" />}
 {!!(r.isPerson) && (<>
 <div className="cc-q-p">
 <div style={{display: "flex", gap: "8px", alignItems: "center"}}><input className="cc-field" type="text" placeholder="Name" aria-label="Passenger name" value={r.p.name ?? ""} onChange={r.p.setName} /><button className="cc-x" onClick={r.p.remove} aria-label="Remove passenger">Remove</button></div>
@@ -171,7 +173,7 @@ export default function CallView({ v }: { v: any }) {
 {!!(v.solClose) && (<><div className="cc-cue cc-red" style={{marginTop: "-14px"}}>Inside 90 days. Get a supervisor before you sign or decline.</div></>)}
 <div>
 <div className="cc-lab">NOTES</div>
-<textarea className="cc-area" rows={2} placeholder="Tap the mic on your keyboard and say it" aria-label="Short outline of the story" value={v.f.text.value ?? ""} onChange={v.f.text.set}></textarea>
+<QuestionControl c={v.fi.sections.flatMap((section: any) => section.questions).find((question: any) => question.id === 'notes').c} v={v} presentation="guided" />
 </div>
 <div className="cc-quiet">
 <span>Lines</span>
@@ -273,40 +275,9 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-say">
 <div className="cc-say-label">Say</div>
 <div className="cc-say-line">Who else was in the car with you?</div>
-<div className="cc-cue">Ask when possible. If there was a passenger, add them to their own file and agreement.</div>
+<div className="cc-cue">Ask whether anyone else was in the car.</div>
 </div>
-<div className="cc-chips cc-list">
-<button className={cx(v.justMeCls)} onClick={v.justMe}>Just me</button>
-<button className="cc-chip cc-add" onClick={v.addPerson}>Add a passenger</button>
-</div>
-{(v.people || []).map((p: any, i25: number) => (<Fragment key={i25}>
-<div className="cc-card">
-<div style={{display: "flex", justifyContent: "space-between", alignItems: "center"}}><span className="cc-card-h">{p.title}</span><button className="cc-x" onClick={p.remove} aria-label="Remove passenger">Remove</button></div>
-<input className="cc-field" type="text" placeholder="First name" aria-label="Passenger first name" value={p.name ?? ""} onChange={p.setName} />
-<div className="cc-chips cc-list">{(p.rels || []).map((c: any, i26: number) => (<Fragment key={i26}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-<div className="cc-lab" style={{marginTop: "8px"}}>AGE</div>
-<div className="cc-chips cc-seg">{(p.ages || []).map((c: any, i27: number) => (<Fragment key={i27}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-<div className="cc-line">Okay, and how are they doing? Any soreness, any trouble sleeping, anything like that?</div>
-<div className="cc-lab">HURT</div>
-<div className="cc-chips cc-seg">{(p.hurts || []).map((c: any, i28: number) => (<Fragment key={i28}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-{!!(p.ownFile) && (<>
-<span className="cc-tag">Own file and own agreement</span>
-<div className="cc-lab" style={{marginTop: "8px"}}>WANTS REPRESENTATION</div>
-<div className="cc-chips cc-seg">{(p.wantsReps || []).map((c: any, i28b: number) => (<Fragment key={i28b}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-{p.wantsRep === "Yes" && <div className="iq-passenger-next"><strong>Collect this now, then finish their own agreement and file.</strong>
-<div className="cc-lab" style={{marginTop: "8px"}}>DATE OF BIRTH, IF AVAILABLE</div>
-<input className="cc-field" type="date" aria-label={`${p.first}'s date of birth`} value={p.dob.value ?? ""} onChange={p.dob.set} />
-{!p.minor && <><div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S OWN CELL</div><input className="cc-field" type="tel" inputMode="tel" placeholder="Their agreement texts to THEIR phone" aria-label={`${p.first}'s cell`} value={p.cell.value ?? ""} onChange={p.cell.set} /><div className="cc-lab" style={{marginTop: "8px"}}>{p.first.toUpperCase()}&apos;S EMAIL</div><input className="cc-field" type="email" inputMode="email" aria-label={`${p.first}'s email`} value={p.email.value ?? ""} onChange={p.email.set} /></>}
-<PassengerAgreement p={v.paxSend?.find((item: any) => item.id === p.id)} v={v} capture={false} />
-</div>}
-<div className="cc-lab" style={{marginTop: "8px"}}>WILLING TO TREAT</div>
-<div className="cc-chips cc-seg">{(p.willings || []).map((c: any, i28c: number) => (<Fragment key={i28c}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-<div className="cc-lab" style={{marginTop: "8px"}}>HOME ADDRESS</div>
-<div className="cc-chips cc-seg">{(p.sameAddrs || []).map((c: any, i28d: number) => (<Fragment key={i28d}><button className={cx(c.cls)} onClick={c.pick}>{c.label}</button></Fragment>))}</div>
-<div className="cc-cue" style={{marginTop: "4px"}}>Their file opens prefilled from this call: same wreck, same day, linked to this file both ways.</div>
-</>)}
-</div>
-</Fragment>))}
+<QuestionControl c={v.fi.sections.flatMap((section: any) => section.questions).find((q: any) => q.id === "people")?.c} v={v} presentation="guided" />
 </>)}
 
 {!!(v.showMoney) && (<>
@@ -444,10 +415,9 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">Missed work</span><span className="cc-done-v">{v.missedWork}</span></div>
 </div>
 </>)}
-{!!(v.fsPax) && (<>
-{(v.paxSend || []).map((p: any) => <PassengerAgreement key={p.id} p={p} v={v} />)}
 </>)}
-</>)}
+
+{(v.bare || v.showSend || v.showFile) && <PassengerFollowup v={v} presentation="guided" />}
 
 {!!(v.showClose) && (<>
 {!!(v.free) && (<><div id="fs-close" className="cc-sec-h">Close</div></>)}
@@ -576,11 +546,12 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-dsp" role="dialog" aria-label="Dispo">
 <div className="cc-dsp-n">
 <button className="cc-dsp-back" onClick={v.dispo.back}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>{v.dispo.saved ? "Review intake" : "Back to intake"}</button>
-<span className="cc-caller">Dispo</span>
+<span className="cc-caller">{v.dispo.isSigned ? "Finish this file" : "Call outcome"}</span>
 <span></span>
 </div>
 <div className="cc-dsp-b">
 {!!(v.dispo.editing) && (<>
+{v.dispo.isSigned && <FinishFileSteps current="call" />}
 <div className="cc-sec-h cc-first">How the call ended</div>
 <div className="cc-grp" role="radiogroup" aria-label="How the call ended">
 {(v.dispo.opts || []).map((o: any, i45: number) => (<Fragment key={i45}><button className={cx(o.cls)} role="radio" aria-checked={!!o.on} onClick={o.pick}><span>{o.label}</span>{!!(o.showCheck) && (<><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#16324F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"></path></svg></>)}{!!(o.showChange) && (<><span className="cc-d-change">Change<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span></>)}</button></Fragment>))}
@@ -607,14 +578,14 @@ function Dispo({ v }: { v: any }) {
 {!!(v.dispo.saved) && (<>
 <div className="cc-card" style={{alignItems: "center", textAlign: "center", gap: "8px", padding: "24px 16px"}}>
 <div className="cc-d-ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></div>
-<div className="cc-card-h">Dispo saved</div>
+<div className="cc-card-h">{v.dispo.isSigned ? "Call saved · continue below" : "Call saved"}</div>
 <div className="cc-cue" style={{margin: "0"}}>{v.dispo.savedNote}</div>
 {v.dispo.isSigned && <button type="button" className="cc-btn cc-go" onClick={v.reviewIntake}>Review intake answers</button>}
 </div>
 <div className="cc-grp">
 {(v.dispo.summary || []).map((r: any, i49: number) => (<Fragment key={i49}><div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">{r.k}</span><span className="cc-done-v">{r.v}</span></div></Fragment>))}
 </div>
-{v.dispo.isSigned && <FinalHandoff key={`${v.leadId}:${v.claimId}`} leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} canOverrideDownload={v.canOverrideDownload} />}
+{v.dispo.isSigned && <FinalHandoff key={`${v.leadId}:${v.claimId}`} leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} onAgreement={v.returnToAgreement} canOverrideDownload={v.canOverrideDownload} />}
 </>)}
 {!!v.dispo.hasError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.dispo.error}</div></div>}
 </div>

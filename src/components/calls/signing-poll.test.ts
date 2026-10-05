@@ -39,6 +39,11 @@ const check = async (name: string, fn: () => Promise<void>) => { await fn(); cou
     const h = harness(), pending = h.poll(); h.reply({ agreement_id: "original", status: "signed", complete: true, pax: { "0": "signed" } }); await pending;
     assert.equal(h.engine.state.send.status, "signed"); assert.equal(h.engine.state.file.agreement, "done"); assert.equal(h.engine.state.file.pax["0"], "signed");
   });
+  await check("voided passenger clears its previous signature without erasing unpolled passengers", async () => {
+    const h = harness(); h.engine.state.file.pax = { "0": "signed", "1": "sent" };
+    const pending = h.poll(); h.reply({ agreement_id: "original", status: "signed", pax: { "0": "" } }); await pending;
+    assert.deepEqual(h.engine.state.file.pax, { "0": "", "1": "sent" });
+  });
   await check("current poll uses recorded contract identity and exact configured keys", async () => {
     const h = harness(), pending = h.poll();
     h.reply({ agreement_id: "original", status: "sent", agreement: { template_key: "NV_FLAT" }, templates: [{ key: "NV_FLAT" }] }); await pending;

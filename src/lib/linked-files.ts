@@ -12,7 +12,7 @@
 // ever cross from one person's intake to another's.
 // ============================================================================
 
-export interface LinkedFile { id: string; lead_no: string | null; name: string; label: string }
+export interface LinkedFile { id: string; lead_no: string | null; name: string; label: string; passengerKey?: string }
 
 const PAX_RE = /^([0-9a-f-]{36}):pax:([A-Za-z0-9_-]{1,40})$/i;
 
@@ -20,6 +20,16 @@ const PAX_RE = /^([0-9a-f-]{36}):pax:([A-Za-z0-9_-]{1,40})$/i;
 export function paxParentId(externalId: string | null | undefined): string | null {
   const m = String(externalId || "").match(PAX_RE);
   return m ? m[1] : null;
+}
+
+/** Restore card links from durable associations, never names or display order. */
+export function passengerFileLinks(files: LinkedFile[] = []): Record<string, string> {
+  const groups = new Map<string, string[]>();
+  for (const file of files) {
+    if (!file.passengerKey) continue;
+    groups.set(file.passengerKey, [...(groups.get(file.passengerKey) || []), file.id]);
+  }
+  return Object.fromEntries([...groups].filter(([, ids]) => ids.length === 1).map(([key, ids]) => [key, ids[0]]));
 }
 
 /**
@@ -47,11 +57,13 @@ export async function linkedFilesFor(
         .eq("id", parentId).eq("firm_id", lead.firm_id).maybeSingle();
       if (parent) out.push({ id: parent.id, lead_no: parent.lead_no, name: parent.claimant_name || "The caller", label: "same wreck, their file opened this one" });
     }
-    const { data: kids } = await db.from("leads").select("id, lead_no, claimant_name")
+    const { data: kids } = await db.from("leads").select("id, lead_no, claimant_name, external_id")
       .eq("firm_id", lead.firm_id).like("external_id", `${parentId}:pax:%`).is("archived_at", null).limit(10);
     for (const k of kids ?? []) {
       if (k.id === lead.id) continue;
-      out.push({ id: k.id, lead_no: k.lead_no, name: k.claimant_name || "Passenger", label: parentId === lead.id ? "passenger in this wreck" : "in the same car" });
+      const association = String(k.external_id || "").match(PAX_RE);
+      out.push({ id: k.id, lead_no: k.lead_no, name: k.claimant_name || "Passenger", label: parentId === lead.id ? "passenger in this wreck" : "in the same car",
+        ...(parentId === lead.id && association?.[1] === lead.id ? { passengerKey: association[2] } : {}) });
     }
   } catch { /* linking is context, never load-bearing */ }
   return out;
