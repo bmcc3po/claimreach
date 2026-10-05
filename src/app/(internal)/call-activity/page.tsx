@@ -61,12 +61,12 @@ export default async function CallActivityPage({ searchParams }: { searchParams:
   const ids = [...new Set([...comms.map((row) => row.lead_id), ...(callbacks || []).map((row) => row.lead_id)].filter(Boolean))];
   const leads: any[] = [];
   for (let i = 0; i < ids.length; i += 100) {
-    const { data, error } = await sb.from("leads").select("id,lead_no,claimant_name,campaign,case_type").in("id", ids.slice(i, i + 100));
+    const { data, error } = await sb.from("leads").select("id,lead_no,claimant_name,campaign,case_type").in("id", ids.slice(i, i + 100)).is("archived_at", null);
     if (error) throw new Error(`Could not load linked call files: ${error.message}`);
     leads.push(...(data || []));
   }
   const byLead = new Map(leads.map((lead) => [lead.id, lead]));
-  const callbackRows = (callbacks || []).filter((row) => row.callback_at && pacificDay(row.callback_at) >= monday && pacificDay(row.callback_at) < next)
+  const callbackRows = (callbacks || []).filter((row) => byLead.has(row.lead_id) && row.callback_at && pacificDay(row.callback_at) >= monday && pacificDay(row.callback_at) < next)
     .map((row) => {
       const lead = byLead.get(row.lead_id);
       return { id: row.id, leadNo: lead?.lead_no || "File", claimant: lead?.claimant_name || "Name missing",

@@ -19,7 +19,7 @@ export default async function FirmHome() {
   // RLS scopes to the firm.
   const { data: leads } = await sb.from("leads")
     .select("id, lead_no, firm_ref_no, stage, updated_at, claims(status, stage, supervisor_flag)")
-    .order("updated_at", { ascending: false }).limit(500);
+    .is("archived_at", null).order("updated_at", { ascending: false }).limit(500);
 
   const all = leads ?? [];
   const now = Date.now();

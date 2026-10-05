@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest) {
   // Keep the column set tight for speed.
   let q = admin.from("leads")
     .select("id, lead_no, claimant_name, first_name, last_name, campaign, campaign_id, firm_id, signed_at, firm_sent_at, esign_sent_at, assigned_agent")
-    .or("and(signed_at.not.is.null,firm_sent_at.is.null),esign_sent_at.not.is.null");
+    .is("archived_at", null).or("and(signed_at.not.is.null,firm_sent_at.is.null),esign_sent_at.not.is.null");
 
   // Role scoping.
   if (g.role === "agent") q = q.eq("assigned_agent", g.id);

@@ -1,4 +1,5 @@
 import { pacificDay, shiftWeek } from "./packet-worklist";
+import { isActiveFile } from "./file-visibility";
 
 export type CallActivityRow = {
   id: string;
@@ -44,7 +45,7 @@ export function linkedCallActivity(comms: any[], leads: any[], monday: string, i
   const next = shiftWeek(monday, 1);
   return comms.flatMap((call) => {
     const lead = byLead.get(call.lead_id);
-    if (!lead || call.channel !== "call" || !["inbound", "outbound"].includes(call.direction) || !call.occurred_at) return [];
+    if (!isActiveFile(lead) || call.channel !== "call" || !["inbound", "outbound"].includes(call.direction) || !call.occurred_at) return [];
     const day = pacificDay(call.occurred_at);
     if (day < monday || day >= next) return [];
     return [{

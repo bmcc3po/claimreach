@@ -51,6 +51,7 @@ export async function leadsWithOutbound(admin: any, ids: string[]): Promise<Set<
 // Alerts are the same for every staff login, and the bell asks every minute
 // from every open tab. Hold the answer for 30 seconds per server instance.
 let cached: { at: number; p: Promise<Alert[]> } | null = null;
+export function invalidateAlertCache() { cached = null; }
 export function computeAlerts(db?: any): Promise<Alert[]> {
   // Caller-scoped dashboards never share another user's cached rows.
   if (db) return computeAlertsFresh(db);

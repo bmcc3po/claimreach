@@ -6,7 +6,7 @@ export default async function StaffReports() {
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   const me = user ? await sb.from("app_users").select("role,active").eq("id", user.id).maybeSingle() : null;
-  const { data: leads } = await sb.from("leads").select("id, lead_no, claimant_name, stage, case_type, campaign, created_at, updated_at, first_opened_at, first_dialed_at").limit(3000);
+  const { data: leads } = await sb.from("leads").select("id, lead_no, claimant_name, stage, case_type, campaign, created_at, updated_at, first_opened_at, first_dialed_at").is("archived_at", null).limit(3000);
   const ids = (leads ?? []).map((l) => l.id);
   let claims: any[] = [];
   if (ids.length) { const { data } = await sb.from("claims").select("lead_id, status, claim_type, campaign, tier, created_at").in("lead_id", ids); claims = data ?? []; }

@@ -6,7 +6,7 @@ export default async function FirmCases() {
   const sb = await supabaseServer();
   const { data: leads } = await sb.from("leads")
     .select("id, lead_no, firm_ref_no, claimant_name, stage, updated_at, case_type")
-    .order("updated_at", { ascending: false }).limit(500);
+    .is("archived_at", null).order("updated_at", { ascending: false }).limit(500);
   const ids = (leads ?? []).map((l) => l.id);
   const byLead: Record<string, any[]> = {};
   if (ids.length) {

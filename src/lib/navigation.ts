@@ -24,4 +24,5 @@ export const FILE_VIEWS = [
   { href: "/leads", label: "Open files" },
   { href: "/signed", label: "Signed files" },
   { href: "/packets", label: "Firm delivery" },
+  { href: "/leads/archive", label: "Test files & archive" },
 ];

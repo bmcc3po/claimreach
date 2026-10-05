@@ -4,6 +4,8 @@ import { isInternalRole } from "@/lib/permissions";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
 import { recordAudit } from "@/lib/audit";
 import { manualIntakeStatusAllowed } from "@/lib/statuses";
+import { revalidatePath } from "next/cache";
+import { invalidateAlertCache } from "@/lib/alerts";
 export const runtime = "edge";
 
 // Bulk operations on selected leads. Body: { op, ids:[], ...args }
@@ -78,20 +80,26 @@ export async function POST(req: NextRequest) {
     // and everything attached to them with no way back.
     if (b.op === "delete" || b.op === "archive") {
       if (!canDelete) return NextResponse.json({ error: "no delete permission" }, { status: 403 });
-      const { error } = await sb.from("leads")
+      const { data: saved, error } = await sb.from("leads")
         .update({ archived_at: new Date().toISOString(), archived_by: auth.user.id, archive_reason: b.reason ?? null })
-        .in("id", ids);
+        .in("id", uniqueIds).select("id");
       if (error) throw error;
-      return NextResponse.json({ ok: true, count: ids.length, archived: true });
+      revalidatePath("/", "layout");
+      invalidateAlertCache();
+      if (saved?.length !== uniqueIds.length) return NextResponse.json({ error: "Not every selected file could be archived. Refresh and review the files before retrying." }, { status: 409 });
+      return NextResponse.json({ ok: true, count: saved.length, archived: true });
     }
 
     if (b.op === "restore") {
       if (!canDelete) return NextResponse.json({ error: "no delete permission" }, { status: 403 });
-      const { error } = await sb.from("leads")
+      const { data: saved, error } = await sb.from("leads")
         .update({ archived_at: null, archived_by: null, archive_reason: null })
-        .in("id", ids);
+        .in("id", uniqueIds).select("id");
       if (error) throw error;
-      return NextResponse.json({ ok: true, count: ids.length, restored: true });
+      revalidatePath("/", "layout");
+      invalidateAlertCache();
+      if (saved?.length !== uniqueIds.length) return NextResponse.json({ error: "Not every selected file could be restored. Refresh and review the files before retrying." }, { status: 409 });
+      return NextResponse.json({ ok: true, count: saved.length, restored: true });
     }
 
     // Permanent destruction. Owner only, archived only, and never as a first

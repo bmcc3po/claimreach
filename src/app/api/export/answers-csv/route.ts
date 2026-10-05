@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   const cols = fields.filter((f) => !SKIP_KINDS.includes(f.kind));
 
   // The leads for this campaign (or case type).
-  let q = sb.from("leads").select("id, lead_no, claimant_name, campaign, campaign_id, case_type, created_at, phone, email, mail_addr1, mail_city, mail_state, mail_zip");
+  let q = sb.from("leads").select("id, lead_no, claimant_name, campaign, campaign_id, case_type, created_at, phone, email, mail_addr1, mail_city, mail_state, mail_zip").is("archived_at", null);
   q = campaignId ? q.eq("campaign_id", campaignId) : q.eq("case_type", caseType);
   const { data: leads, error: leadsError } = await q.order("created_at");
   if (leadsError) return NextResponse.json({ error: "Leads could not be read. Nothing was exported." }, { status: 500 });

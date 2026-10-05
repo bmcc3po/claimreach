@@ -4,7 +4,7 @@ import StatusReport from "@/components/StatusReport";
 
 export default async function StatusReportPage() {
   const sb = await supabaseServer();
-  const { data: leads } = await sb.from("leads").select("id, lead_no, claimant_name, case_type, source, assigned_agent, created_at, updated_at").limit(5000);
+  const { data: leads } = await sb.from("leads").select("id, lead_no, claimant_name, case_type, source, assigned_agent, created_at, updated_at").is("archived_at", null).limit(5000);
   const ids = (leads ?? []).map((l) => l.id);
   let claims: any[] = [];
   if (ids.length) { const { data } = await sb.from("claims").select("lead_id, status, claim_type, campaign").in("lead_id", ids); claims = data ?? []; }

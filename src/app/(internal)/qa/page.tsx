@@ -30,8 +30,8 @@ export default async function QaQueuePage() {
   const QA_STATUSES = ["grievous", "qa", "signed_grievous", "signed_qa", "external_signed_review"];
   const { data: claimRows, error: claimError } = await readDeskRows(() => {
     let query = sb.from("claims")
-      .select("lead_id, status, grievous_verdict, claim_type, updated_at, leads(id, lead_no, claimant_name, phone, case_type, updated_at)")
-      .in("status", QA_STATUSES);
+      .select("lead_id, status, grievous_verdict, claim_type, updated_at, leads!inner(id, lead_no, claimant_name, phone, case_type, updated_at, archived_at)")
+      .is("leads.archived_at", null).in("status", QA_STATUSES);
     if (me.role !== "owner") query = query.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("claim_type", "mva");
     return query;
   });
@@ -48,7 +48,7 @@ export default async function QaQueuePage() {
   const { data: flagged, error: flaggedError } = await readDeskRows(() => {
     let query = sb.from("leads")
       .select("id, lead_no, claimant_name, phone, case_type, updated_at, qa_pending, claims(status, grievous_verdict, firm_id, campaign_id, claim_type)")
-      .eq("qa_pending", true);
+      .is("archived_at", null).eq("qa_pending", true);
     if (me.role !== "owner") query = query.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("case_type", "mva");
     return query;
   });

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   // Match name OR phone (if the query looks like a number).
   let query = sb.from("leads")
     .select("id, lead_no, claimant_name, phone, email, created_at, claims(id, campaign, claim_type, status)")
-    .limit(10);
+    .is("archived_at", null).limit(10);
 
   if (digits.length >= 4) {
     query = query.ilike("phone", `%${digits}%`);
