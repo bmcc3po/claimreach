@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { paxParentId } from '../linked-files';
+import { ownerConfirmedDelivery } from '../owner-file-confirmation';
 
 // Exercise the real file endpoint, which feeds inline review, final delivery,
 // the command center and owner download. Passenger provenance is not UI scope.
@@ -34,12 +35,13 @@ function fixture(externalId: string | null, pax: number | null) {
     '@/lib/mva-call/server': { requireStaff: async () => staff ? { id: 'agent', role: 'agent' } : null },
     '@/lib/file-notes': { loadFileNotes: async () => ({ notes: [], deskNotes: [] }), mergeFileNotes: () => [] },
     '@/lib/claim-status': { loadStatuses: async () => [] },
-    '@/lib/statuses': { resolveStatus: () => ({ label: 'Signed', tone: 'neutral' }), SIGNED_QA_RETURN_STATUS: 'qa_return' },
+    '@/lib/statuses': { resolveFileStatus: () => ({ label: 'Signed', tone: 'neutral' }), SIGNED_QA_RETURN_STATUS: 'qa_return' },
     '@/lib/mva-call/signing-matter': { resolveSigningMatter: async () => ({ ok: true, lead, matter: { claim: { id: 'own-claim', status: 'signed' } } }) },
     '@/lib/matter': { matterRowsFilter: () => 'claim_id.eq.own-claim' },
     '@/lib/lawruler-recovery': { loadLawRulerProvenance: async () => null },
     '@/lib/mva-call/send-attempt': { readPendingSendAttempt: async () => ({ ok: true, attempt: null }) },
     '@/lib/linked-files': { paxParentId },
+    '@/lib/owner-file-confirmation': { ownerConfirmedDelivery },
   };
   const route: any = {};
   new Function('require', 'exports', code)((name: string) => { assert.ok(name in modules, `Unexpected import ${name}`); return modules[name]; }, route);

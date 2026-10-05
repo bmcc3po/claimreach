@@ -433,7 +433,7 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket,
         }}>Add note</button>
       </div>
       {onFinishOffice && <button type="button" className="cc-chip" onClick={onFinishOffice}>Edit client details and contract in intake</button>}
-      <LawRulerSyncSummary imported={d.imported} />
+      <LawRulerSyncSummary imported={d.imported} ownerApproved={d.owner_confirmed_delivery} />
       <div className="cc-grp">
         {row("Lead number", L.lead_no)}
         {row("Case", L.campaign)}
@@ -446,7 +446,7 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket,
       <LeadCard lead={lead} />
 
       <div className="cc-rb-h">Agreements</div>
-      {d.agreements.length === 0 ? <div className="cc-cue" style={{ margin: "0 4px" }}>Nothing sent yet.</div> : (
+      {d.agreements.length === 0 ? <div className="cc-cue" style={{ margin: "0 4px" }}>{d.owner_confirmed_delivery ? "Signed agreement confirmed by owner. Original files are under Documents." : "Nothing sent yet."}</div> : (
         <div className="cc-grp">
           {d.agreements.map((a: any) => (
             <div key={a.id} className="cc-callrow">
@@ -569,6 +569,7 @@ function FirmHandoff({ leadId, claimId, hasSignedPacket, awaitingOfficeSigner }:
       : <>
         <div className="cc-cue">{state.delivery?.firm || "Firm not configured"}{state.delivery?.to ? ` · ${state.delivery.to}` : " · recipient missing"}</div>
         {sent ? <div className="cc-cue">Sent to the firm {fmtWhen(state.confirmed_firm_sent_at)}.</div>
+          : state.owner_confirmed_delivery ? <div className="cc-cue">Signed — sent to firm. Confirmed by owner; original delivery date unknown.</div>
           : state.prior_owner_only ? <div className="cc-cue cc-red">Earlier delivery reached Brett only. The firm has not received this packet. Finish the handoff in the center after the call.</div>
           : dispatchPending ? <div className="cc-cue cc-red">The last delivery outcome needs owner review. Do not resend.</div>
           : !hasSignedPacket ? <div className="cc-cue">{awaitingOfficeSigner

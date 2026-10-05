@@ -2,7 +2,7 @@ import { LAWRULER_PRESIGN_LABELS } from '@/lib/lawruler-presign-labels';
 
 /** Shared file-level view of external facts; never presents an imported status
  * as an independently verified signature or manufactures unanswered details. */
-export default function LawRulerSyncSummary({ imported }: { imported: any }) {
+export default function LawRulerSyncSummary({ imported, ownerApproved = false }: { imported: any; ownerApproved?: boolean }) {
   if (!imported) return null;
   const intake = imported.presign;
   const sourceFacts = intake?.evidence && typeof intake.evidence === 'object' ? Object.values(intake.evidence) as any[] : [];
@@ -12,9 +12,11 @@ export default function LawRulerSyncSummary({ imported }: { imported: any }) {
   return <section aria-label="LawRuler import" style={{ margin: '12px 0', padding: 12, border: '1px solid #dbe3ef', borderRadius: 10, background: '#f7f9fc', fontSize: 14, lineHeight: 1.45 }}>
     <strong>LawRuler</strong>
     <p style={{ margin: '6px 0' }}>Source status: {imported.sourceStatus || 'Not supplied'}</p>
-    {status?.acquisition_hold && <p style={{ margin: '6px 0', fontWeight: 600 }}>Acquisition follow-up stopped.{status.outcome === 'review_required' ? ' Status review needed.' : ''}</p>}
-    {status?.outcome === 'review_required' && <p style={{ margin: '6px 0' }}>{status.reason}</p>}
-    {imported.sourceSignedReported && <p style={{ margin: '6px 0' }}>LawRuler reports a signed agreement. {imported.originalRetainerStored ? 'Original retainer filed on this matter.' : 'Original retainer still needed.'} The imported signature has not been independently verified.</p>}
+    {ownerApproved ? <p style={{ margin: '6px 0', fontWeight: 600 }}>Owner approved the signed file and confirmed it was sent to the firm.</p> : <>
+      {status?.acquisition_hold && <p style={{ margin: '6px 0', fontWeight: 600 }}>Acquisition follow-up stopped.{status.outcome === 'review_required' ? ' Status review needed.' : ''}</p>}
+      {status?.outcome === 'review_required' && <p style={{ margin: '6px 0' }}>{status.reason}</p>}
+      {imported.sourceSignedReported && <p style={{ margin: '6px 0' }}>LawRuler reports a signed agreement. {imported.originalRetainerStored ? 'Original retainer filed on this matter.' : 'Original retainer still needed.'} The imported signature has not been independently verified.</p>}
+    </>}
     {pending.length > 0 && <ul style={{ paddingLeft: 20, margin: '6px 0' }}>{[...new Set<string>(pending)].map(message => <li key={message}>{message}</li>)}</ul>}
     {sync?.intake_result?.outcome === 'failed' && <p role="alert" style={{ margin: '6px 0', color: '#9f2525' }}>PRESIGN import failed. {sync.intake_result.error} Retry the source import; previously saved answers are still shown.</p>}
     {intake && <>

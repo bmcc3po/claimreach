@@ -232,7 +232,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
                 {results.map((r) => (
                   <a key={r.id} className="cc-lrow" href={`/app/${r.id}`}>
                     <span className="cc-lrow-main"><span className="cc-lrow-n">{r.claimant_name || "No name yet"}</span><span className="cc-lrow-s">{[fmtPhone(r.phone), r.lead_no, r.campaign].filter(Boolean).join("  ")}</span><span className="cc-lrow-s">Calls: {r.call_count == null ? "unverified" : r.call_count} · Last call: {r.last_call_at ? clock(r.last_call_at) : "none verified"}</span></span>
-                    <span className="cc-lrow-t">{r.archived_at ? "Archived" : statusText(r.status)}</span>
+                    <span className="cc-lrow-t">{r.archived_at ? "Archived" : r.status_label || statusText(r.status)}</span>
                   </a>
                 ))}
               </div>

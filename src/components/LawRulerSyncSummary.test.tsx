@@ -26,4 +26,10 @@ check('unsupported object-array source values remain inspectable instead of obje
   const html = render({ presign: { evidence: { a: { token: 'Custom4131', raw: [{ unexpected: 'Urgent Care' }] } }, provenance: {}, review: 1 } });
   assert.match(html, /unexpected/); assert.match(html, /Urgent Care/); assert.ok(!html.includes('[object Object]'));
 });
+check('owner approval replaces unresolved signature warnings but preserves source and missing-date evidence', () => {
+  const html = renderToStaticMarkup(<LawRulerSyncSummary ownerApproved imported={{ sourceStatus: 'Signed ESign Sent To Firm', sourceSignedReported: true, pendingMissing: ['Source signing date was not supplied.'], reconciliation: { acquisition_hold: true, outcome: 'review_required', reason: 'Verify signature' } }} />);
+  assert.match(html, /Owner approved the signed file and confirmed it was sent/);
+  assert.match(html, /Source signing date was not supplied/);
+  assert.doesNotMatch(html, /Status review needed|Verify signature|has not been independently verified/);
+});
 console.log(`${count} passed, ${failed} failed`); if (failed) process.exitCode = 1;
