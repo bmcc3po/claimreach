@@ -1,3 +1,4 @@
+import { scopeWorkArea, workArea } from '@/lib/work-area';
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
     const safe = q.replace(/[%_,()]/g, " ").trim();
     query = query.ilike("claimant_name", `%${safe}%`);
   }
-  const { data, error } = await query;
+  const { data, error } = await scopeWorkArea(query, workArea(req.nextUrl.searchParams.get("area")));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const visible = (data ?? []).filter((l: any) => l.campaign !== "NETFLY ONTAKE" && !secondaryIds.includes(l.campaign_id));

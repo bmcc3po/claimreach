@@ -6,6 +6,8 @@ import { pacificDay } from "@/lib/packet-worklist";
 import { ownerConfirmedDelivery, ownerSignatureConfirmation } from "@/lib/owner-file-confirmation";
 import { resolveFileStatus } from "@/lib/statuses";
 import { isTestFile } from "@/lib/file-visibility";
+import { fileAgentSummary } from './file-agents';
+import { reviewState, REVIEW_EVENT, FIRM_DECISION_LABELS } from './firm-review-access';
 
 export type SignatureState = "signed" | "unsigned" | "verify";
 export type SignatureReportRow = {
@@ -13,11 +15,13 @@ export type SignatureReportRow = {
   state: SignatureState; detail: string; signedAt: string | null;
   deliveredAt: string | null; returnEndsAt: string | null;
   packet: string; status: string; agent: string; archived: boolean; test: boolean; ownerSent: boolean;
+  firmDecision?: string; firmReason?: string;
 };
 export type SignatureReportInput = {
   firmId: string; campaignId: string; firmEmail: string | null; ownerEmail: string | null;
   leads: any[]; claims: any[]; submissions: any[]; emergencies: any[];
   originals: any[]; confirmations: any[]; ownerIds: string[]; deliveries: any[]; users: any[]; rehearsalKeys: string[];
+  reviews?: any[];
 };
 const validDate = (v: unknown): v is string => typeof v === "string" && Number.isFinite(Date.parse(v));
 
@@ -25,7 +29,6 @@ const validDate = (v: unknown): v is string => typeof v === "string" && Number.i
  * Use the signing workflow's matter, passenger and provider-status rules. */
 export function signatureReport(input: SignatureReportInput): SignatureReportRow[] {
   const leads = new Map(input.leads.filter(l => l.firm_id === input.firmId).map(l => [l.id, l]));
-  const users = new Map(input.users.map(u => [u.id, u.full_name]));
   const counts = new Map<string, number>();
   for (const c of input.claims) counts.set(c.lead_id, (counts.get(c.lead_id) || 0) + 1);
   return input.claims.filter(c => c.firm_id === input.firmId && c.campaign_id === input.campaignId && c.claim_type === "mva" && leads.has(c.lead_id)).map(c => {
@@ -51,6 +54,7 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
     const window = returnWindow(deliveredAt);
     const packet = ownerSigned ? "Imported — owner approved" : state !== "signed" ? "—" : current.status === "completed" && current.agent_reviewed_at && current.completed_pdf_path && current.cert_pdf_path
       ? "Office step complete" : "Office step needs review";
+    const decision = reviewState((input.reviews || []).filter(r => r.firm_id === c.firm_id && r.lead_id === l.id && r.meta?.event === REVIEW_EVENT && r.meta?.claim_id === c.id && r.meta?.campaign_id === c.campaign_id));
     return {
       claimId: c.id, leadNo: l.lead_no || "File", name: l.claimant_name || "Name missing",
       href: "/leads/" + encodeURIComponent(l.id) + "?claim=" + encodeURIComponent(c.id),
@@ -59,7 +63,9 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
         imported || c.status === "external_signed_review" ? "Imported agreement — verify the original and signing date" :
         uncertain ? "Signature history needs review" : "No current verified signature",
       status: resolveFileStatus(c, undefined, state === "signed").label,
-      agent: users.get(current?.sent_by) || "Not recorded",
+      agent: fileAgentSummary(l, input.users, null, current?.sent_by),
+      firmDecision: decision.decision ? FIRM_DECISION_LABELS[decision.decision as keyof typeof FIRM_DECISION_LABELS] : 'Awaiting firm decision',
+      firmReason: decision.explanation,
       archived: !!l.archived_at,
       ownerSent: ownerConfirmedDelivery(c.firm_send_result),
       test: isTestFile(l) || input.rehearsalKeys.includes("REHEARSAL_" + (paxParentId(l.external_id) || l.id) + "_OTHER") ||
@@ -77,10 +83,10 @@ export function signatureCsv(rows: SignatureReportRow[], firm: string, generated
     return '"' + (/^[\s]*[=+@-]/.test(value) ? "'" : "") + value.replace(/"/g, '""') + '"';
   };
   const date = (v: string | null) => v ? new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", dateStyle: "short", timeStyle: "short" }).format(new Date(v)) : "";
-  const header = ["File", "Client", "Firm", "Signature", "Signed (Pacific)", "Office packet", "Firm delivery", "Delivered (Pacific)", "Return window ends (Pacific)", "Sending agent", "Workflow status", "Signature note", "Archived", "Test", "Invoice history", "File link", "Report generated (UTC)"];
+  const header = ["File", "Client", "Firm", "Signature", "Signed (Pacific)", "Office packet", "Firm delivery", "Delivered (Pacific)", "Return window ends (Pacific)", "Agent / role", "Workflow status", "Signature note", "Archived", "Test", "Invoice history", "File link", "Report generated (UTC)", "Firm decision", "Rejection reason"];
   const body = rows.map(r => [r.leadNo, r.name, firm, r.state === "signed" ? "Signed" : r.state === "verify" ? "Needs verification" : "Not signed",
     date(r.signedAt), r.packet, r.deliveredAt ? "Confirmed" : r.ownerSent ? "Sent — owner confirmed; date unknown" : "Not recorded / verified", date(r.deliveredAt), date(r.returnEndsAt),
     r.agent, r.status, r.detail, r.archived ? "Yes" : "No", r.test ? "Yes" : "No", "Not tracked — reconcile prior invoices",
-    "https://claimreach.com" + r.href, generatedAt]);
+    "https://claimreach.com" + r.href, generatedAt, r.firmDecision, r.firmReason]);
   return "\uFEFF" + [header, ...body].map(row => row.map(cell).join(",")).join("\r\n");
 }

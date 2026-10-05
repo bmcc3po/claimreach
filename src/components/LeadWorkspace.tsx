@@ -9,6 +9,9 @@ import StatusBadge from "./ui/StatusBadge";
 import FileStatusControl from "./FileStatusControl";
 import { resolveFileStatus } from "@/lib/statuses";
 import FileArchiveButton from "./FileArchiveButton";
+import FirmDecision from "./FirmDecision";
+import { fileAgentSummary } from '@/lib/file-agents';
+import { areaHref, inWorkArea } from '@/lib/work-area';
 import ActivityLog from "./ActivityLog";
 import ContactInfo from "./ContactInfo";
 import CaseDetails from "./CaseDetails";
@@ -120,7 +123,7 @@ function LeadWorkspaceRecord({
   const TABS = fileTabs(lead.current_user_role, fence);
   const navigation = NAV_GROUPS.map((g) => ({ ...g, tabs: g.tabs.filter((t) => TABS.includes(t as any)) })).filter((g) => g.tabs.length);
   const group = navigation.find((g) => g.tabs.includes(tab));
-  const backHref = fileBackHref(fence);
+  const backHref = areaHref(fileBackHref(fence), inWorkArea(activeClaim?.claim_type, 'mva') ? 'mva' : 'other');
   const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
 
   function claimClass(c: Claim) {
@@ -143,6 +146,7 @@ function LeadWorkspaceRecord({
             <span className="lf-no">{lead.lead_no}</span>
           </div>
           <div className="lf-sub">
+            {canTools && <strong>{fileAgentSummary(leadLive, staff, appCall?.agent)}</strong>}
             <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={claims.length === 1 ? lead.current_user_role : undefined} />
             {appCall && lead.firm_name && (<>
               <span className="leadhead-dot">·</span>
@@ -172,6 +176,7 @@ function LeadWorkspaceRecord({
         </div>
         {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
       </div>
+      {canTools && activeClaimId && lead.current_user_role === "owner" && !lead.archived_at && ['delivered', 'retained'].includes(activeClaim?.status || '') && <FirmDecision key={activeClaimId} claimId={activeClaimId} />}
       {activeClaimId && activeClaim?.claim_type === "mva" && ["owner", "admin"].includes(lead.current_user_role || "") && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
       {activeClaimId && activeClaim?.claim_type === "mva" && lead.current_user_role === "owner" && !importedSignedPacket &&
         ["signed_grievous", "signed_qa", "signed_wip", "signed_approved", "delivered"].includes(activeClaim.status) &&

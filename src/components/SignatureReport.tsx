@@ -39,7 +39,7 @@ export default function SignatureReport({ rows, firm, generatedAt }: { rows: Sig
   return <main className="signature-report">
     <header className="sr-heading"><div><p className="sr-eyebrow">{firm}</p><h1>INNO MVA signatures</h1>
       <p>See who signed. Choose your files. Export your invoice list.</p></div>
-      <div><a href="/signed?view=all" className="sr-link">All campaigns →</a><br /><a href="/leads/archive" className="sr-link">Test files & archive →</a></div></header>
+      <div><a href="/signed?view=all" className="sr-link">All MVA campaigns →</a><br /><a href="/leads/archive" className="sr-link">Test files & archive →</a></div></header>
     <nav className="sr-tabs" aria-label="Signature status">
       {(["signed", "unsigned", "verify"] as SignatureState[]).map(key => <button key={key} type="button" aria-pressed={key === state} onClick={() => { setState(key); setSelected([]); }}>
         <span>{labels[key]}</span><strong>{counts(key)}</strong></button>)}
@@ -72,7 +72,7 @@ export default function SignatureReport({ rows, firm, generatedAt }: { rows: Sig
           <div className="sr-client"><a href={r.href}>{r.name}</a><small>{r.leadNo}{r.archived ? " · Archived" : ""}{r.test ? " · TEST" : ""}</small>{state !== "signed" && <small>{r.status}</small>}</div>
           <div className="sr-signature"><b className={"sr-state sr-" + r.state}>{r.state === "signed" && (r.deliveredAt || r.ownerSent) ? SIGNED_SENT_TO_FIRM : labels[r.state]}</b><small>{r.state === "signed" ? date(r.signedAt) : r.detail}</small>{r.state === "signed" && !r.signedAt && <small>Owner confirmed</small>}</div>
           <div className="sr-delivery"><b>{r.deliveredAt || r.ownerSent ? "Sent to firm" : "Delivery not recorded"}</b><small>{r.deliveredAt ? date(r.deliveredAt) : r.ownerSent ? "Owner confirmed · date unknown" : "Check before resending"}</small>{r.returnEndsAt && <small>Return window ends {date(r.returnEndsAt)}</small>}</div>
-          <div className="sr-packet"><span>{r.packet}</span><small>{r.agent === "Not recorded" ? "Agent not recorded" : r.agent}</small></div>
+          <div className="sr-packet"><b>{r.agent}</b><small>{r.packet}</small><strong style={{ color: r.firmDecision === 'Firm rejected' ? '#a12525' : undefined }}>{r.firmDecision}</strong>{r.firmReason && <small>{r.firmReason}</small>}</div>
         </div>)}
         {!visible.length && <p className="sr-empty">No files match these filters.</p>}
       </div>

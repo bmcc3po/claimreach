@@ -11,7 +11,8 @@
 // on a phone it slides in from the left. Both choices are remembered per
 // computer. Search (Ctrl K) finds any lead by name, phone or lead number.
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { areaHref, workArea } from '@/lib/work-area';
 import Icon from "./ui/Icon";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { primaryNavigation, activeNavigation, type PrimaryNavItem } from "@/lib/navigation";
@@ -80,11 +81,14 @@ export default function SideNav({
   variant?: "staff" | "firm";
 }) {
   const pathname = usePathname() || "";
+  const requestedArea = useSearchParams().get('area');
+  const area = pathname === '/other-work' ? 'other' : workArea(requestedArea);
+  const scopedHref = (href: string) => ['/dashboard', '/leads', '/signed', '/queue', '/reports', '/qa', '/grievous', '/call-activity'].includes(href) ? areaHref(href, area) : href;
   const router = useRouter();
   const isFirm = variant === "firm";
   const pilot = !isFirm && role !== "owner";
   const GROUPS = isFirm ? FIRM_GROUPS : pilot ? PILOT_GROUPS : STAFF_GROUPS;
-  const homeHref = isFirm ? "/portal" : "/dashboard";
+  const homeHref = isFirm ? "/portal" : areaHref("/dashboard", area);
   const allItems = GROUPS.flatMap((g) => g.items);
   const current = activeNavigation(pathname, allItems);
   const currentLabel = allItems.find((n) => n.href === current)?.label ?? "";
@@ -161,7 +165,7 @@ export default function SideNav({
                   </button>
                 )}
                 {!isClosed && items.map((n) => (
-                  <a key={n.href} href={n.href} className={`cl-nl${current === n.href ? " cl-on" : ""}`}
+                  <a key={n.href} href={scopedHref(n.href)} className={`cl-nl${current === n.href ? " cl-on" : ""}`}
                     title={n.why ? `${n.label}. ${n.why}` : n.label} aria-current={current === n.href ? "page" : undefined}>
                     <span className="cl-ico"><Icon name={n.icon} /></span>
                     <span className="cl-nl-l">{n.label}</span>
@@ -194,7 +198,7 @@ export default function SideNav({
           <button className="cl-iconbtn cl-burger" onClick={() => setOpen((o) => !o)} aria-label={open ? "Close the menu" : "Open the menu"} aria-expanded={open}><Icon name="menu" size={20} /></button>
           <button className="cl-iconbtn cl-collapse" onClick={toggleMin} aria-label={min ? "Show the full menu" : "Shrink the menu"} title={min ? "Show the full menu" : "Shrink the menu"}><Icon name="sidebar" size={18} /></button>
           <span className="cl-crumb">{currentLabel}</span>
-          {!isFirm ? <LeadSearch basePath={pilot ? "/app" : "/leads"} /> : <span style={{ flex: 1 }} />}
+          {!isFirm ? <LeadSearch key={area} area={area} basePath={pilot ? "/app" : "/leads"} /> : <span style={{ flex: 1 }} />}
           <div className="cl-top-r">
             {!isFirm && role !== "firm" && (
               <a className="cl-btn cl-gold" href="/app?new=1" aria-label="New call"><Icon name="headset" size={16} /><span className="cl-hide-sm">New call</span></a>
@@ -202,13 +206,13 @@ export default function SideNav({
             {topRight}
           </div>
         </header>
-        <main className="cl-body">{children}</main>
+        <main className="cl-body">{!isFirm && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}><strong>{area === 'other' || pathname === '/other-work' ? 'Other work' : 'MVA workspace'}</strong>{(area === 'other' || pathname === '/other-work') && <a href="/dashboard">Back to MVA →</a>}</div>}{children}</main>
       </div>
     </div>
   );
 }
 
-function LeadSearch({ basePath }: { basePath: "/app" | "/leads" }) {
+function LeadSearch({ basePath, area }: { basePath: "/app" | "/leads"; area: 'mva' | 'other' }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<any[] | null>(null);
   const [open, setOpen] = useState(false);
@@ -221,13 +225,13 @@ function LeadSearch({ basePath }: { basePath: "/app" | "/leads" }) {
     let alive = true;
     const t = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/calls/search?q=${encodeURIComponent(term)}`);
+        const r = await fetch(`/api/calls/search?q=${encodeURIComponent(term)}&area=${area}`);
         const d = await r.json();
         if (alive) { setHits(d.results || []); setSel(0); }
       } catch { if (alive) setHits([]); }
     }, 200);
     return () => { alive = false; clearTimeout(t); };
-  }, [q]);
+  }, [q, area]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -237,7 +241,7 @@ function LeadSearch({ basePath }: { basePath: "/app" | "/leads" }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const go = (r: any) => { window.location.href = `${basePath}/${encodeURIComponent(r.lead_no || r.id)}`; };
+  const go = (r: any) => { window.location.href = areaHref(`${basePath}/${encodeURIComponent(r.lead_no || r.id)}`, area); };
   return (
     <div className="cl-search">
       <Icon name="search" size={16} />

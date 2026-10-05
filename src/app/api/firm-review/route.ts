@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { REVIEW_CLAIM_COLS, REVIEW_EVENT, REVIEW_LEAD_COLS, reviewEvents, reviewerContext, reviewerFile, reviewerPdf } from '@/lib/firm-review-server';
-import { releasedToReviewer, REVIEW_LABELS, reviewInput, reviewState, uuid } from '@/lib/firm-review-access';
+import { releasedToReviewer, reviewActivity, reviewInput, reviewState, uuid } from '@/lib/firm-review-access';
 import { rowBelongsToMatter } from '@/lib/matter';
 import { paxParentId } from '@/lib/linked-files';
 export const runtime = 'edge';
@@ -65,11 +65,8 @@ export async function POST(req: NextRequest) {
     if (!file) return json({ error: 'File unavailable.' }, 404);
     // Append-only audit: receipt and decision are separate from intake/signing
     // status. Never change delivery evidence, signatures, or the seven-day clock.
-    const result = await c.db.from('lead_activity').insert({ firm_id: c.scope.firmId, lead_id: file.lead.id,
-      kind: 'note', actor: null, body: `${REVIEW_LABELS[input.action]} — ${c.scope.name}${input.explanation ? ': ' + input.explanation : ''}`,
-      meta: { source: 'claimreach', event: REVIEW_EVENT, claim_id: file.claim.id, campaign_id: c.scope.campaignId,
-        reviewer_id: c.user.id, reviewer_name: c.scope.name, reviewer_email: c.user.email,
-        action: input.action, explanation: input.explanation } }).select('id,created_at,meta').single();
+    const result = await c.db.from('lead_activity').insert(reviewActivity(c.scope, file.claim, input,
+      { id: c.user.id, name: c.scope.name, email: c.user.email })).select('id,created_at,meta').single();
     if (result.error || !result.data) throw new Error('Your review has not saved. Please try again.');
     const events = await reviewEvents(c.db, c.scope, [file.claim.id]);
     return json({ ok: true, ...reviewState(events.filter((event: any) => event.lead_id === file.lead.id)) });

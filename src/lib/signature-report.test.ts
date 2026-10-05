@@ -11,6 +11,13 @@ function fixture(): SignatureReportInput {
     submissions: [{ id: "s", lead_id: "l", firm_id: "f", claim_id: "c", campaign_id: "inno", status: "signed", signed_at: "2026-10-02T06:00:00Z", created_at: "2026-10-01T06:00:00Z" }],
     emergencies: [], originals: [], confirmations: [], ownerIds: ["owner"], deliveries: [], users: [], rehearsalKeys: [] };
 }
+test('firm rejection and reason remain visible without erasing signature/delivery; sibling decisions stay isolated', () => {
+  const f=fixture(); f.claims[0].firm_send_result=OWNER_SENT_UNKNOWN_DATE;
+  f.reviews=[{id:'a',firm_id:'f',lead_id:'l',created_at:'2026-10-05',meta:{event:'firm_file_review',claim_id:'c',campaign_id:'inno',action:'turned_down',explanation:'Treatment gap'}},
+    {id:'b',firm_id:'f',lead_id:'l',created_at:'2026-10-06',meta:{event:'firm_file_review',claim_id:'other',campaign_id:'inno',action:'accepted'}}];
+  const [r]=signatureReport(f);assert.equal(r.state,'signed');assert.equal(r.ownerSent,true);assert.equal(r.firmDecision,'Firm rejected');assert.equal(r.firmReason,'Treatment gap');
+  assert.match(signatureCsv([r],'Firm','2026-10-05'),/Firm rejected/);assert.match(signatureCsv([r],'Firm','2026-10-05'),/Treatment gap/);
+});
 test("confirmed signatures count independently of workflow status; no receipt means no clock", () => {
   const [row] = signatureReport(fixture());
   assert.equal(row.state, "signed"); assert.equal(row.deliveredAt, null); assert.equal(row.returnEndsAt, null);

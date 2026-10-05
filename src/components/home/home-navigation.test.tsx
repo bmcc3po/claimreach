@@ -10,12 +10,13 @@ import * as links from "../../lib/mva-call/links";
 import * as statuses from "../../lib/statuses";
 import * as officeClock from "../../lib/office-clock";
 import * as caseNames from "../../lib/case-name";
+import * as workArea from '../../lib/work-area';
 import { pilotStaffPageAllowed } from "../../lib/inno-pilot-access";
 
 const stamp = "2026-01-01T00:00:00Z";
 const lead: any = { id: "lead", lead_no: "TMP-SYNTHETIC", campaign_id: "inno", claimant_name: "Synthetic Caller", phone: "2025550100", case_type: "mva", updated_at: stamp, created_at: stamp, archived_at: null };
 const sibling = { id: "outside", campaign_id: "other", status: "retained" };
-const claim: any = { id: "exact-inno-claim", lead_id: lead.id, campaign: "INNO MVA", campaign_id: "inno", status: "signed_grievous", updated_at: stamp, supervisor_flag: true, tier_letter: "A", leads: { lead_no: lead.lead_no, claimant_name: lead.claimant_name, archived_at: null } };
+const claim: any = { id: "exact-inno-claim", claim_type: 'mva', lead_id: lead.id, campaign: "INNO MVA", campaign_id: "inno", status: "signed_grievous", updated_at: stamp, supervisor_flag: true, tier_letter: "A", leads: { lead_no: lead.lead_no, claimant_name: lead.claimant_name, archived_at: null } };
 lead.claims = [sibling, claim];
 function dbFor(role: string) {
   return new FakeDb({ app_users: [{ id: "operator", role, full_name: "Synthetic Operator" }], campaigns: [{ id: "inno", name: "INNO MVA", case_type: "mva", active: true, firms: { slug: "tmp" } }],
@@ -39,8 +40,9 @@ async function main() {
       "@/lib/alerts": { computeAlerts: async () => [alert] }, "@/lib/statuses": statuses, "@/lib/case-name": caseNames,
       "@/lib/mva-call/links": links, "@/components/home/HomeView": { default: View },
       "@/lib/office-clock": officeClock,
+      '@/lib/work-area': workArea,
     });
-    const tree = await Page(), data = tree.props.data;
+    const tree = await Page({ searchParams: Promise.resolve({}) }), data = tree.props.data;
     const html = renderToStaticMarkup(tree);
     const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1].replaceAll("&amp;", "&"));
     if (role === "owner") {

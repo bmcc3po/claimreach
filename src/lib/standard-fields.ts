@@ -1,3 +1,4 @@
+import { inWorkArea } from './work-area';
 // ============================================================================
 // STANDARD FIELDS (Brett, Sep 28 2026): one name and one source for every
 // field that leaves or enters ClaimReach. "A cell is a cell phone, no matter
@@ -452,6 +453,7 @@ export function eventFields(data: Record<string, any>, standard: StandardResult 
 // everything in a fixed order; a failed or changing read fails the export.
 // ============================================================================
 export interface ExportFilter {
+  area?: import('./work-area').WorkArea;
   campaignId?: string | null;
   campaign?: string | null;
   caseType?: string | null;
@@ -492,6 +494,7 @@ const nextDay = (d: string) => { const t = new Date(`${d}T00:00:00Z`); t.setUTCD
 
 /** Does this record's matter pass the matter filters? Same values the CSV prints. */
 export function matterMatches(rec: Record<string, string | null>, f: ExportFilter): boolean {
+  if (f.area && !inWorkArea(rec.case_type, f.area)) return false;
   if (f.campaignId && rec.campaign_id !== f.campaignId) return false;
   if (f.campaign && rec.campaign !== f.campaign) return false;
   if (f.caseType && rec.case_type !== f.caseType) return false;

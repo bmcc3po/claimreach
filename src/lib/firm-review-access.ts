@@ -21,6 +21,8 @@ export function releasedToReviewer(scope: FirmReviewScope, claim: any, lead: any
     !lead.vendor_fields?.signing_rehearsal && !/\b(TEST|TESTER|NONBINDING|REHEARSAL)\b/i.test(lead.claimant_name || '');
 }
 export const REVIEW_ACTIONS = ['received', 'accepted', 'turned_down'] as const;
+export const REVIEW_EVENT = 'firm_file_review';
+export const FIRM_DECISION_LABELS = { accepted: 'Firm approved', turned_down: 'Firm rejected' } as const;
 export type ReviewAction = typeof REVIEW_ACTIONS[number];
 export const REVIEW_LABELS: Record<ReviewAction, string> = { received: 'Received', accepted: 'Case Accepted', turned_down: 'Case Turn Down' };
 export function reviewInput(body: any): { action: ReviewAction; explanation: string } | null {
@@ -30,10 +32,21 @@ export function reviewInput(body: any): { action: ReviewAction; explanation: str
   return { action: body.action, explanation: body.action === 'turned_down' ? explanation : '' };
 }
 export function reviewState(events: any[]) {
-  const valid = events.filter(e => REVIEW_ACTIONS.includes(e.meta?.action));
+  const valid = events.filter(e => REVIEW_ACTIONS.includes(e.meta?.action)).sort((a, b) =>
+    String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(b.id || '').localeCompare(String(a.id || '')));
   const received = valid.find(e => e.meta.action === 'received');
   const decision = valid.find(e => e.meta.action !== 'received');
   return { receivedAt: received?.created_at || null, decision: decision?.meta.action || null,
     decisionAt: decision?.created_at || null, explanation: decision?.meta.explanation || '',
     reviewer: decision?.meta.reviewer_name || received?.meta.reviewer_name || '' };
+}
+
+/** One audit format for the firm's own decision and an owner recording it. */
+export function reviewActivity(scope: FirmReviewScope, claim: any, input: NonNullable<ReturnType<typeof reviewInput>>,
+  reviewer: { id: string; name: string; email?: string; owner?: boolean }) {
+  return { firm_id: scope.firmId, lead_id: claim.lead_id, kind: 'note', actor: reviewer.owner ? reviewer.id : null,
+    body: `${REVIEW_LABELS[input.action]} — ${reviewer.name}${input.explanation ? ': ' + input.explanation : ''}`,
+    meta: { source: 'claimreach', event: REVIEW_EVENT, claim_id: claim.id, campaign_id: scope.campaignId,
+      reviewer_id: reviewer.id, reviewer_name: reviewer.name, reviewer_email: reviewer.email,
+      recorded_by_owner: reviewer.owner === true, action: input.action, explanation: input.explanation } };
 }

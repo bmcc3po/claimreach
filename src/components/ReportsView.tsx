@@ -1,4 +1,5 @@
 "use client";
+import { areaHref, type WorkArea } from '@/lib/work-area';
 import { useMemo, useState } from "react";
 import { isSignedKey, type SignedCatalogRow } from "@/lib/statuses";
 
@@ -8,7 +9,7 @@ import { isSignedKey, type SignedCatalogRow } from "@/lib/statuses";
 // too, for the signed count only (defaults to statuses). statuses stays the
 // live set for labels and the picker. Both report pages pass the full
 // catalog so their signed count matches the staff Leads and Signed pages.
-export default function ReportsView({ leads, claims, scope = "staff", statuses = [], catalog, invoiceReport = false }: { leads: any[]; claims: any[]; scope?: "firm" | "staff"; statuses?: any[]; catalog?: SignedCatalogRow[]; invoiceReport?: boolean }) {
+export default function ReportsView({ leads, claims, scope = "staff", statuses = [], catalog, invoiceReport = false, area = "mva" }: { leads: any[]; claims: any[]; scope?: "firm" | "staff"; statuses?: any[]; catalog?: SignedCatalogRow[]; invoiceReport?: boolean; area?: WorkArea }) {
   const [range, setRange] = useState(30);
   const [pStatus, setPStatus] = useState("all");
   const [pType, setPType] = useState("all");
@@ -136,7 +137,7 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
         </div>
         <div className="cl-acts">
           {invoiceReport && <a className="cl-btn" href="/reports/inno">INNO MVA signatures & invoice list</a>}
-          {scope === "staff" && <a className="cl-btn cl-ghost" href="/reports/status">Status Report</a>}
+          {scope === "staff" && <a className="cl-btn cl-ghost" href={areaHref("/reports/status", area)}>Status Report</a>}
           <select className="cl-select" value={range} onChange={(e) => setRange(Number(e.target.value))}>
             <option value={7}>Last 7 days</option>
             <option value={30}>Last 30 days</option>

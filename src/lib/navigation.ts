@@ -9,6 +9,7 @@ export function primaryNavigation(owner: boolean): PrimaryNavItem[] {
     { href: "/app", icon: "headset", label: "Call desk" },
     { href: "/queue", icon: "queue", label: "My queue" },
     { href: "/app/help", icon: "book", label: "Agent guides" },
+    ...(owner ? [{ href: "/other-work", icon: "files", label: "Other work" }] : []),
   ];
 }
 

@@ -10,6 +10,8 @@ import { primaryClock } from "@/lib/sla-clocks";
 import { tierLabel } from "@/lib/tiers";
 import { caseName, ago, prettyPhone } from "@/lib/case-name";
 import { pacificCalendarDay } from "@/lib/packet-worklist";
+import { areaHref, type WorkArea } from '@/lib/work-area';
+import { fileAgentSummary } from '@/lib/file-agents';
 
 type Row = any;
 type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
@@ -20,7 +22,7 @@ type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
 // across the top split the list by where files are in the pipe; everything
 // else that narrows it sits behind Filters. Board and Timeline stay one click
 // away.
-export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, ownerWorklist = false, statuses = [], dqReasons = [], variant = "staff" }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; ownerWorklist?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[]; variant?: "staff" | "firm" }) {
+export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, ownerWorklist = false, statuses = [], dqReasons = [], variant = "staff", area = "mva" }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; ownerWorklist?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[]; variant?: "staff" | "firm"; area?: WorkArea }) {
   const isFirm = variant === "firm";
   const showBulk = canBulk && !isFirm;
   const statusList = statuses.length ? statuses : DEFAULT_STATUSES;
@@ -74,6 +76,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         tier: c.tier ?? "", tier_letter: c.tier_letter, tier_number: c.tier_number,
         summary: c.case_summary ?? "", created: l.created_at, updated: l.updated_at,
         flag: l.supervisor_flag, clock,
+        agent: fileAgentSummary(l, agents),
         needsAction: status === "new" || status === "contact_attempted" || l.supervisor_flag,
       };
     });
@@ -97,7 +100,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     }
     return r;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, q, fType, fState, fStatus, fFirm, fCampaign, fCity, fCreatedFrom, fCreatedTo, fSignedFrom, fSignedTo, statuses]);
+  }, [leads, agents, q, fType, fState, fStatus, fFirm, fCampaign, fCity, fCreatedFrom, fCreatedTo, fSignedFrom, fSignedTo, statuses]);
 
   const counts = useMemo(() => {
     const c: Record<Phase, number> = { all: base.length, action: 0, pre_qa: 0, in_qa: 0, post_qa: 0, terminal: 0 };
@@ -142,6 +145,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   // tested on each matter). The tabs and the search box are not sent.
   const exportHref = (() => {
     const p = new URLSearchParams();
+    p.set("area", area);
     if (fCampaign !== "all") p.set("campaign", fCampaign);
     if (fType !== "all") p.set("case_type", fType);
     if (fStatus !== "all") p.set("status", fStatus);
@@ -265,7 +269,8 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     { k: "post_qa", label: "Approved and firm" },
     { k: "terminal", label: "Closed" },
   ];
-  const open = (r: any) => { window.location.href = `${basePath}/${encodeURIComponent(r.key)}`; };
+  const fileHref = (r: any) => areaHref(`${basePath}/${encodeURIComponent(r.key)}`, area);
+  const open = (r: any) => { window.location.href = fileHref(r); };
   const clockTone = (t: string) => (t === "overdue" ? "cl-tone-bad" : t === "urgent" || t === "warn" ? "cl-tone-warn" : "cl-tone-good");
   const colCount = (showBulk ? 1 : 0) + 7;
 
@@ -285,7 +290,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
             </div>
           )}
           {!isFirm && <a className="cl-btn" href={exportHref} title={active.length ? "Every standard field for the matters these filters show (the tab and search box are not applied)" : "Every standard field, the same names every webhook uses"}><Icon name="download" size={16} />Export</a>}
-          {!isFirm && <a className="cl-btn" href="/api/export?format=neos" title="The older NEOS column layout">NEOS export</a>}
+          {!isFirm && <a className="cl-btn" href={areaHref("/api/export?format=neos", area)} title="The older NEOS column layout">NEOS export</a>}
           {!isFirm && addPath && addPath !== basePath && <Link className="cl-btn" href={addPath}><Icon name="userplus" size={16} />Add lead</Link>}
         </div>
       </div>
@@ -399,8 +404,9 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                     )}
                     <td>
                       <div className="cl-cell">
-                        <Link className="cl-t1" href={`${basePath}/${encodeURIComponent(r.key)}`} onClick={(e) => e.stopPropagation()} style={{ color: "var(--ink)", textDecoration: "none" }}>{r.name || "No name yet"}</Link>
+                        <Link className="cl-t1" href={fileHref(r)} onClick={(e) => e.stopPropagation()} style={{ color: "var(--ink)", textDecoration: "none" }}>{r.name || "No name yet"}</Link>
                         <span className="cl-t2">{prettyPhone(r.phone) || "No phone"}</span>
+                        {!isFirm && <strong className="cl-t2">{r.agent}</strong>}
                         {!isFirm && r.callCount !== undefined && <span className="cl-t2">Calls: {r.callCount == null ? "unverified" : r.callCount} · Last call: {r.lastCallAt ? new Date(r.lastCallAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "none verified"}</span>}
                       </div>
                     </td>
@@ -428,8 +434,8 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                     </td>
                     <td className="cl-c-act" onClick={(e) => e.stopPropagation()}>
                       <span className="cl-rowacts">
-                        {!isFirm && r.phone && <a href={`${basePath}/${encodeURIComponent(r.key)}?tab=Messages`} title="Text" aria-label={`Text ${r.name}`}><Icon name="message" size={16} /></a>}
-                        <a href={`${basePath}/${encodeURIComponent(r.key)}`} title="Open" aria-label={`Open ${r.name}`}><Icon name="right" size={16} /></a>
+                        {!isFirm && r.phone && <a href={areaHref(`${basePath}/${encodeURIComponent(r.key)}?tab=Messages`, area)} title="Text" aria-label={`Text ${r.name}`}><Icon name="message" size={16} /></a>}
+                        <a href={fileHref(r)} title="Open" aria-label={`Open ${r.name}`}><Icon name="right" size={16} /></a>
                       </span>
                     </td>
                   </tr>
@@ -499,7 +505,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                   {laneRows.map((r) => (
                     <div key={r.id} className={`kcard-wrap ${sel.has(r.id) || allMatching ? "row-selected" : ""}`}>
                       {showBulk && <input type="checkbox" className="kcard-check" checked={sel.has(r.id) || allMatching} onChange={() => toggleOne(r.id)} onClick={(e) => e.stopPropagation()} />}
-                      <Link href={`${basePath}/${r.id}`} className={`kcard ${r.needsAction ? "needs-action" : ""}`}>
+                      <Link href={fileHref(r)} className={`kcard ${r.needsAction ? "needs-action" : ""}`}>
                       <div className="row" style={{ justifyContent: "space-between" }}>
                         <strong style={{ fontSize: 13 }}>{r.lead_no}</strong>
                         <TierBadge letter={r.tier_letter} number={r.tier_number} claimType={r.type} />
@@ -535,7 +541,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
               const pct = (idx / (STAGES.length - 1)) * 100;
               const terminal = ["closed", "declined", "duplicate"].includes(r.stage);
               return (
-                <Link key={r.id} href={`${basePath}/${r.id}`} className="gantt-row">
+                <Link key={r.id} href={fileHref(r)} className="gantt-row">
                   <div className="gantt-name-col">
                     <strong style={{ fontSize: 12.5 }}>{r.lead_no}</strong>
                     <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>{r.name || "No name yet"}</span>

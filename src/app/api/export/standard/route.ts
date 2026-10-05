@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { workArea } from '@/lib/work-area';
 import { supabaseServer } from "@/lib/supabase-server";
 import { requirePerm } from "@/lib/gate";
 import { isInternalRole } from "@/lib/permissions";
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
   const parsed = exportFilterFrom(new URL(req.url).searchParams);
   if (!parsed.ok) return new Response(parsed.error, { status: 400 });
 
-  const out = await loadStandardExport(sb, parsed.filter);
+  const out = await loadStandardExport(sb, { ...parsed.filter, area: workArea(req.nextUrl.searchParams.get('area')) });
   if (!out.ok) return new Response(`The export did not run. ${out.error.replace(/\.\s*$/, "")}. Nothing was downloaded.`, { status: 500 });
 
   const stamp = new Date().toISOString().slice(0, 10);

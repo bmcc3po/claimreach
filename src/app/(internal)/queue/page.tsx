@@ -1,3 +1,4 @@
+import { scopeWorkArea, workArea, inWorkArea, areaHref } from '@/lib/work-area';
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -8,8 +9,9 @@ import type { StatusDef } from "@/lib/statuses";
 import { resolveFileStatus, SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
 import { caseFileHref } from "@/lib/mva-call/links";
 
-export default async function QueuePage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
-  const { view } = await searchParams;
+export default async function QueuePage({ searchParams }: { searchParams: Promise<{ view?: string; area?: string }> }) {
+  const { view, area: requestedArea } = await searchParams;
+  const area = workArea(requestedArea);
   const mode = view === "dial" ? "dial" : view === "fix" ? "fix" : "mine";
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
@@ -20,7 +22,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     : { data: null };
   const matches = (pilotCampaigns ?? []).filter((c: any) => c.firms?.slug === "tmp");
   const pilotCampaignId = matches.length === 1 ? matches[0].id : "00000000-0000-0000-0000-000000000000";
-  const fileHref = (l: any) => caseFileHref(me?.role || "agent", l.id, l.queueClaimId);
+  const fileHref = (l: any) => areaHref(caseFileHref(me?.role || "agent", l.id, l.queueClaimId), area);
 
   // "mine" = working stack. "dial" = next to call. "fix" = WIP files QA sent back.
   let leads: any[] = [];
@@ -31,7 +33,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
       .is("leads.archived_at", null)
       .eq("status", SIGNED_QA_RETURN_STATUS).order("updated_at", { ascending: false }).limit(100);
     if (pilot) q = q.eq("campaign_id", pilotCampaignId).eq("claim_type", "mva").eq("leads.campaign_id", pilotCampaignId);
-    const { data, error } = await q;
+    const { data, error } = await scopeWorkArea(q, area, "claim_type");
     leads = (data ?? []).flatMap((c: any) => {
       const l = c.leads;
       if (!l || l.archived_at || c.lead_id !== l.id || c.firm_id !== l.firm_id || (pilot && l.campaign_id !== pilotCampaignId)) return [];
@@ -45,7 +47,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     // recency (Astra round 4).
     if (mode === "mine") q = q.eq("assigned_agent", user!.id).order("updated_at", { ascending: false });
     else q = q.order("updated_at", { ascending: true });
-    const { data, error } = await q;
+    const { data, error } = await scopeWorkArea(q, area);
     leads = data ?? [];
     if (error) loadError = "The working queue did not load. Refresh before calling anyone from this list.";
   }
@@ -58,6 +60,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     return pilotClaims.length ? [{ ...l, claims: pilotClaims, queueClaimId: pilotClaims[0].id }] : [];
   });
 
+  leads = leads.map(l => ({ ...l, claims: (l.claims || []).filter((c: any) => inWorkArea(c.claim_type, area)) }));
   const sourceLeads = new Map<string, any>(leads.map(l => [l.id, l]));
   let holds = new Map<string, MvaAcquisitionSignal>();
   const statusRes = await sb.from("statuses").select("*");
@@ -80,7 +83,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
   // Count for the fix-inbox tab badge.
   let fixQuery = sb.from("claims").select("id, leads!inner(archived_at, campaign_id)", { count: "exact", head: true }).eq("status", SIGNED_QA_RETURN_STATUS).is("leads.archived_at", null);
   if (pilot) fixQuery = fixQuery.eq("campaign_id", pilotCampaignId).eq("claim_type", "mva").eq("leads.campaign_id", pilotCampaignId);
-  const { count: fixCount } = await fixQuery;
+  const { count: fixCount } = await scopeWorkArea(fixQuery, area, "claim_type");
 
   return (
     <div>
@@ -95,9 +98,9 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
       {loadError && <p role="alert">{loadError}</p>}
       {reviews.length > 0 && <details className="side-card"><summary>LawRuler status needs review ({reviews.length})</summary><p>Held matters are excluded from acquisition calls. An owner must review the source status.</p><ul>{reviews.map(r => <li key={r.claim_id}><Link href={`${pilot ? "/app" : "/leads"}/${r.lead_id}?claim=${r.claim_id}`}>{sourceLeads.get(r.lead_id)?.claimant_name || 'Open matter'}</Link>: {r.source_status || 'Status missing'} — {r.reason}</li>)}</ul></details>}
       <div className="cl-tabs">
-        <Link className={`cl-tab ${mode === "mine" ? "cl-on" : ""}`} href="/queue?view=mine">My Work</Link>
-        <Link className={`cl-tab ${mode === "dial" ? "cl-on" : ""}`} href="/queue?view=dial">Dial Queue</Link>
-        <Link className={`cl-tab ${mode === "fix" ? "cl-on" : ""}`} href="/queue?view=fix">Pending my fix{fixCount ? <span>{fixCount}</span> : null}</Link>
+        <Link className={`cl-tab ${mode === "mine" ? "cl-on" : ""}`} href={areaHref("/queue?view=mine", area)}>My Work</Link>
+        <Link className={`cl-tab ${mode === "dial" ? "cl-on" : ""}`} href={areaHref("/queue?view=dial", area)}>Dial Queue</Link>
+        <Link className={`cl-tab ${mode === "fix" ? "cl-on" : ""}`} href={areaHref("/queue?view=fix", area)}>Pending my fix{fixCount ? <span>{fixCount}</span> : null}</Link>
       </div>
       <div className="cl-tablewrap">
         <table className="cl-table">

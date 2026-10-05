@@ -82,6 +82,7 @@ export default function M6Nav({
             />
           </Link>
           <div className="m6-who">
+            {role !== "firm" && <Link href="/other-work">Other work</Link>}
             <span className="m6-who-name">{userName}</span>
             <span className="m6-who-role">{role === "firm" ? "Turnbull" : "Innovative"}</span>
           </div>
