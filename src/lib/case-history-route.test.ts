@@ -8,7 +8,9 @@ import * as signing from "./mva-call/signing-matter";
 import * as matter from "./matter";
 import * as notes from "./file-notes";
 import * as sendAttempt from "./mva-call/send-attempt";
-import { SIGNED_QA_RETURN_STATUS } from "./statuses";
+import { SIGNED_QA_RETURN_STATUS, resolveFileStatus } from "./statuses";
+import { paxParentId } from "./linked-files";
+import { ownerConfirmedDelivery } from "./owner-file-confirmation";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as jsxRuntime from "react/jsx-runtime";
@@ -42,7 +44,9 @@ function route(file: string, db: any) {
     "@/lib/mva-call/agreement-names": { agreementName: () => "Synthetic agreement" },
     "@/lib/mva-call/send-attempt": sendAttempt,
     "@/lib/claim-status": { loadStatuses: async () => [] },
-    "@/lib/statuses": { SIGNED_QA_RETURN_STATUS, resolveStatus: (status: string) => ({ label: status, tone: "neutral" }) },
+    "@/lib/statuses": { SIGNED_QA_RETURN_STATUS, resolveFileStatus, resolveStatus: (status: string) => ({ label: status, tone: "neutral" }) },
+    "@/lib/linked-files": { paxParentId },
+    "@/lib/owner-file-confirmation": { ownerConfirmedDelivery },
     "@/lib/lawruler-recovery": { loadLawRulerProvenance: async () => null },
     "@/lib/retainer-tokens": {}, "@/lib/audit": { recordAudit: async () => {} },
     "@/lib/gate": { gateUser: async () => ({ id: "agent", role: "agent", can: () => true }) },
