@@ -81,7 +81,8 @@ export default function SideNav({
   variant?: "staff" | "firm";
 }) {
   const pathname = usePathname() || "";
-  const area = workArea(useSearchParams().get('area'));
+  const requestedArea = useSearchParams().get('area');
+  const area = pathname === '/other-work' ? 'other' : workArea(requestedArea);
   const scopedHref = (href: string) => ['/dashboard', '/leads', '/signed', '/queue', '/reports', '/qa', '/grievous', '/call-activity'].includes(href) ? areaHref(href, area) : href;
   const router = useRouter();
   const isFirm = variant === "firm";
@@ -240,7 +241,7 @@ function LeadSearch({ basePath, area }: { basePath: "/app" | "/leads"; area: 'mv
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const go = (r: any) => { window.location.href = `${basePath}/${encodeURIComponent(r.lead_no || r.id)}`; };
+  const go = (r: any) => { window.location.href = areaHref(`${basePath}/${encodeURIComponent(r.lead_no || r.id)}`, area); };
   return (
     <div className="cl-search">
       <Icon name="search" size={16} />
