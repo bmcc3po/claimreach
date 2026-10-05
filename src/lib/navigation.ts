@@ -5,7 +5,7 @@ export type PrimaryNavItem = { href: string; icon: string; label: string; aliase
 export function primaryNavigation(owner: boolean): PrimaryNavItem[] {
   return [
     { href: "/dashboard", icon: "home", label: "Dashboard" },
-    ...(owner ? [{ href: "/leads", icon: "files", label: "Files", aliases: ["/signed", "/packets"] }] : []),
+    ...(owner ? [{ href: "/leads", icon: "files", label: "Files", aliases: ["/signed", "/packets", "/reports/inno"] }] : []),
     { href: "/app", icon: "headset", label: "Call desk" },
     { href: "/queue", icon: "queue", label: "My queue" },
     { href: "/app/help", icon: "book", label: "Agent guides" },
@@ -21,9 +21,10 @@ export function activeNavigation(path: string, items: PrimaryNavItem[]): string 
   return matches.sort((a, b) => b.length - a.length)[0]?.href || "";
 }
 
-export const FILE_VIEWS = [
+export const FILE_VIEWS: { href: string; label: string; mvaOnly?: boolean }[] = [
   { href: "/leads", label: "Open files" },
   { href: "/signed", label: "Signed files" },
-  { href: "/packets", label: "Firm delivery" },
+  { href: "/packets", label: "Operator work list", mvaOnly: true },
+  { href: "/reports/inno", label: "Invoice report", mvaOnly: true },
   { href: "/leads/archive", label: "Test files & archive" },
 ];

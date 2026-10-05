@@ -5,6 +5,8 @@ import ts from "typescript";
 import { NextRequest } from "next/server";
 import { isActiveFile, isTestFile } from "./file-visibility";
 import * as workArea from "./work-area";
+import * as signedList from "./signed-list";
+import * as fileFence from "./file-fence";
 import { linkedCallActivity } from "./call-activity";
 
 const active = { id: "active", lead_no: "TMP-ACTIVE", claimant_name: "Active Client", archived_at: null, campaign: "INNO MVA", case_type: "mva" };
@@ -34,6 +36,8 @@ function load(file: string) {
   const out = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const modules: Record<string, any> = {
     "@/lib/work-area": workArea,
+    "@/lib/signed-list": signedList,
+    "@/lib/file-fence": fileFence,
     "react/jsx-runtime": require("react/jsx-runtime"), "next/server": require("next/server"),
     "next/navigation": { redirect() { throw new Error("redirect"); } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => db },
@@ -70,6 +74,9 @@ function load(file: string) {
   tables.app_users[0].role = "agent";
   await assert.rejects(() => cleanup.default({searchParams: Promise.resolve({})}), /redirect/, "Cleanup requires existing owner access");
   tables.app_users[0].role = "owner";
+  const signed = await load("(internal)/signed/page.tsx").default({searchParams: Promise.resolve({})});
+  assert.equal(signed.props.title, "Signed files", "the ordinary owner link opens signed files without redirecting to reports");
+  assert.deepEqual(signed.props.leads.map((r: any) => r.id), ["active"], "signed files retain signature evidence and archive filtering");
   for (const file of ["(internal)/reports/page.tsx", "(internal)/reports/status/page.tsx", "(firm)/portal/reports/page.tsx", "(firm)/portal/cases/page.tsx"]) {
     queries.length = 0;
     const result = await load(file).default({searchParams: Promise.resolve({})});
