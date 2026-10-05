@@ -2,8 +2,8 @@
 
 // The engine resolves the question once. These four presentations share every
 // label, option, branch and callback; only wrappers and control appearance vary.
-import PassengerAgreement from "./PassengerAgreement";
 import WhereField from "./WhereField";
+import StoryAssist from "./StoryAssist";
 
 export type IntakePresentation = "guided" | "full" | "chore" | "form";
 export const choicesFromClasses = (items: any[]) => (items || []).map((o: any) => ({ ...o, on: /(?:^|\s)on(?:\s|$)/.test(o.cls || "") }));
@@ -44,7 +44,7 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
     </>;
     case "where": return <WhereField value={c.where.value} agreement={v.agreement} onChange={c.where.set} onDone={c.where.done} />;
     case "text": return <><input className={input} placeholder={c.field.ph} aria-label={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />{c.unavailable && choices([c.unavailable])}</>;
-    case "notes": return <textarea className={area} rows={7} placeholder={review ? "No story notes captured" : c.field.ph} aria-label="Accident story notes" value={c.field.value ?? ""} onChange={c.field.set} />;
+    case "notes": return <><textarea className={area} rows={7} placeholder={review ? "No story notes captured" : c.field.ph} aria-label="Accident story notes" value={c.field.value ?? ""} onChange={c.field.set} /><StoryAssist helper={v.storyAssist} notes={c.field.value ?? ""} /></>;
     case "providers": return <>
       {!!c.items.length && <div className="fi-chips">{c.items.map((it: any, i: number) => <span key={i} className="fi-tag">{it.label}<button type="button" aria-label={`Remove ${it.label}`} onClick={it.remove}>×</button></span>)}</div>}
       <div className="fi-addrow"><input className={input} placeholder={c.draft.ph} aria-label={c.draft.ph} value={c.draft.value} onChange={c.draft.set} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); c.add(); } }} /><button type="button" className="fi-add" onClick={c.add}>Add</button></div>
@@ -58,10 +58,49 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
       {c.unavailable && choices([c.unavailable])}
     </>;
     case "people": return <>
-      {!review && <p className="iq-cue">Every passenger is their own file if they want representation. Capture their details here while you are on the phone.</p>}
-      {choices([c.justMe, ...(c.others ? [c.others] : [])])}<button type="button" className="fi-add" onClick={c.add}>+ Add a passenger</button>
+      {choices([c.justMe, ...(c.others ? [c.others] : [])])}
+      {!review && <PassengerNames c={c} presentation={presentation} signed={!!v.signed} />}
+      {review && <PassengerDetails c={c} v={v} presentation={presentation} review />}
+    </>;
+    case "car": return <div className="fi-car">
+      <select className={input} aria-label="Vehicle year" value={c.year.value} onChange={c.year.set}>{c.year.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
+      <input className={input} placeholder="Make" aria-label="Vehicle make" value={c.make.value ?? ""} onChange={c.make.set} />
+      <input className={input} placeholder="Model" aria-label="Vehicle model" value={c.model.value ?? ""} onChange={c.model.set} />
+    </div>;
+    default: return null;
+  }
+}
+
+function PassengerNameRow({ person, presentation }: { person: any; presentation: IntakePresentation }) {
+  const prefix = presentation === "form" ? "sf" : presentation === "chore" ? "ch" : "fi";
+  return <div className="fi-addrow"><input className={`${prefix}-in`} placeholder="Passenger's name" aria-label="Passenger's name" value={person.name ?? ""} onChange={person.setName} /><button type="button" className="fi-add" onClick={person.remove}>Remove</button></div>;
+}
+
+/** Save names while listening; all other passenger questions wait for signing. */
+function PassengerNames({ c, presentation, signed }: { c: any; presentation: IntakePresentation; signed: boolean }) {
+  if (!c.others?.on && !c.people?.length) return null;
+  const names = (c.people || []).map((person: any) => String(person.name || "").trim()).filter(Boolean);
+  const circleBack = names.length ? names.join(" and ") : "the passengers";
+  if (signed) return <p className="iq-cue">{circleBack}: continue their details and agreement in Retainer.</p>;
+  return <>
+    {(c.people || []).map((person: any, index: number) => <div key={person.id || index} className="iq-person"><PassengerNameRow person={person} presentation={presentation} /></div>)}
+    <button type="button" className="fi-add" onClick={c.add}>+ Add another passenger’s name</button>
+    <p className="iq-ask">Got it. Let’s get your information down first, then we’ll circle back to {circleBack}.</p>
+    <p className="iq-cue">Their details and agreement come after your caller’s signature is verified.</p>
+  </>;
+}
+
+/** The same saved passenger controls, shown after signing or in file review. */
+export function PassengerDetails({ c, v, presentation = "full", review = false, agreement }: { c: any; v: any; presentation?: IntakePresentation; review?: boolean; agreement?: (person: any) => React.ReactNode }) {
+  const p = presentation === "form" ? "sf" : presentation === "chore" ? "ch" : "fi";
+  const input = `${p}-in`;
+  const choices = (opts: any[]) => <IntakeChoices opts={opts} presentation={presentation} />;
+  const field = (label: string, content: React.ReactNode) => <div className="iq-field"><div className="iq-field-label">{label}</div>{content}</div>;
+  return <>
+      <button type="button" className="fi-add" onClick={c.add}>+ Add a passenger</button>
       {(c.people || []).map((person: any, i: number) => <div key={person.id || i} className={`${p}-person iq-person`}>
-        <div className="fi-addrow"><input className={input} placeholder="Passenger's name" aria-label="Passenger's name" value={person.name ?? ""} onChange={person.setName} /><button type="button" className="fi-add" onClick={person.remove}>Remove</button></div>
+        {!review && !!person.name?.trim() && <p className="iq-ask">You mentioned {person.name}. Were they hurt, and would they like our help with their claim?</p>}
+        <PassengerNameRow person={person} presentation={presentation} />
         {field("Relationship", choices(choicesFromClasses(person.rels)))}
         {field("Age", choices(choicesFromClasses(person.ages)))}
         {field("Hurt", choices(choicesFromClasses(person.hurts)))}
@@ -76,19 +115,13 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
             </> : !review && <div className="iq-cue">The parent or guardian signs. The child goes on the HIPAA pages.</div>}
             {field("Willing to treat", choices(choicesFromClasses(person.willings)))}
             {field("Home address", choices(choicesFromClasses(person.sameAddrs)))}
-            {!review ? <PassengerAgreement p={v.paxSend?.find((item: any) => item.id === person.id)} v={v} capture={false} /> : v.passengerLinks?.[person.id] && <a className="iq-passenger-link" href={`/app/${v.passengerLinks[person.id]}`} target="_blank" rel="noopener noreferrer">Open {person.first}'s file ↗</a>}
+            {review && v.passengerLinks?.[person.id] && <a className="iq-passenger-link" href={`/app/${v.passengerLinks[person.id]}`} target="_blank" rel="noopener noreferrer">Open {person.first}'s file ↗</a>}
           </div>}
           {person.wantsRep === "No" && !review && <div className="iq-cue iq-warning">They declined representation. Do not send an agreement.</div>}
         </>}
+        {agreement?.(person)}
       </div>)}
-    </>;
-    case "car": return <div className="fi-car">
-      <select className={input} aria-label="Vehicle year" value={c.year.value} onChange={c.year.set}>{c.year.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
-      <input className={input} placeholder="Make" aria-label="Vehicle make" value={c.make.value ?? ""} onChange={c.make.set} />
-      <input className={input} placeholder="Model" aria-label="Vehicle model" value={c.model.value ?? ""} onChange={c.model.set} />
-    </div>;
-    default: return null;
-  }
+  </>;
 }
 
 export function QuestionDetails({ q, v, presentation = "full", review = false }: { q: any; v: any; presentation?: IntakePresentation; review?: boolean }) {

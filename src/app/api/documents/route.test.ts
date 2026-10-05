@@ -18,7 +18,7 @@ function harness(role = "firm") {
     app_users: [{ id: "user", role, active: true, full_name: "Test", firm_id: "firm" }],
     leads: [{ id: lead, firm_id: "firm", archived_at: null }],
     claims: [{ id: claim, lead_id: lead, firm_id: "firm", campaign_id: null, status: "delivered" }],
-    statuses: DEFAULT_STATUSES.map(s => ({ ...s })),
+    statuses: DEFAULT_STATUSES.map(s => ({ ...s, active: true })),
     case_documents: [{ id: "document", firm_id: "firm", lead_id: lead, claim_id: claim, storage_path: `firm/${lead}/document.pdf` }],
   });
   const hidden: any[] = [];
@@ -105,6 +105,12 @@ test("missing or failed live status catalog never falls back to an authorization
     if (failure) h.db.failOn = op => op.table === "statuses" ? "unavailable" : null; else h.db.tables.statuses = [];
     assert.equal((await h.get()).status, 403); assert.equal(h.signed.length, 0);
   }
+});
+test("inactive released status stops download and upload before storage", async () => {
+  const h = harness(); const releasedStatus = h.db.tables.statuses.find(s => s.key === "delivered");
+  assert.ok(releasedStatus); releasedStatus.active = false;
+  assert.equal((await h.get()).status, 403); assert.equal((await h.post()).status, 403);
+  assert.equal(h.signed.length + h.uploaded.length, 0);
 });
 test("failed document lookup reports failure instead of an empty successful list", async () => {
   const h = harness(); h.db.failOn = op => op.table === "case_documents" ? "unavailable" : null;

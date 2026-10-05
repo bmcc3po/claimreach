@@ -13,6 +13,7 @@ import { setClaimStatusForLeads } from "../../../lib/claim-status";
 import { DEFAULT_STATUSES, manualIntakeStatusAllowed } from "../../../lib/statuses";
 import { intakeStatusTransitionBlock } from "../../../lib/intake-status-guard";
 import * as mailTimeZone from "../../../lib/mail-time-zone";
+import { intakeFirmScope } from "../../../lib/intake-firm-scope";
 
 function harness(role = "agent") {
   const db = new FakeDb({
@@ -30,11 +31,14 @@ function harness(role = "agent") {
   const cardinalityDb = new FakeDb({});
   Object.defineProperty(cardinalityDb.tables, "claims", { get: () => [...db.tables.claims, ...hiddenClaims] });
   cardinalityDb.failOn = (op) => { assert.equal(op.table, "claims");assert.equal(op.kind, "select");return null; };
-  const aggregateDb = new FakeDb({ esign_submissions: [], signable_documents: [] });
+  const aggregateDb = new FakeDb({ esign_submissions: [], signable_documents: [], firms: [] });
   Object.defineProperty(aggregateDb.tables, "claims", { get: () => [...db.tables.claims, ...hiddenClaims] });
   aggregateDb.failOn = (op) => {
     assert.equal(op.kind, "select", "privileged DB must never mutate");
-    if (op.table === "claims") {
+    if (op.table === "firms") {
+      assert.deepEqual(op.filters, [["eq", "id", db.tables.app_users[0].firm_id]], "configuration lookup is only the authenticated staff organization");
+      assert.ok(db.ops.some(read => read.table === "leads" && read.kind === "select"), "authorize the file through RLS first");
+    } else if (op.table === "claims") {
       assert.ok(db.ops.some(write => write.table === "claims" && write.kind === "update"), "queue aggregate read occurs only after the session mutation");
     } else {
       assert.ok(["esign_submissions", "signable_documents"].includes(op.table), "privileged read stays on signature evidence");
@@ -61,6 +65,7 @@ function harness(role = "agent") {
     "@/lib/intake-status-guard": { intakeStatusTransitionBlock },
     "@/lib/permissions": { can, isInternalRole },
     "@/lib/mail-time-zone": mailTimeZone,
+    "@/lib/intake-firm-scope": { intakeFirmScope },
     "@/lib/claim-properties": { coercePropCol: () => { throw new Error("Unexpected property write"); } },
   };
   const source = fs.readFileSync(path.resolve(__dirname, "route.ts"), "utf8");
@@ -79,6 +84,54 @@ function harness(role = "agent") {
 
 const tests: [string, () => Promise<void>][] = [];
 const test = (name: string, fn: () => Promise<void>) => tests.push([name, fn]);
+
+test("Innovative agent saves TMP contacts and status when pilot RLS hides the staff organization", async () => {
+  const h = harness();
+  h.db.tables.app_users[0].firm_id = "intake-team";
+  h.aggregateDb.tables.firms.push({ id: "intake-team", slug: "inno" });
+  assert.equal(h.db.tables.firms.some(row => row.id === "intake-team"), false);
+  const patch = { phone: "2025550199", email: "test@example.invalid", mail_addr1: "1 Test Rd", mail_city: "Test City", mail_state: "CA", mail_zip: "94043" };
+  assert.equal((await h.save(patch)).status, 200);
+  for (const [key, value] of Object.entries(patch)) assert.equal(h.row()[key], value);
+  assert.equal(h.audit[0].firm_id, "firm", "contact audit follows the matter, not the staff organization");
+  assert.equal((await h.status()).status, 200);
+  assert.equal(h.db.tables.claims[0].status, "contacting");
+});
+
+test("intake organization exception never admits a different team, firm, campaign or archived file", async () => {
+  for (const change of [
+    (h: any) => h.aggregateDb.tables.firms[0].slug = "other-team",
+    (h: any) => h.db.tables.firms[0].slug = "tmt",
+    (h: any) => h.db.tables.campaigns[0].name = "NETFLY ONTAKE",
+    (h: any) => h.db.tables.campaigns[0].active = false,
+    (h: any) => h.db.tables.campaigns[0].firm_id = "foreign-firm",
+    (h: any) => h.row().archived_at = "2026-10-04T00:00:00Z",
+  ]) {
+    const h = harness(); h.db.tables.app_users[0].firm_id = "intake-team";
+    h.aggregateDb.tables.firms.push({ id: "intake-team", slug: "inno" }); change(h);
+    assert.ok([403, 409].includes((await h.save({ phone: "2025550199" })).status));
+    assert.equal(h.writes().length, 0);
+  }
+});
+
+test("missing or unreadable authoritative organization fails closed without losing contact data", async () => {
+  for (const fail of [false, true]) {
+    const h = harness(); h.db.tables.app_users[0].firm_id = "intake-team";
+    if (fail) h.aggregateDb.failOn = op => op.table === "firms" ? "Organization lookup failed" : null;
+    assert.equal((await h.save({ phone: "2025550199" })).status, fail ? 503 : 403);
+    assert.equal(h.writes().length, 0); assert.equal(h.row().phone, "2025550110");
+  }
+});
+
+test("a hidden recipient or hidden file never reaches organization configuration or writes", async () => {
+  for (const hide of ["recipient", "file"]) {
+    const h = harness(); h.db.tables.app_users[0].firm_id = "intake-team";
+    h.aggregateDb.tables.firms.push({ id: "intake-team", slug: "inno" });
+    h.db.tables[hide === "recipient" ? "firms" : "leads"] = [];
+    assert.equal((await h.save({ phone: "2025550199" })).status, hide === "recipient" ? 403 : 404);
+    assert.equal(h.aggregateDb.ops.length, 0); assert.equal(h.writes().length, 0);
+  }
+});
 
 test("contact and stage mutations reject another firm and another campaign before writing", async () => {
   for (const mutate of [(h: any) => { h.row().firm_id = "other"; }, (h: any) => {

@@ -210,6 +210,13 @@ export function IxBar({ v }: { v: any }) {
 /** The one next step, for whichever view is showing. */
 function nextStep(v: any): { label: string; go: () => void; disabled?: boolean; muted?: boolean; finish?: boolean } | null {
   const fi = v.fi;
+  // Signature receipt is an intermediate step, in every intake layout.
+  // Keep all saves, reviews and sends in their existing handlers.
+  if (v.signed && v.dispo?.saved) return { label: "Continue to firm delivery", go: v.openDispo, finish: true };
+  if (v.signed && !v.dispo?.saved) return {
+    label: v.fileAgreementDone ? "Next: save call & review" : "Next: finish the agreement",
+    go: v.fileAgreementDone ? v.openDispo : () => v.jumpTo("file"), finish: true,
+  };
   if (v.stepView) return fi.step.next;
   if (v.choreView || v.formView) {
     const ch = fi.chore;
@@ -288,8 +295,8 @@ export function IxFoot({ v }: { v: any }) {
     </>)}
     {v.stepView && fi.step.back && <button type="button" className="step-intake-back" onClick={fi.step.back.go}>Back</button>}
     {!!n && (
-      <button type="button" className={`ix-next${n.muted ? " ix-muted" : ""}${n.finish ? " ix-finish" : ""}`} disabled={!!n.disabled} onClick={n.go}>
-        <span>{n.label}</span><Chevron />
+      <button type="button" className={`ix-next${n.muted ? " ix-muted" : ""}${n.finish ? " ix-finish" : ""}${v.signed && !v.dispo?.saved ? " finish-file-pulse" : ""}`} disabled={!!n.disabled} onClick={n.go}>
+        <span>{v.signed && !v.dispo?.saved && <small className="finish-file-hint">Signature received · keep going</small>}{n.label}</span><Chevron />
       </button>
     )}
   </>);
@@ -325,7 +332,7 @@ export function WsLeft({ v }: { v: any }) {
     window.addEventListener("cr:firm-handoff", onChange);
     return () => { live = false; window.removeEventListener("focus", onChange); window.removeEventListener("cr:agreement-reviewed", onChange);
       window.removeEventListener("cr:esign-reconciled", onChange); window.removeEventListener("cr:firm-handoff", onChange); };
-  }, [v.leadId, v.claimId, v.agreementStatus, v.dispo?.saved]);
+  }, [v.leadId, v.claimId, v.agreementStatus, v.agreementClosed, v.dispo?.saved]);
   const guide = (() => {
     if (fileStep.error && v.dispo?.saved) return { label: "CHECK DELIVERY STATUS", note: "The file status could not be verified. Refresh before another send.", go: () => window.dispatchEvent(new Event("cr:firm-handoff")), tone: "hold" };
     if (fileStep.sentAt) return { label: "SENT TO FIRM", note: `Confirmed ${new Date(fileStep.sentAt).toLocaleString()}. The seven-day return clock is running.`, tone: "done" };
@@ -335,7 +342,7 @@ export function WsLeft({ v }: { v: any }) {
     if (v.dispo?.saved && v.dispo?.isSigned) return fileStep.qa
       ? { label: "SEND TO FIRM", note: "Your file review passed. Confirm the recipients and send the complete packet in the center.", go: v.openDispo, tone: "urgent" }
       : { label: "QA YOUR FILE", note: "Open the intake and completed signed packet, then check your work in the center.", go: v.openDispo, tone: "urgent" };
-    if (v.agreementStatus === "completed") return { label: "END & DISPOSITION CALL", note: "The signed packet is complete. Close the call before reviewing the file for delivery.", go: v.openDispo, tone: "urgent" };
+    if (fileStep.complete) return { label: "END & DISPOSITION CALL", note: "The signed packet is complete. Close the call before reviewing the file for delivery.", go: v.openDispo, tone: "urgent" };
     if (["sent", "opened", "sending"].includes(v.agreementStatus)) return { label: "WAIT FOR SIGNATURE", note: "The agreement is out. Confirm when the signed copy comes back.", tone: "wait" };
     return { label: "SEND AGREEMENT", note: "Finish the intake and send the correct state packet from the center.", go: () => v.jumpTo("send"), tone: "ask" };
   })();

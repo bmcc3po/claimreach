@@ -82,9 +82,12 @@ function ensurePropertyLookup(fields: Field[], claimType: string): Field[] {
 // Everything calls this now. Campaign wins, because the campaign is what
 // decided which questions the agent was shown in the first place.
 // ============================================================================
-export async function resolveFormKey(sb: any, leadId: string): Promise<string | null> {
+export async function resolveFormKey(sb: any, leadId: string, claimId?: string | null): Promise<string | null> {
   const { data: lead } = await sb.from("leads").select("case_type, campaign_id").eq("id", leadId).maybeSingle();
-  const { data: claim } = await sb.from("claims").select("claim_type, campaign_id").eq("lead_id", leadId).limit(1).maybeSingle();
+  let query = sb.from("claims").select("claim_type, campaign_id").eq("lead_id", leadId);
+  if (claimId) query = query.eq("id", claimId);
+  const { data: claim, error } = await query.limit(1).maybeSingle();
+  if (claimId && (error || !claim)) return null;
 
   const campaignId = claim?.campaign_id || lead?.campaign_id;
   if (campaignId) {

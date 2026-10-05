@@ -16,7 +16,7 @@ function harness(role = "firm") {
       { id: pending, lead_id: lead, firm_id: "firm", campaign_id: null, status: "signed_qa", answers: { story: "PRIVATE PENDING" }, created_at: "2026-10-01" },
       { id: released, lead_id: lead, firm_id: "firm", campaign_id: null, status: "delivered", answers: { story: "RELEASED" }, created_at: "2026-10-02" },
     ],
-    statuses: DEFAULT_STATUSES.map(s => ({ ...s })),
+    statuses: DEFAULT_STATUSES.map(s => ({ ...s, active: true })),
     audit_log: [pending, released, null].map((claim_id, i) => ({ id: i, lead_id: lead, firm_id: "firm", claim_id, description: String(claim_id) })),
     call_logs: [pending, released, null].map((claim_id, i) => ({ id: i, lead_id: lead, firm_id: "firm", claim_id })),
   });
@@ -83,6 +83,12 @@ test("failed or missing status catalog keeps the file locked", async () => {
     if (failure) h.db.failOn = op => op.table === "statuses" ? "offline" : null; else h.db.tables.statuses = [];
     assert.equal((await h.page(released)).props.locked, true);
   }
+});
+test("inactive released status never unlocks the matter", async () => {
+  const h = harness(); const releasedStatus = h.db.tables.statuses.find(s => s.key === "delivered");
+  assert.ok(releasedStatus); releasedStatus.active = false;
+  const page = await h.page(released); assert.equal(page.props.locked, true);
+  assert.deepEqual(page.props.claims, []);
 });
 test("query failures are not rendered as a complete but empty file", async () => {
   for (const table of ["leads", "audit_log", "call_logs"]) { const h = harness(); h.db.failOn = op => op.table === table ? "offline" : null; await assert.rejects(h.page(released), /Could not load/); }

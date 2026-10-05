@@ -23,6 +23,8 @@ import { savedCallView } from "@/lib/mva-call/step-layout";
 import { OPEN_DESK_FILE_EVENT } from "@/lib/mva-call/links";
 import { officeDateUS } from "@/lib/office-clock";
 import { activeCallPresence, type LiveCallPresence } from "@/lib/call-presence";
+import { applyStorySuggestions, storySuggestions, type StorySuggestion } from "@/lib/mva-call/story-assist";
+import { passengerFileLinks, type LinkedFile } from "@/lib/linked-files";
 
 export interface ConsoleInit {
   leadId: string;
@@ -47,7 +49,7 @@ export interface ConsoleInit {
   /** Firm lines for a 3-way (routing rules with a transfer number). */
   threeWay?: { label: string; number: string }[];
   /** Other files on this same wreck (driver/passengers), linked both ways. */
-  linked?: { id: string; lead_no: string | null; name: string; label: string }[];
+  linked?: LinkedFile[];
   props: Omit<CallProps, "startedAt" | "now">;
 }
 
@@ -124,7 +126,12 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const [identityError, setIdentityError] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState("");
-  const [passengerLinks, setPassengerLinks] = useState<Record<string, string>>({});
+  const [storyBusy, setStoryBusy] = useState(false);
+  const storyInFlight = useRef(false);
+  const [storyMessage, setStoryMessage] = useState("");
+  const [storyError, setStoryError] = useState("");
+  const [storyPlan, setStoryPlan] = useState<{ notes: string; rows: StorySuggestion[]; chosen: string[] } | null>(null);
+  const [passengerLinks, setPassengerLinks] = useState<Record<string, string>>(() => passengerFileLinks(init.linked));
   const [, setIdentityRevision] = useState(0);
   const [reconcileBusy, setReconcileBusy] = useState(false);
   const [reconcileMessage, setReconcileMessage] = useState("");
@@ -762,6 +769,38 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     return false;
   }
 
+  async function suggestStory() {
+    if (storyInFlight.current) return;
+    storyInFlight.current = true; setStoryBusy(true); setStoryError(""); setStoryMessage(""); setStoryPlan(null);
+    try {
+      if (!(await flushSave())) throw new Error("The story has not saved yet. Retry saving, then use Fill from story.");
+      const notes = String(engine.state.story.text || "").trim();
+      const result = await post("/api/calls/story", { lead_id: init.leadId, claim_id: init.claimId, notes }, 30000);
+      if (String(engine.state.story.text || "").trim() !== notes) throw new Error("Your notes changed. Press Fill from story again for fresh answers.");
+      const rows = storySuggestions(result.suggestions, notes, engine.state);
+      if (!rows.length) { setStoryMessage("No new answers to fill. Existing answers are kept; you can continue below."); return; }
+      setStoryPlan({ notes, rows, chosen: rows.map(r => r.id) });
+    } catch (err: any) { setStoryError(err?.message || "Could not read the story. Your notes are still here."); }
+    finally { storyInFlight.current = false; setStoryBusy(false); }
+  }
+  async function acceptStory() {
+    if (storyInFlight.current || !storyPlan) return;
+    storyInFlight.current = true; setStoryBusy(true); setStoryError(""); setStoryMessage("");
+    try {
+      // Finish pending saves before filling blanks. The normal CAS save
+      // refuses a conflict if another screen has changed one of these answers.
+      if (!(await flushSave())) throw new Error("Your answers have not saved yet. Retry before applying the story.");
+      const result = applyStorySuggestions(storyPlan.rows.filter(r => storyPlan.chosen.includes(r.id)), storyPlan.notes, engine.state);
+      if (result.stale) throw new Error("Your notes changed. Press Fill from story again for fresh answers.");
+      if (!result.applied.length) { setStoryPlan(null); setStoryMessage("No blank answers remain among your selections."); return; }
+      engine.setState(result.groups);
+      setStoryPlan(null);
+      if (!(await flushSave())) throw new Error("The suggested answers are filled in but have not saved. Keep this file open and use Retry save.");
+      setStoryMessage(`${result.applied.length} answer${result.applied.length === 1 ? "" : "s"} filled and saved. Review them as you continue.`);
+    } catch (err: any) { setStoryError(err?.message || "Could not save these answers. Keep this file open and retry."); }
+    finally { storyInFlight.current = false; setStoryBusy(false); }
+  }
+
   // Clock.
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -899,6 +938,14 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   const view: any = { ...v, agreementId: agreementId.current, clientContact: <ClientContact leadId={init.leadId} claimId={init.claimId} saveRef={contactSave} />, leadId: init.leadId, claimId: init.claimId, canOverrideDownload: ["owner", "admin"].includes(init.props.agentRole || ""), previewHref: init.canPreview ? preview.href : null, onPreview: undefined, ws, onCall: dialState === "on-call", ringing: dialState === "ringing", ssnRequireFull: !!init.ssnRequireFull, linked: init.linked ?? [], passengerLinks,
     showPresence: init.props.campaign === "INNO MVA", liveCall: activeCallPresence(liveCall, now), presenceActorId, presenceBusy, presenceError, markCall };
   const identity = identityInput();
+  view.storyAssist = init.props.campaign === "INNO MVA" ? {
+    busy: storyBusy, message: storyMessage, error: storyError, plan: storyPlan,
+    stale: !!storyPlan && String(engine.state.story.text || "").trim() !== storyPlan.notes,
+    applyCount: storyPlan ? storySuggestions(storyPlan.rows.filter(row => storyPlan.chosen.includes(row.id)), storyPlan.notes, engine.state).length : 0,
+    suggest: () => { void suggestStory(); }, apply: () => { void acceptStory(); },
+    dismiss: () => setStoryPlan(null),
+    toggle: (id: string) => setStoryPlan(p => p && ({ ...p, chosen: p.chosen.includes(id) ? p.chosen.filter(x => x !== id) : [...p.chosen, id] })),
+  } : undefined;
   const identitySaved = !!identity.ssn && identitySavedDigits.current === identity.ssn && identityMeta.current?.mode === identity.mode;
   view.identityStatus = identityError
     ? `Secure SSN status: ${identityError}`

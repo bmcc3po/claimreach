@@ -1,4 +1,5 @@
 import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
+import { paxParentId } from "@/lib/linked-files";
 
 export type PacketRow = {
   leadId: string;
@@ -46,7 +47,10 @@ export function packetWorklist(input: Input): PacketRow[] {
   }
   const byMatter = new Map<string, any[]>();
   for (const row of input.submissions) {
-    if (row.pax_index != null) continue;
+    // A passenger's own linked file keeps its originating passenger index.
+    // Only legacy passenger envelopes still attached to the driver's file
+    // are excluded; they cannot stand in for that driver's signature.
+    if (row.pax_index != null && !paxParentId(byLead.get(row.lead_id)?.external_id)) continue;
     const key = row.claim_id || row.lead_id;
     const group = byMatter.get(key) || [];
     group.push(row);
