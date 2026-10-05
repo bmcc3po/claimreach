@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   const { data: leads } = await sb.from("leads")
     .select("lead_no, claimant_name, phone, email, address, dob, best_time, language, ec1_name, ec1_phone, ec1_relation, ec2_name, ec2_phone, ec2_relation, claims(campaign, claim_type, status, stage, case_summary, primary_dx, qualification)")
-    .order("created_at", { ascending: false }).limit(5000);
+    .is("archived_at", null).order("created_at", { ascending: false }).limit(5000);
 
   const headers = [
     "Lead ID","First Name","Last Name","Phone","Email","Address","DOB","Best Time","Language",

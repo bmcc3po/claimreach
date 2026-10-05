@@ -39,7 +39,7 @@ export default function SignatureReport({ rows, firm, generatedAt }: { rows: Sig
   return <main className="signature-report">
     <header className="sr-heading"><div><p className="sr-eyebrow">{firm}</p><h1>INNO MVA signatures</h1>
       <p>See who signed. Choose your files. Export your invoice list.</p></div>
-      <a href="/signed?view=all" className="sr-link">All campaigns →</a></header>
+      <div><a href="/signed?view=all" className="sr-link">All campaigns →</a><br /><a href="/leads/archive" className="sr-link">Test files & archive →</a></div></header>
     <nav className="sr-tabs" aria-label="Signature status">
       {(["signed", "unsigned", "verify"] as SignatureState[]).map(key => <button key={key} type="button" aria-pressed={key === state} onClick={() => { setState(key); setSelected([]); }}>
         <span>{labels[key]}</span><strong>{counts(key)}</strong></button>)}

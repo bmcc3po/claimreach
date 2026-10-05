@@ -5,6 +5,7 @@ import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state
 import { pacificDay } from "@/lib/packet-worklist";
 import { ownerConfirmedDelivery, ownerSignatureConfirmation } from "@/lib/owner-file-confirmation";
 import { resolveFileStatus } from "@/lib/statuses";
+import { isTestFile } from "@/lib/file-visibility";
 
 export type SignatureState = "signed" | "unsigned" | "verify";
 export type SignatureReportRow = {
@@ -61,8 +62,8 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
       agent: users.get(current?.sent_by) || "Not recorded",
       archived: !!l.archived_at,
       ownerSent: ownerConfirmedDelivery(c.firm_send_result),
-      test: !!l.vendor_fields?.signing_rehearsal || input.rehearsalKeys.includes("REHEARSAL_" + (paxParentId(l.external_id) || l.id) + "_OTHER") ||
-        agreements.some(r => String(r.template_key || "").startsWith("REHEARSAL_")) || /\b(TEST|TESTER|NONBINDING|REHEARSAL)\b/i.test(l.claimant_name || ""),
+      test: isTestFile(l) || input.rehearsalKeys.includes("REHEARSAL_" + (paxParentId(l.external_id) || l.id) + "_OTHER") ||
+        agreements.some(r => String(r.template_key || "").startsWith("REHEARSAL_")),
     };
   }).sort((a, b) => (b.signedAt || "").localeCompare(a.signedAt || "") || a.name.localeCompare(b.name));
 }

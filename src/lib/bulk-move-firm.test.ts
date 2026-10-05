@@ -124,6 +124,8 @@ function world(opts: { docs?: any[]; extraObjects?: string[]; faults?: Faults } 
   };
   const route = loadRoute("src/app/api/leads/bulk/route.ts", {
     "next/server": { NextResponse: { json: (body: any, init?: any) => ({ status: init?.status ?? 200, body }) } },
+    "next/cache": { revalidatePath: () => { throw new Error("Transfer must not invoke archive cache refresh"); } },
+    "@/lib/alerts": { invalidateAlertCache: () => { throw new Error("Transfer must not invoke archive cache refresh"); } },
     "@/lib/supabase-server": { supabaseServer: async () => sb, supabaseAdmin: () => admin },
     "@/lib/permissions": permissions,
     "@/lib/statuses": statuses,
