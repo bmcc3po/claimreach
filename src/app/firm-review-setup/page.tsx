@@ -28,8 +28,8 @@ export default function FirmReviewSetup() {
     {error && <div role="alert" className="fr-error">{error}</div>}
     <form onSubmit={create} className="fr-files"><article><label>Campaign<select required value={campaign} disabled={locked} onChange={e => setCampaign(e.target.value)}><option value="">Choose campaign</option>{campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label></article>
       {people.map((person, i) => <article key={i}><h2>{person.ready ? '✓ Login ready' : `Person ${i + 1}`}</h2>
-        <label>Name<input required value={person.name} disabled={locked} onChange={e => setPeople(rows => rows.map((row, n) => n === i ? { ...row, name: e.target.value } : row))} /></label>
-        <label>Work email<input type="email" required value={person.email} disabled={locked} onChange={e => setPeople(rows => rows.map((row, n) => n === i ? { ...row, email: e.target.value } : row))} /></label></article>)}
+        <label>Name<input required value={person.name} disabled={busy || person.ready} onChange={e => setPeople(rows => rows.map((row, n) => n === i ? { ...row, name: e.target.value } : row))} /></label>
+        <label>Work email<input type="email" required value={person.email} disabled={busy || person.ready} onChange={e => setPeople(rows => rows.map((row, n) => n === i ? { ...row, email: e.target.value } : row))} /></label></article>)}
       {people.every(p => p.ready) ? <article role="status"><h2>Both logins are ready</h2><p>Have each person open <a href="/firm-review-login">claimreach.com/firm-review-login</a> and request a sign-in link at their own work email.</p></article> : <button disabled={busy || !campaigns.length}>{busy ? 'Creating logins…' : 'Create these two restricted logins'}</button>}
     </form></main>;
 }
