@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { FakeDb } from "../../lib/test-fake-db";
 import * as links from "../../lib/mva-call/links";
 import * as statuses from "../../lib/statuses";
+import * as officeClock from "../../lib/office-clock";
 import * as caseNames from "../../lib/case-name";
 import { pilotStaffPageAllowed } from "../../lib/inno-pilot-access";
 
@@ -37,6 +38,7 @@ async function main() {
       "@/lib/supabase-server": { supabaseServer: async () => db }, "@/lib/auth-user": { authUser: async () => ({ data: { user: { id: "operator" } } }) },
       "@/lib/alerts": { computeAlerts: async () => [alert] }, "@/lib/statuses": statuses, "@/lib/case-name": caseNames,
       "@/lib/mva-call/links": links, "@/components/home/HomeView": { default: View },
+      "@/lib/office-clock": officeClock,
     });
     const tree = await Page(), data = tree.props.data;
     const html = renderToStaticMarkup(tree);

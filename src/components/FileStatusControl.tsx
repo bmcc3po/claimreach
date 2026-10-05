@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import StatusBadge from "./ui/StatusBadge";
 import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, manualIntakeStatusAllowed, type StatusDef, type DqReason } from "@/lib/statuses";
 
-export default function FileStatusControl({ leadId, current, role, claimId, onChanged }: { leadId: string; current: string; role?: string; claimId?: string | null; onChanged?: (status: string) => void }) {
+export default function FileStatusControl({ leadId, current, currentLabel, role, claimId, onChanged }: { leadId: string; current: string; currentLabel?: string; role?: string; claimId?: string | null; onChanged?: (status: string) => void }) {
   const [status, setStatus] = useState(current);
   const [open, setOpen] = useState(false);
   const [statuses, setStatuses] = useState<StatusDef[]>(DEFAULT_STATUSES);
@@ -63,7 +63,7 @@ export default function FileStatusControl({ leadId, current, role, claimId, onCh
   return (
     <div className="file-status-control">
       <span className="file-status-label">Current status</span>
-      <StatusBadge status={status} live={statuses} />
+      <StatusBadge status={status} label={status === current ? currentLabel : undefined} live={statuses} />
       {canEdit && <button type="button" className="file-status-change" onClick={() => { setMsg(""); setOpen(true); }}>Change status</button>}
 
       {open && canEdit && !picking && !confirming && (

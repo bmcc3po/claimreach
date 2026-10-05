@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import { computeAlerts, type Alert } from "@/lib/alerts";
-import { resolveStatus } from "@/lib/statuses";
+import { resolveFileStatus } from "@/lib/statuses";
 import { caseName, prettyPhone } from "@/lib/case-name";
 import HomeView, { type HomeData } from "@/components/home/HomeView";
 import { caseFileHref } from "@/lib/mva-call/links";
@@ -58,7 +58,7 @@ export default async function Dashboard() {
     scopeClaim(sb.from("claims").select("id, leads!inner(archived_at)", { count: "exact", head: true }).is("leads.archived_at", null).in("status", ["new", "contacting"])),
     scopeLead(sb.from("leads").select("id", { count: "exact", head: true }).gte("signed_at", weekAgo).is("archived_at", null)),
     scopeLead(sb.from("leads").select("id, created_at").gte("created_at", since).is("archived_at", null).limit(5000)),
-    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, claims(id, status, campaign, campaign_id)")
+    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, signed_at, claims(id, status, campaign, campaign_id, firm_send_result)")
       .is("archived_at", null).order("updated_at", { ascending: false }).limit(8)),
     sb.from("statuses").select("*").eq("active", true),
     pilot ? Promise.resolve({ data: [] }) : sb.from("boards").select("*").order("sort_order"),
@@ -125,7 +125,7 @@ export default async function Dashboard() {
 
   const recentRows: HomeData["recent"] = (recent ?? []).map((l: any) => {
     const c = (l.claims ?? []).find((row: any) => !pilot || row.campaign_id === pilotCampaignId) ?? {};
-    const def = resolveStatus(c.status || "new", (statuses ?? []) as any);
+    const def = resolveFileStatus(c, (statuses ?? []) as any, l.claims?.length === 1 && !!l.signed_at);
     return {
       key: l.lead_no || l.id,
       href: caseFileHref(role, l.lead_no || l.id, c.id),

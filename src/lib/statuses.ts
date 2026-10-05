@@ -5,6 +5,8 @@
 // provides helpers the pipeline relies on.
 // ============================================================================
 
+import { ownerConfirmedDelivery } from "./owner-file-confirmation";
+export const SIGNED_SENT_TO_FIRM = "Signed — sent to firm";
 export type StatusTone = "good" | "bad" | "warn" | "info" | "neut";
 export type StatusPhase = "pre_qa" | "in_qa" | "post_qa" | "terminal";
 export type StatusQualify = "qualify" | "disqualify" | "undetermined";
@@ -77,6 +79,16 @@ export function resolveStatus(key?: string, live?: StatusDef[]): StatusDef {
 
 export function statusLabel(key?: string, live?: StatusDef[]): string {
   return resolveStatus(key, live).label;
+}
+
+/** One visible result for a signed, delivered matter. Keep the existing status
+ * key and routing; an unsigned firm handoff must never acquire a signature label.
+ * signed must describe this matter, not another claim belonging to the person. */
+export function resolveFileStatus(claim: { status?: string | null; firm_send_result?: string | null } | null | undefined, live?: StatusDef[], signed = false): StatusDef {
+  const def = resolveStatus(claim?.status || "new", live);
+  return def.key === "delivered" && (signed || ownerConfirmedDelivery(claim?.firm_send_result))
+    ? { ...def, label: SIGNED_SENT_TO_FIRM, tone: "good" }
+    : def;
 }
 export function statusTone(key?: string, live?: StatusDef[]): StatusTone {
   return resolveStatus(key, live).tone;

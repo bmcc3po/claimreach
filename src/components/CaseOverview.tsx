@@ -2,14 +2,15 @@
 import { fileMayEditLead, type FileFence } from "@/lib/file-fence";
 import { LOR_STATUSES } from "@/lib/m6";
 import { stayRangeLabel, type IdentifiedProperty } from "@/lib/property-tool";
-import { isSignedKey, resolveStatus } from "@/lib/statuses";
+import { isSignedKey, resolveStatus, resolveFileStatus } from "@/lib/statuses";
 
 // The front door. When anyone opens a file, they land here: who this is,
 // what kind of case, where it stands, last contact, recent notes, then clear
 // "where do you want to go" actions. Works even when the file is empty.
-export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence, identified = [], lor = null, lastComm = null, points = [], intakeAnswered }: {
+export default function CaseOverview({ lead, activeClaim, notes = [], callLogs = [], onGo, fence, identified = [], lor = null, lastComm = null, points = [], intakeAnswered, signatureConfirmed = false }: {
   lead: any; activeClaim: any; notes?: any[]; callLogs?: any[];
   intakeAnswered?: number;
+  signatureConfirmed?: boolean;
   onGo: (tab: string) => void;
   fence?: FileFence;
   identified?: IdentifiedProperty[];
@@ -24,7 +25,8 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
 
   // qualification state -> single clear status chip
   const stateChip = (() => {
-    if (status === "sent" || status === "delivered") return { label: "Sent to firm", cls: "info" };
+    if (status === "sent") return { label: "Sent to firm", cls: "info" };
+    if (status === "delivered") return { label: resolveFileStatus(activeClaim, undefined, signatureConfirmed).label, cls: "ok" };
     if (isSignedKey(status)) return { label: activeClaim?.claim_type === "mva" && /^signed_/.test(status) ? "Signed · agent review" : resolveStatus(status).label, cls: "ok" };
     if (qual === "dq" || status === "dq") return { label: "Disqualified", cls: "bad" };
     if (lead.currently_represented) return { label: "Already represented", cls: "warn" };

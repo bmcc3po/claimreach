@@ -25,6 +25,7 @@ export interface MatterClaim {
   campaign: string | null;
   claim_type: string | null;
   status: string | null;
+  firm_send_result?: string | null;
   answers: any;
   created_at: string | null;
 }
@@ -38,7 +39,7 @@ export type MatterResult =
     }
   | { ok: false; status: number; error: string; ambiguous?: boolean; candidates?: { id: string; campaign: string | null; claim_type: string | null; status: string | null }[] };
 
-const COLS = "id, lead_id, firm_id, campaign_id, campaign, claim_type, status, answers, created_at";
+const COLS = "id, lead_id, firm_id, campaign_id, campaign, claim_type, status, answers, created_at, firm_send_result";
 
 export async function resolveMatter(
   db: any,

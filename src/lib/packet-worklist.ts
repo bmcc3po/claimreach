@@ -1,6 +1,7 @@
 import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
 import { paxParentId } from "@/lib/linked-files";
 import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
+import { SIGNED_SENT_TO_FIRM } from "@/lib/statuses";
 
 export type PacketRow = {
   leadId: string;
@@ -104,7 +105,7 @@ export function packetWorklist(input: Input): PacketRow[] {
       agent: call?.agent_name || sender?.full_name || "Unassigned",
       archived: !!lead.archived_at,
       stage,
-      stageLabel: ownerSent && !deliveredAt ? "Sent to firm · owner confirmed · date unknown" : stage === "delivered" ? window?.cleared ? "Return window cleared · billing review" : `Firm return window · ${window?.daysLeft ?? 7}d left` : ownerOnly ? "Firm delivery not verified" : recipientHeld ? "Firm email needs configuration" : stage === "held" ? "Correction held" : stage === "ready" ? "Ready to send" : stage === "qa" ? claim ? "Awaiting file review" : "Link case for QA" : "Finish signed packet",
+      stageLabel: stage === "delivered" ? SIGNED_SENT_TO_FIRM : ownerOnly ? "Firm delivery not verified" : recipientHeld ? "Firm email needs configuration" : stage === "held" ? "Correction held" : stage === "ready" ? "Ready to send" : stage === "qa" ? claim ? "Awaiting file review" : "Link case for QA" : "Finish signed packet",
     });
   }
   return rows.sort((a, b) => b.signedAt.localeCompare(a.signedAt));

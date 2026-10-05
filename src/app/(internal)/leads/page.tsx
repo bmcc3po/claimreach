@@ -66,7 +66,7 @@ export default async function LeadsPage() {
   const claimsByLead: Record<string, any[]> = {};
   if (ids.length) {
     let claimQuery = sb.from("claims")
-      .select("id, lead_id, campaign, claim_type, status, case_summary, stage").in("lead_id", ids);
+      .select("id, lead_id, campaign, claim_type, status, case_summary, stage, firm_send_result").in("lead_id", ids);
     if (me.role !== "owner") claimQuery = claimQuery.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("claim_type", "mva");
     const { data: claims } = await claimQuery;
     for (const c of claims ?? []) (claimsByLead[c.lead_id] ||= []).push(c);

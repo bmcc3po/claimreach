@@ -1,10 +1,12 @@
 import { isSignedKey, type SignedCatalogRow } from "./statuses";
+import { ownerConfirmedDelivery } from "./owner-file-confirmation";
 
 // A delivered, no-signature campaign is not a signed client. Status alone is
 // insufficient: it also describes a firm handoff without a retainer.
 export function isSignedClient(lead: any, catalog: SignedCatalogRow[] | null, signedSubmissionIds: Set<string>): boolean {
   const status = lead.claims?.[0]?.status ?? lead.status;
-  return isSignedKey(status, catalog) && (!!lead.signed_at || signedSubmissionIds.has(lead.id));
+  return isSignedKey(status, catalog) && (!!lead.signed_at || signedSubmissionIds.has(lead.id) ||
+    (status === "delivered" && ownerConfirmedDelivery(lead.claims?.[0]?.firm_send_result)));
 }
 
 export async function signedSubmissionIdsForLeads(sb: any, leadIds: string[]): Promise<Set<string>> {

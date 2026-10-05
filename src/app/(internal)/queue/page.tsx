@@ -5,7 +5,7 @@ import { authUser } from "@/lib/auth-user";
 import { STAGE_LABELS } from "@/lib/questionnaire";
 import { isAcquisitionEligible, loadMvaAcquisitionHolds, type MvaAcquisitionSignal } from "@/lib/lawruler-mva-status";
 import type { StatusDef } from "@/lib/statuses";
-import { resolveStatus, SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
+import { resolveFileStatus, SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
 import { caseFileHref } from "@/lib/mva-call/links";
 
 export default async function QueuePage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
@@ -39,7 +39,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     });
     if (error) loadError = "The working queue did not load. Refresh before calling anyone from this list.";
   } else {
-    let q = sb.from("leads").select("id, firm_id, case_type, archived_at, lead_no, claimant_name, stage, updated_at, claims(id, lead_id, firm_id, claim_type, campaign_id, status)").is("archived_at", null).limit(100);
+    let q = sb.from("leads").select("id, firm_id, case_type, archived_at, lead_no, claimant_name, stage, updated_at, signed_at, claims(id, lead_id, firm_id, claim_type, campaign_id, status, firm_send_result)").is("archived_at", null).limit(100);
     if (pilot) q = q.eq("campaign_id", pilotCampaignId);
     // "My Work" is the files assigned to YOU, not the whole floor sorted by
     // recency (Astra round 4).
@@ -101,15 +101,15 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
       </div>
       <div className="cl-tablewrap">
         <table className="cl-table">
-          <thead><tr><th>Lead</th><th>Claimant</th><th>{pilot ? "Status" : "Stage"}</th><th>Updated</th><th></th></tr></thead>
+          <thead><tr><th>Lead</th><th>Claimant</th><th>Status</th><th>Updated</th><th></th></tr></thead>
           <tbody>
             {(leads ?? []).map((l) => (
               <tr key={l.queueClaimId || l.id}>
                 <td><Link className="cl-mono" href={fileHref(l)}>{l.lead_no}</Link></td>
                 <td className="cl-t1">{l.claimant_name ?? "—"}</td>
-                <td>{pilot ? (() => {
-                  const claim = (l.claims || []).find((c: any) => c.id === l.queueClaimId);
-                  const status = resolveStatus(claim?.status, statuses);
+                <td>{l.queueClaimId || l.claims?.length === 1 ? (() => {
+                  const claim = (l.claims || []).find((c: any) => c.id === l.queueClaimId) || l.claims[0];
+                  const status = resolveFileStatus(claim, statuses, !pilot && l.claims?.length === 1 && !!l.signed_at);
                   return <span className="cl-status"><span className={`cl-dot cl-${status.tone}`} />{status.label}</span>;
                 })() : <span className="cl-status"><span className="cl-dot cl-info" />{STAGE_LABELS[l.stage] ?? l.stage}</span>}</td>
                 <td className="cl-t2">{new Date(l.updated_at).toLocaleString()}</td>

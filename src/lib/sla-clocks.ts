@@ -71,6 +71,9 @@ function countdownText(hoursLeft: number): string {
 // Compute all active clocks for one file. Returns [] if nothing is ticking.
 export function clocksFor(f: ClockInput, t: ClockThresholds = DEFAULT_THRESHOLDS, now = new Date()): Clock[] {
   const out: Clock[] = [];
+  // A confirmed historical handoff can have no original delivery timestamp.
+  // Stop our chase without inventing a date or a new firm return-window clock.
+  if (["delivered", "retained"].includes(f.current_status || "")) return out;
 
   // ---- E-SIGN CHASE: sent, not signed ----
   const esignActive = !!f.esign_sent_at && (f.esign_status ?? "") !== "signed" && !f.signed_at;

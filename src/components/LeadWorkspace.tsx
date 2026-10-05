@@ -7,6 +7,7 @@ import IntakeSurface from "./IntakeSurface";
 import CaseOverview from "./CaseOverview";
 import StatusBadge from "./ui/StatusBadge";
 import FileStatusControl from "./FileStatusControl";
+import { resolveFileStatus } from "@/lib/statuses";
 import FileArchiveButton from "./FileArchiveButton";
 import ActivityLog from "./ActivityLog";
 import ContactInfo from "./ContactInfo";
@@ -31,6 +32,7 @@ interface Claim {
   claim_type: string;
   campaign: string | null;
   status: string;
+  firm_send_result?: string | null;
   qualification: string;
   on_behalf_of: boolean;
   is_this_file: boolean;
@@ -102,6 +104,8 @@ function LeadWorkspaceRecord({
   // this matter's signing workflow, not the lead's original source label.
   const importedSignedPacket = activeClaim?.claim_type === "mva" && lead.source_system === "lawruler" &&
     (activeClaim.status === "external_signed_review" ||
+      (activeClaim.status === "delivered" && activity.some((row: any) =>
+        row.meta?.event === "owner_signed_delivery_confirmation" && row.meta?.claim_id === activeClaimId && row.meta?.imported_approved === true)) ||
       (activeClaim.status === "signed_approved" && activity.some((row: any) =>
         row.meta?.event === "imported_packet_review" && row.meta?.claim_id === activeClaimId)));
   const appCall = activeClaimId ? appCalls[activeClaimId] ?? defaultAppCall : null;
@@ -156,7 +160,7 @@ function LeadWorkspaceRecord({
           </div>
         </div>
         <div className="lf-status-row">
-          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} role={lead.current_user_role} />
+          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} currentLabel={resolveFileStatus(activeClaim, undefined, claims.length === 1 && !!lead.signed_at).label} role={lead.current_user_role} />
         </div>
         <div className="lf-acts" aria-label="Main file actions">
           {headerActions}
@@ -213,7 +217,7 @@ function LeadWorkspaceRecord({
           {group && group.tabs.length > 1 && <div className="case-subnav" aria-label={group.label}>{group.tabs.map((t) => <button type="button" className={tab === t ? "active" : ""} key={t} onClick={() => { setTab(t); setEditMode(false); }}>{t === "Messages" ? "Texts & emails" : t === "Activity Log" ? "Audit table" : t}</button>)}</div>}
           <div className="formbody">
             {tab === "Overview" && (<>
-              <CaseOverview lead={leadLive} activeClaim={activeClaim} notes={matterNotes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} intakeAnswered={appCall?.answered} onGo={(t) => { setTab(t); setEditMode(false); }} />
+              <CaseOverview lead={leadLive} activeClaim={activeClaim} signatureConfirmed={claims.length === 1 && !!lead.signed_at} notes={matterNotes} callLogs={callLogs} fence={fence} identified={identified} lor={lor} lastComm={lastComm} points={points} intakeAnswered={appCall?.answered} onGo={(t) => { setTab(t); setEditMode(false); }} />
               {/* Injured-party status and the pipeline live at the bottom of
                   Overview now; the old "File detail" fold bar is gone. */}
               <div style={{ marginTop: 18 }}><PncBanner lead={leadLive} readOnly={!canEdit} /></div>
