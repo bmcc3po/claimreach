@@ -10,6 +10,7 @@ import { matterRowsFilter } from "@/lib/matter";
 import { loadLawRulerProvenance } from "@/lib/lawruler-recovery";
 import { readPendingSendAttempt } from "@/lib/mva-call/send-attempt";
 import { paxParentId } from "@/lib/linked-files";
+import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
 
 export const runtime = "edge";
 
@@ -82,6 +83,7 @@ export async function GET(req: NextRequest) {
       mail_state: lead.mail_state || "", mail_zip: lead.mail_zip || "",
     },
     status: st ? { key: st, label: visibleStatus.label, tone: visibleStatus.tone } : null,
+    owner_confirmed_delivery: st === "delivered" && ownerConfirmedDelivery(matter.claim.firm_send_result),
     claim_id: matter.claim.id,
     qa_return: qaReturn?.data?.decision === "wip" ? { id: qaReturn.data.id, note: qaReturn.data.agent_note || "Review QA's requested corrections before resubmitting.", at: qaReturn.data.created_at } : null,
     qa_resubmit_retry: qaRetry?.data ? { request_id: qaRetry.data.id, qa_review_id: qaReturn!.data!.id } : null,
