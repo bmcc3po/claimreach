@@ -32,7 +32,10 @@ export default function NetflyHome() {
   }
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 20_000); return () => window.clearInterval(timer); }, []);
   useEffect(() => {
-    const hash = () => { if (window.location.hash === '#firm-delivery') setPanel('settings'); };
+    const hash = () => {
+      if (window.location.hash === '#firm-delivery') setPanel('settings');
+      if (window.location.hash === '#new-file') setPanel('create');
+    };
     hash(); window.addEventListener('hashchange', hash);
     return () => window.removeEventListener('hashchange', hash);
   }, []);

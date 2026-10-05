@@ -13,6 +13,7 @@ import { caseReport } from "@/lib/mva-call/report";
 import { matterRowsFilter } from "@/lib/matter";
 import { mayOpenFullFile } from "@/lib/file-fence";
 import { netflyWorkspaceCall } from "@/lib/netfly-workspace";
+import { isNetflyIntake } from '@/lib/intake-links';
 
 export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ classic?: string; claim?: string }> }) {
   const { id: key } = await params;
@@ -31,9 +32,9 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   if (!mayOpenFullFile(meRow.role)) {
     // Never render the owner file for an agent, even when its URL is pasted.
     // The Desk keeps the same case available for the call.
-    const { data: deskClaims } = await sb.from("claims").select("id, claim_type").eq("lead_id", id);
+    const { data: deskClaims } = await sb.from("claims").select("id, claim_type, campaign").eq("lead_id", id);
     const selected = deskClaims?.find((c: any) => c.id === selectedClaimId) || deskClaims?.[0];
-    if (selected?.claim_type === "netfly_secondary") redirect(`/app/netfly/${leadKeyOf(lead)}`);
+    if (selected && isNetflyIntake(selected.claim_type, selected.campaign)) redirect(`/app/netfly/${leadKeyOf(lead)}`);
     if (selected && APP_CASE_TYPES.includes(String(selected.claim_type))) redirect(`/app/${leadKeyOf(lead)}?claim=${selected.id}`);
     redirect("/queue");
   }
@@ -130,7 +131,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
   // App's answers, the one place those questions are asked. The old form only
   // shows when a file has answers from it.
   const appCalls: Record<string, { rows: { k: string; v: string }[]; answered: number; href: string; hasOld: boolean; when: string | null; agent: string | null; dispo: string | null }> = {};
-  for (const claim of (claims ?? []).filter((c: any) => APP_CASE_TYPES.includes(String(c.claim_type || "")))) {
+  for (const claim of (claims ?? []).filter((c: any) => APP_CASE_TYPES.includes(String(c.claim_type || "")) && !isNetflyIntake(c.claim_type, c.campaign))) {
     const { data: firmRow } = await sb.from("firms").select("name").eq("id", lead.firm_id).maybeSingle();
     (lead as any).firm_name = firmRow?.name ?? null;
     const callScope = matterRowsFilter({ claim, sole: claims?.length === 1 });
