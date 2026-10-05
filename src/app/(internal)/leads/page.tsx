@@ -6,8 +6,10 @@ import { redirect } from "next/navigation";
 import { isInternalRole } from "@/lib/permissions";
 import { mayOpenFullFile } from "@/lib/file-fence";
 import LeadsView from "@/components/LeadsView";
+import { workArea, scopeWorkArea, areaHref } from '@/lib/work-area';
 
-export default async function LeadsPage() {
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ area?: string }> }) {
+  const area = workArea((await searchParams).area);
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   if (!user) redirect("/login");
@@ -28,10 +30,11 @@ export default async function LeadsPage() {
   // by a column that a pending migration has not added yet.
   let leadQuery = sb
     .from("leads")
-    .select("id, lead_no, firm_ref_no, claimant_name, phone, email, address, mail_city, mail_state, stage, supervisor_flag, created_at, updated_at, case_type, firm_id, campaign")
+    .select("id, lead_no, firm_ref_no, claimant_name, assigned_agent, intake_agent_id, phone, email, address, mail_city, mail_state, stage, supervisor_flag, created_at, updated_at, case_type, firm_id, campaign")
     // Archived files are hidden everywhere by default. They are recoverable for
     // 90 days; only an owner can destroy one, and only after it is archived.
     .is("archived_at", null);
+  leadQuery = scopeWorkArea(leadQuery, area);
   if (me.role !== "owner") leadQuery = leadQuery.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("case_type", "mva");
   const { data: leads } = await leadQuery.order("updated_at", { ascending: false }).limit(300);
   const ids = (leads ?? []).map((l) => l.id);
@@ -68,7 +71,7 @@ export default async function LeadsPage() {
     let claimQuery = sb.from("claims")
       .select("id, lead_id, campaign, claim_type, status, case_summary, stage, firm_send_result").in("lead_id", ids);
     if (me.role !== "owner") claimQuery = claimQuery.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("claim_type", "mva");
-    const { data: claims } = await claimQuery;
+    const { data: claims } = await scopeWorkArea(claimQuery, area, 'claim_type');
     for (const c of claims ?? []) (claimsByLead[c.lead_id] ||= []).push(c);
   }
   const withClaims = (leads ?? []).map((l) => ({ ...l, claims: claimsByLead[l.id] ?? [] }));
@@ -94,6 +97,6 @@ export default async function LeadsPage() {
     (l) => !isSignedClient(l, catalog, signedSubmissionIds)
   );
 
-  return <LeadsView leads={openOnly} basePath="/leads" addPath="/intake" agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} />;
+  return <LeadsView leads={openOnly} basePath="/leads" addPath={areaHref("/intake", area)} area={area} agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} />;
 }
 

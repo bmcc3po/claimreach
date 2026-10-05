@@ -1,9 +1,12 @@
 "use client";
 export const runtime = "edge";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import { workArea, inWorkArea, areaHref } from '@/lib/work-area';
 
 export default function AddLead() {
+  const area = workArea(useSearchParams().get('area'));
   const router = useRouter();
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignId, setCampaignId] = useState("");
@@ -19,11 +22,11 @@ export default function AddLead() {
   useEffect(() => { (async () => {
     try {
       const d = await (await fetch("/api/campaigns")).json();
-      const active = (d.campaigns ?? []).filter((c: any) => c.active);
+      const active = (d.campaigns ?? []).filter((c: any) => c.active && inWorkArea(c.case_type, area));
       setCampaigns(active);
       if (active[0]) setCampaignId(active[0].id);
     } catch {}
-  })(); }, []);
+  })(); }, [area]);
 
   const campaign = campaigns.find((c) => c.id === campaignId);
 
@@ -53,7 +56,7 @@ export default function AddLead() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "could not create lead");
-      router.push(thenIntake ? `/intake/${d.lead.id}` : "/leads");
+      router.push(thenIntake ? `/intake/${d.lead.id}` : areaHref("/leads", area));
     } catch (e: any) { setErr(e.message); setBusy(false); }
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { inWorkArea, workArea } from '@/lib/work-area';
 import { supabaseServer } from "@/lib/supabase-server";
 import { requirePerm } from "@/lib/gate";
 import { isInternalRole } from "@/lib/permissions";
@@ -13,6 +14,7 @@ function csvEscape(v: any): string {
 // GET /api/export?format=neos — CSV of leads+claims mapped to import-friendly columns.
 export async function GET(req: NextRequest) {
   const sb = await supabaseServer();
+  const area = workArea(req.nextUrl.searchParams.get('area'));
   // Exporting claimant PII is its own permission (leads.export), not a side
   // effect of being staff (Astra audit, Sep 27).
   const gate = await requirePerm(sb, "leads.export");
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
     const last = sp > 0 ? name.slice(sp + 1) : "";
     const claimList = (l.claims ?? []).length ? l.claims : [{}];
     for (const c of claimList as any[]) {
+      if (!inWorkArea(c.claim_type, area)) continue;
       lines.push([
         l.lead_no, first, last, l.phone, l.email, l.address, l.dob, l.best_time, l.language,
         c.claim_type, c.campaign, c.status, c.stage, c.qualification, c.case_summary, c.primary_dx,

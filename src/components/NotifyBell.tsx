@@ -1,8 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
 import Icon from "./ui/Icon";
+import { useSearchParams } from 'next/navigation';
+import { workArea } from '@/lib/work-area';
 
 export default function NotifyBell() {
+  const area = workArea(useSearchParams().get('area'));
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -16,7 +19,7 @@ export default function NotifyBell() {
       setItems(d.notifications ?? []);
     } catch { /* ignore */ }
     try {
-      const a = await fetch("/api/alerts");
+      const a = await fetch("/api/alerts?area=" + area);
       const ad = await a.json();
       setAlerts(ad.alerts ?? []);
     } catch { /* ignore */ }
@@ -29,7 +32,7 @@ export default function NotifyBell() {
     const onShow = () => { if (document.visibilityState === "visible") load(); };
     document.addEventListener("visibilitychange", onShow);
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", onShow); };
-  }, []);
+  }, [area]);
 
   const unread = items.filter((i) => !i.read_at).length + alerts.length;
 

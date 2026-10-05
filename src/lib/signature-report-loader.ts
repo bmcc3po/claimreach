@@ -25,8 +25,8 @@ export async function loadSignatureReport(sb: any, campaign: { id: string; firm_
     }
     return rows;
   };
-  const [leads, submissions, emergencies, originals, confirmations, deliveries, templates, owners] = await Promise.all([
-    chunks("leads", "id,lead_no,claimant_name,firm_id,external_id,archived_at,signed_at,vendor_fields", "id"),
+  const [leads, submissions, emergencies, originals, confirmations, deliveries, templates, owners, reviews] = await Promise.all([
+    chunks("leads", "id,lead_no,claimant_name,firm_id,external_id,archived_at,signed_at,vendor_fields,assigned_agent,intake_agent_id", "id"),
     chunks("esign_submissions", "id,lead_id,firm_id,claim_id,campaign_id,pax_index,status,signed_at,created_at,voided_at,replacement_requested_at,agent_reviewed_at,completed_pdf_path,cert_pdf_path,template_key,sent_by"),
     chunks("signable_documents", "id,lead_id,firm_id,status,signed_at,created_at,audit", "lead_id", q => q.not("audit->emergency->>claim_id", "is", null)),
     chunks("lead_activity", "id,lead_id,firm_id,meta", "lead_id", q => q.eq("meta->>source", "lawruler").eq("meta->>event", "original_document")),
@@ -34,14 +34,15 @@ export async function loadSignatureReport(sb: any, campaign: { id: string; firm_
     chunks("firm_deliveries", "id,lead_id,firm_id,claim_id,campaign_id,ok,to_email,cc_email,created_at"),
     reportPages(() => sb.from("esign_templates").select("id,key").eq("firm_id", campaign.firm_id).eq("campaign_id", campaign.id).like("key", "REHEARSAL_%")),
     reportPages(() => sb.from("app_users").select("id,email").eq("role", "owner").eq("active", true)),
+    chunks("lead_activity", "id,lead_id,firm_id,created_at,meta", "lead_id", q => q.eq("meta->>event", "firm_file_review").eq("meta->>campaign_id", campaign.id)),
   ]);
   // Staff can work across firms without an app_users.firm_id. Resolve only
   // senders referenced by the selected firm's scoped signing records.
-  const senderIds = [...new Set(submissions.map(s => s.sent_by).filter(Boolean))];
+  const senderIds = [...new Set([...submissions.map(s => s.sent_by), ...leads.flatMap(l => [l.assigned_agent, l.intake_agent_id])].filter(Boolean))];
   const users: any[] = [];
   for (let i = 0; i < senderIds.length; i += 100) users.push(...await reportPages(() => sb.from("app_users")
     .select("id,full_name").in("id", senderIds.slice(i, i + 100))));
   const ownerEmail = owners.find(u => String(u.email || "").toLowerCase() === "bmc@innovativeintake.com")?.email || null;
   return signatureReport({ firmId: campaign.firm_id, campaignId: campaign.id, firmEmail: campaign.firm_email, ownerEmail,
-    leads, claims, submissions, emergencies, originals, confirmations, ownerIds: owners.map(u => u.id), deliveries, users, rehearsalKeys: templates.map(t => t.key) });
+    leads, claims, submissions, emergencies, originals, confirmations, reviews, ownerIds: owners.map(u => u.id), deliveries, users, rehearsalKeys: templates.map(t => t.key) });
 }

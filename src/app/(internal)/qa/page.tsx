@@ -1,3 +1,4 @@
+import { scopeWorkArea, workArea, inWorkArea } from '@/lib/work-area';
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
@@ -7,7 +8,8 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { needsQaReview } from "@/lib/statuses";
 import { readDeskRows } from "@/lib/mva-call/desk-queue";
 
-export default async function QaQueuePage() {
+export default async function QaQueuePage({ searchParams }: { searchParams: Promise<{ area?: string }> }) {
+  const area = workArea((await searchParams).area);
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role,firm_id,active").eq("id", user!.id).maybeSingle();
@@ -33,7 +35,7 @@ export default async function QaQueuePage() {
       .select("lead_id, status, grievous_verdict, claim_type, updated_at, leads!inner(id, lead_no, claimant_name, phone, case_type, updated_at, archived_at)")
       .is("leads.archived_at", null).in("status", QA_STATUSES);
     if (me.role !== "owner") query = query.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("claim_type", "mva");
-    return query;
+    return scopeWorkArea(query, area, "claim_type");
   });
 
   const map = new Map<string, any>();
@@ -50,12 +52,12 @@ export default async function QaQueuePage() {
       .select("id, lead_no, claimant_name, phone, case_type, updated_at, qa_pending, claims(status, grievous_verdict, firm_id, campaign_id, claim_type)")
       .is("archived_at", null).eq("qa_pending", true);
     if (me.role !== "owner") query = query.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("case_type", "mva");
-    return query;
+    return scopeWorkArea(query, area);
   });
   for (const l of flagged ?? []) {
     if (map.has(l.id)) continue;
     const review = (l as any).claims?.find((c: any) =>
-      needsQaReview(c.status, statuses ?? undefined) &&
+      needsQaReview(c.status, statuses ?? undefined) && inWorkArea(c.claim_type, area) &&
       (me.role === "owner" || (c.firm_id === me.firm_id && c.campaign_id === pilotCampaignId && c.claim_type === "mva")));
     if (!review) continue;
     map.set(l.id, { id: l.id, lead_no: l.lead_no, claimant_name: l.claimant_name, phone: l.phone, case_type: l.case_type, updated_at: l.updated_at, claims: [{ status: review.status, grievous_verdict: review.grievous_verdict }] });

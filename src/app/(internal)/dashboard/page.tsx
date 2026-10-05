@@ -6,7 +6,8 @@ import { computeAlerts, type Alert } from "@/lib/alerts";
 import { resolveFileStatus } from "@/lib/statuses";
 import { caseName, prettyPhone } from "@/lib/case-name";
 import HomeView, { type HomeData } from "@/components/home/HomeView";
-import { caseFileHref } from "@/lib/mva-call/links";
+import { caseFileHref as unscopedFileHref } from "@/lib/mva-call/links";
+import { workArea, scopeWorkArea, areaHref, inWorkArea } from '@/lib/work-area';
 import { OFFICE_TIME_ZONE } from "@/lib/office-clock";
 
 // Days, "today" and the greeting follow the office clock, not the server's.
@@ -19,7 +20,9 @@ const WHY: Record<Alert["kind"], string> = {
   stage_stale: "No movement",
 };
 
-export default async function Dashboard() {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ area?: string }> }) {
+  const area = workArea((await searchParams).area);
+  const caseFileHref = (...args: Parameters<typeof unscopedFileHref>) => areaHref(unscopedFileHref(...args), area);
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user!.id).maybeSingle();
@@ -30,8 +33,8 @@ export default async function Dashboard() {
     : { data: null };
   const matches = (pilotCampaigns ?? []).filter((c: any) => c.firms?.slug === "tmp");
   const pilotCampaignId = matches.length === 1 ? matches[0].id : "00000000-0000-0000-0000-000000000000";
-  const scopeLead = (q: any) => pilot ? q.eq("campaign_id", pilotCampaignId) : q;
-  const scopeClaim = (q: any) => pilot ? q.eq("campaign_id", pilotCampaignId) : q;
+  const scopeLead = (q: any) => scopeWorkArea(pilot ? q.eq("campaign_id", pilotCampaignId) : q, area);
+  const scopeClaim = (q: any) => scopeWorkArea(pilot ? q.eq("campaign_id", pilotCampaignId) : q, area, "claim_type");
 
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 86400000).toISOString();
@@ -58,11 +61,11 @@ export default async function Dashboard() {
     scopeClaim(sb.from("claims").select("id, leads!inner(archived_at)", { count: "exact", head: true }).is("leads.archived_at", null).in("status", ["new", "contacting"])),
     scopeLead(sb.from("leads").select("id", { count: "exact", head: true }).gte("signed_at", weekAgo).is("archived_at", null)),
     scopeLead(sb.from("leads").select("id, created_at").gte("created_at", since).is("archived_at", null).limit(5000)),
-    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, signed_at, claims(id, status, campaign, campaign_id, firm_send_result)")
+    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, signed_at, claims(id, status, campaign, campaign_id, claim_type, firm_send_result)")
       .is("archived_at", null).order("updated_at", { ascending: false }).limit(8)),
     sb.from("statuses").select("*").eq("active", true),
-    pilot ? Promise.resolve({ data: [] }) : sb.from("boards").select("*").order("sort_order"),
-    pilot ? Promise.resolve({ data: [] }) : sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60),
+    pilot || area === "mva" ? Promise.resolve({ data: [] }) : sb.from("boards").select("*").order("sort_order"),
+    pilot || area === "mva" ? Promise.resolve({ data: [] }) : sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60),
     scopeClaim(sb.from("claims").select("id, lead_id, campaign, leads!inner(claimant_name, lead_no, archived_at)").is("leads.archived_at", null).eq("supervisor_flag", true).limit(10)),
     scopeClaim(sb.from("claims").select("id, lead_id, updated_at, leads!inner(claimant_name, lead_no, archived_at)")
       .is("leads.archived_at", null).in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).order("updated_at", { ascending: true }).limit(12)),
@@ -74,17 +77,17 @@ export default async function Dashboard() {
 
   const allowedAlertIds = new Set<string>();
   const alertClaimIds = new Map<string, string>();
-  if (pilot) {
-    const { data: allowed } = await sb.from("leads").select("id, claims(id, campaign_id)").eq("campaign_id", pilotCampaignId).is("archived_at", null).limit(1000);
+  {
+    const { data: allowed } = await scopeLead(sb.from("leads").select("id, claims(id, campaign_id, claim_type)").is("archived_at", null)).limit(1000);
     for (const row of allowed ?? []) {
       allowedAlertIds.add(row.id);
-      const claims = (row.claims ?? []).filter((c: any) => c.campaign_id === pilotCampaignId);
+      const claims = (row.claims ?? []).filter((c: any) => (!pilot || c.campaign_id === pilotCampaignId) && inWorkArea(c.claim_type, area));
       // A lead-level alert does not identify a sibling matter. Preserve an
       // exact sole match; otherwise let the Desk's matter chooser ask.
       if (claims.length === 1) alertClaimIds.set(row.id, claims[0].id);
     }
   }
-  const visibleAlerts = pilot ? alerts.filter(a => allowedAlertIds.has(a.lead_id)) : alerts;
+  const visibleAlerts = alerts.filter(a => allowedAlertIds.has(a.lead_id));
 
   // New leads per day for the last 14 office days.
   const perDay: Record<string, number> = {};
@@ -124,7 +127,7 @@ export default async function Dashboard() {
   ];
 
   const recentRows: HomeData["recent"] = (recent ?? []).map((l: any) => {
-    const c = (l.claims ?? []).find((row: any) => !pilot || row.campaign_id === pilotCampaignId) ?? {};
+    const c = (l.claims ?? []).find((row: any) => (!pilot || row.campaign_id === pilotCampaignId) && inWorkArea(row.claim_type, area)) ?? {};
     const def = resolveFileStatus(c, (statuses ?? []) as any, l.claims?.length === 1 && !!l.signed_at);
     return {
       key: l.lead_no || l.id,
@@ -143,7 +146,7 @@ export default async function Dashboard() {
   const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: TZ, hour: "numeric", hourCycle: "h23" }).format(now));
   const data: HomeData = {
     links: pilot ? { add: "/app?new=1", all: "/app", fresh: "/app?tab=due", open: "/app?tab=wait", signed: "/app?tab=signed" }
-      : { add: "/intake", all: "/leads", fresh: "/leads", open: "/leads", signed: "/signed" },
+      : { add: areaHref("/intake", area), all: areaHref("/leads", area), fresh: areaHref("/leads", area), open: areaHref("/leads", area), signed: areaHref("/signed", area) },
     greeting: hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening",
     first: (me?.full_name || "").split(" ")[0] || "",
     dateLabel: now.toLocaleDateString("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }),

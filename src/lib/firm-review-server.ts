@@ -1,5 +1,5 @@
 import { supabaseAdmin, supabaseServer } from '@/lib/supabase-server';
-import { firmReviewScope, releasedToReviewer, type FirmReviewScope } from './firm-review-access';
+import { firmReviewScope, releasedToReviewer, REVIEW_EVENT, type FirmReviewScope } from './firm-review-access';
 import { buildIntakePdf, loadIntakeBundle } from './intake-render';
 import { importedOriginals, verifiedImportedPdfs } from './imported-packet';
 import { resolveMatter } from './matter';
@@ -8,7 +8,7 @@ import { expectedPacketPaths } from './mva-call/esign';
 import { downloadSignedDoc, signedDocPath } from './signed-docs';
 import { ensureClientSignedSnapshot } from './mva-call/client-signed';
 
-export const REVIEW_EVENT = 'firm_file_review';
+export { REVIEW_EVENT } from './firm-review-access';
 export const REVIEW_LEAD_COLS = 'id,firm_id,lead_no,claimant_name,phone,email,dob,mail_addr1,mail_city,mail_state,mail_zip,archived_at,vendor_fields,external_id';
 export const REVIEW_CLAIM_COLS = 'id,lead_id,firm_id,campaign_id,campaign,claim_type,status,firm_sent_at,firm_send_result,updated_at';
 export async function reviewerContext() {

@@ -4,13 +4,14 @@ import path from "node:path";
 import ts from "typescript";
 import { NextRequest } from "next/server";
 import { isActiveFile, isTestFile } from "./file-visibility";
+import * as workArea from "./work-area";
 import { linkedCallActivity } from "./call-activity";
 
 const active = { id: "active", lead_no: "TMP-ACTIVE", claimant_name: "Active Client", archived_at: null, campaign: "INNO MVA", case_type: "mva" };
 const archived = { ...active, id: "archived", lead_no: "TMP-ARCHIVED", claimant_name: "TEST Archived Client", archived_at: "2026-10-05T00:00:00Z" };
 const tables: Record<string, any[]> = {
-  leads: [archived, active].map(l => ({ ...l, qa_pending: true, assigned_agent: "owner", signed_at: "2026-10-01T00:00:00Z", claims: [{ status: "signed_qa" }] })),
-  claims: [archived, active].map(l => ({ id: l.id + "-claim", lead_id: l.id, leads: l, status: "signed_qa", created_at: "2026-10-01T00:00:00Z" })),
+  leads: [archived, active].map(l => ({ ...l, qa_pending: true, assigned_agent: "owner", signed_at: "2026-10-01T00:00:00Z", claims: [{ claim_type: "mva", status: "signed_qa" }] })),
+  claims: [archived, active].map(l => ({ id: l.id + "-claim", lead_id: l.id, leads: l, claim_type: "mva", status: "signed_qa", created_at: "2026-10-01T00:00:00Z" })),
   app_users: [{ id: "owner", role: "owner", active: true }], statuses: [],
 };
 const queries: any[] = [];
@@ -32,6 +33,7 @@ function load(file: string) {
   const source = fs.readFileSync(path.resolve(__dirname, "../app", file), "utf8");
   const out = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const modules: Record<string, any> = {
+    "@/lib/work-area": workArea,
     "react/jsx-runtime": require("react/jsx-runtime"), "next/server": require("next/server"),
     "next/navigation": { redirect() { throw new Error("redirect"); } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => db },
@@ -64,18 +66,18 @@ function load(file: string) {
   assert.equal(isActiveFile(archived), false);
   assert.equal(isActiveFile(active), true);
   const cleanup = load("(internal)/leads/archive/page.tsx");
-  assert.deepEqual((await cleanup.default()).props.rows.map((r: any) => r.id), ["archived"], "Cleanup omits ordinary active clients");
+  assert.deepEqual((await cleanup.default({searchParams: Promise.resolve({})})).props.rows.map((r: any) => r.id), ["archived"], "Cleanup omits ordinary active clients");
   tables.app_users[0].role = "agent";
-  await assert.rejects(() => cleanup.default(), /redirect/, "Cleanup requires existing owner access");
+  await assert.rejects(() => cleanup.default({searchParams: Promise.resolve({})}), /redirect/, "Cleanup requires existing owner access");
   tables.app_users[0].role = "owner";
   for (const file of ["(internal)/reports/page.tsx", "(internal)/reports/status/page.tsx", "(firm)/portal/reports/page.tsx", "(firm)/portal/cases/page.tsx"]) {
     queries.length = 0;
-    const result = await load(file).default();
+    const result = await load(file).default({searchParams: Promise.resolve({})});
     assert.ok(!JSON.stringify(result).includes("TMP-ARCHIVED"), file);
     assert.ok(queries.find(q => q.table === "leads")?.filters.includes("archived_at"), file);
     console.log("PASS", file);
   }
-  const qa = await load("(internal)/qa/page.tsx").default();
+  const qa = await load("(internal)/qa/page.tsx").default({searchParams: Promise.resolve({})});
   assert.ok(!JSON.stringify(qa).includes("TMP-ARCHIVED"));
   assert.ok(JSON.stringify(qa).includes("TMP-ACTIVE"));
   assert.ok(queries.some(q => q.table === "claims" && q.inner && q.filters.includes("leads.archived_at")));
