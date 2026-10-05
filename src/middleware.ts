@@ -6,9 +6,10 @@ import { safeAppNext } from "@/lib/mva-call/links";
 import { isInternalRole } from "@/lib/permissions";
 import { isPartnerIdentity, partnerMayUsePath } from "@/lib/partner-access";
 import { pilotStaffApiAllowed, pilotStaffPageAllowed } from "@/lib/inno-pilot-access";
+import { FIRM_REVIEW_API, FIRM_REVIEW_HOME, FIRM_REVIEW_LOGIN, isFirmReviewer, reviewerPathAllowed } from '@/lib/firm-review-access';
 
 function isAuthPage(path: string) {
-  return path === "/login" || path === "/firm-login" || path === "/partner-login" || path === "/auth" || path.startsWith("/auth/");
+  return path === "/login" || path === "/firm-login" || path === "/partner-login" || path === FIRM_REVIEW_LOGIN || path === "/auth" || path.startsWith("/auth/");
 }
 
 function isPublicAsset(path: string) {
@@ -58,6 +59,24 @@ export async function middleware(req: NextRequest) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
+
+  // An external reviewer never enters the general firm/staff app. The one
+  // projection API repeats authentication and exact firm/campaign checks.
+  if (user && isFirmReviewer(user)) {
+    if (api) return path === FIRM_REVIEW_API && ['GET', 'POST'].includes(req.method)
+      ? res : new NextResponse('forbidden', { status: 403 });
+    if (!reviewerPathAllowed(path) || path === FIRM_REVIEW_LOGIN) {
+      const url = req.nextUrl.clone(); url.pathname = FIRM_REVIEW_HOME; url.search = '';
+      return NextResponse.redirect(url);
+    }
+    res.headers.set('Cache-Control', 'private, no-store');
+    return res;
+  }
+  if (path === FIRM_REVIEW_API) return new NextResponse('forbidden', { status: 403 });
+  if (path === FIRM_REVIEW_HOME) {
+    const url = req.nextUrl.clone(); url.pathname = FIRM_REVIEW_LOGIN; url.search = '';
+    return NextResponse.redirect(url);
+  }
 
   // API routes have their own permission checks. This outer fence keeps an
   // external partner (or any authenticated user without an app_users profile)
