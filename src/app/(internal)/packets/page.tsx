@@ -6,6 +6,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { mondayOf, packetWorklist, pacificDay } from "@/lib/packet-worklist";
 import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
 import PacketWorklist from "@/components/PacketWorklist";
+import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
 
 async function inChunks(sb: any, table: string, columns: string, column: string, ids: string[]) {
   const rows: any[] = [];
@@ -41,7 +42,7 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   const userIds = [...new Set((submissions || []).map((row) => row.sent_by).filter(Boolean))] as string[];
   const [leads, claims, calls, users, deliveries] = await Promise.all([
     inChunks(sb, "leads", "id,lead_no,claimant_name,campaign,case_type,firm_id,firm_sent_at,archived_at,external_id", "id", leadIds),
-    inChunks(sb, "claims", "id,lead_id,campaign,campaign_id,claim_type,status,firm_id,firm_sent_at", "id", claimIds),
+    inChunks(sb, "claims", "id,lead_id,campaign,campaign_id,claim_type,status,firm_id,firm_sent_at,firm_send_result", "id", claimIds),
     inChunks(sb, "intake_calls", "id,agent_id,agent_name", "id", callIds),
     inChunks(sb, "app_users", "id,full_name", "id", userIds),
     inChunks(sb, "firm_deliveries", "id,lead_id,claim_id,ok,to_email,cc_email,created_at", "lead_id", leadIds),
@@ -60,7 +61,7 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
     .eq("meta->>source", "lawruler").eq("meta->>event", "original_document").limit(1000);
   if (sourceResult.error) throw new Error(`Could not load imported signed originals: ${sourceResult.error.message}`);
   const importedClaimIds = [...new Set((sourceResult.data || []).map((item: any) => item.meta?.claim_id).filter(Boolean))] as string[];
-  const importedClaims = await inChunks(sb, "claims", "id,lead_id,firm_id,campaign,campaign_id,status,claim_type", "id", importedClaimIds);
+  const importedClaims = await inChunks(sb, "claims", "id,lead_id,firm_id,campaign,campaign_id,status,claim_type,firm_send_result", "id", importedClaimIds);
   const importedLeads = await inChunks(sb, "leads", "id,lead_no,claimant_name,archived_at", "id", [...new Set(importedClaims.map((claim: any) => claim.lead_id))]);
   const importedFirms = await inChunks(sb, "firms", "id,name", "id", [...new Set(importedClaims.map((claim: any) => claim.firm_id).filter(Boolean))]);
   const importedCampaigns = await inChunks(sb, "campaigns", "id,firm_email", "id", [...new Set(importedClaims.map((claim: any) => claim.campaign_id).filter(Boolean))]);
@@ -78,7 +79,7 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
       name: importedNames.get(claim.lead_id)?.claimant_name || "Name missing", campaign: claim.campaign,
       firm: importedFirmNames.get(claim.firm_id) || "Firm not mapped",
       archived: !!importedNames.get(claim.lead_id)?.archived_at,
-      signedAt, deliveredAt, returnEndsAt: window?.endsAt || null, daysLeft: window?.daysLeft ?? null,
+      signedAt, deliveredAt, ownerSent: ownerConfirmedDelivery(claim.firm_send_result), returnEndsAt: window?.endsAt || null, daysLeft: window?.daysLeft ?? null,
       cleared: window?.cleared || false, status: claim.status };
   });
   return <PacketWorklist rows={rows} imported={imported} monday={monday} truncated={(submissions || []).length === 3000 || (sourceResult.data || []).length === 1000} />;

@@ -1,8 +1,11 @@
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
 import ReportsView from "@/components/ReportsView";
+import { authUser } from "@/lib/auth-user";
 export default async function StaffReports() {
   const sb = await supabaseServer();
+  const { data: { user } } = await authUser();
+  const me = user ? await sb.from("app_users").select("role,active").eq("id", user.id).maybeSingle() : null;
   const { data: leads } = await sb.from("leads").select("id, lead_no, claimant_name, stage, case_type, campaign, created_at, updated_at, first_opened_at, first_dialed_at").limit(3000);
   const ids = (leads ?? []).map((l) => l.id);
   let claims: any[] = [];
@@ -12,5 +15,5 @@ export default async function StaffReports() {
   // picker still get only the live (active) set, exactly as before.
   const { data: catalog } = await sb.from("statuses").select("key, label, tone, lawruler_group, requires_esign, phase, active").order("sort");
   const statuses = (catalog ?? []).filter((s: any) => s.active === true);
-  return <ReportsView leads={leads ?? []} claims={claims} scope="staff" statuses={statuses} catalog={catalog ?? []} />;
+  return <ReportsView leads={leads ?? []} claims={claims} scope="staff" statuses={statuses} catalog={catalog ?? []} invoiceReport={me?.data?.role === "owner" && me?.data?.active === true} />;
 }

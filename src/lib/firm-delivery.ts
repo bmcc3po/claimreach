@@ -39,6 +39,7 @@ import { sameName, paxParentId } from "@/lib/linked-files";
 import { importedOriginals, verifiedImportedPdfs } from "@/lib/imported-packet";
 import { netflyPacketReview, netflyPacketBytes } from "@/lib/netfly-packet";
 import { readRehearsal, rehearsalRecipientAllowed } from '@/lib/mva-call/rehearsal';
+import { ownerConfirmedDelivery } from '@/lib/owner-file-confirmation';
 
 interface Attachment { filename: string; content: string; kind: string; } // content = base64
 
@@ -273,7 +274,7 @@ export async function deliverLeadToFirm(opts: {
   if (!opts.force) {
     const st = await matterSendState(db, lead, matter);
     if (!st.ok) return { ok: false, claimId: claim.id, error: `${st.error} ${NOTHING_SENT}` };
-    if (st.state.sentAt) return { ok: true, claimId: claim.id, skipped: "This matter was already sent to the firm." };
+    if (st.state.sentAt || ownerConfirmedDelivery(st.state.result)) return { ok: true, claimId: claim.id, skipped: "This matter was already sent to the firm." };
   }
 
   // ---- The claim's campaign: delivery setup and master switch. ----

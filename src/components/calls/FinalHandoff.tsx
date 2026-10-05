@@ -9,6 +9,7 @@ type DeliveryState = {
   claim_id: string;
   firm_sent_at: string | null;
   confirmed_firm_sent_at: string | null;
+  owner_confirmed_delivery?: boolean;
   prior_owner_only: boolean;
   qa_approved: boolean;
   dispatch?: { state?: string } | null;
@@ -46,7 +47,7 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, onAgree
     ]);
     const [body, file] = await Promise.all([r.json().catch(() => ({})), fileResponse.json().catch(() => ({}))]);
     if (!r.ok || body.error || body.claim_id !== claimId) throw new Error(body.error || "Could not confirm this matter's delivery state.");
-    if ((!fileResponse.ok || file.error) && !body.confirmed_firm_sent_at) throw new Error(file.error || "Could not load the signed packet for review.");
+    if ((!fileResponse.ok || file.error) && !body.confirmed_firm_sent_at && !body.owner_confirmed_delivery) throw new Error(file.error || "Could not load the signed packet for review.");
     const agreement = (file.agreements || []).find((row: any) => row.pax == null && !row.voided);
     setPacketUrl(agreement?.status === "completed" ? agreement.signed_url || null : null);
     setState(body);
@@ -65,6 +66,7 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, onAgree
   const recipientsReady = !!owner && !!firm && owner !== firm;
   const pending = ["sending", "uncertain"].includes(state?.dispatch?.state || "");
   const sentAt = state?.confirmed_firm_sent_at;
+  const ownerSent = !!state?.owner_confirmed_delivery;
   const daysLeft = sentAt ? Math.max(0, Math.ceil((returnEnd(sentAt).getTime() - Date.now()) / 86400000)) : null;
   const intakeUrl = `/api/export/intake-pdf?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`;
   const intakePreviewUrl = `${intakeUrl}&preview=1`;
@@ -79,7 +81,7 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, onAgree
   };
 
   function ready() {
-    if (!state || sentAt || pending || !recipientsReady || busy || sending.current) return false;
+    if (!state || sentAt || ownerSent || pending || !recipientsReady || busy || sending.current) return false;
     if (missing.length) { setError("Complete the required intake answers before marking this file ready."); return false; }
     if (!openedIntake || !openedPacket || !packetUrl) { setError("Review the intake PDF and the signed packet using the two buttons above."); return false; }
     if (!checks.every(Boolean)) { setError("Check all three review items before marking this file ready."); return false; }
@@ -124,10 +126,10 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, onAgree
 
   return <section className={`final-handoff${sentAt ? " final-handoff-sent" : ""}`} aria-label="Final firm handoff">
     {celebrate && sentAt && <div className="firm-send-celebration" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((n) => <span key={n} style={{ left: `${8 + n * 14}%`, animationDelay: `${n * 0.18}s` }}>🎈</span>)}</div>}
-    <h2>{sentAt ? "Sent to firm" : "Last step: send this file"}</h2>
-    {!loading && state && <FinishFileSteps current={sentAt ? "sent" : "send"} />}
+    <h2>{sentAt || ownerSent ? "Sent to firm" : "Last step: send this file"}</h2>
+    {!loading && state && <FinishFileSteps current={sentAt || ownerSent ? "sent" : "send"} />}
     {loading && <p>Checking this file’s delivery record…</p>}
-    {sentAt ? <div role="status"><strong>{celebrate ? "File sent! You’re all done." : `Delivered ${officeDateTime(sentAt)}.`}</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${officeDateTime(returnEnd(sentAt).toISOString())}.` : "Seven-day return window cleared. Ready for billing review."}</p><p>Delivered to {state?.delivery?.to}; Brett received a copy.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Back to my calls</button>}</div> : state && <>
+    {sentAt ? <div role="status"><strong>{celebrate ? "File sent! You’re all done." : `Delivered ${officeDateTime(sentAt)}.`}</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${officeDateTime(returnEnd(sentAt).toISOString())}.` : "Seven-day return window cleared. Ready for billing review."}</p><p>Delivered to {state?.delivery?.to}; Brett received a copy.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Back to my calls</button>}</div> : ownerSent ? <div role="status"><strong>The owner confirmed this file was already sent to the firm.</strong><p>The original delivery date was not recorded. The return window cannot be calculated. Do not send it again.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Back to my calls</button>}</div> : state && <>
       <p className="finish-file-instruction" role="status">{nextReview === "answers" ? "Next: finish the missing answers below." : nextReview === "intake" ? "Next: open and check the intake PDF." : nextReview === "packet-pending" ? "Next: finish the agreement to make the signed packet available." : nextReview === "packet" ? "Next: open and check the signed packet." : nextReview === "checks" ? "Next: check the three review items below." : "Ready for your final send. Check the recipients below."} Look for <b>Sent to firm</b> to confirm you’re done.</p>
       {missing.length > 0 && <div className="final-handoff-error" role="alert"><strong>Intake incomplete: {missing.length} required answer{missing.length === 1 ? "" : "s"} missing.</strong><p>Finish these before the file can go to the firm.</p><ul>{missing.map((item, index) => <li key={`${item.label}-${index}`}><button type="button" onClick={item.go}>{item.label} ↗</button></li>)}</ul></div>}
       <div className="final-handoff-docs" aria-label="Review the two PDFs before sending"><button type="button" className={cue("intake")} onClick={() => openPreview("intake")}>1. Review intake PDF <span>{openedIntake ? "Opened ✓" : "Open PDF"}</span></button><button type="button" className={cue("packet")} disabled={!packetUrl} onClick={() => openPreview("packet")}>2. Review signed retainer + HIPAA/HITECH <span>{!packetUrl ? "Packet pending" : openedPacket ? "Opened ✓" : "Open PDF"}</span></button></div>
