@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mondayOf, packetWorklist, pacificDay, pacificCalendarDay, pacificDayStartUtc } from "./packet-worklist";
+import { OWNER_SENT_UNKNOWN_DATE } from "./owner-file-confirmation";
+
+test("owner-confirmed delivery leaves pending queue without inventing a return window", () => {
+  const [row] = packetWorklist({ submissions: [{ id: "s", lead_id: "l", claim_id: "c", signed_at: "2026-10-01T00:00:00Z", created_at: "2026-10-01T00:00:00Z", status: "signed" }],
+    leads: [{ id: "l", case_type: "mva" }], claims: [{ id: "c", lead_id: "l", claim_type: "mva", status: "delivered", firm_send_result: OWNER_SENT_UNKNOWN_DATE }], calls: [], users: [], firms: [], deliveries: [] });
+  assert.equal(row.stage, "delivered"); assert.equal(row.readyToBill, false); assert.equal(row.deliveredAt, null); assert.equal(row.returnEndsAt, null);
+  assert.match(row.stageLabel, /owner confirmed.*date unknown/);
+});
 
 test("each passenger's own signed file remains visible without signing or delivering the driver", () => {
   const driver = "00000000-0000-4000-8000-000000000001";

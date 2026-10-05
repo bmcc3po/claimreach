@@ -8,7 +8,7 @@ import * as jsx from "react/jsx-runtime";
 // minimal hook scheduler replaces the DOM; provider calls remain synthetic.
 const source = fs.readFileSync(path.join(__dirname, "FinalHandoff.tsx"), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-function fixture({ failed = false, pending = false, confirmed = true } = {}) {
+function fixture({ failed = false, pending = false, confirmed = true, ownerSent = false } = {}) {
   let cursor = 0;
   const slots: any[] = [], effects: Array<() => void> = [], posts: any[] = [];
   let delivered = false, tree: any;
@@ -37,6 +37,7 @@ function fixture({ failed = false, pending = false, confirmed = true } = {}) {
       agreements: [{ status: "completed", pax: null, signed_url: "/test-packet" }],
     } : {
       claim_id: "test-claim", confirmed_firm_sent_at: delivered && confirmed ? "2026-10-04T12:00:00Z" : null,
+      owner_confirmed_delivery: ownerSent,
       qa_approved: false, dispatch: pending ? { state: "uncertain" } : null,
       delivery: { to: "firm@example.test", owner_email: "owner@example.test", cc: "copy@example.test" },
     } };
@@ -64,6 +65,11 @@ function fixture({ failed = false, pending = false, confirmed = true } = {}) {
 }
 
 async function main() {
+  const historical = fixture({ ownerSent: true }); historical.render(); await historical.flush();
+  assert.match(historical.text(), /owner confirmed this file was already sent/);
+  assert.match(historical.text(), /return window cannot be calculated/);
+  assert.ok(!historical.nodes().some(node => node.type === "button" && String(node.props.children).includes("Send file")));
+  assert.equal(historical.posts.length, 0);
   const f = fixture(); await f.prepare();
   f.click("Send file to firm →");
   assert.equal(f.posts.length, 0, "Reviewing recipients never submits QA or sends email");
