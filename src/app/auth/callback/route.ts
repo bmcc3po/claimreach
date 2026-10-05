@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { ensureAppUser, resolveFirmHome } from "@/lib/firm-home";
 import { isPartnerIdentity } from "@/lib/partner-access";
+import { isFirmReviewer, FIRM_REVIEW_HOME } from '@/lib/firm-review-access';
 
 export const runtime = "edge";
 
@@ -19,6 +20,8 @@ export async function GET(req: NextRequest) {
     await sb.auth.exchangeCodeForSession(code);
   }
   const { data: { user } } = await sb.auth.getUser();
+  // Never provision these limited identities through the broad firm allowlist.
+  if (isFirmReviewer(user)) return NextResponse.redirect(`${origin}${FIRM_REVIEW_HOME}`);
   if (isPartnerIdentity(user)) {
     const { data: partner, error } = await sb.from("partner_accounts")
       .select("auth_user_id").eq("auth_user_id", user!.id).eq("active", true).maybeSingle();
