@@ -16,7 +16,6 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const { data: me } = await sb.from("app_users").select("role,firm_id,active,perm_overrides").eq("id", user.id).maybeSingle();
   if (!me || me.active !== true || !isInternalRole(me.role)) redirect("/dashboard");
   if (!mayOpenFullFile(me.role)) redirect("/queue");
-  if (me.role === "owner" && area === "mva" && (await searchParams).view !== "all") redirect("/reports/inno");
   let pilotCampaignId: string | null = null;
   if (me.role !== "owner") {
     if (!me.firm_id) redirect("/dashboard");
@@ -89,6 +88,5 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     (l) => isSignedClient(l, catalog, signedSubmissionIds)
   );
 
-  return <LeadsView leads={signedOnly} title="Signed" basePath="/leads" addPath={areaHref("/intake", area)} area={area} agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} />;
+  return <LeadsView leads={signedOnly} title="Signed files" basePath="/leads" addPath={areaHref("/intake", area)} area={area} agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} />;
 }
-

@@ -73,7 +73,7 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
 
   return <main className="packet-page">
     <FileNavigation />
-    <div className="packet-heading"><div><p className="packet-kicker">Operator worklist</p><h1>Signed packets</h1><p>Review what needs to reach the firm. <a href="/reports/inno">Open INNO MVA signatures & invoice list →</a></p></div></div>
+    <div className="packet-heading"><div><h1>Operator work list</h1><p>Review files that need attention, send completed packets to the firm, and check this week's deliveries.</p></div></div>
     {truncated && <p className="packet-warning" role="alert">This list reached a record read limit. Older packets may be missing; do not use this export as a complete billing ledger.</p>}
     <div className="packet-tabs" role="tablist" aria-label="Signed packet views">
       <button type="button" role="tab" aria-selected={view === "needs"} className={view === "needs" ? "active" : ""} onClick={() => setView("needs")}>Needs action <span>{pending.length + pendingImported.length}</span></button>

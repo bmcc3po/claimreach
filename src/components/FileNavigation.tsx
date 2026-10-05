@@ -9,6 +9,6 @@ export default function FileNavigation() {
   const path = usePathname();
   const area = workArea(useSearchParams().get('area'));
   return <nav className="cl-file-nav" aria-label="File views">
-    {FILE_VIEWS.filter(view => area !== 'other' || view.href !== '/packets').map((view) => <Link key={view.href} href={areaHref(view.href === '/signed' && area === 'other' ? '/signed?view=all' : view.href, area)} aria-current={path === view.href ? "page" : undefined}>{view.label}</Link>)}
+    {FILE_VIEWS.filter(view => area !== 'other' || !view.mvaOnly).map((view) => <Link key={view.href} href={areaHref(view.href, area)} aria-current={path === view.href ? "page" : undefined}>{view.label}</Link>)}
   </nav>;
 }

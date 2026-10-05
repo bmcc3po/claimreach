@@ -4,6 +4,7 @@ import path from "node:path";
 import ts from "typescript";
 import * as callNowSort from "../../lib/mva-call/call-now-sort";
 import * as navigation from "../../lib/navigation";
+import * as workArea from "../../lib/work-area";
 import * as links from "../../lib/mva-call/links";
 import * as deskTypes from "../../lib/mva-call/desk-types";
 import { pilotStaffPageAllowed } from "../../lib/inno-pilot-access";
@@ -33,10 +34,12 @@ const fakeWindow = { location: { pathname: "/app/TMP-SYNTH", search: "?claim=exa
 const modules: Record<string, any> = {
   "@/lib/mva-call/call-now-sort": callNowSort,
   "@/lib/navigation": navigation,
+  "@/lib/work-area": workArea,
+  "next/link": { default: "a" },
   react: React, "@/components/ui/Icon": { default: () => null },
   "@/components/SignOut": { default: function SignOut() { return null; } },
   "@/lib/mva-call/links": links, "@/lib/mva-call/desk-types": deskTypes,
-  "next/navigation": { useRouter: () => ({ refresh() {}, push() {} }), usePathname: () => fakeWindow.location.pathname },
+  "next/navigation": { useRouter: () => ({ refresh() {}, push() {} }), usePathname: () => fakeWindow.location.pathname, useSearchParams: () => new URLSearchParams(fakeWindow.location.search) },
   "@/lib/supabase-browser": { supabaseBrowser: () => { throw new Error("Unexpected database access"); } },
 };
 function load(file: string) {
@@ -47,13 +50,13 @@ function load(file: string) {
   return exports.default;
 }
 const Chrome = load("DeskChrome.tsx");
-for (const route of ["/leads", "/signed", "/packets", "/leads/TMP-SYNTH?claim=exact-claim"]) {
+for (const route of ["/leads", "/signed", "/packets", "/reports/inno?campaign=synthetic", "/leads/TMP-SYNTH?claim=exact-claim"]) {
   assert.equal(navigation.activeNavigation(route, navigation.primaryNavigation(true)), "/leads");
 }
 assert.equal(navigation.activeNavigation("/app/help/netfly", navigation.primaryNavigation(false)), "/app/help");
 assert.equal(navigation.activeNavigation("/app/netfly/TMP-SYNTH", navigation.primaryNavigation(false)), "/app");
 assert.equal(navigation.activeNavigation("/application", navigation.primaryNavigation(false)), "");
-assert.deepEqual(navigation.FILE_VIEWS.map(view => view.href), ["/leads", "/signed", "/packets", "/leads/archive"], "all existing file queries stay reachable");
+assert.deepEqual(navigation.FILE_VIEWS.map(view => view.href), ["/leads", "/signed", "/packets", "/reports/inno", "/leads/archive"], "signed files, work list and invoice report are separate destinations");
 for (const role of ["agent", "qa", "manager", "admin", "owner"]) {
   const instance = fresh(), props = { name: "Synthetic Operator", role };
   const tree = render(instance, Chrome, props);
@@ -113,3 +116,20 @@ assert.equal(selectedTab, "file"); assert.equal(utility, true); assert.equal(rem
 assert.equal(links.caseFileHref("agent", "TMP test", "claim/sibling"), "/app/TMP%20test?claim=claim%2Fsibling&review=1");
 assert.equal(links.caseFileHref("owner", "TMP test", "claim/sibling"), "/leads/TMP%20test?claim=claim%2Fsibling");
 console.log("ok actual review handler opens the current File panel without save, send, signing or navigation side effects");
+
+const FileNavigation = load("../FileNavigation.tsx");
+for (const view of navigation.FILE_VIEWS) {
+  fakeWindow.location.pathname = view.href;
+  fakeWindow.location.search = "?campaign=synthetic";
+  const tree = render(fresh(), FileNavigation, {});
+  const current = nodes(tree).filter(n => n.props["aria-current"] === "page");
+  assert.equal(current.length, 1);
+  assert.equal(text(current[0]), view.label);
+  assert.equal(current[0].props.href, view.href);
+}
+fakeWindow.location.pathname = "/signed";
+fakeWindow.location.search = "?area=other";
+const other = nodes(render(fresh(), FileNavigation, {})).filter(n => n.type === "a");
+assert.deepEqual(other.map(n => n.props.href), ["/leads?area=other", "/signed?area=other", "/leads/archive?area=other"]);
+assert.equal(navigation.activeNavigation("/reports/inno", [...navigation.primaryNavigation(true), { href: "/reports", icon: "chart", label: "Reports" }]), "/leads");
+console.log("ok file tabs keep the current view selected, distinguish invoice/work list, and preserve the separate Other work area");
