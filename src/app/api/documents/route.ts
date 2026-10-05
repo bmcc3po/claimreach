@@ -68,13 +68,17 @@ export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams;
   const scope = await documentScope(sb, sp.get("lead"), sp.get("claim"));
   if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
-  const { lead, matter } = scope;
+  const { lead, matter, user } = scope;
+  // Legacy unbound documents may be reviewed by internal staff on a proven
+  // sole-matter file. Firm access always requires an explicit released matter.
+  const legacyAllowed = user.role !== "firm" && matter.sole;
   let query = sb.from("case_documents").select("*").eq("lead_id", lead.id).eq("firm_id", lead.firm_id);
-  query = matter.sole ? query.or(`claim_id.eq.${matter.claim.id},claim_id.is.null`) : query.eq("claim_id", matter.claim.id);
+  query = legacyAllowed ? query.or(`claim_id.eq.${matter.claim.id},claim_id.is.null`) : query.eq("claim_id", matter.claim.id);
   const { data: docs, error } = await query.order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: "Could not load the documents. Try again." }, { status: 503 });
   const admin = supabaseAdmin();
-  const withUrls = await Promise.all((docs ?? []).filter(d => rowBelongsToMatter(d, matter)).map(async (d) => {
+  const withUrls = await Promise.all((docs ?? []).filter(d => rowBelongsToMatter(d, matter) &&
+    (legacyAllowed || d.claim_id === matter.claim.id)).map(async (d) => {
     const key = canonicalKeyFor(d);
     if (!key) return { ...d, url: null }; // never sign a non-canonical key
     const { data: signed } = await admin.storage.from("case-docs").createSignedUrl(key, 3600);

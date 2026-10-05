@@ -78,9 +78,17 @@ test("hidden sibling prevents legacy document inheritance", async () => {
   h.db.tables.case_documents.push({ ...h.db.tables.case_documents[0], id: "legacy", claim_id: null });
   assert.deepEqual((await h.get()).body.docs.map((d: any) => d.id), ["document"]);
 });
-test("sole matter retains canonical legacy document access", async () => {
+test("firm cannot inherit an unbound document even on a sole released matter", async () => {
   const h = harness(); h.db.tables.case_documents[0].claim_id = null;
+  assert.deepEqual((await h.get(null)).body.docs, []);
+  assert.deepEqual((await h.get()).body.docs, []);
+  assert.equal(h.signed.length, 0);
+});
+
+test("internal sole matter retains canonical legacy document review", async () => {
+  const h = harness("agent"); h.db.tables.case_documents[0].claim_id = null;
   assert.equal((await h.get(null)).body.docs.length, 1);
+  assert.equal(h.signed.length, 1);
 });
 test("cross-firm file, mismatched claim firm, archive and foreign lead all stop before storage", async () => {
   const changes = [

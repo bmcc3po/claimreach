@@ -2,6 +2,12 @@
 
 Status: draft proposal and isolated role proof. No production DDL, firm accounts, packet deliveries or email links changed. PR136 remains application-layer protection only. The cloud refresh also requires active=true in the live status catalog, with download/upload/page regression tests for inactive release statuses.
 
+## October 5 follow-up
+
+The document endpoint previously retained legacy claim-null documents for a sole-matter firm file, conflicting with this proposal's exact-matter rule. Firm downloads now require an explicit matching claim ID on each document. Internal staff retain their existing sole-matter legacy review path, so they can review and correctly associate old files. The updated actual-route tests prove both behaviors (16 document tests and 9 firm-page tests pass; TypeScript passes). This is still a draft and does not repair production RLS by itself.
+
+Navigation PR133 is now merged at `4496445fc37daacd12efdef46f4dbbf02e3a5dc9`; its production build passed with 220 Edge Function Routes. Preserve that navigation when refreshing this draft. Firm portal provisioning remains pending exact team email addresses and the complete isolation checks below.
+
 ## Fresh authoritative reads
 
 Independent cloud clone of bmcc3po/claimreach default main: 9fb7010cfda5dd96da5ee45e4f9e56ca4a21f26f. AGENTS.md read before changes. Production Supabase project `gvtafevoisfxcfkugvoj` reached through the connected Supabase API. Metadata-only queries read pg_policies, column names/types, function names/grants, views/grants, and bucket visibility. No real client row was accessed to demonstrate the problem.
