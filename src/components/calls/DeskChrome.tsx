@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Icon from "@/components/ui/Icon";
 import SignOut from "@/components/SignOut";
+import { primaryNavigation, activeNavigation } from "@/lib/navigation";
 import { OPEN_DESK_FILE_EVENT } from "@/lib/mva-call/links";
 
 const fmtPhone = (raw?: string | null) => {
@@ -47,15 +48,8 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
   const pathname = usePathname();
   useEffect(() => { setPath(pathname + window.location.search); }, [pathname]);
   const owner = role === "owner";
-  const links = [
-    { href: "/dashboard", icon: "home", label: "Dashboard" },
-    { href: "/app", icon: "mobile", label: "Desk" },
-    { href: owner ? "/leads" : "/app?tab=due", icon: "files", label: owner ? "Leads" : "Calls due" },
-    { href: owner ? "/signed" : "/app?tab=signed", icon: "signed", label: "Signed" },
-    { href: "/queue", icon: "queue", label: "My queue" },
-    { href: "/app/help", icon: "book", label: "Agent guides" },
-  ];
-  const on = (h: string) => h === "/app" ? (path === "/app" || (path.startsWith("/app/") && !path.startsWith("/app/help"))) : path.startsWith(h);
+  const links = primaryNavigation(owner);
+  const current = activeNavigation(path, links);
   const initials = (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
   return (
     <>
@@ -65,7 +59,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
           <img src="/cr-mark.png" alt="" />
         </a>
         {links.map((l) => (
-          <a key={l.href} href={l.href} className={`cd-ic${on(l.href) ? " cd-on" : ""}`} title={l.label} aria-label={l.label}>
+          <a key={l.href} href={l.href} className={`cd-ic${current === l.href ? " cd-on" : ""}`} title={l.label} aria-label={l.label} aria-current={current === l.href ? "page" : undefined}>
             <Icon name={l.icon} size={19} /><span>{l.label}</span>
           </a>
         ))}
@@ -108,7 +102,7 @@ export default function DeskChrome({ name, role }: { name: string; role: string 
             </div>
           )}
         </div>
-        <a className="cc-chrome-new" href="/app?new=1"><Icon name="headset" size={16} />CREATE NEW LEAD</a>
+        <a className="cc-chrome-new" href="/app?new=1"><Icon name="headset" size={16} />New call</a>
         <FullSiteLink owner={owner} />
       </header>
     </>

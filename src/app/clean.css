@@ -444,6 +444,9 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
   .cl-shell.cl-open .cl-side{box-shadow:0 0 40px rgba(0,0,0,0.3)}
   .cl-shell.cl-min .cl-side{width:264px}
   .cl-shell.cl-min .cl-word,.cl-shell.cl-min .cl-nl-l,.cl-shell.cl-min .cl-sec-h,.cl-shell.cl-min .cl-me-t{display:revert}
+  .cl-shell.cl-min .cl-nl{justify-content:flex-start;padding:0 10px}
+  .cl-shell.cl-min .cl-me-t{display:flex}
+  .cl-shell.cl-min .cl-sec-h{display:flex}
   .cl-shell.cl-open .cl-side{transform:none}
   .cl-shell.cl-open .cl-scrim{display:block;position:fixed;inset:0;background:rgba(5,10,18,0.45);z-index:45}
   .cl-burger{display:inline-flex !important}
@@ -465,3 +468,10 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
 .linked-lab{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#5B6472}
 .linked-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:#FFFFFF;box-shadow:0 0 0 1px #D1D1D6;color:#1D4FD7;font-weight:600;font-size:13px;text-decoration:none}
 .linked-chip:hover{box-shadow:0 0 0 2px #2563EB}
+
+/* One Files destination; the existing lists remain directly reachable. */
+.cl-file-nav{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);margin:0 0 24px;padding:0 0 10px}
+.cl-file-nav a{padding:9px 14px;border-radius:7px;color:var(--ink-soft);font-size:14px;font-weight:600;text-decoration:none}
+.cl-file-nav a:hover{background:var(--surface-3);color:var(--ink)}
+.cl-file-nav a[aria-current="page"]{background:var(--tint);color:var(--surface)}
+.cl-mini-group{border:0;width:100%;background:transparent;cursor:pointer;font:inherit}
