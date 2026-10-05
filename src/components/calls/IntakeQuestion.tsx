@@ -3,6 +3,7 @@
 // The engine resolves the question once. These four presentations share every
 // label, option, branch and callback; only wrappers and control appearance vary.
 import WhereField from "./WhereField";
+import StoryAssist from "./StoryAssist";
 
 export type IntakePresentation = "guided" | "full" | "chore" | "form";
 export const choicesFromClasses = (items: any[]) => (items || []).map((o: any) => ({ ...o, on: /(?:^|\s)on(?:\s|$)/.test(o.cls || "") }));
@@ -43,7 +44,7 @@ export function QuestionControl({ c, v, presentation = "full", review = false }:
     </>;
     case "where": return <WhereField value={c.where.value} agreement={v.agreement} onChange={c.where.set} onDone={c.where.done} />;
     case "text": return <><input className={input} placeholder={c.field.ph} aria-label={c.field.ph} value={c.field.value ?? ""} onChange={c.field.set} />{c.unavailable && choices([c.unavailable])}</>;
-    case "notes": return <textarea className={area} rows={7} placeholder={review ? "No story notes captured" : c.field.ph} aria-label="Accident story notes" value={c.field.value ?? ""} onChange={c.field.set} />;
+    case "notes": return <><textarea className={area} rows={7} placeholder={review ? "No story notes captured" : c.field.ph} aria-label="Accident story notes" value={c.field.value ?? ""} onChange={c.field.set} /><StoryAssist helper={v.storyAssist} notes={c.field.value ?? ""} /></>;
     case "providers": return <>
       {!!c.items.length && <div className="fi-chips">{c.items.map((it: any, i: number) => <span key={i} className="fi-tag">{it.label}<button type="button" aria-label={`Remove ${it.label}`} onClick={it.remove}>×</button></span>)}</div>}
       <div className="fi-addrow"><input className={input} placeholder={c.draft.ph} aria-label={c.draft.ph} value={c.draft.value} onChange={c.draft.set} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); c.add(); } }} /><button type="button" className="fi-add" onClick={c.add}>Add</button></div>
