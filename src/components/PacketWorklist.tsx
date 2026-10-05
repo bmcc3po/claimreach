@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import FileNavigation from "./FileNavigation";
 import { useMemo, useState } from "react";
 import type { PacketRow } from "@/lib/packet-worklist";
 import { pacificDay, shiftWeek } from "@/lib/packet-worklist";
@@ -70,6 +71,7 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
   const agentCounts = [...new Set(week.map((r) => r.agent))].map((agent) => ({ agent, signed: week.filter((r) => r.agent === agent).length, delivered: week.filter((r) => r.agent === agent && r.stage === "delivered").length })).sort((a, b) => b.signed - a.signed || a.agent.localeCompare(b.agent));
 
   return <main className="packet-page">
+    <FileNavigation />
     <div className="packet-heading"><div><p className="packet-kicker">Operator worklist</p><h1>Signed packets</h1><p>Review what needs to reach the firm, then use the weekly count for billing and commission review.</p></div></div>
     {truncated && <p className="packet-warning" role="alert">This list reached a record read limit. Older packets may be missing; do not use this export as a complete billing ledger.</p>}
     <div className="packet-tabs" role="tablist" aria-label="Signed packet views">
