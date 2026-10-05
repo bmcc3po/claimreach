@@ -4,7 +4,7 @@ import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { requireStaff } from "@/lib/mva-call/server";
 import { loadFileNotes, mergeFileNotes } from "@/lib/file-notes";
 import { loadStatuses } from "@/lib/claim-status";
-import { resolveStatus, SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
+import { resolveFileStatus, SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
 import { resolveSigningMatter } from "@/lib/mva-call/signing-matter";
 import { matterRowsFilter } from "@/lib/matter";
 import { loadLawRulerProvenance } from "@/lib/lawruler-recovery";
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const { matter } = context;
   const { data: lead } = await sb.from("leads")
-    .select("id, firm_id, lead_no, claimant_name, first_name, last_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, home_phone, work_phone, email, mail_addr1, mail_city, mail_state, mail_zip, firms(name)")
+    .select("id, firm_id, lead_no, claimant_name, first_name, last_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, home_phone, work_phone, email, mail_addr1, mail_city, mail_state, mail_zip, signed_at, firms(name)")
     .eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
     .eq("meta->>qa_review_id", qaReturn.data.id).eq("meta->>completed", "false").order("created_at", { ascending: false }).limit(1).maybeSingle() : null;
   if (qaRetry?.error) return NextResponse.json({ error: "The QA resubmission history could not load. Refresh before continuing." }, { status: 503 });
   const imported = await loadLawRulerProvenance(sb, leadId, matter.claim.id);
+  const visibleStatus = resolveFileStatus(matter.claim, statuses, matter.sole && !!lead.signed_at);
 
   return NextResponse.json({
     lead: {
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
       mail_addr1: lead.mail_addr1 || "", mail_city: lead.mail_city || "",
       mail_state: lead.mail_state || "", mail_zip: lead.mail_zip || "",
     },
-    status: st ? { key: st, label: resolveStatus(st, statuses).label, tone: resolveStatus(st, statuses).tone } : null,
+    status: st ? { key: st, label: visibleStatus.label, tone: visibleStatus.tone } : null,
     claim_id: matter.claim.id,
     qa_return: qaReturn?.data?.decision === "wip" ? { id: qaReturn.data.id, note: qaReturn.data.agent_note || "Review QA's requested corrections before resubmitting.", at: qaReturn.data.created_at } : null,
     qa_resubmit_retry: qaRetry?.data ? { request_id: qaRetry.data.id, qa_review_id: qaReturn!.data!.id } : null,

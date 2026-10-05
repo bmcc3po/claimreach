@@ -7,7 +7,7 @@ test("owner-confirmed delivery leaves pending queue without inventing a return w
   const [row] = packetWorklist({ submissions: [{ id: "s", lead_id: "l", claim_id: "c", signed_at: "2026-10-01T00:00:00Z", created_at: "2026-10-01T00:00:00Z", status: "signed" }],
     leads: [{ id: "l", case_type: "mva" }], claims: [{ id: "c", lead_id: "l", claim_type: "mva", status: "delivered", firm_send_result: OWNER_SENT_UNKNOWN_DATE }], calls: [], users: [], firms: [], deliveries: [] });
   assert.equal(row.stage, "delivered"); assert.equal(row.readyToBill, false); assert.equal(row.deliveredAt, null); assert.equal(row.returnEndsAt, null);
-  assert.match(row.stageLabel, /owner confirmed.*date unknown/);
+  assert.equal(row.stageLabel, "Signed — sent to firm");
 });
 
 test("each passenger's own signed file remains visible without signing or delivering the driver", () => {

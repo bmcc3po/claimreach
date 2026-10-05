@@ -5,7 +5,7 @@ import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
 import FileNavigation from "./FileNavigation";
 import TierBadge from "./TierBadge";
 import Icon from "./ui/Icon";
-import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, resolveStatus, type StatusDef, type DqReason } from "@/lib/statuses";
+import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, resolveStatus, resolveFileStatus, type StatusDef, type DqReason } from "@/lib/statuses";
 import { primaryClock } from "@/lib/sla-clocks";
 import { tierLabel } from "@/lib/tiers";
 import { caseName, ago, prettyPhone } from "@/lib/case-name";
@@ -56,7 +56,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     let r = leads.map((l) => {
       const c = (l.claims ?? [])[0] ?? {};
       const status = c.status ?? "new";
-      const def = resolveStatus(status, statusList);
+      const def = resolveFileStatus(c, statusList, l.claims?.length === 1 && !!l.signed_at);
       const clock = primaryClock({
         signed_at: l.signed_at, firm_sent_at: l.firm_sent_at,
         esign_sent_at: l.esign_sent_at, esign_status: null,

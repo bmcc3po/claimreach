@@ -416,7 +416,7 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket,
       {canDownloadFirmPacket && <OwnerFirmDownload leadId={leadId} claimId={claimId} compact />}
       {!!sendHoldNotice && <div className="cc-stop" role="status"><strong>{sendHoldNotice.startsWith("Send outcome unconfirmed") ? "Send outcome unconfirmed" : "Signing actions paused"}</strong><p>{sendHoldNotice}</p><span className="cc-cue">Existing signed copies and history remain available below. The owner must reconcile the send before another link or office completion.</span>{reconcileActions.map((action) => <button type="button" key={action.label} className="cc-btn" disabled={reconcileBusy} onClick={action.go}>{reconcileBusy ? "Checking" : action.label}</button>)}{!!reconcileMessage && <p>{reconcileMessage}</p>}</div>}
       <div className="cc-card cc-file-status-card">
-        <FileStatusControl leadId={leadId} claimId={claimId} current={d.status?.key || "new"} onChanged={() => { void load(); }} />
+        <FileStatusControl leadId={leadId} claimId={claimId} current={d.status?.key || "new"} currentLabel={d.status?.label} onChanged={() => { void load(); }} />
       </div>
       {qaMessage && <div className="cc-cue" role="status">{qaMessage}</div>}
       {(d.status?.key === SIGNED_QA_RETURN_STATUS || (d.status?.key === "signed_qa" && d.qa_resubmit_retry)) && <div className="cc-card">

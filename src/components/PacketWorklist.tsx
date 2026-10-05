@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import type { PacketRow } from "@/lib/packet-worklist";
 import { pacificDay, shiftWeek } from "@/lib/packet-worklist";
 import FileArchiveButton from "./FileArchiveButton";
+import { SIGNED_SENT_TO_FIRM } from "@/lib/statuses";
 import "./packet-worklist.css";
 
 type View = "needs" | "week";
@@ -46,7 +47,7 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
     signedAt: r.signedAt || "", deliveredAt: r.deliveredAt, returnEndsAt: r.returnEndsAt, returnDaysLeft: r.daysLeft,
     readyToBill: r.cleared, agent: "Imported from LawRuler", archived: r.archived, ownerSent: r.ownerSent,
     stage: r.deliveredAt || r.ownerSent ? "delivered" : r.status === "signed_approved" ? "ready" : "qa",
-    stageLabel: r.ownerSent && !r.deliveredAt ? "Sent to firm · owner confirmed · date unknown" : r.deliveredAt ? r.cleared ? "Return window cleared · billing review" : `Firm return window · ${r.daysLeft ?? 7}d left` : r.status === "signed_approved" ? "Reviewed · not sent" : "Verify original · not sent",
+    stageLabel: r.ownerSent || r.deliveredAt ? SIGNED_SENT_TO_FIRM : r.status === "signed_approved" ? "Reviewed · not sent" : "Verify original · not sent",
   })), [imported]);
   const visibleRows = rows.filter((r) => showArchived || !r.archived);
   const visibleImported = importedRows.filter((r) => showArchived || !r.archived);

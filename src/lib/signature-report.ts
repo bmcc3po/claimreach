@@ -4,6 +4,7 @@ import { clientSignatureConfirmed } from "@/lib/mva-call/passenger-signing";
 import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
 import { pacificDay } from "@/lib/packet-worklist";
 import { ownerConfirmedDelivery, ownerSignatureConfirmation } from "@/lib/owner-file-confirmation";
+import { resolveFileStatus } from "@/lib/statuses";
 
 export type SignatureState = "signed" | "unsigned" | "verify";
 export type SignatureReportRow = {
@@ -56,7 +57,7 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
       detail: ownerSigned ? "Signed — confirmed by owner; original date not supplied" : state === "signed" ? "Client signature confirmed" : held ? "Agreement correction or replacement needs review" :
         imported || c.status === "external_signed_review" ? "Imported agreement — verify the original and signing date" :
         uncertain ? "Signature history needs review" : "No current verified signature",
-      status: String(c.status || "new").replace(/_/g, " "),
+      status: resolveFileStatus(c, undefined, state === "signed").label,
       agent: users.get(current?.sent_by) || "Not recorded",
       archived: !!l.archived_at,
       ownerSent: ownerConfirmedDelivery(c.firm_send_result),

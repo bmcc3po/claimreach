@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { signatureCsv, signatureRowsInRange, type SignatureReportRow, type SignatureState } from "@/lib/signature-report";
 import { mondayOf, pacificDay, shiftWeek } from "@/lib/packet-worklist";
+import { SIGNED_SENT_TO_FIRM } from "@/lib/statuses";
 import "./signature-report.css";
 
 const labels: Record<SignatureState, string> = { signed: "Signed", unsigned: "Not signed", verify: "Needs verification" };
@@ -64,12 +65,12 @@ export default function SignatureReport({ rows, firm, generatedAt }: { rows: Sig
       <div className="sr-table">
         <div className="sr-row sr-column-head">
           <label><input aria-label="Select all visible files" type="checkbox" checked={visible.length > 0 && chosen.length === visible.length} onChange={e => setSelected(e.target.checked ? visible.map(r => r.claimId) : [])} /></label>
-          <span>Client / file</span><span>Signature</span><span>Firm delivery</span><span>Packet / agent</span>
+          <span>Client / file</span><span>File status</span><span>Firm delivery</span><span>Packet / agent</span>
         </div>
         {visible.map(r => <div className="sr-row" key={r.claimId}>
           <label className="sr-check"><input type="checkbox" aria-label={"Select " + r.name} checked={selected.includes(r.claimId)} onChange={e => setSelected(old => e.target.checked ? [...old, r.claimId] : old.filter(id => id !== r.claimId))} /></label>
           <div className="sr-client"><a href={r.href}>{r.name}</a><small>{r.leadNo}{r.archived ? " · Archived" : ""}{r.test ? " · TEST" : ""}</small>{state !== "signed" && <small>{r.status}</small>}</div>
-          <div className="sr-signature"><b className={"sr-state sr-" + r.state}>{labels[r.state]}</b><small>{r.state === "signed" ? date(r.signedAt) : r.detail}</small>{r.state === "signed" && !r.signedAt && <small>Owner confirmed</small>}</div>
+          <div className="sr-signature"><b className={"sr-state sr-" + r.state}>{r.state === "signed" && (r.deliveredAt || r.ownerSent) ? SIGNED_SENT_TO_FIRM : labels[r.state]}</b><small>{r.state === "signed" ? date(r.signedAt) : r.detail}</small>{r.state === "signed" && !r.signedAt && <small>Owner confirmed</small>}</div>
           <div className="sr-delivery"><b>{r.deliveredAt || r.ownerSent ? "Sent to firm" : "Delivery not recorded"}</b><small>{r.deliveredAt ? date(r.deliveredAt) : r.ownerSent ? "Owner confirmed · date unknown" : "Check before resending"}</small>{r.returnEndsAt && <small>Return window ends {date(r.returnEndsAt)}</small>}</div>
           <div className="sr-packet"><span>{r.packet}</span><small>{r.agent === "Not recorded" ? "Agent not recorded" : r.agent}</small></div>
         </div>)}
@@ -80,4 +81,3 @@ export default function SignatureReport({ rows, firm, generatedAt }: { rows: Sig
     </section>
   </main>;
 }
-
