@@ -8,6 +8,7 @@ import { deliverLeadToFirm, matterSendState, type FirmEmail, type DeliverDeps } 
 import { loadIntakeBundle, buildIntakeCsvSingle } from "./intake-render";
 import { netflyPacketReview } from './netfly-packet';
 import { rehearsalKey } from './mva-call/rehearsal';
+import { OWNER_SENT_UNKNOWN_DATE } from './owner-file-confirmation';
 
 let pass = 0;
 const t = async (name: string, fn: () => Promise<void> | void) => { await fn(); pass++; console.log("ok", name); };
@@ -193,6 +194,14 @@ function deps(db: any, o: Partial<DeliverDeps> = {}): DeliverDeps & { sent: Firm
 const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed\.pdf$/.test(a.filename))?.content;
 
 (async () => {
+  await t('owner-confirmed historical delivery with no date does not resend or start a clock', async () => {
+    const db = world({ claims: [claimRow('c001', 'ca01', { status: 'delivered', firm_send_result: OWNER_SENT_UNKNOWN_DATE })], campaigns: [camp('ca01')] });
+    const d = deps(db);
+    const result = await deliverLeadToFirm({ leadId: L, claimId: 'c001', triggeredBy: 'manual' }, d);
+    assert.equal(result.skipped, 'This matter was already sent to the firm.');
+    assert.equal(d.sent.length, 0); assert.equal(db.writes.length, 0);
+    assert.equal(db.tables.claims[0].firm_sent_at, null);
+  });
   await t('nonbinding rehearsal keeps normal packet checks and restricts every recipient', async () => {
     for (const mode of ['allowed', 'unapproved-cc', 'automatic', 'unreadable', 'missing-designation']) {
       const config = { version: 1, phone: '+12025550100', emails: ['intake-ca01@firm.test', 'copy@example.test'] };

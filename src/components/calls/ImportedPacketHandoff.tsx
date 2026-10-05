@@ -6,7 +6,7 @@ import "./imported-packet-handoff.css";
 
 type SourceFile = { id: string; name: string; kind: string; url: string | null };
 type State = { documents: SourceFile[]; status: string; source_signed_at: string | null;
-  delivery: { to: string | null; cc: string | null; owner_email: string | null }; confirmed_firm_sent_at: string | null; dispatch: { state?: string } | null };
+  delivery: { to: string | null; cc: string | null; owner_email: string | null }; confirmed_firm_sent_at: string | null; owner_confirmed_delivery?: boolean; dispatch: { state?: string } | null };
 
 export default function ImportedPacketHandoff({ leadId, claimId }: { leadId: string; claimId: string }) {
   const router = useRouter();
@@ -28,7 +28,7 @@ export default function ImportedPacketHandoff({ leadId, claimId }: { leadId: str
     const source = await sourceResponse.json().catch(() => ({}));
     const delivery = await deliveryResponse.json().catch(() => ({}));
     if (!sourceResponse.ok || !deliveryResponse.ok) throw new Error(source.error || delivery.error || "Could not load packet status.");
-    setState({ ...source, delivery: delivery.delivery, confirmed_firm_sent_at: delivery.confirmed_firm_sent_at, dispatch: delivery.dispatch });
+    setState({ ...source, delivery: delivery.delivery, confirmed_firm_sent_at: delivery.confirmed_firm_sent_at, owner_confirmed_delivery: delivery.owner_confirmed_delivery, dispatch: delivery.dispatch });
     setLoading(false);
   }
   useEffect(() => { setState(null); setLoading(true); setError(""); setOpened([]); setChecks([false, false, false, false]);
@@ -39,6 +39,7 @@ export default function ImportedPacketHandoff({ leadId, claimId }: { leadId: str
   if (loading) return <section className="imported-handoff"><h2>Imported signed packet</h2><p>Checking the original PDFs…</p></section>;
   if (!state) return <section className="imported-handoff"><h2>Imported signed packet needs review</h2><p role="alert">{error}</p></section>;
   const sentAt = state.confirmed_firm_sent_at;
+  if (state.owner_confirmed_delivery && !sentAt) return <section className="imported-handoff"><h2>SENT TO FIRM</h2><p>The owner approved the imported signed file and confirmed it was sent to the firm.</p><p>The original delivery date was not recorded. The return window cannot be calculated. Do not send it again.</p></section>;
   const owner = state.delivery.owner_email || "";
   const firm = state.delivery.to || "";
   const cc = String(state.delivery.cc || "").split(/[,;]/).map((item) => item.trim()).filter(Boolean);

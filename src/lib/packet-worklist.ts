@@ -1,5 +1,6 @@
 import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
 import { paxParentId } from "@/lib/linked-files";
+import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
 
 export type PacketRow = {
   leadId: string;
@@ -10,6 +11,7 @@ export type PacketRow = {
   firm: string;
   signedAt: string;
   deliveredAt: string | null;
+  ownerSent?: boolean;
   returnEndsAt: string | null;
   returnDaysLeft: number | null;
   readyToBill: boolean;
@@ -84,7 +86,8 @@ export function packetWorklist(input: Input): PacketRow[] {
     const packetComplete = row.status === "completed" && !!row.agent_reviewed_at && !!row.completed_pdf_path && !!row.cert_pdf_path;
     // The firm delivery endpoint requires signed_approved. A complete PDF is
     // still awaiting QA when the claim remains signed_grievous/signed_qa.
-    const stage = deliveredAt ? "delivered" : held || ownerOnly || recipientHeld ? "held" : !packetComplete ? "finish" : ["signed_approved", "delivered", "retained"].includes(claim?.status) ? "ready" : "qa";
+    const ownerSent = ownerConfirmedDelivery(claim?.firm_send_result);
+    const stage = deliveredAt || ownerSent ? "delivered" : held || ownerOnly || recipientHeld ? "held" : !packetComplete ? "finish" : ["signed_approved", "delivered", "retained"].includes(claim?.status) ? "ready" : "qa";
     rows.push({
       leadId: row.lead_id,
       claimId: row.claim_id || null,
@@ -94,13 +97,14 @@ export function packetWorklist(input: Input): PacketRow[] {
       firm: firm?.name || "Firm not mapped",
       signedAt: row.signed_at,
       deliveredAt,
+      ownerSent,
       returnEndsAt: window?.endsAt ?? null,
       returnDaysLeft: window?.daysLeft ?? null,
       readyToBill: window?.cleared ?? false,
       agent: call?.agent_name || sender?.full_name || "Unassigned",
       archived: !!lead.archived_at,
       stage,
-      stageLabel: stage === "delivered" ? window?.cleared ? "Return window cleared · billing review" : `Firm return window · ${window?.daysLeft ?? 7}d left` : ownerOnly ? "Firm delivery not verified" : recipientHeld ? "Firm email needs configuration" : stage === "held" ? "Correction held" : stage === "ready" ? "Ready to send" : stage === "qa" ? claim ? "Awaiting file review" : "Link case for QA" : "Finish signed packet",
+      stageLabel: ownerSent && !deliveredAt ? "Sent to firm · owner confirmed · date unknown" : stage === "delivered" ? window?.cleared ? "Return window cleared · billing review" : `Firm return window · ${window?.daysLeft ?? 7}d left` : ownerOnly ? "Firm delivery not verified" : recipientHeld ? "Firm email needs configuration" : stage === "held" ? "Correction held" : stage === "ready" ? "Ready to send" : stage === "qa" ? claim ? "Awaiting file review" : "Link case for QA" : "Finish signed packet",
     });
   }
   return rows.sort((a, b) => b.signedAt.localeCompare(a.signedAt));

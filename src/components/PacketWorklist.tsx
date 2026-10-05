@@ -10,7 +10,7 @@ import "./packet-worklist.css";
 
 type View = "needs" | "week";
 type ImportedRow = { leadId: string; claimId: string; leadNo: string; name: string; campaign: string; firm: string; signedAt: string | null;
-  deliveredAt: string | null; returnEndsAt: string | null; daysLeft: number | null; cleared: boolean; status: string; archived: boolean };
+  deliveredAt: string | null; ownerSent?: boolean; returnEndsAt: string | null; daysLeft: number | null; cleared: boolean; status: string; archived: boolean };
 
 function escapeCsv(value: unknown): string {
   const text = String(value ?? "");
@@ -44,9 +44,9 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
   const importedRows = useMemo<PacketRow[]>(() => imported.map((r) => ({
     leadId: r.leadId, claimId: r.claimId, leadNo: r.leadNo, name: r.name, campaign: r.campaign, firm: r.firm,
     signedAt: r.signedAt || "", deliveredAt: r.deliveredAt, returnEndsAt: r.returnEndsAt, returnDaysLeft: r.daysLeft,
-    readyToBill: r.cleared, agent: "Imported from LawRuler", archived: r.archived,
-    stage: r.deliveredAt ? "delivered" : r.status === "signed_approved" ? "ready" : "qa",
-    stageLabel: r.deliveredAt ? r.cleared ? "Return window cleared · billing review" : `Firm return window · ${r.daysLeft ?? 7}d left` : r.status === "signed_approved" ? "Reviewed · not sent" : "Verify original · not sent",
+    readyToBill: r.cleared, agent: "Imported from LawRuler", archived: r.archived, ownerSent: r.ownerSent,
+    stage: r.deliveredAt || r.ownerSent ? "delivered" : r.status === "signed_approved" ? "ready" : "qa",
+    stageLabel: r.ownerSent && !r.deliveredAt ? "Sent to firm · owner confirmed · date unknown" : r.deliveredAt ? r.cleared ? "Return window cleared · billing review" : `Firm return window · ${r.daysLeft ?? 7}d left` : r.status === "signed_approved" ? "Reviewed · not sent" : "Verify original · not sent",
   })), [imported]);
   const visibleRows = rows.filter((r) => showArchived || !r.archived);
   const visibleImported = importedRows.filter((r) => showArchived || !r.archived);
@@ -72,7 +72,7 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
 
   return <main className="packet-page">
     <FileNavigation />
-    <div className="packet-heading"><div><p className="packet-kicker">Operator worklist</p><h1>Signed packets</h1><p>Review what needs to reach the firm, then use the weekly count for billing and commission review.</p></div></div>
+    <div className="packet-heading"><div><p className="packet-kicker">Operator worklist</p><h1>Signed packets</h1><p>Review what needs to reach the firm. <a href="/reports/inno">Open INNO MVA signatures & invoice list →</a></p></div></div>
     {truncated && <p className="packet-warning" role="alert">This list reached a record read limit. Older packets may be missing; do not use this export as a complete billing ledger.</p>}
     <div className="packet-tabs" role="tablist" aria-label="Signed packet views">
       <button type="button" role="tab" aria-selected={view === "needs"} className={view === "needs" ? "active" : ""} onClick={() => setView("needs")}>Needs action <span>{pending.length + pendingImported.length}</span></button>
@@ -86,7 +86,7 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
       {filtered.length ? filtered.map((r) => <div role="listitem" className="packet-item" key={`${r.leadId}:${r.claimId || "lead"}`}><Link className="packet-row" href={`/leads/${encodeURIComponent(r.leadNo)}${r.claimId ? `?claim=${encodeURIComponent(r.claimId)}` : ""}`}>
         <span className="packet-person"><strong>{r.name}</strong><small>{r.leadNo} · {r.campaign}{r.archived ? " · Archived" : ""}</small></span>
         <span className="packet-context"><strong>{r.agent}</strong><small>{r.firm}</small></span>
-        <span className="packet-date"><strong>Signed {formatDate(r.signedAt)}</strong><small>{r.deliveredAt ? `Firm delivery ${formatDate(r.deliveredAt)} · return ends ${formatDate(r.returnEndsAt)}` : "Firm delivery not verified"}</small></span>
+        <span className="packet-date"><strong>Signed {formatDate(r.signedAt)}</strong><small>{r.deliveredAt ? `Firm delivery ${formatDate(r.deliveredAt)} · return ends ${formatDate(r.returnEndsAt)}` : r.ownerSent ? "Sent to firm · owner confirmed · date unknown" : "Firm delivery not verified"}</small></span>
         <span className={`packet-stage ${r.stage}`}>{r.stageLabel}</span><span className="packet-arrow" aria-hidden="true">›</span>
       </Link><div className="packet-item-action"><FileArchiveButton leadId={r.leadId} label={`${r.name} (${r.leadNo})`} archivedAt={r.archived ? "archived" : null} allowed /></div></div>) : <p className="packet-empty">{query ? "No packets match that search." : view === "needs" ? "No signed packets need delivery." : "No signed packets in this week."}</p>}
     </div>

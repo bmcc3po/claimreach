@@ -8,6 +8,7 @@ import { readFirmDispatch } from "@/lib/firm-delivery-dispatch";
 import { recordAudit } from "@/lib/audit";
 import { confirmedFirmDeliveryAt } from "@/lib/firm-delivery-state";
 import { missingRequiredMvaIntake } from "@/lib/mva-call/intake-readiness";
+import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
 export const runtime = "edge";
 
 const uuid = (x: any) => String(x || "").replace(/[^0-9a-f-]/gi, "");
@@ -57,6 +58,7 @@ export async function GET(req: NextRequest) {
     claim_status: m.claim.status,
     firm_sent_at: st.state.sentAt,
     confirmed_firm_sent_at: confirmedAt,
+    owner_confirmed_delivery: ownerConfirmedDelivery(st.state.result),
     prior_owner_only: !!st.state.sentAt && !confirmedAt && (history ?? []).some((row: any) => row.ok === true && String(row.to_email || "").toLowerCase() === ownerEmail),
     firm_send_result: st.state.result,
     legacy: st.state.legacy,

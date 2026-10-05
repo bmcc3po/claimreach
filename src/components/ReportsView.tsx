@@ -8,7 +8,7 @@ import { isSignedKey, type SignedCatalogRow } from "@/lib/statuses";
 // too, for the signed count only (defaults to statuses). statuses stays the
 // live set for labels and the picker. Both report pages pass the full
 // catalog so their signed count matches the staff Leads and Signed pages.
-export default function ReportsView({ leads, claims, scope = "staff", statuses = [], catalog }: { leads: any[]; claims: any[]; scope?: "firm" | "staff"; statuses?: any[]; catalog?: SignedCatalogRow[] }) {
+export default function ReportsView({ leads, claims, scope = "staff", statuses = [], catalog, invoiceReport = false }: { leads: any[]; claims: any[]; scope?: "firm" | "staff"; statuses?: any[]; catalog?: SignedCatalogRow[]; invoiceReport?: boolean }) {
   const [range, setRange] = useState(30);
   const [pStatus, setPStatus] = useState("all");
   const [pType, setPType] = useState("all");
@@ -132,9 +132,10 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
       <div className="cl-head">
         <div>
           <h1 className="cl-h1">Reports</h1>
-          <p className="cl-lede">Every file counted from its status, the same numbers the queues run on.</p>
+          <p className="cl-lede">Workflow counts by case creation date. Use the signature report for invoice preparation.</p>
         </div>
         <div className="cl-acts">
+          {invoiceReport && <a className="cl-btn" href="/reports/inno">INNO MVA signatures & invoice list</a>}
           {scope === "staff" && <a className="cl-btn cl-ghost" href="/reports/status">Status Report</a>}
           <select className="cl-select" value={range} onChange={(e) => setRange(Number(e.target.value))}>
             <option value={7}>Last 7 days</option>

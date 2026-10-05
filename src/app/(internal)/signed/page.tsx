@@ -7,13 +7,14 @@ import { isInternalRole } from "@/lib/permissions";
 import { mayOpenFullFile } from "@/lib/file-fence";
 import LeadsView from "@/components/LeadsView";
 
-export default async function LeadsPage() {
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const sb = await supabaseServer();
   const { data: { user } } = await authUser();
   if (!user) redirect("/login");
   const { data: me } = await sb.from("app_users").select("role,firm_id,active,perm_overrides").eq("id", user.id).maybeSingle();
   if (!me || me.active !== true || !isInternalRole(me.role)) redirect("/dashboard");
   if (!mayOpenFullFile(me.role)) redirect("/queue");
+  if (me.role === "owner" && (await searchParams).view !== "all") redirect("/reports/inno");
   let pilotCampaignId: string | null = null;
   if (me.role !== "owner") {
     if (!me.firm_id) redirect("/dashboard");

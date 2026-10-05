@@ -3,12 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import * as matter from "./matter";
+import * as ownerConfirmation from "./owner-file-confirmation";
 
 // Real route source; synthetic caller session, admin client and sender.
 const leadId = "11111111-1111-4111-8111-111111111111";
 const claimId = "22222222-2222-4222-8222-222222222222";
 const attemptKey = "33333333-3333-4333-8333-333333333333";
-function harness(role = "agent", visible = true, capable = true, dispatchError: string | null = null, ownCall = true, ownQa = true, missingIntake = false) {
+function harness(role = "agent", visible = true, capable = true, dispatchError: string | null = null, ownCall = true, ownQa = true, missingIntake = false, result: string | null = null) {
   const sends: any[] = [], rpcs: any[] = [], audits: any[] = [];
   const lead = { id: leadId, firm_id: "firm", campaign_id: "campaign" };
   const claim = { id: claimId, lead_id: leadId, firm_id: "firm", campaign_id: "campaign", status: "signed_grievous", answers: { mva_call: {} } };
@@ -34,7 +35,8 @@ function harness(role = "agent", visible = true, capable = true, dispatchError: 
     "next/server": { NextResponse: { json: (body: any, o: any = {}) => ({ body, status: o.status ?? 200 }) } },
     "@/lib/supabase-server": { supabaseServer: async () => sb, supabaseAdmin: () => admin },
     "@/lib/gate": { gateUser: async () => user }, "@/lib/permissions": { isInternalRole: (r: string) => ["owner", "admin", "manager", "qa", "agent"].includes(r) },
-    "@/lib/matter": matter, "@/lib/firm-delivery": { deliverLeadToFirm: async (x: any) => { sends.push(x); return { ok: true }; }, matterSendState: async () => ({ ok: true, state: { sentAt: null, result: null, legacy: false } }) },
+    "@/lib/matter": matter, "@/lib/firm-delivery": { deliverLeadToFirm: async (x: any) => { sends.push(x); return { ok: true }; }, matterSendState: async () => ({ ok: true, state: { sentAt: null, result, legacy: false } }) },
+    "@/lib/owner-file-confirmation": ownerConfirmation,
     "@/lib/firm-delivery-dispatch": { readFirmDispatch: async () => ({ row: null, error: dispatchError }) },
     "@/lib/audit": { recordAudit: async (a: any) => { audits.push(a); } },
     "@/lib/firm-delivery-state": { confirmedFirmDeliveryAt: () => null },
@@ -50,6 +52,11 @@ let count = 0;
 const t = async (name: string, fn: () => Promise<void>) => { await fn(); count++; console.log("ok", name); };
 const req = (b: any) => ({ json: async () => ({ lead_id: leadId, claim_id: claimId, ...b }) });
 (async () => {
+  await t("GET separates owner confirmation from a dated receipt", async () => {
+    const h = harness("owner", true, true, null, true, true, false, ownerConfirmation.OWNER_SENT_UNKNOWN_DATE);
+    const r = await h.GET({ url: `https://synthetic.invalid/api/firm-delivery?lead_id=${leadId}&claim_id=${claimId}` });
+    assert.equal(r.status, 200); assert.equal(r.body.owner_confirmed_delivery, true); assert.equal(r.body.confirmed_firm_sent_at, null);
+  });
   await t("agent sends only after a signed call and their own approved QA, copying the owner", async () => {
     const h = harness(); const r = await h.POST(req({ include_owner: true })); assert.equal(r.status, 200); assert.equal(h.sends[0].claimId, claimId); assert.equal(h.sends[0].includeOwner, true);
   });
