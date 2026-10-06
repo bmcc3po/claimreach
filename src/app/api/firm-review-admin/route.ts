@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabaseServer } from '@/lib/supabase-server';
 import { gateUser } from '@/lib/gate';
-import { uuid } from '@/lib/firm-review-access';
+import { reviewerProfileAllowed, uuid } from '@/lib/firm-review-access';
 export const runtime = 'edge';
 const json = (value: unknown, status = 200) => NextResponse.json(value, { status, headers: { 'Cache-Control': 'private, no-store' } });
 export async function GET() {
@@ -21,13 +21,14 @@ export async function POST(req: NextRequest) {
   const db = supabaseAdmin();
   const [campaign, profile, access] = await Promise.all([
     db.from('campaigns').select('id,name,firm_id').eq('id', body.campaign).maybeSingle(),
-    db.from('app_users').select('id').ilike('email', email).limit(1),
+    db.from('app_users').select('id,role,active,firm_id,perm_overrides').ilike('email', email).limit(2),
     db.from('firm_access').select('email').ilike('email', email).limit(1),
   ]);
   if (campaign.error || !campaign.data?.firm_id || profile.error || access.error) return json({ error: 'Could not verify access. Nothing was changed.' }, 503);
-  if (profile.data?.length || access.data?.length) return json({ error: 'This email already has broader system access. Review that account before adding restricted access.' }, 409);
-  // Never convert or reset an existing identity. An exact prior restricted
-  // creation is an idempotent success; every different scope needs review.
+  if (access.data?.length || (profile.data?.length || 0) > 1) return json({ error: 'This email has other system access that needs administrator review before restriction.' }, 409);
+  const oldProfile = profile.data?.[0] || null;
+  // Existing general firm accounts can be explicitly narrowed by an owner.
+  // Staff, partners and already-restricted different scopes are never converted.
   let existing: any = null;
   for (let page = 1; page <= 20; page++) {
     const result = await db.auth.admin.listUsers({ page, perPage: 1000 });
@@ -39,9 +40,26 @@ export async function POST(req: NextRequest) {
   const scope = { email, name, active: true, firm_id: campaign.data.firm_id, campaign_id: campaign.data.id };
   if (existing) {
     const old = existing.app_metadata?.firm_review;
-    if (existing.app_metadata?.account_type === 'firm_review' && old?.active === true && old.email === email && old.firm_id === scope.firm_id && old.campaign_id === scope.campaign_id) return json({ ok: true, email, existing: true });
+    if (existing.app_metadata?.account_type === 'firm_review' && old?.active === true && old.email === email && old.firm_id === scope.firm_id && old.campaign_id === scope.campaign_id && reviewerProfileAllowed(existing, oldProfile)) return json({ ok: true, email, existing: true });
+    if (body?.restrict_existing === true && !existing.app_metadata?.account_type && oldProfile?.id === existing.id && oldProfile.role === 'firm') {
+      const audit = await db.from('audit_log').insert({ firm_id: scope.firm_id, actor: me.id, actor_name: me.name,
+        category: 'system', description: 'Owner requested restriction of an existing firm login to one campaign inbox.',
+        meta: { event: 'firm_reviewer_restriction', reviewer_id: existing.id, email, campaign_id: scope.campaign_id,
+          previous_profile: oldProfile } });
+      if (audit.error) return json({ error: 'Could not record the access change. Nothing was changed.' }, 503);
+      // Retire general access first. A later failure leaves it disabled, never
+      // silently restored. No profile, password, client or history is deleted.
+      const retired = await db.from('app_users').update({ active: false }).eq('id', existing.id).eq('role', 'firm').select('id').maybeSingle();
+      if (retired.error || !retired.data) return json({ error: 'Could not restrict the general firm profile. Refresh and review this account.' }, 503);
+      const changed = await db.auth.admin.updateUserById(existing.id, { app_metadata: { ...existing.app_metadata,
+        account_type: 'firm_review', firm_review: { ...scope, retired_profile_id: existing.id },
+        access_granted_by: me.id, access_granted_at: new Date().toISOString() } });
+      if (changed.error || !changed.data.user) return json({ error: 'General firm access is disabled, but the restricted inbox is not ready. Retry this setup; the existing login is retained.' }, 503);
+      return json({ ok: true, email, existing: true, restricted: true });
+    }
     return json({ error: 'This email already has an account with different access. Nothing was changed.' }, 409);
   }
+  if (oldProfile) return json({ error: 'The existing profile could not be matched to its login. Nothing was changed.' }, 409);
   const created = await db.auth.admin.createUser({ email, email_confirm: true, app_metadata: { account_type: 'firm_review', firm_review: scope,
     access_granted_by: me.id, access_granted_at: new Date().toISOString() } });
   if (created.error || !created.data.user) return json({ error: 'Could not create the account. Refresh before trying again.' }, 503);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { REVIEW_CLAIM_COLS, REVIEW_EVENT, REVIEW_LEAD_COLS, reviewEvents, reviewerContext, reviewerFile, reviewerPdf } from '@/lib/firm-review-server';
+import { REVIEW_CLAIM_COLS, REVIEW_EVENT, REVIEW_LEAD_COLS, reviewEvents, reviewerContext, reviewerFile, reviewerPdf, reviewerSignedClaimIds } from '@/lib/firm-review-server';
 import { releasedToReviewer, reviewActivity, reviewInput, reviewState, uuid } from '@/lib/firm-review-access';
 import { rowBelongsToMatter } from '@/lib/matter';
 import { paxParentId } from '@/lib/linked-files';
@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
       .is('archived_at', null).in('id', claims.map(row => row.lead_id));
     if (result.error) throw new Error('Could not load the file list. Please try again.');
     const leads = new Map((result.data || []).map(row => [row.id, row]));
-    const released = claims.filter(claim => releasedToReviewer(c.scope, claim, leads.get(claim.lead_id)));
+    const signed = await reviewerSignedClaimIds(c.db, c.scope);
+    const released = claims.filter(claim => signed.has(claim.id) && releasedToReviewer(c.scope, claim, leads.get(claim.lead_id)));
     if (!released.length) return json({ campaign: c.campaign, name: c.scope.name, files: [] });
     const [events, agreements, counts] = await Promise.all([
       reviewEvents(c.db, c.scope, released.map(claim => claim.id)),

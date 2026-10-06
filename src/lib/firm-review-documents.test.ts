@@ -12,8 +12,10 @@ let row: any = { id: 'agreement', firm_id: 'firm', status: 'completed', signed_a
 let emergency: any = null, snapshotCalls = 0, importedCalls = 0, rendered: any = null;
 const downloaded: string[] = [];
 let pdfBytes: Uint8Array;
+let reportRows: any[] = [];
 const modules: any = {
   '@/lib/supabase-server': {}, './firm-review-access': access,
+  './signature-report-loader': { loadSignatureReport: async (_db: any, campaign: any) => { assert.deepEqual(campaign, { id: 'inno', firm_id: 'firm', firm_email: null }); return reportRows; } },
   './intake-render': { loadIntakeBundle: async () => ({ claim: file.claim, lead: { ...file.lead, answers: { secret_sibling: true }, vendor_fields: { private_notes: 'unreleased' } }, answers: { own_answer: true } }),
     buildIntakePdf: async (bundle: any) => { rendered = bundle; return pdfBytes; } },
   './imported-packet': { importedOriginals: async (_: any, firm: string, lead: string, claim: string) => { importedCalls++; assert.deepEqual([firm, lead, claim], ['firm', 'lead', 'claim']); return [{ kind: 'retainer' }]; }, verifiedImportedPdfs: async () => [{ bytes: pdfBytes }] },
@@ -27,6 +29,14 @@ const source = fs.readFileSync(path.resolve(__dirname, 'firm-review-server.ts'),
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const server: any = {}; new Function('require', 'exports', code)((key: string) => { assert.ok(key in modules, key); return modules[key]; }, server);
 (async () => {
+  reportRows = [{ claimId: 'signed', state: 'signed' }, { claimId: 'unsigned', state: 'unsigned' }, { claimId: 'uncertain', state: 'verify' },
+    { claimId: 'archived', state: 'signed', archived: true }, { claimId: 'test', state: 'signed', test: true }];
+  assert.deepEqual([...await server.reviewerSignedClaimIds({}, scope)], ['signed'], 'the canonical signature report controls release, not a delivery label');
+  const db: any = { from: (table: string) => { const q: any = { select: () => q, eq: () => q, in: () => q, is: () => q,
+    maybeSingle: async () => ({ data: table === 'claims' ? file.claim : file.lead }) }; return q; } };
+  assert.equal(await server.reviewerFile(db, scope, 'claim'), null, 'direct PDF/action lookup cannot bypass signed-only release');
+  reportRows = [{ claimId: 'claim', state: 'signed' }]; assert.ok(await server.reviewerFile(db, scope, 'claim'));
+  reportRows = [{ claimId: 'claim', state: 'verify' }]; assert.equal(await server.reviewerFile(db, scope, 'claim'), null);
   const p = await PDFDocument.create(); p.addPage(); pdfBytes = await p.save();
   await server.reviewerPdf({}, scope, file, 'intake'); assert.equal(rendered.lead.answers, undefined); assert.equal(rendered.lead.vendor_fields, undefined); assert.deepEqual(rendered.answers, { own_answer: true });
   const joined = await server.reviewerPdf({}, scope, file, 'retainer'); assert.equal((await PDFDocument.load(joined)).getPageCount(), 2); assert.deepEqual(downloaded, ['firm/signed-ds-123.pdf', 'firm/signed-ds-123-2.pdf']);
