@@ -1,5 +1,5 @@
 import { supabaseAdmin, supabaseServer } from '@/lib/supabase-server';
-import { firmReviewScope, releasedToReviewer, REVIEW_EVENT, type FirmReviewScope } from './firm-review-access';
+import { firmReviewScope, reviewerProfileAllowed, releasedToReviewer, REVIEW_EVENT, type FirmReviewScope } from './firm-review-access';
 import { buildIntakePdf, loadIntakeBundle } from './intake-render';
 import { importedOriginals, verifiedImportedPdfs } from './imported-packet';
 import { resolveMatter } from './matter';
@@ -7,10 +7,17 @@ import { getMatterAgreement, getMatterEmergency, emergencySupersedes } from './m
 import { expectedPacketPaths } from './mva-call/esign';
 import { downloadSignedDoc, signedDocPath } from './signed-docs';
 import { ensureClientSignedSnapshot } from './mva-call/client-signed';
+import { loadSignatureReport } from './signature-report-loader';
 
 export { REVIEW_EVENT } from './firm-review-access';
 export const REVIEW_LEAD_COLS = 'id,firm_id,lead_no,claimant_name,phone,email,dob,mail_addr1,mail_city,mail_state,mail_zip,archived_at,vendor_fields,external_id';
 export const REVIEW_CLAIM_COLS = 'id,lead_id,firm_id,campaign_id,campaign,claim_type,status,firm_sent_at,firm_send_result,updated_at';
+export async function reviewerSignedClaimIds(db: any, scope: FirmReviewScope): Promise<Set<string>> {
+  // Use the same evidence rules as the invoice report: a delivery label is
+  // insufficient, and replacement/voided/unverified imported packets stay out.
+  const rows = await loadSignatureReport(db, { id: scope.campaignId, firm_id: scope.firmId, firm_email: null });
+  return new Set(rows.filter(row => row.state === 'signed' && !row.archived && !row.test).map(row => row.claimId));
+}
 export async function reviewerContext() {
   const sb = await supabaseServer();
   const { data: { user }, error } = await sb.auth.getUser();
@@ -19,11 +26,11 @@ export async function reviewerContext() {
   const db = supabaseAdmin();
   // Fail closed if someone accidentally grants this identity a broad profile.
   const [profile, access, campaign] = await Promise.all([
-    db.from('app_users').select('id').eq('id', user.id).maybeSingle(),
+    db.from('app_users').select('id,role,active').eq('id', user.id).maybeSingle(),
     db.from('firm_access').select('email').eq('email', user.email!.toLowerCase()).maybeSingle(),
     db.from('campaigns').select('id,firm_id,name').eq('id', scope.campaignId).eq('firm_id', scope.firmId).maybeSingle(),
   ]);
-  if (profile.error || profile.data || access.error || access.data || campaign.error || !campaign.data) return null;
+  if (profile.error || !reviewerProfileAllowed(user, profile.data) || access.error || access.data || campaign.error || !campaign.data) return null;
   return { db, user, scope, campaign: campaign.data.name as string };
 }
 export async function reviewerFile(db: any, scope: FirmReviewScope, claimId: string) {
@@ -33,7 +40,9 @@ export async function reviewerFile(db: any, scope: FirmReviewScope, claimId: str
   if (!claim) return null;
   const leadResult = await db.from('leads').select(REVIEW_LEAD_COLS).eq('id', claim.lead_id).eq('firm_id', scope.firmId).is('archived_at', null).maybeSingle();
   if (leadResult.error) throw new Error('Could not read the file. Please try again.');
-  return releasedToReviewer(scope, claim, leadResult.data) ? { claim, lead: leadResult.data } : null;
+  if (!releasedToReviewer(scope, claim, leadResult.data)) return null;
+  if (!(await reviewerSignedClaimIds(db, scope)).has(claim.id)) return null;
+  return { claim, lead: leadResult.data };
 }
 export async function reviewEvents(db: any, scope: FirmReviewScope, claimIds: string[]) {
   if (!claimIds.length) return [];

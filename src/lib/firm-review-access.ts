@@ -12,6 +12,14 @@ export function firmReviewScope(user: any): FirmReviewScope | null {
     m.email !== user.email.toLowerCase() || !uuid(m.firm_id) || !uuid(m.campaign_id)) return null;
   return { firmId: m.firm_id, campaignId: m.campaign_id, name: String(m.name || user.email) };
 }
+// An owner may retire an existing general firm profile without deleting its
+// identity or history. It grants no database access while inactive. The trusted
+// marker binds this exception to that exact profile; reactivation fails closed.
+export function reviewerProfileAllowed(user: any, profile: any): boolean {
+  if (!profile) return true;
+  return !!firmReviewScope(user) && profile.id === user.id && profile.role === 'firm' && profile.active === false &&
+    user.app_metadata.firm_review.retired_profile_id === user.id;
+}
 export function reviewerPathAllowed(path: string): boolean {
   return path === FIRM_REVIEW_HOME || path === FIRM_REVIEW_LOGIN || path.startsWith('/auth/');
 }

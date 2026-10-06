@@ -8,6 +8,12 @@ const firm = '11111111-1111-4111-8111-111111111111', campaign = '22222222-2222-4
 const user = { id: 'reviewer', email: 'reviewer@example.test', app_metadata: { account_type: 'firm_review', firm_review: { active: true, email: 'reviewer@example.test', firm_id: firm, campaign_id: campaign, name: 'Reviewer' } } };
 const scope = access.firmReviewScope(user)!;
 assert.ok(scope);
+assert.equal(access.reviewerProfileAllowed(user, null), true);
+const retiredUser = { ...user, app_metadata: { ...user.app_metadata, firm_review: { ...user.app_metadata.firm_review, retired_profile_id: user.id } } };
+const retiredProfile = { id: user.id, role: 'firm', active: false };
+assert.equal(access.reviewerProfileAllowed(retiredUser, retiredProfile), true);
+assert.equal(access.reviewerProfileAllowed(user, retiredProfile), false, 'inactive alone is not a conversion grant');
+for (const change of [{ active: true }, { active: null }, { role: 'owner' }, { role: 'agent' }, { id: 'someone-else' }]) assert.equal(access.reviewerProfileAllowed(retiredUser, { ...retiredProfile, ...change }), false);
 assert.equal(access.firmReviewScope({ ...user, app_metadata: {}, user_metadata: user.app_metadata }), null, 'self-editable metadata grants nothing');
 assert.equal(access.firmReviewScope({ ...user, email: 'someone-else@example.test' }), null);
 assert.equal(access.firmReviewScope({ ...user, app_metadata: { ...user.app_metadata, firm_review: { ...user.app_metadata.firm_review, active: false } } }), null);
