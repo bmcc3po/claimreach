@@ -2227,6 +2227,15 @@ div.ws-row{cursor:default}
 .finish-file-hint { display:block;font-size:12px;font-weight:500;line-height:1.5; }
 .finish-file-instruction { color:#263f60;line-height:1.6; }
 .signed-inline .finish-file-steps { flex-basis:100%; }
+
+.agreement-completion{display:grid;gap:16px;min-width:0;padding:20px;border:2px solid #3665a0;border-radius:12px;background:#f8fbff;scroll-margin-top:160px;grid-column:1/-1}
+.agreement-completion h3,.agreement-completion p{margin:0}
+.agreement-completion h3{font-size:19px;color:#142f52}
+.agreement-completion-help{line-height:1.5;color:#344c65}
+.agreement-completion-fields{display:grid;gap:14px;min-width:0}
+.agreement-completion-actions{display:flex;flex-wrap:wrap;gap:10px}
+.agreement-completion-error{color:#b42318;font-weight:650}
+@media(max-width:600px){.agreement-completion{padding:16px}.agreement-completion-actions .cc-btn{width:100%}}
 .cc-say.cc-say-win { background:#eef4fc;color:#173b6c;box-shadow:none; }
 .cc-say.cc-say-win .cc-say-label,.cc-say.cc-say-win .cc-cue { color:#425d7e; }
 .ix-next.ix-finish { background:#173f78; }

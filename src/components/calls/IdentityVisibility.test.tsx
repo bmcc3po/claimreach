@@ -22,6 +22,7 @@ const modules: Record<string, any> = {
   "./SignedInlineReview": { default: () => null },
   "./AgreementActions": { default: () => null },
   "./SignatureWaiting": { default: () => null },
+  "./StoryAssist": { default: () => null },
   "./FinalHandoff": { default: () => null },
   "./PlaceField": { default: () => null }, "./WhereField": { default: () => null },
   "./FullIntake": { FiBody: () => null }, "./OneQuestion": { GuidedIntake: () => null },
@@ -29,7 +30,7 @@ const modules: Record<string, any> = {
 };
 function load(name: string): any {
   if (name in modules) return modules[name];
-  assert.ok(["./IntakeQuestion","./PassengerFollowup","./FinishFileSteps","./ContractActions","./PassengerAgreement","./AgreementChoice","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
+  assert.ok(["./IntakeQuestion","./PassengerFollowup","./FinishFileSteps","./ContractActions","./PassengerAgreement","./AgreementChoice","./AgreementCompletion","./ChoreList","./FormView","./StepByStep","./CallView"].includes(name),`Unexpected import ${name}`);
   const source=fs.readFileSync(path.join(__dirname,`${name}.tsx`),"utf8");
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
   const exports: any={}; new Function("require","exports",code)(load,exports);
@@ -109,3 +110,30 @@ for (const view of ['chore', 'form', 'guided', 'full', 'steps']) {
   assert.match(signingHtml(), /Send Test Friend 2&#x27;s agreement<\/button>/);
 }
 console.log('ok all five views keep caller / passenger one / passenger two in order');
+
+// TMP-1278 regression: a signed caller must never need a view switch to
+// find the office fields and completion button after following Finish.
+for (const view of ['chore', 'form', 'steps', 'full', 'guided']) {
+  const e = engine('signed'); e.setView(view);
+  e.set('file', 'step', 'crash');
+  if (['chore', 'form', 'steps'].includes(view)) e.renderVals().fi.chore.finish.go();
+  else e.renderVals().jumpTo('file');
+  const prefix = view === 'form' ? 'sf' : ['chore', 'steps'].includes(view) ? 'ch' : 'fi';
+  let html = renderToStaticMarkup(jsx.jsx(View, { v: e.renderVals() }));
+  assert.equal(e.state.view, view);
+  assert.match(html, new RegExp(`id="${prefix}-q-agreement"`), `${view}: the jump target exists`);
+  assert.equal((html.match(/aria-label="Finish the agreement"/g) || []).length, 1);
+  const card = html.slice(html.indexOf(`id="${prefix}-q-agreement"`)).split('</section>')[0];
+  assert.match(card, /The client has signed/);
+  assert.match(card, /aria-label="Date of birth"/);
+  assert.match(card, /aria-label="Social Security number"/);
+  assert.match(card, />Complete the agreement<\/button>/);
+  e.set('file', 'error', 'Office completion did not save. Retry.');
+  html = renderToStaticMarkup(jsx.jsx(View, { v: e.renderVals() }));
+  assert.match(html, /role="alert">Office completion did not save\. Retry\./);
+  e.set('file', 'agreement', 'done'); e.set('file', 'error', '');
+  html = renderToStaticMarkup(jsx.jsx(View, { v: e.renderVals() }));
+  assert.doesNotMatch(html, />Complete the agreement<\/button>/);
+  assert.match(html, /Agreement complete\. Review the file/);
+}
+console.log('ok signed finish lands on visible office controls in all five views; errors and confirmed completion stay visible');

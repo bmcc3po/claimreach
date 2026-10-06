@@ -213,6 +213,11 @@ function nextStep(v: any): { label: string; go: () => void; disabled?: boolean; 
   // Signature receipt is an intermediate step, in every intake layout.
   // Keep all saves, reviews and sends in their existing handlers.
   if (v.signed && v.dispo?.saved) return { label: "Continue to firm delivery", go: v.openDispo, finish: true };
+  if (v.signed && !v.fileAgreementDone && (fi.target === "agreement" || (v.guided && v.showFile && v.fsAgreement))) return {
+    label: v.agreementParked ? "Reopen and finish the agreement" : v.completeLabel,
+    go: v.agreementParked ? v.reopenAgreement : v.completeAgreement,
+    disabled: !v.agreementParked && !!v.agreementLocked, finish: true,
+  };
   if (v.signed && !v.dispo?.saved) return {
     label: v.fileAgreementDone ? "Next: save call & review" : "Next: finish the agreement",
     go: v.fileAgreementDone ? v.openDispo : () => v.jumpTo("file"), finish: true,

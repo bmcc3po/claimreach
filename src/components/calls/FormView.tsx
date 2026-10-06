@@ -17,6 +17,7 @@ import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
 import ContractActions from "./ContractActions";
 import PassengerFollowup from "./PassengerFollowup";
+import AgreementCompletion from "./AgreementCompletion";
 
 // Plain radio buttons (checkboxes for a pick-several question), like the
 // firm report: no pills (Brett, Sep 28).
@@ -98,19 +99,8 @@ function FileBlock({ v, finish }: { v: any; finish: any }) {
         </>))}
       </div>
     )}
+    <AgreementCompletion v={v} prefix="sf">{!v.sendReady && <IdentityRows v={v} />}</AgreementCompletion>
     <div className="sf-rows">
-      {!v.sendReady && <IdentityRows v={v} />}
-      {row("Finish the agreement", (<>
-        {v.agreementOpen && (
-          <div className="sf-addrow">
-            <button type="button" className="sf-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
-            <button type="button" className="sf-btn sf-line" onClick={v.leaveForQa}>Finish later</button>
-          </div>
-        )}
-        {v.agreementClosed && <div>{v.agreementNote}</div>}
-        {v.agreementParked && <button type="button" className="sf-btn sf-line" style={{ marginTop: 6 }} onClick={v.reopenAgreement}>Reopen and finish it now</button>}
-        {v.hasFileError && <div className="sf-bad">{v.fileError}</div>}
-      </>))}
       {!v.clientContact && row("Home address", <PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} />, !v.f.addr.value)}
       {row("Driver's license", <input className="sf-in" aria-label="Driver's license number" value={v.f.dl.value ?? ""} onChange={v.f.dl.set} />)}
       {row("Emergency contact", (<>

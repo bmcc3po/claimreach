@@ -657,6 +657,55 @@ t("chorelist: switching views keeps every answer and the spot", () => {
   assert.deepEqual(e.state.body.pain, ["Neck"]);
 });
 
+t("signed finish routes to the office controls without signing, saving or changing views", () => {
+  for (const view of ["chore", "form", "steps"]) {
+    const e = mk({ esign: { status: "signed", configured: true, pax: {} } });
+    e.setView(view);
+    e.set("story", "text", "Synthetic caller already signed");
+    e.set("file", "step", "crash");
+    e.set("file", "dob", "01/01/1990");
+    const before = calls.length;
+    assert.equal(chOf(e).finish.label, "Next: finish the agreement");
+    chOf(e).finish.go();
+    assert.equal(e.state.view, view);
+    assert.equal(fiOf(e).openSec, "retainer");
+    assert.equal(fiOf(e).target, "agreement");
+    assert.equal(e.state.file.step, "agreement");
+    assert.equal(e.state.dispo.open, false);
+    assert.equal(e.state.file.agreement, "open");
+    assert.equal(e.state.file.dob, "01/01/1990");
+    assert.equal(e.state.story.text, "Synthetic caller already signed");
+    assert.equal(calls.length, before, "navigation cannot complete the office step");
+    e.renderVals().completeAgreement();
+    assert.equal(calls.length, before + 1);
+    assert.equal(calls.at(-1), "completeAgreement");
+    assert.equal(e.state.file.agreement, "open", "wait for server confirmation");
+    e.set("file", "agreement", "done");
+    assert.equal(chOf(e).finish.label, "Finish the call");
+    chOf(e).finish.go(); chOf(e).finish.go();
+    assert.equal(e.state.dispo.open, true);
+    assert.equal(calls.length, before + 1, "opening disposition must not send anything");
+  }
+});
+
+t("office jumps work from every layout and retain parked and held states", () => {
+  for (const view of ["chore", "form", "steps", "full", "guided"]) {
+    const e = mk({ esign: { status: "signed", configured: true, pax: {}, sendGate: "held" } });
+    e.setView(view); e.set("file", "step", "info"); e.set("file", "agreement", "qa");
+    const before = calls.length;
+    e.renderVals().jumpTo("file");
+    assert.equal(e.state.view, view);
+    assert.equal(e.state.phase, "file");
+    assert.equal(e.state.file.step, "agreement");
+    assert.equal(e.renderVals().agreementParked, true);
+    e.renderVals().reopenAgreement();
+    assert.equal(e.renderVals().agreementLocked, true);
+    e.renderVals().completeAgreement();
+    assert.match(e.renderVals().fileError, /Send outcome unconfirmed/);
+    assert.equal(calls.length, before);
+  }
+});
+
 t("the same call opened on another device lands on the same section", () => {
   const a = mk();
   a.setState({ phase: "story" }); a.setView("full");
