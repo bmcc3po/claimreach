@@ -21,6 +21,7 @@ import SignatureWaiting from "./SignatureWaiting";
 import ContractActions from "./ContractActions";
 import PassengerFollowup from "./PassengerFollowup";
 import FinishFileSteps from "./FinishFileSteps";
+import AgreementCompletion from "./AgreementCompletion";
 import { OPEN_TONE, openGreeting, openLine, OPEN_CUE, MONEY, SEND_LINE, STAY, walkThrough, NO_DEAD_AIR, SIGNED, closeLines, CLOSE_CUE } from "./scripts";
 
 export function cx(cls: string | null | undefined): string {
@@ -381,18 +382,10 @@ export default function CallView({ v }: { v: any }) {
 <div className="cc-cue" style={{marginTop: "-4px"}}>Work through each step. Tap one to open it.</div>
 </>)}
 {!!(v.fsAgreement) && (<>
-<div className="cc-card">
-<span className="cc-card-h">Finish the agreement</span>
+<AgreementCompletion v={v} prefix="fi">
 <div className="cc-cue" style={{marginTop: "0"}}>These print on the HIPAA pages as the patient's. For a child, it's the child's.</div>
 <IdentityFields v={v} />
-{!!(v.agreementOpen) && (<>
-<button className="cc-btn cc-full" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel}</button>
-<button className="cc-btn cc-soft" onClick={v.leaveForQa}>Finish later</button>
-</>)}
-{!!v.hasFileError && <div className="cc-cue cc-red">{v.fileError}</div>}
-{!!(v.agreementClosed) && (<><span className="cc-tag">{v.agreementNote}</span></>)}
-{!!(v.agreementParked) && (<><button className="cc-btn cc-soft" onClick={v.reopenAgreement}>Reopen and finish it now</button></>)}
-</div>
+</AgreementCompletion>
 </>)}
 {!!(v.fsInfo) && (<>
 <div className="cc-card">

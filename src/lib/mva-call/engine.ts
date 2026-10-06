@@ -1049,17 +1049,17 @@ export class CallEngine {
       when: ['story', 'incident', 'when'],
       signer: ['send', 'retainer', null],
       contact: ['send', 'retainer', null],
-      file: ['file', 'retainer', null],
+      file: ['file', 'retainer', 'agreement'],
     };
     var m = map[spot] || map.signer;
     if (!this.state.free && this.state.view === 'guided') {
-      this.setState({ phase: m[0], sheet: false, visited: Object.assign({}, this.state.visited, { [m[0]]: true }) });
+      this.setState({ phase: m[0], sheet: false, ...(spot === 'file' ? { file: { ...this.state.file, step: 'agreement' } } : {}), visited: Object.assign({}, this.state.visited, { [m[0]]: true }) });
       return;
     }
     var id = m[2];
     var fi: any = { sec: m[1], edit: null, flash: id, target: id, cq: id, jump: (this.state.fi.jump || 0) + 1, finishAsk: false };
     fi.seen = Object.assign({}, this.state.fi.seen, { [m[1]]: true });
-    this.setState({ fi: Object.assign({}, this.state.fi, fi) });
+    this.setState({ fi: Object.assign({}, this.state.fi, fi), ...(spot === 'file' ? { phase: 'file', file: { ...this.state.file, step: 'agreement' } } : {}) });
   }
 
   agreementHoldNotice() {
@@ -1526,11 +1526,15 @@ export class CallEngine {
         progress: { text: many(fin) + ' finished, ' + many(left) + ' left', pct: Math.round((fin / rows.length) * 100) },
         nextText: nowI >= 0 ? 'Next section: ' + rows[nowI].label : 'Every section is finished.',
         finish: {
+          label: sendSt === 'signed' && s.file.agreement !== 'done' ? 'Next: finish the agreement' : 'Finish the call',
           ask: !!fi.finishAsk && unfinished.length > 0,
           askText: 'Not finished yet. Open each missing section below, or press Finish the call again to end it anyway.',
           missing: unfinished.map((r) => ({ label: r.n + '. ' + r.label,
             go: () => this.setFi({ sec: r.id, edit: null, flash: null, target: null, finishAsk: false, jump: (this.state.fi.jump || 0) + 1 }) })),
           go: () => {
+            // A confirmed client signature still needs the office step. Land
+            // on its controls, not the top of the long Retainer section.
+            if (this.state.send.status === 'signed' && this.state.file.agreement !== 'done') return this.jumpTo('file');
             if (unfinished.length && !this.state.fi.finishAsk) return this.setFi({ finishAsk: true });
             this.setFi({ finishAsk: false });
             this.openDispo();
@@ -1553,7 +1557,7 @@ export class CallEngine {
       back: stepIndex > 0 ? { label: 'Back', go: () => goStep(stepIndex - 1) } : null,
       next: stepIndex < INTAKE_STEPS.length - 1
         ? { label: 'Next: ' + INTAKE_STEPS[stepIndex + 1].label, go: () => goStep(stepIndex + 1) }
-        : { label: 'Finish the call', go: chore.finish.go, finish: true },
+        : { label: chore.finish.label, go: chore.finish.go, finish: true },
       enterSection: (sec: string) => {
         const id = currentStep.questions.find(id => sectionOf(id) === sec && this.fiInfo(id).applies) || null;
         if (this.state.fi.sec !== sec || (id && !currentStep.questions.includes(this.state.fi.cq))) {

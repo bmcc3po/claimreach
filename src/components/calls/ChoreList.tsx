@@ -23,6 +23,7 @@ import SignedInlineReview from "./SignedInlineReview";
 import SignatureWaiting from "./SignatureWaiting";
 import ContractActions from "./ContractActions";
 import PassengerFollowup from "./PassengerFollowup";
+import AgreementCompletion from "./AgreementCompletion";
 
 const isOn = (cls: string) => / on(\s|$)/.test(" " + String(cls || "") + " ");
 
@@ -136,18 +137,7 @@ function Retainer({ v }: { v: any }) {
     {/* Identity stays editable after sending; completion still uses the
         signature/review lock supplied by the shared engine. */}
     <>
-      <IdentityFields v={v} />
-      <div className="ch-q ch-wide">
-        {v.agreementOpen && (
-          <div className="ch-row">
-            <button type="button" className="ch-btn" disabled={!!v.agreementLocked} onClick={v.completeAgreement}>{v.completeLabel || "Complete the agreement"}</button>
-            <button type="button" className="ch-btn ch-line" onClick={v.leaveForQa}>Finish later</button>
-          </div>
-        )}
-        {v.agreementClosed && <div className="ch-note">{v.agreementNote}</div>}
-        {v.agreementParked && <button type="button" className="ch-btn ch-line" onClick={v.reopenAgreement}>Reopen and finish it now</button>}
-        {v.hasFileError && <div className="ch-note ch-note-bad">{v.fileError}</div>}
-      </div>
+      <AgreementCompletion v={v} prefix="ch"><IdentityFields v={v} /></AgreementCompletion>
       {!v.clientContact && <div className="ch-q ch-wide">
         <div className="ch-q-h"><span className="ch-q-l">Home address</span></div>
         <PlaceField kind="address" label="Home address" placeholder="Start typing, pick the match" value={v.f.addr.value ?? ""} onChange={(t: string) => v.f.addr.set({ target: { value: t } })} />
@@ -230,7 +220,7 @@ export default function ChoreList({ v, sectionActions = true, scrollSections = t
               ? <button type="button" className="ch-next" onClick={r.next}>Next section: {r.nextLabel}
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                 </button>
-              : <button type="button" className="ch-btn ch-finish" onClick={ch.finish.go}>Finish the call</button>}
+              : <button type="button" className="ch-btn ch-finish" onClick={ch.finish.go}>{ch.finish.label}</button>}
           </div>}
           {sectionActions && !r.next && ch.finish.ask && <div className="ch-note ch-note-bad ch-finish-ask" role="alert"><strong>{ch.finish.askText}</strong><ul>{(ch.finish.missing || []).map((item: any) => <li key={item.label}><button type="button" className="ch-missing-link" onClick={item.go}>{item.label} →</button></li>)}</ul></div>}
         </section>
