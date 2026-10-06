@@ -11,6 +11,7 @@ import { NETFLY_FIELDS, NETFLY_SECTIONS, NETFLY_DQ_REASONS, NETFLY_UNAVAILABLE_I
 import { NETFLY_WELCOME_STEPS as VERIFY_STEPS, NETFLY_FIRST_CALL_SOURCE_LABELS, NETFLY_FOLLOWUP_FIELDS, NETFLY_CLOSING_REMINDERS, netflyCareGuidance, netflyFirstCallSources, netflyFirstConversationReview } from "@/lib/netfly-first-conversation";
 import { joinUsAddress } from "@/lib/us-address";
 import PlaceField from "../calls/PlaceField";
+import PropertyTreatmentHelp from "../calls/PropertyTreatmentHelp";
 import { DEFAULT_DQ_REASONS } from "@/lib/statuses";
 import "./netfly.css";
 import "./netfly-workspace.css";
@@ -364,7 +365,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       <details className="nf-history nf-emergency"><summary>Retainer error · Supervisor review</summary><p>If the signed original has an error, record the exact issue for a supervisor. The original PDF stays on the file. A supervisor will arrange any needed correction.</p><label>What is wrong?<textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="Describe the exact error and correction needed." /></label><div className="nf-actions">{latest && <button className="nf-secondary" disabled={reviewNote.trim().length < 5 || detail.answers.review?.retainer_reviewed_document_id !== latest.id} onClick={() => review("correction_needed", latest.id)}>Flag original for correction</button>}</div></details>
       <p className="nf-muted">NETFLY already obtained the signed retainer. If the original needs correction, flag it for supervisor review.</p></section>
         </div>}
-        {commandTab === "scripts" && <div className="nf-command-content"><h2>Call help</h2>
+        {commandTab === "scripts" && <div className="nf-command-content"><PropertyTreatmentHelp compact /><h2>Call help</h2>
     <details className="nf-history"><summary>Caller objections / responses from the supplied script</summary><p><strong>Who is this?</strong> Recognize that they may have spoken with several people; explain the firm's follow-up role; return to the question where they paused.</p><p><strong>I gave this already.</strong> Acknowledge it and explain that the read-back catches incorrect names and numbers; return to that question.</p><p><strong>I only wanted the report / did not know I signed.</strong> Pause and bring in a supervisor if they dispute representation or want out. Record their concern without assuming consent.</p></details>
         </div>}
         {commandTab === "phone" && <div className="nf-command-content"><h2>Phone</h2><p className="nf-muted">Check the active JustCall conversation before dialing so a second agent does not call this client at the same time. Close the welcome call with the 24–48-hour callback promise in the center intake.</p>{detail.file.phone && <p><strong>Client number:</strong> {detail.file.phone}</p>}</div>}

@@ -6,6 +6,8 @@ import Icon from "@/components/ui/Icon";
 import LawRulerSyncSummary from "@/components/LawRulerSyncSummary";
 import FileStatusControl from "@/components/FileStatusControl";
 import OwnerFirmDownload from "./OwnerFirmDownload";
+import PropertyTreatmentHelp from "./PropertyTreatmentHelp";
+import { matchingCoachingTopics } from "@/lib/property-treatment-coaching";
 import { SIGNED_QA_RETURN_STATUS } from "@/lib/statuses";
 import { REBS, REB_GROUPS, LINES } from "@/lib/mva-call/engine";
 import JustCallDialer, { popOutDialer, type JustCallDialerHandle, type DialerState } from "./JustCallDialer";
@@ -218,6 +220,7 @@ function Knowledge({ v, phase, fill, focusLines }: { v: any; phase: string; fill
       {/* Jump straight to a group of rebuttals or lines. Across the top when
           the panel is narrow, down the left side when it is wide. */}
       <nav className="cc-kn-nav" aria-label="Rebuttal groups">
+        <J id="kn-property-treatment" label="Property & treatment" />
         <J id="kn-ask" label="Ask CaseCure" cls=" cc-ask-j" />
         {now.length > 0 && <J id="kn-now" label="Right now" cls=" cc-gold" />}
         <span className="cc-kn-navh">Rebuttals</span>
@@ -226,6 +229,8 @@ function Knowledge({ v, phase, fill, focusLines }: { v: any; phase: string; fill
         {LINES.map((s: any) => <J key={s.head} id={slug("line " + s.head)} label={s.head} cls=" cc-line" />)}
       </nav>
       <div className="cc-kn-body">
+        <input className="cc-field cc-kn-search" type="search" placeholder="Search scripts and talking points" aria-label="Search scripts and talking points" value={q} onChange={(e) => setQ(e.target.value)} />
+        {matchingCoachingTopics(q).length > 0 && <div id="kn-property-treatment" data-spy="1"><PropertyTreatmentHelp compact query={q} /></div>}
         <div className="cc-card cc-kn-ask" id="kn-ask" data-spy="1">
           <span className="cc-card-h">Ask CaseCure</span>
           <textarea className="cc-area" rows={2} placeholder="What the PNC said, or what happened, in plain words" aria-label="Ask CaseCure" value={v.askField.value ?? ""} onChange={v.askField.set}
@@ -237,8 +242,6 @@ function Knowledge({ v, phase, fill, focusLines }: { v: any; phase: string; fill
           {!!v.askAnswer && <div className="cc-ask-a">{v.askAnswer}</div>}
           {!!v.askError && <div className="cc-cue cc-red" style={{ marginTop: 0 }}>{v.askError}</div>}
         </div>
-
-        <input className="cc-field cc-kn-search" type="search" placeholder="Search rebuttals and lines" aria-label="Search rebuttals and lines" value={q} onChange={(e) => setQ(e.target.value)} />
 
         {!term && now.length > 0 && (
           <div id="kn-now" data-spy="1" className="cc-kn-sec">
@@ -275,7 +278,7 @@ function Knowledge({ v, phase, fill, focusLines }: { v: any; phase: string; fill
             </div>
           );
         })}
-        {term && !groups.length && !lineSecs.length && <div className="cc-cue" style={{ textAlign: "center" }}>Nothing matches. Try Ask CaseCure above.</div>}
+        {term && !groups.length && !lineSecs.length && !matchingCoachingTopics(q).length && <div className="cc-cue" style={{ textAlign: "center" }}>Nothing matches. Try Ask CaseCure above.</div>}
       </div>
     </div>
   );

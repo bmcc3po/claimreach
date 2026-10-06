@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import { DESK_TABS, type DeskTab } from "@/lib/mva-call/desk-types";
 import { SIGNED_SENT_TO_FIRM, statusLabel } from "@/lib/statuses";
 import "./agent-help.css";
+import "./property-treatment-help.css";
 
 type Flow = "mva" | "netfly";
 type Step = { title: string; brief: string; detail: string; picture: string[]; action: string };
@@ -83,6 +84,7 @@ export function AgentGuideContent({ flow }: { flow: Flow }) {
         <div className="ag-pager"><button type="button" disabled={selected === 0} onClick={() => setSelected(selected - 1)}>← Previous</button><button type="button" disabled={selected === guide.steps.length - 1} onClick={() => setSelected(selected + 1)}>Next step →</button></div>
       </section></div>
     <section className="ag-help"><h3>Stuck? Start here.</h3><details><summary>Where do I find my file, and what comes next?</summary><p>The lists group your next action. Follow the message on the file; you do not need to move its stage yourself.</p><dl className="ag-status-list">{whereToFind[flow].map(([label, help]) => <div key={label}><dt>{label}</dt><dd>{help}</dd></div>)}</dl></details>{guide.help.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</section>
+    <a className="ag-coaching-link" href="/app/help/property-treatment"><strong>Property damage &amp; treatment →</strong><span>Short, warm responses for rental cars, repairs and getting care. Also in Command center → More → Scripts.</span></a>
     <p className="ag-footnote">This guide does not change or send anything in your client’s file.</p>
   </div>;
 }
