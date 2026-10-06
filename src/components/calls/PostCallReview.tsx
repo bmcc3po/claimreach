@@ -6,6 +6,7 @@ import { DobField, SsnField } from "./SsnDob";
 import { SsnRefusal } from "./SsnRefusal";
 import PlaceField from "./PlaceField";
 import FinishFileSteps from "./FinishFileSteps";
+import FileQaCheck from './FileQaCheck';
 
 /** A quiet, editable answer sheet between disposition and final firm QA. */
 export default function PostCallReview({ v }: { v: any }) {
@@ -17,7 +18,7 @@ export default function PostCallReview({ v }: { v: any }) {
     <label>{label}</label><input type={type} value={value.value ?? ""} onChange={value.set} aria-label={label} />
   </div>;
   const finalQa = <button type="button" className="post-review-next finish-file-pulse" disabled={!!v.reviewBusy} onClick={() => void v.returnToFinalQa()}>
-    {v.reviewBusy ? "Saving answers…" : "Next: review PDFs & send →"}
+    {v.reviewBusy ? "Saving answers…" : v.dispo.isSigned ? "Next: review PDFs & send →" : "Back to call outcome →"}
   </button>;
 
   return <main className="post-review" aria-label="Review intake answers">
@@ -26,12 +27,13 @@ export default function PostCallReview({ v }: { v: any }) {
       {finalQa}
     </header>
     <div className="post-review-body">
-      <FinishFileSteps current="review" />
-      <p className="finish-file-instruction">Check the answers, then continue to the PDFs and send. Look for <b>Sent to firm</b> before moving to your next file.</p>
+      {v.dispo.isSigned && <FinishFileSteps current="review" />}
+      <p className="finish-file-instruction">{v.dispo.isSigned ? <>Check the answers, then continue to the PDFs and send. Look for <b>Sent to firm</b> before moving to your next file.</> : 'Check the saved answers and any follow-up needed before your next call.'}</p>
       <div className="post-review-status" role="status">
         <strong>{missing.length ? `${missing.length} required answer${missing.length === 1 ? "" : "s"} missing` : "All required answers captured"}</strong>
         <span>{v.saveBad ? v.saveError : v.saveText || "Answers save as you go"}</span>
       </div>
+      <FileQaCheck leadId={v.leadId} claimId={v.claimId} revision={v.qaRevision} unsaved={v.qaUnsaved} onField={jump} />
       {!!missing.length && <details className="post-review-missing"><summary>Show missing answers</summary><div>
         {missing.map((item: any) => <button key={item.id} type="button" onClick={() => jump(item.id)}>{item.secLabel}: {item.label}</button>)}
       </div></details>}

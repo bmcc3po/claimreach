@@ -49,12 +49,23 @@ function test(name: string, body: () => void) { body(); console.log('ok', name);
 
 test('post-call review shows the same editable answers and missing links without call scripts', () => {
   const e = make(); e.setView('chore');
+  e.setState({ dispo: { ...e.state.dispo, pick: 'signed', saved: true } });
   e.renderVals().fi.sections[0].questions[0].c.field.set({ target: { value: 'Rear ended at a stoplight.' } });
   const v = { ...e.renderVals(), leadNo: 'SYN-1', identityStatus: '', f: e.renderVals().f };
   const html = renderToStaticMarkup(<PostCallReview v={v} />);
   assert.ok(html.includes('Rear ended at a stoplight.') && html.includes('Accident story notes'));
   assert.ok(html.includes('Show missing answers') && html.includes('Next: review PDFs &amp; send →'));
   assert.ok(!html.includes('Say it with') && !html.includes('Tell me what happened.') && !html.includes('Stay on the line'));
+});
+
+test('unsigned callback review offers the file check without suggesting a signed packet is ready', () => {
+  const e = make(); e.setView('chore');
+  e.setState({ dispo: { ...e.state.dispo, pick: 'callback', saved: true } });
+  const v = { ...e.renderVals(), leadId: 'synthetic', leadNo: 'SYN-1', identityStatus: '', f: e.renderVals().f };
+  const html = renderToStaticMarkup(<PostCallReview v={v} />);
+  assert.ok(html.includes('check my file'));
+  assert.ok(html.includes('Back to call outcome'));
+  assert.ok(!html.includes('Next: review PDFs') && !html.includes('Say it with'));
 });
 
 test('every applicable question renders the same text, options, child fields and requirements in all actual call views', () => {

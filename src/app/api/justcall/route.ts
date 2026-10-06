@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { recordAudit } from "@/lib/audit";
+import { requireStaff } from '@/lib/mva-call/server';
+import { outboundContact } from '@/lib/outbound-contact';
 
 export const runtime = "edge";
 
@@ -17,39 +19,25 @@ function fmtPhone(raw: string): string {
 //  - call: initiates click-to-call between agent number and lead, logs call
 // Recording stitch is deferred (webhook timing); this initiates + logs.
 export async function POST(req: NextRequest) {
+  if (req.headers.get('origin') && req.headers.get('origin') !== new URL(req.url).origin) return NextResponse.json({ error: 'Open this action from ClaimReach.' }, { status: 403 });
   const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const { data: me } = await sb.from("app_users")
-    .select("role, firm_id, full_name").eq("id", auth.user.id).maybeSingle();
-  if (!me || me.role === "firm") return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const actor = await requireStaff(sb);
+  if (!actor) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const b = await req.json().catch(() => null);
+  if (!b || !['text','call'].includes(b.action)) return NextResponse.json({ error: 'action must be text or call' }, { status: 400 });
+  const { action, lead_id, body } = b;
+  if (action === 'text' && (typeof body !== 'string' || !body.trim() || body.length > 1000)) return NextResponse.json({ error: 'Enter a message under 1,000 characters.' }, { status: 400 });
+  const contact = await outboundContact(sb, actor, lead_id, b.to, action === 'text' ? 'Text' : 'Call');
+  if ('error' in contact) return NextResponse.json({ error: contact.error }, { status: contact.status });
+  const { lead, to } = contact;
 
   const apiKey = process.env.JUSTCALL_API_KEY;
   const apiSecret = process.env.JUSTCALL_API_SECRET;
   const from = process.env.JUSTCALL_DEFAULT_FROM;
-  if (!apiKey || !apiSecret) {
+  if (!apiKey || !apiSecret || !from) {
     return NextResponse.json({ error: "justcall keys missing" }, { status: 500 });
   }
   const authHeader = `${apiKey}:${apiSecret}`;
-
-  const { action, lead_id, to, body } = await req.json();
-  if (!lead_id || !to) return NextResponse.json({ error: "lead_id and to required" }, { status: 400 });
-
-  // Comms-safety guard: refuse to contact a monitored line on an unsafe channel.
-  const { data: lead } = await sb.from("leads")
-    .select("comms_monitored, comms_safe_channels, firm_id")
-    .eq("id", lead_id).maybeSingle();
-  if (lead?.comms_monitored) {
-    const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
-    const need = action === "text" ? "Text" : "Call";
-    if (!safe.includes(need)) {
-      return NextResponse.json(
-        { error: `blocked: ${need} is not a safe channel for this monitored contact` },
-        { status: 409 }
-      );
-    }
-  }
 
   let jcResp: Response;
   let kind: "text_out" | "call";
@@ -76,14 +64,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "justcall error", detail: jcData }, { status: 502 });
   }
 
-  await sb.from("lead_activity").insert({
+  const saved = await sb.from("lead_activity").insert({
     firm_id: lead?.firm_id,
     lead_id,
     kind,
-    actor: auth.user.id,
+    actor: actor.id,
     body: action === "text" ? body : null,
     meta: { to, justcall: jcData },
   });
+  if (saved.error) return NextResponse.json({ error: 'The provider accepted the action, but its file history did not save. Do not retry it.' }, { status: 503 });
 
   // Activity Log entry so SMS sends and calls placed show up alongside everything else.
   if (action === "text") {
@@ -91,8 +80,8 @@ export async function POST(req: NextRequest) {
     await recordAudit({
       firm_id: lead?.firm_id ?? null,
       lead_id,
-      actor: auth.user.id,
-      actor_name: me.full_name ?? "User",
+      actor: actor.id,
+      actor_name: actor.name ?? "User",
       category: "sms",
       description: `Texted ${fmtPhone(to)}${preview ? `: "${preview.slice(0, 80)}${preview.length > 80 ? "…" : ""}"` : ""}.`,
       meta: { to, channel: "sms" },
@@ -101,8 +90,8 @@ export async function POST(req: NextRequest) {
     await recordAudit({
       firm_id: lead?.firm_id ?? null,
       lead_id,
-      actor: auth.user.id,
-      actor_name: me.full_name ?? "User",
+      actor: actor.id,
+      actor_name: actor.name ?? "User",
       category: "call",
       description: `Placed a call to ${fmtPhone(to)}.`,
       meta: { to, channel: "call" },

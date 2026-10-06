@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import OwnerFirmDownload from "./OwnerFirmDownload";
 import { officeDateTime } from "@/lib/office-clock";
 import FinishFileSteps from "./FinishFileSteps";
-import FileQaCheck from "./FileQaCheck";
 
 type DeliveryState = {
   claim_id: string;
@@ -21,7 +20,7 @@ const email = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 const returnEnd = (sentAt: string) => new Date(Date.parse(sentAt) + 7 * 86400000);
 
 /** The only post-call firm handoff in Desk. Status always comes from the server. */
-export default function FinalHandoff({ leadId, claimId, missing, onNext, onAgreement, onField, qaRevision, qaUnsaved, canOverrideDownload = false }: { leadId: string; claimId: string; missing: { label: string; go: () => void }[]; onNext?: () => void; onAgreement?: () => void; onField?: (id: string) => void; qaRevision?: string; qaUnsaved?: boolean; canOverrideDownload?: boolean }) {
+export default function FinalHandoff({ leadId, claimId, missing, onNext, onAgreement, canOverrideDownload = false }: { leadId: string; claimId: string; missing: { label: string; go: () => void }[]; onNext?: () => void; onAgreement?: () => void; canOverrideDownload?: boolean }) {
   const [state, setState] = useState<DeliveryState | null>(null);
   const [checks, setChecks] = useState([false, false, false]);
   const [extra, setExtra] = useState("");
@@ -133,7 +132,6 @@ export default function FinalHandoff({ leadId, claimId, missing, onNext, onAgree
     {sentAt ? <div role="status"><strong>{celebrate ? "File sent! You’re all done." : `Delivered ${officeDateTime(sentAt)}.`}</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${officeDateTime(returnEnd(sentAt).toISOString())}.` : "Seven-day return window cleared. Ready for billing review."}</p><p>Delivered to {state?.delivery?.to}; Brett received a copy.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Back to my calls</button>}</div> : ownerSent ? <div role="status"><strong>The owner confirmed this file was already sent to the firm.</strong><p>The original delivery date was not recorded. The return window cannot be calculated. Do not send it again.</p>{onNext && <button type="button" className="final-handoff-send" onClick={onNext}>Back to my calls</button>}</div> : state && <>
       <p className="finish-file-instruction" role="status">{nextReview === "answers" ? "Next: finish the missing answers below." : nextReview === "intake" ? "Next: open and check the intake PDF." : nextReview === "packet-pending" ? "Next: finish the agreement to make the signed packet available." : nextReview === "packet" ? "Next: open and check the signed packet." : nextReview === "checks" ? "Next: check the three review items below." : "Ready for your final send. Check the recipients below."} Look for <b>Sent to firm</b> to confirm you’re done.</p>
       {missing.length > 0 && <div className="final-handoff-error" role="alert"><strong>Intake incomplete: {missing.length} required answer{missing.length === 1 ? "" : "s"} missing.</strong><p>Finish these before the file can go to the firm.</p><ul>{missing.map((item, index) => <li key={`${item.label}-${index}`}><button type="button" onClick={item.go}>{item.label} ↗</button></li>)}</ul></div>}
-      <FileQaCheck leadId={leadId} claimId={claimId} onField={onField} unsaved={qaUnsaved} revision={JSON.stringify([qaRevision, packetUrl, missing.map(m => m.label)])} />
       <div className="final-handoff-docs" aria-label="Review the two PDFs before sending"><button type="button" className={cue("intake")} onClick={() => openPreview("intake")}>1. Review intake PDF <span>{openedIntake ? "Opened ✓" : "Open PDF"}</span></button><button type="button" className={cue("packet")} disabled={!packetUrl} onClick={() => openPreview("packet")}>2. Review signed retainer + HIPAA/HITECH <span>{!packetUrl ? "Packet pending" : openedPacket ? "Opened ✓" : "Open PDF"}</span></button></div>
       {!packetUrl && onAgreement && <button type="button" className={`signed-inline-next${cue("packet-pending")}`} onClick={onAgreement}>Open agreement — finish or check status →</button>}
       {[

@@ -585,7 +585,7 @@ function Dispo({ v }: { v: any }) {
 <div className="cc-grp">
 {(v.dispo.summary || []).map((r: any, i49: number) => (<Fragment key={i49}><div className="cc-done-row" style={{cursor: "default"}}><span className="cc-done-k">{r.k}</span><span className="cc-done-v">{r.v}</span></div></Fragment>))}
 </div>
-{v.dispo.isSigned && <FinalHandoff key={`${v.leadId}:${v.claimId}`} leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} onAgreement={v.returnToAgreement} onField={(id: string) => { v.reviewIntake(); requestAnimationFrame(() => document.getElementById(`sf-q-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })); }} qaRevision={v.qaRevision} qaUnsaved={v.qaUnsaved} canOverrideDownload={v.canOverrideDownload} />}
+{v.dispo.isSigned && <FinalHandoff key={`${v.leadId}:${v.claimId}`} leadId={v.leadId} claimId={v.claimId} missing={(v.fi.missing || []).map((item: any) => ({ label: item.label, go: () => { v.reviewIntake(); item.go(); } }))} onNext={v.dispo.nextCall} onAgreement={v.returnToAgreement} canOverrideDownload={v.canOverrideDownload} />}
 </>)}
 {!!v.dispo.hasError && <div className="cc-stop"><div className="cc-cue cc-red" style={{marginTop: "0"}}>{v.dispo.error}</div></div>}
 </div>
