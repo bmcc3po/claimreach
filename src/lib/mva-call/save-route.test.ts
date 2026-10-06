@@ -168,6 +168,33 @@ async function main() {
     assert.equal((await route(reviewed)({ post_call_correction: true })).status, 409);
     assert.equal(reviewed.tables.claims[0].answers.mva_call.story.text, "Before");
   });
+  await check("callback and unsigned outcomes allow an audited answer correction without reopening the call", async () => {
+    for (const disposition of ["callback", "esign", "dq", "dnc"]) {
+      const db = world();
+      Object.assign(db.tables.intake_calls[0], { status: "ended", agent_id: "agent", disposition, ended_at: "2026-10-06T10:00:00Z" });
+      const before = structuredClone(db.tables.intake_calls[0]);
+      const result = await route(db)({ post_call_correction: true, answers: {story:{text:"Before"},file:{addr:"1600 Synthetic Avenue"}} });
+      assert.equal(result.status, 200);
+      assert.equal(db.tables.claims[0].answers.mva_call.file.addr,"1600 Synthetic Avenue");
+      assert.deepEqual(db.tables.intake_calls[0],before);
+      assert.equal(db.tables.intake_calls.length,1);
+      assert.equal(db.tables.leads[0].last_called_at,undefined);
+      assert.equal(db.tables.audit_log.length,1);
+      assert.doesNotMatch(db.tables.audit_log[0].description,/signed/);
+    }
+  });
+  await check("callback review cannot edit archived, delivered, approved or another agent's file", async () => {
+    for (const block of ["archive","delivered","qa","other-agent","stale-tab"]) {
+      const db = world();
+      Object.assign(db.tables.intake_calls[0], { status:"ended",agent_id:block==="other-agent"?"other":"agent",disposition:"callback",ended_at:"2026-10-06T10:00:00Z" });
+      if(block==="archive")db.tables.leads[0].archived_at="2026-10-06T10:00:01Z";
+      if(block==="delivered")db.tables.claims[0].status="delivered";
+      if(block==="qa")db.tables.qa_reviews=[{claim_id:C,decision:"approve",created_at:"2026-10-06T10:00:01Z"}];
+      const result=await route(db)({post_call_correction:block!=="stale-tab"});
+      assert.equal(result.status,409,block);
+      assert.ok(db.ops.every(o=>o.kind==="select"),block);
+    }
+  });
   await check("SSN is excluded from both saved answers and returned canonical document", async () => {
     const db = world(); const r = await route(db)({ answers: { story: { text: "Agent edit" }, file: { ssn: "000000000", dob: "01/01/1990" } } });
     assert.equal(r.status, 200); assert.ok(!JSON.stringify(r.body.answers).includes("000000000"));

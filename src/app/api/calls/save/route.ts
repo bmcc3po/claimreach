@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
   const { data: lead, error: leadErr } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
   if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 });
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
+  if (lead.archived_at) return NextResponse.json({ error: "This file is archived. Restore it before changing intake answers.", ended: true }, { status: 409 });
 
   // The call's ONE matter: the claim the console pinned when the call opened
   // (round 7). Answers are filed on it and nowhere else — never the oldest
@@ -58,11 +59,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "This older call is not tied to a matter on a multi-matter file. Start a new call on the selected matter before saving.", ended: true }, { status: 409 });
     }
     if (was && was.status !== "live") {
-      if (b?.post_call_correction !== true || was.agent_id !== me.id || was.disposition !== "signed" || !was.ended_at) {
+      if (b?.post_call_correction !== true || was.agent_id !== me.id || !was.disposition || !was.ended_at) {
         return NextResponse.json({ error: "This call was already closed (maybe on another screen). Open the file again to start a new call.", ended: true }, { status: 409 });
       }
       if (["signed_approved", "delivered", "retained"].includes(String(claim.status || ""))) {
-        return NextResponse.json({ error: "This signed file has advanced past agent review. Ask QA to return it before changing intake answers.", ended: true }, { status: 409 });
+        return NextResponse.json({ error: "This file has advanced past agent review. Ask QA to return it before changing intake answers.", ended: true }, { status: 409 });
       }
       const { data: latestQa, error: qaErr } = await sb.from("qa_reviews").select("decision").eq("claim_id", claim.id)
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -161,7 +162,7 @@ export async function POST(req: NextRequest) {
     const { error: auditErr } = await supabaseAdmin().from("audit_log").insert({
       firm_id: lead.firm_id, lead_id: leadId, claim_id: claim.id, actor: me.id,
       actor_name: me.name, category: "call",
-      description: `Corrected ${changedPaths.length} intake answer${changedPaths.length === 1 ? "" : "s"} after the signed call ended, before QA.`,
+      description: `Corrected ${changedPaths.length} intake answer${changedPaths.length === 1 ? "" : "s"} after the call ended, before QA.`,
       meta: { call_id: callId, changed_fields: changedPaths },
     });
     if (auditErr) return NextResponse.json({ error: "The answer saved, but the required correction history did not. Stop and ask an administrator to review this file.", call_id: callId, ended: true }, { status: 500 });
