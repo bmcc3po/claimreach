@@ -6,7 +6,7 @@ import { FakeDb } from '../test-fake-db';
 import * as report from './report';
 globalThis.fetch = async () => { throw Error('Network forbidden'); };
 const code = ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../../app/api/calls/file-qa/route.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-function fixture(options: { denied?: boolean; stale?: boolean; badAudit?: boolean; changed?: boolean; sent?: boolean; invalidModel?: boolean } = {}) {
+function fixture(options: { denied?: boolean; stale?: boolean; badAudit?: boolean; changed?: boolean; sent?: boolean; invalidModel?: boolean; netflyDenied?: boolean } = {}) {
   const db = new FakeDb({ audit_log: [] });
   if (options.badAudit) db.failOn = op => op.kind === 'insert' ? 'audit failed' : null;
   let snapshots = 0, modelCalls = 0;
@@ -15,13 +15,17 @@ function fixture(options: { denied?: boolean; stale?: boolean; badAudit?: boolea
     '@/lib/supabase-server': { supabaseServer: async () => db, supabaseAdmin: () => db },
     '@/lib/mva-call/server': { requireStaff: async () => options.denied ? null : { id: 'actor', name: 'Synthetic Agent', can: () => true } },
     '@/lib/file-qa/report': report,
-    '@/lib/file-qa/server': { loadQaSnapshot: async (_db: any, _admin: any, lead: string, claim: string) => {
+    '@/lib/file-qa/server': { loadNetflyQaSnapshot: async (ctx: any, key: string) => {
+      assert.equal(ctx.actor.id, 'actor');
+      if (key !== 'own-file') throw Error('NETFLY file not found.');
+      return mods['@/lib/file-qa/server'].loadQaSnapshot(db,db,'own-lead','own-claim');
+    }, loadQaSnapshot: async (_db: any, _admin: any, lead: string, claim: string) => {
       assert.equal(lead, 'own-lead'); assert.equal(claim, 'own-claim'); snapshots++;
       return { lead: { id: lead, firm_id: 'own-firm' }, claim: { id: claim }, fingerprint: options.changed && snapshots > 1 ? 'new' : 'saved',
         input: { flow: 'netfly', answers: { fields: { incident_story: 'Synthetic rear-end crash', seen_doctor: 'No' } }, contact: {}, packetErrors: [], sent: !!options.sent } };
     } },
     '@/lib/ai-relay': { askRelay: async (_system: string, data: string) => { modelCalls++; assert.doesNotMatch(data, /unrelated/); return options.invalidModel ? 'not JSON' : JSON.stringify({ findings: [] }); } },
-    '@/lib/netfly-server': { netflyContext: async () => ({}), netflyMatter: async (_ctx: any, file: string) => file === 'own-file' ? { lead: { id: 'own-lead' }, claim: { id: 'own-claim' } } : null },
+    '@/lib/netfly-server': { netflyContext: async () => options.netflyDenied ? null : ({actor:{id:'actor'}}) },
   };
   const mod: any = {}; new Function('require', 'exports', code)((id: string) => { if (!(id in mods)) throw Error(id); return mods[id]; }, mod);
   return { db, modelCalls: () => modelCalls, snapshots: () => snapshots, post: (body: any = {}, origin = 'https://claimreach.test') => mod.POST({ url: 'https://claimreach.test/api/calls/file-qa', headers: new Headers({ origin }), json: async () => ({ lead_id: 'own-lead', claim_id: 'own-claim', op: 'check', ...body }) }) };
@@ -29,7 +33,10 @@ function fixture(options: { denied?: boolean; stale?: boolean; badAudit?: boolea
 async function main() {
   let f = fixture({ denied: true }); assert.equal((await f.post()).status, 403); assert.equal(f.snapshots(), 0);
   f = fixture(); assert.equal((await f.post({}, 'https://other.test')).status, 403); assert.equal(f.snapshots(), 0);
-  assert.equal((await f.post({ file: 'other-file' })).status, 404); assert.equal(f.snapshots(), 0);
+  assert.equal((await f.post({ file: 'other-file' })).status, 503); assert.equal(f.snapshots(), 0);
+  const nfDenied=fixture({netflyDenied:true}); assert.equal((await nfDenied.post({file:'own-file'})).status,403);assert.equal(nfDenied.snapshots(),0);
+  const nf=fixture();assert.equal((await nf.post({file:'own-file',lead_id:'foreign',claim_id:'foreign'})).status,200);
+  assert.equal(nf.db.tables.audit_log[0].claim_id,'own-claim','NETFLY key authorization outranks untrusted supplied UUIDs');
   assert.equal((await f.post({ op: 'story', fingerprint: 'old' })).status, 409); assert.equal(f.modelCalls(), 0); assert.equal(f.db.ops.length, 0);
   f = fixture(); const quick = await f.post(); assert.equal(quick.status, 200); assert.equal(quick.body.report.narrative, 'not_run');
   assert.equal(f.modelCalls(), 0); assert.equal(f.db.tables.audit_log[0].claim_id, 'own-claim'); assert.equal(f.db.tables.audit_log[0].firm_id, 'own-firm');

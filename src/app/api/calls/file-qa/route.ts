@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, supabaseServer } from '@/lib/supabase-server';
 import { requireStaff } from '@/lib/mva-call/server';
-import { loadQaSnapshot } from '@/lib/file-qa/server';
+import { loadQaSnapshot, loadNetflyQaSnapshot } from '@/lib/file-qa/server';
 import { deterministicQa, narrativeQa, qaSources, QA_NARRATIVE_SYSTEM, QA_RULE_VERSION, type QaReport } from '@/lib/file-qa/report';
 import { askRelay } from '@/lib/ai-relay';
-import { netflyContext, netflyMatter } from '@/lib/netfly-server';
+import { netflyContext } from '@/lib/netfly-server';
 export const runtime = 'edge';
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 
@@ -16,15 +16,13 @@ export async function POST(req: NextRequest) {
   if (!actor || !(actor.can('intake.fill') || actor.can('intake.qa'))) return fail('File review access is unavailable.', 403);
   const body = await req.json().catch(() => null);
   if (!body || !['check', 'story'].includes(body.op)) return fail('Open a specific file before checking it.', 400);
-  if (typeof body.file === 'string') {
-    const ctx = await netflyContext(), file = ctx && await netflyMatter(ctx, body.file);
-    if (!file) return fail('NETFLY file not found.', 404);
-    body.lead_id = file.lead.id; body.claim_id = file.claim.id;
-  }
-  if (typeof body.lead_id !== 'string' || typeof body.claim_id !== 'string' || !body.lead_id || !body.claim_id) return fail('Open a specific file before checking it.', 400);
+  const netfly = typeof body.file === 'string' ? await netflyContext() : null;
+  if (typeof body.file === 'string' && (!netfly || netfly.actor.id !== actor.id)) return fail('NETFLY file access is unavailable.', 403);
+  if (!netfly && (typeof body.lead_id !== 'string' || typeof body.claim_id !== 'string' || !body.lead_id || !body.claim_id)) return fail('Open a specific file before checking it.', 400);
   const admin = supabaseAdmin();
+  const load = () => netfly ? loadNetflyQaSnapshot(netfly, body.file) : loadQaSnapshot(db, admin, body.lead_id, body.claim_id);
   try {
-    const snapshot = await loadQaSnapshot(db, admin, body.lead_id, body.claim_id);
+    const snapshot = await load();
     if (body.op === 'story' && body.fingerprint !== snapshot.fingerprint) return fail('This file changed. Run the quick check again before reviewing its story.', 409);
     const report: QaReport = { claimId: snapshot.claim.id, fingerprint: snapshot.fingerprint, checkedAt: new Date().toISOString(), findings: deterministicQa(snapshot.input), narrative: 'not_run', sent: snapshot.input.sent };
     if (body.op === 'story' && !report.sent) {
@@ -39,7 +37,7 @@ export async function POST(req: NextRequest) {
       if (extra) report.findings.push(...extra);
     }
     // A slow model response must never appear to review newer source material.
-    const current = await loadQaSnapshot(db, admin, body.lead_id, body.claim_id);
+    const current = await load();
     if (current.fingerprint !== report.fingerprint) return fail('Answers or documents changed during the check. Run it again.', 409);
     const saved = await admin.from('audit_log').insert({ firm_id: snapshot.lead.firm_id, lead_id: snapshot.lead.id, claim_id: snapshot.claim.id,
       actor: actor.id, actor_name: actor.name, category: 'system', description: 'Checked this matter’s file; findings are advisory. No status or delivery changed.',

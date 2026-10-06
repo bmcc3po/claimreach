@@ -32,12 +32,16 @@ function fixture({ denied = false, netfly = false } = {}) {
     '../netfly-packet': { netflyPacketReview: async (_db: any, l: any, c: any) => { assert.equal(l.id, 'lead'); assert.equal(c.id, 'claim'); return { errors: ['Synthetic missing original'], snapshot: 'packet' }; } },
     '../firm-delivery-dispatch': { readFirmDispatch: async (_db: any, id: string, cid: string) => { assert.equal(id, 'lead'); assert.equal(cid, 'claim'); return { row: dispatch, error: null }; } },
     '../owner-file-confirmation': { ownerConfirmedDelivery }, '../firm-delivery-state': { confirmedFirmDeliveryAt },
-    '../matter': { matterRowsFilter: () => 'claim_id.eq.claim' },
+    '../matter': { matterRowsFilter: () => 'claim_id.eq.claim', resolveMatter: async (_db:any,id:string,opts:any) => {
+      assert.equal(id,lead.id);assert.equal(opts.claimId,claim.id); return {ok:true,claim,sole:false};
+    } },
+    '../netfly-server': {netflyMatter:async (_ctx:any,key:string)=>key==='own-file'?{lead,claim}:null},
     '../resend-inbound': { contentHash: async (data: Uint8Array) => createHash('sha256').update(data).digest('hex') },
     './report': { QA_RULE_VERSION: 'test' },
   };
   const mod: any = {}; new Function('require', 'exports', code)((id: string) => { if (!(id in mods)) throw Error(id); return mods[id]; }, mod);
-  return { db, claim, dispatch: (value: any) => { dispatch = value; }, load: () => mod.loadQaSnapshot(db, db, 'lead', 'claim') };
+  return { db, claim, dispatch: (value: any) => { dispatch = value; }, load: () => mod.loadQaSnapshot(db, db, 'lead', 'claim'),
+    loadNetfly:(key='own-file')=>mod.loadNetflyQaSnapshot({db,campaign:{id:'campaign',firm_id:'firm'}},key) };
 }
 async function main() {
   const denied = fixture({ denied: true }); await assert.rejects(denied.load, /access denied/); assert.equal(denied.db.ops.length, 0);
@@ -54,6 +58,11 @@ async function main() {
   assert.ok((await f.load()).input.packetErrors.some((e: string) => /uncertain/.test(e)));
   f.db.failOn = op => op.table === 'firm_deliveries' ? 'receipt read failed' : null; await assert.rejects(f.load, /receipts/);
   const nf = fixture({ netfly: true }); const n = await nf.load(); assert.equal(n.input.flow, 'netfly'); assert.deepEqual(n.input.packetErrors, ['Synthetic missing original']);
+  const nfStaff = fixture({netfly:true,denied:true});
+  await assert.rejects(nfStaff.load,/access denied/);
+  assert.equal((await nfStaff.loadNetfly()).input.flow,'netfly','NETFLY uses its existing narrow staff projection, not INNO lead RLS');
+  await assert.rejects(()=>nfStaff.loadNetfly('foreign-file'),/not found/);
+  nfStaff.claim.firm_id='foreign';await assert.rejects(()=>nfStaff.loadNetfly(),/access is unavailable/);
   assert.ok(f.db.ops.every(op => op.kind === 'select'), 'Snapshot loader must never mutate the file');
   console.log('File QA snapshot: authorization, matter receipts/calls, legacy sends, NETFLY rules, fingerprints and read failures passed');
 }
