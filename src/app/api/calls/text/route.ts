@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
-import { requireStaff, LEAD_CALL_COLS, fmtPhone } from "@/lib/mva-call/server";
-import { sendJustCallSms, toE164 } from "@/lib/justcall-send";
+import { requireStaff, fmtPhone } from "@/lib/mva-call/server";
+import { sendJustCallSms } from "@/lib/justcall-send";
+import { outboundContact } from "@/lib/outbound-contact";
 import { normPhone } from "@/lib/comms";
 import { recordAudit } from "@/lib/audit";
 
@@ -12,9 +13,11 @@ export const runtime = "edge";
 // written to communications right away so it shows on the file; JustCall's
 // own sms webhook later lands on the same row by its id.
 export async function POST(req: NextRequest) {
+  if (req.headers.get('origin') && req.headers.get('origin') !== new URL(req.url).origin) return NextResponse.json({ error: 'Open this action from ClaimReach.' }, { status: 403 });
   const sb = await supabaseServer();
   const me = await requireStaff(sb);
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!me.can('messages.send')) return NextResponse.json({ error: 'Texting permission is unavailable.' }, { status: 403 });
 
   const b = await req.json().catch(() => null);
   const leadId = String(b?.lead_id || "");
@@ -22,20 +25,9 @@ export async function POST(req: NextRequest) {
   if (!leadId || !body) return NextResponse.json({ error: "Type a message first." }, { status: 400 });
   if (body.length > 1000) return NextResponse.json({ error: "That text is too long. Keep it under 1,000 characters." }, { status: 400 });
 
-  const { data: lead } = await sb.from("leads").select(LEAD_CALL_COLS).eq("id", leadId).maybeSingle();
-  if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
-  if (lead.perm_text !== true) return NextResponse.json({ error: "Texting is disabled for this file." }, { status: 409 });
-  const { data: phonePoints, error: pointError } = await sb.from("contact_points")
-    .select("kind, status, value").eq("lead_id", lead.id).in("kind", ["mobile", "landline"]).is("retired_at", null);
-  if (pointError) return NextResponse.json({ error: "Could not verify opt-out status. Text held." }, { status: 503 });
-  if ((phonePoints ?? []).some((point: any) => point.status === "opted_out" && normPhone(point.value) === normPhone(lead.phone)))
-    return NextResponse.json({ error: "This number opted out. Do not text it." }, { status: 409 });
-  if (lead.comms_monitored) {
-    const safe: string[] = Array.isArray(lead.comms_safe_channels) ? lead.comms_safe_channels : [];
-    if (!safe.includes("Text")) return NextResponse.json({ error: "Texting is not a safe channel for this caller." }, { status: 409 });
-  }
-  const to = toE164(lead.phone);
-  if (!to) return NextResponse.json({ error: "There's no cell number on this file." }, { status: 400 });
+  const contact = await outboundContact(sb, me, leadId, null, "Text");
+  if ("error" in contact) return NextResponse.json({ error: contact.error }, { status: contact.status });
+  const { lead, to } = contact;
   const from = process.env.JUSTCALL_DEFAULT_FROM || "";
   if (!from) return NextResponse.json({ error: "No JustCall number is set. Add JUSTCALL_DEFAULT_FROM in Cloudflare." }, { status: 500 });
 

@@ -1,4 +1,4 @@
-import { resolveSigningMatter, getMatterAgreement } from '../mva-call/signing-matter';
+import { resolveSigningMatter, getMatterAgreement, type SigningContext } from '../mva-call/signing-matter';
 import { packetShort } from '../mva-call/esign';
 import { resolveFormKey } from '../forms';
 import { NETFLY_CAMPAIGN } from '../netfly-ontake';
@@ -6,7 +6,8 @@ import { netflyPacketReview } from '../netfly-packet';
 import { readFirmDispatch } from '../firm-delivery-dispatch';
 import { ownerConfirmedDelivery } from '../owner-file-confirmation';
 import { confirmedFirmDeliveryAt } from '../firm-delivery-state';
-import { matterRowsFilter } from '../matter';
+import { matterRowsFilter, resolveMatter } from '../matter';
+import { netflyMatter, type netflyContext } from '../netfly-server';
 import { contentHash } from '../resend-inbound';
 import { QA_RULE_VERSION, type QaInput } from './report';
 
@@ -14,7 +15,23 @@ import { QA_RULE_VERSION, type QaInput } from './report';
 export async function loadQaSnapshot(db: any, admin: any, leadId: string, claimId: string) {
   const context = await resolveSigningMatter(db, leadId, { claimId, authoritativeDb: admin });
   if (!context.ok) throw new Error(context.error);
+  return snapshotForContext(db, admin, context);
+}
+
+/** NETFLY staff already use this narrow campaign-authorized projection. Never
+ * fall back to admin on an arbitrary lead/session failure. */
+export async function loadNetflyQaSnapshot(ctx: NonNullable<Awaited<ReturnType<typeof netflyContext>>>, key: string) {
+  const file = await netflyMatter(ctx, key);
+  if (!file) throw new Error('NETFLY file not found.');
+  const matter = await resolveMatter(ctx.db, file.lead.id, { claimId: file.claim.id, campaignId: ctx.campaign.id, authoritativeDb: ctx.db });
+  if (!matter.ok) throw new Error(matter.error);
+  if (matter.claim.id !== file.claim.id || matter.claim.firm_id !== ctx.campaign.firm_id || matter.claim.campaign_id !== ctx.campaign.id) throw new Error('NETFLY matter access is unavailable.');
+  return snapshotForContext(ctx.db, ctx.db, { ok: true, lead: file.lead, matter, campaignId: ctx.campaign.id });
+}
+
+async function snapshotForContext(db: any, admin: any, context: SigningContext) {
   const { lead, matter, campaignId } = context, claim = matter.claim;
+  const leadId = lead.id, claimId = claim.id;
   const config = await db.from('campaigns').select('id,firm_id,name,path,esign_required,firm_email,firm_cc')
     .eq('id', campaignId).eq('firm_id', lead.firm_id).maybeSingle();
   if (config.error || !config.data) throw new Error('Could not verify this campaign.');
