@@ -336,6 +336,16 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.ok(r3.ok && r3.skipped, "A itself is guarded");
     assert.equal(d.sent.length, 2);
   });
+  await t("INNO delivery links to the authenticated firm inbox without an access token", async () => {
+    const a = agreement("inbox", "5020", { claim_id: "aaa1", campaign_id: "ca01" });
+    const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01", { name: "INNO MVA" })], agreements: [a] });
+    const d = deps(db);
+    const result = await deliverLeadToFirm({ leadId: L, claimId: "aaa1", triggeredBy: "manual" }, d);
+    assert.ok(result.ok, JSON.stringify(result));
+    assert.match(d.sent[0].html, /href="https:\/\/claimreach.com\/firm-review-login"/);
+    assert.match(d.sent[0].html, /assigned firm account/);
+    assert.doesNotMatch(d.sent[0].html, /firm-review-login\?/);
+  });
 
   await t("a file with several matters and none named refuses; nothing is written or sent", async () => {
     const db = world({ lead: leadRow({ campaign_id: "cc03" }), claims: [claimRow("aaa1", "ca01"), claimRow("bbb2", "cb02")], campaigns: [camp("ca01"), camp("cb02")] });

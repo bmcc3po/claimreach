@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import FileQaCheck from '../calls/FileQaCheck';
 type Preview = { errors: string[]; documents: { id: string; name: string }[]; to: string; cc: string[]; snapshot: string; case_url: string; sent_at: string | null; can_send: boolean; dispatch: { state: string; finished_at?: string } | null };
-export default function NetflySendPacket({ fileKey, revision, signedDocuments, unsaved }: { fileKey: string; revision: string; signedDocuments: { id: string; url: string | null; file_name: string }[]; unsaved: boolean }) {
+export default function NetflySendPacket({ fileKey, revision, signedDocuments, unsaved, onField }: { fileKey: string; revision: string; signedDocuments: { id: string; url: string | null; file_name: string }[]; unsaved: boolean; onField?: (id: string) => void }) {
   const [packet, setPacket] = useState<Preview | null>(null), [error, setError] = useState('');
   const [reviewed, setReviewed] = useState(false), [busy, setBusy] = useState(false), [sent, setSent] = useState('');
   const [warning, setWarning] = useState('');
@@ -32,6 +33,7 @@ export default function NetflySendPacket({ fileKey, revision, signedDocuments, u
   return <section className="nf-call-block nf-final-send" aria-label="Send NETFLY packet to firm">
     {sentAt ? <><div className="nf-sent-balloons" aria-hidden="true">🎈 🎈 🎈</div><h2>File sent to the firm!</h2><p>Sent {new Date(sentAt).toLocaleString()}. Brett was copied. The packet is recorded on this file.</p><Link className="nf-primary" href="/app/netfly">Back to NETFLY files</Link></> : <>
       <h2>Final step: send to the firm</h2><p>Review the intake and signed PDF above, then send the packet.</p>
+      <FileQaCheck fileKey={fileKey} revision={revision} unsaved={unsaved} onField={onField} />
       <a className="nf-secondary" href={`${endpoint}&pdf=intake`} target="_blank" rel="noopener noreferrer">Open intake PDF ↗</a>
       {packet && <><p><strong>To firm:</strong> {packet.to || 'Not configured'}<br /><strong>Copy:</strong> {packet.cc.join(', ')}</p><Link href="/app/netfly#firm-delivery" target="_blank" rel="noopener noreferrer">Firm delivery email settings ↗</Link>
         <p><strong>Included:</strong> intake PDF{packet.documents.map(doc => ` + ${doc.name}`).join('')}</p>

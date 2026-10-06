@@ -968,6 +968,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
   // Autosave, said plainly. "Saving" while a change is on its way; a failed
   // write shows the engine's "Not saved. Retrying." instead, never "Saved".
   const pending = snapshot !== lastSaved.current;
+  view.qaRevision = snapshot;
+  view.qaUnsaved = pending || !!engine.state.net?.saveError;
   view.saveText = pending ? "Saving" : savedAt ? `Saved at ${new Date(savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "";
   view.saveNow = () => {
     if (snapshot === lastSaved.current && callId.current && !engine.state.net?.saveError) { setSavedAt(Date.now()); return; }

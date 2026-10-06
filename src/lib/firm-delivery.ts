@@ -363,6 +363,9 @@ export async function deliverLeadToFirm(opts: {
 
   subject = fillTemplate(String(cfg.firm_subject_tpl || DEFAULT_SUBJECT), tokens);
   let bodyHtml = fillTemplate(String(cfg.firm_body_tpl || DEFAULT_BODY), tokens);
+  if (cfg.name === 'INNO MVA') {
+    bodyHtml += '<p><a href="https://claimreach.com/firm-review-login">Open the ClaimReach firm inbox</a> to view the intake and signed packet, mark received, or record the firm’s decision. Sign in with your assigned firm account.</p>';
+  }
   if (testDelivery) {
     subject = `[NONBINDING TEST] ${subject}`;
     bodyHtml = '<p><strong>SOFTWARE REHEARSAL ONLY. No client representation or medical authorization. All enclosed signing pages are nonbinding test documents.</strong></p>' + bodyHtml;

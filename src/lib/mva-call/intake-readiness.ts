@@ -11,11 +11,16 @@ const noApi: CallApi = {
  * answers fail closed; a signed packet does not make the intake complete. */
 export function missingRequiredMvaIntake(saved: unknown): string[] {
   if (!saved || typeof saved !== "object" || Array.isArray(saved)) return ["Intake answers"];
+  return mvaIntakeReview(saved).missing.map((item: { label: string }) => item.label);
+}
+
+/** Same engine and persisted answers as the agent's review sheet. */
+export function mvaIntakeReview(saved: unknown) {
   const props: CallProps = {
     callerName: "Client", agentName: "Reviewer", firmSpoken: "Firm", textFrom: "",
     startedAt: Date.now(), saved, reasons: { esign: [], dq: [], callback: [], ni: [] },
     notifyDefaults: [], esign: { status: "completed", configured: true, pax: {} },
   };
   const engine = new CallEngine(props, noApi);
-  return engine.renderVals().fi.missing.map((item: { label: string }) => item.label);
+  return engine.renderVals().fi;
 }

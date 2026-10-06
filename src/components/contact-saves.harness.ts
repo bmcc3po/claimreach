@@ -115,6 +115,7 @@ export function createRuntime() {
     throw new Error(`cannot resolve ${spec} from ${fromAbs}`);
   }
   function load(rel: string, expose: string[] = []): any {
+    if (rel.endsWith('.css')) return {};
     const abs = path.join(ROOT, rel);
     const key = abs + "|" + expose.join(",");
     if (cache.has(key)) return cache.get(key);

@@ -32,6 +32,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     previousSection.current = section;
   }, [section, viewMode]);
   const [activeQuestion, setActiveQuestion] = useState<string>(VERIFY_STEPS[0].fields[0]);
+  const [qaField, setQaField] = useState<string | null>(null);
   const [commandTab, setCommandTab] = useState<"file" | "agreement" | "scripts" | "phone">("file");
   const [commandOpen, setCommandOpen] = useState(false);
   const commandPanel = useRef<HTMLElement | null>(null);
@@ -201,6 +202,11 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     setSection(step); setActiveQuestion(id); setShowIncidentCorrections(true);
     window.setTimeout(() => { const target = document.getElementById(`nf-question-${id}`) || document.getElementById(`nf-step-${step}`); target?.scrollIntoView({ behavior: "smooth", block: "center" }); }, 0);
   }
+  function openQaField(id: string) {
+    const step = VERIFY_STEPS.findIndex((s, i) => (s.fields as readonly string[]).includes(id) || (NETFLY_FOLLOWUP_FIELDS[i] || []).includes(id));
+    setQaField(id);
+    goToMinimum(Math.max(0, step), id);
+  }
   const callRecorded = detail.answers.call_close?.closeout_version === 2 && detail.answers.call_close?.source_revision === handoffs.length &&
     (detail.answers.call_close?.source_field_revision ?? 0) === sourceFieldRevisions.length &&
     handoffs.length > 0 && !callCloseDirty && !validateNetflyCallClose(detail.answers.call_close);
@@ -208,6 +214,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     const current = VERIFY_STEPS[stepIndex];
     const sourceLabels = new Set(sourceRows.map((row) => row.label));
     const applicable = (f: NetflyField | undefined): f is NetflyField => {
+      if (f && f.id === qaField) return true;
       if (!f || (f.when && !(stepIndex === 0 && f.id === "confirmed_name") && values[f.when.id] !== f.when.is)) return false;
       if (stepIndex === 0 && ["confirmed_name", "confirmed_phone", "confirmed_email", "mailing_address"].includes(f.id)) {
         const existing = f.id === "confirmed_name" ? detail.file.claimant_name : f.id === "confirmed_phone" ? detail.file.phone : f.id === "confirmed_email" ? detail.file.email : savedAddress;
@@ -250,7 +257,8 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
           {field && applicable(field) && question(field)}
         </Fragment>;
       })}</div>
-      {!!followup.length && <details className="nf-followup-details"><summary>{stepIndex === 0 ? "More care details" : "Policy numbers & pictures"} (optional)</summary><p className="nf-muted">Capture this if it comes up. You can finish it on the callback.</p><div className="nf-questions">{followup.map(question)}</div></details>}
+      {!!followup.length && <details className="nf-followup-details" open={followup.some(f => f.id === qaField) || undefined}><summary>{stepIndex === 0 ? "More care details" : "Policy numbers & pictures"} (optional)</summary><p className="nf-muted">Capture this if it comes up. You can finish it on the callback.</p><div className="nf-questions">{followup.map(question)}</div></details>}
+      {stepIndex === 0 && qaField && fieldById.has(qaField) && !VERIFY_STEPS.some((s, i) => (s.fields as readonly string[]).includes(qaField) || (NETFLY_FOLLOWUP_FIELDS[i] || []).includes(qaField)) && <div className="nf-minimum-review"><h3>Review this answer</h3>{question(fieldById.get(qaField)!)}<button type="button" onClick={() => setQaField(null)}>Close answer</button></div>}
       {stepIndex === 3 && <section className="nf-minimum-review" aria-label="First-conversation essentials"><h3>First-conversation essentials</h3>{firstConversationPending.length ? <><p>Finish what you can now. Anything unavailable stays listed for follow-up.</p><ul>{firstConversationPending.map((item) => <li key={item.id}><button type="button" onClick={() => goToMinimum(item.step, item.id)}>{item.label}<span>{item.detail} →</span></button></li>)}</ul></> : <p className="nf-saved">Contact, wreck and police details, treatment, insurance, and passengers are captured.</p>}</section>}
       {stepIndex === 1 && latestHandoff && <div className="nf-handoff-check"><strong>{checked ? `Checked with client · ${detail.answers.handoff_verification?.status === "matches" ? "details match" : "changes recorded"}` : "Does the read-back match?"}</strong><p className="nf-muted">The first intake stays intact. If the client corrects anything, describe it and record the corrected answer above.</p><textarea className="nf-source-input" value={verificationNote} onChange={(e) => setVerificationNote(e.target.value)} placeholder="What changed? Leave blank if the read-back matches." /><div className="nf-actions"><button className="nf-secondary" disabled={verificationBusy} onClick={() => void verifyHandoff("matches")}>Details match</button><button className="nf-primary" disabled={verificationBusy || verificationNote.trim().length < 5} onClick={() => void verifyHandoff("changes_recorded")}>Record changes</button></div></div>}
 
@@ -290,7 +298,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
           {openedOriginalId === latest.id && <details className="nf-history nf-inline-issue"><summary>Something is wrong with the signed retainer</summary><p>Keep the original PDF. Describe the exact error for a supervisor; this is an exception to the welcome call.</p><textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="What is wrong with the name, date, signature or agreement?" /><button type="button" className="nf-secondary" disabled={reviewNote.trim().length < 5 || detail.answers.review?.retainer_reviewed_document_id !== latest.id} onClick={() => void review("correction_needed", latest.id)}>Flag original for supervisor correction</button>{detail.answers.review?.retainer_reviewed_document_id !== latest.id && <p className="nf-muted">Record that you inspected the signed PDF above first.</p>}</details>}
         </> : <div className="nf-actions"><p className="nf-alert">The signed PDF is missing. Upload NETFLY's original before marking it reviewed.</p><label className="nf-primary">{uploading ? "Uploading…" : "Upload signed PDF"}<input type="file" accept="application/pdf,.pdf" disabled={uploading} hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label></div>}
       </section>}
-      {stepIndex === 4 && <NetflySendPacket fileKey={fileKey} signedDocuments={detail.retainer} unsaved={callCloseDirty || Object.entries(values).some(([id, value]) => value.trim() !== (detail.answers.fields?.[id] || '').trim())} revision={JSON.stringify([detail.answers.fields, detail.answers.review, detail.answers.call_close, detail.answers.handoff_verification, latest?.id])} />}
+      {stepIndex === 4 && <NetflySendPacket fileKey={fileKey} onField={openQaField} signedDocuments={detail.retainer} unsaved={callCloseDirty || Object.entries(values).some(([id, value]) => value.trim() !== (detail.answers.fields?.[id] || '').trim())} revision={JSON.stringify([detail.answers.fields, detail.answers.review, detail.answers.call_close, detail.answers.handoff_verification, latest?.id])} />}
       {viewMode === "step" && <nav className={`nf-footer${stepIndex === VERIFY_STEPS.length - 1 ? " nf-footer-last" : ""}`} aria-label="Call step navigation"><button className="nf-secondary" disabled={stepIndex === 0} onClick={() => setSection((i) => Math.max(0, i - 1))}>← Back</button><button className="nf-primary" onClick={() => setSection((i) => Math.min(VERIFY_STEPS.length - 1, i + 1))} disabled={stepIndex === VERIFY_STEPS.length - 1}>{stepIndex === 3 ? "Review & send →" : "Next →"}</button></nav>}</section>
     </div>;
   };

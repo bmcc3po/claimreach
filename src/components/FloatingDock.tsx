@@ -73,7 +73,7 @@ function GrievousPanel({ leadId, claimId }: { leadId: string; claimId?: string }
       <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>Grievous reviews intake quality and flags missing information. Follow this campaign’s review requirements before delivery.</p>
       <div className="row" style={{ gap: 8 }}>
         <button className="btn ghost sm" onClick={() => grade("quick")} disabled={busy}>{busy ? "…" : "Quick check"}</button>
-        <button className="btn sm" onClick={() => grade("full")} disabled={busy}>{busy ? "Grading…" : "Full review & approve"}</button>
+        <button className="btn sm" onClick={() => grade("full")} disabled={busy}>{busy ? "Checking…" : "Check file & story"}</button>
       </div>
       {err && <p className="save-msg warn" style={{ marginTop: 10 }}>{err}</p>}
       {review && (
