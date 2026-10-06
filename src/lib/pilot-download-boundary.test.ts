@@ -74,7 +74,7 @@ function signedFixture(role: string, visible: boolean) {
   const sb = { from: (table: string) => {
     sbTables.push(table);
     if (table === 'leads') return { select: () => {
-      const q: any = { eq: () => q, order: async () => ({ data: [{ id: 'pilot', lead_no: 'TMP-1', claimant_name: 'Test Client' }], error: null }) };
+      const q: any = { eq: () => q, is: (column: string, value: unknown) => { assert.equal(column, 'archived_at'); assert.equal(value, null); return q; }, order: async () => ({ data: [{ id: 'pilot', lead_no: 'TMP-1', claimant_name: 'Test Client' }], error: null }) };
       return q;
     } };
     if (table === 'claims') return { select: () => ({ in: async () => ({ data: [{ lead_id: 'pilot', answers: {} }], error: null }) }) };
