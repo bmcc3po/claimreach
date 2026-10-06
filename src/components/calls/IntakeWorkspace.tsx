@@ -122,15 +122,15 @@ export function IxHead({ v }: { v: any }) {
       </div>
       {v.onCall || v.ringing
         ? <span className="ix-clock ix-live" title="JustCall says you are on a call"><i aria-hidden="true" />{v.onCall ? "On a call" : "Ringing"}</span>
-        : !!v.clockText && <span className={`ix-clock${v.clockOver ? " ix-over" : ""}`} title={`Intake time. Goal: ${v.targetText}`} aria-label={`Intake time ${v.clockText}`}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg>{v.clockText}
+        : !!v.clockText && <span className="ix-clock ix-intake-time" title="Time in this intake, not phone-call duration" aria-label={`Intake time ${v.clockText}`}>
+            <small>Intake</small>{v.clockText}
           </span>}
       <button type="button" className="ix-circ" onClick={v.openText} aria-label={v.textBadge ? `${v.textUnread} new texts from ${v.callerFirst}` : `Text ${v.callerFirst}`}>
         {!!v.textBadge && <span className="ix-badge">{v.textUnread}</span>}
         <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3C6.48 3 2 6.58 2 11c0 2.4 1.32 4.55 3.4 6.02L4.6 21l4.33-2.3c.99.2 2.02.3 3.07.3 5.52 0 10-3.58 10-8s-4.48-8-10-8z" /></svg>
       </button>
-      <button type="button" className="ix-circ ix-end" onClick={v.openDispo} aria-label="End call">
-        <svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.99.99 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67a.99.99 0 0 1 0 1.41l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85a1 1 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" /></svg>
+      <button type="button" className="ix-circ ix-finish" onClick={v.openDispo} aria-label="Finish intake and record the call outcome">
+        Finish
       </button>
     </div>
   );

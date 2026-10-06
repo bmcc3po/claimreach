@@ -2,28 +2,15 @@
 import { useState } from "react";
 import { askAI } from "@/lib/ai";
 import { ALL_LINERS } from "@/lib/silver-liners";
+import FileQaCheck from "./calls/FileQaCheck";
 
 // Grievous coaching console — pick a recent intake, get an AI QA review against
 // doctrine (one-call close, control, no leading statements, completeness).
 export default function GrievousConsole({ claims }: { claims: any[] }) {
   const [sel, setSel] = useState<any>(null);
-  const [review, setReview] = useState("");
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState("");
   const [answer, setAnswer] = useState("");
-
-  async function runReview(c: any) {
-    setSel(c); setReview(""); setBusy(true);
-    const answers = JSON.stringify(c.answers ?? {}, null, 1).slice(0, 6000);
-    const text = await askAI(
-        "You are Grievous, a QA coach for legal intake. Review the intake against doctrine: no leading statements, all vital fields captured, control kept, claimant qualified correctly, completeness. Give (1) a score out of 100, (2) what went well, (3) gaps or risks, (4) one concrete coaching tip. Be concise.",
-        `Claim type: ${c.claim_type}. Intake answers:
-
-${answers}`
-      );
-      setReview(text || "Could not reach the reviewer (is the Mac relay up?).");
-    setBusy(false);
-  }
 
   async function askGrievous() {
     if (!ask.trim()) return;
@@ -39,7 +26,8 @@ ${answers}`
   return (
     <div>
       <h1 style={{ margin: "0 0 2px" }}>⚡ Grievous</h1>
-      <p className="muted" style={{ marginTop: 0 }}>QA coaching that reviews intakes against doctrine.</p>
+      <p className="muted" style={{ marginTop: 0 }}>Review an INNO MVA or NETFLY file, confirm the facts, and leave an audit trail.</p>
+      <p><a href="/leads/archive">Test files &amp; archive</a> · <a href="/packets">Operator work list</a></p>
 
       <div className="lead-grid grievous-grid">
         <div>
@@ -52,17 +40,16 @@ ${answers}`
                 <span className="muted" style={{ marginLeft: 8 }}>{c.leads?.claimant_name ?? "—"}</span>
                 <div className="pmeta" style={{ fontSize: 12, color: "var(--ink-soft)" }}>{c.claim_type} · {c.campaign ?? "—"}</div>
               </div>
-              <button className="btn ghost sm" onClick={() => runReview(c)} disabled={busy}>Review</button>
+              <button className="btn ghost sm" onClick={() => setSel(c)}>Review</button>
             </div>
           ))}
         </div>
 
         <div>
           <div className="side-card">
-            <h3>Coaching review</h3>
-            {!sel && <p className="muted" style={{ fontSize: 13 }}>Pick an intake to get a doctrine review.</p>}
-            {sel && busy && <p className="muted">Scoring {sel.leads?.lead_no}…</p>}
-            {review && <div className="script" style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{review}</div>}
+            <h3>File review</h3>
+            {!sel && <p className="muted" style={{ fontSize: 13 }}>Choose a file. Findings are advisory; a person decides the next step.</p>}
+            {sel && <><a href={`/app/${sel.leads?.lead_no || sel.lead_id}?claim=${sel.id}`}>Open {sel.leads?.lead_no} →</a><FileQaCheck key={sel.id} leadId={sel.lead_id} claimId={sel.id} /></>}
           </div>
           <div className="side-card">
             <h3>Ask Grievous</h3>

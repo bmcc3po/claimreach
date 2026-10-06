@@ -46,7 +46,7 @@ function fixture({ failed = false, pending = false, confirmed = true, ownerSent 
     if (id === "react") return hooks;
     if (id === "react/jsx-runtime") return jsx;
     if (id === "@/lib/office-clock") return { officeDateTime: (value: string) => value };
-    if (["./OwnerFirmDownload", "./FinishFileSteps"].includes(id)) return { default: () => null };
+    if (["./OwnerFirmDownload", "./FinishFileSteps", "./FileQaCheck"].includes(id)) return { default: () => null };
     throw new Error(`Unexpected import ${id}`);
   }, exports, fakeFetch, { dispatchEvent() {}, confirm() { throw new Error("Native confirmation must never open"); } }, class { constructor(..._args: any[]) {} }, () => 0, () => {});
   const render = () => { cursor = 0; tree = exports.default(props); effects.splice(0).forEach(effect => effect()); return tree; };

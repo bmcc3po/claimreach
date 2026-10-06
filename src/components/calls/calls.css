@@ -2261,4 +2261,7 @@ div.ws-row{cursor:default}
 .iq-story-answer > span { min-width: 0; display: grid; gap: 4px; overflow-wrap: anywhere; }
 .iq-story-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 @media (max-width: 600px) { .agreement-resend .cc-btn, .passenger-agreement .cc-btn, .contract-correction .cc-btn { width: 100%; } }
+.cc-app.ix .ix-circ.ix-finish { width: auto; min-width: 60px; padding: 0 10px; border-radius: 12px; background: #174c38; color: #fff; font-size: 13px; font-weight: 750; box-shadow: none; }
+.cc-app.ix .ix-intake-time { display: grid; gap: 1px; text-align: center; background: #f1f4f8; color: #52657a; padding: 5px 8px; }
+.cc-app.ix .ix-intake-time small { font-size: 10px; font-weight: 600; line-height: 1; }
 

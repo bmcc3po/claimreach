@@ -17,7 +17,7 @@ assert.deepEqual(missingRequiredMvaIntake(engine.persistable()), initial);
 assert.ok(!initial.includes("Passengers"), "Unanswered passenger details do not block sending");
 engine.setState({ car: { justMe: false, people: [{ name: "Synthetic Passenger", age: null, hurt: null }] } });
 const incompletePassenger = engine.renderVals().fi.missing.map((item: { label: string }) => item.label);
-assert.ok(incompletePassenger.includes("Passengers"), "An added passenger needs their details completed");
+assert.ok(!incompletePassenger.includes("Passengers"), "Passenger follow-up must not block the caller's own file; each passenger finishes separately");
 assert.deepEqual(missingRequiredMvaIntake(engine.persistable()), incompletePassenger);
 engine.setState({ car: { justMe: false, people: [{ name: "Synthetic Passenger", age: "Adult", hurt: "No" }] } });
 assert.ok(!missingRequiredMvaIntake(engine.persistable()).includes("Passengers"), "Completed passenger details pass readiness");
