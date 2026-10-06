@@ -31,7 +31,7 @@ export async function loadSignatureReport(sb: any, campaign: { id: string; firm_
     chunks("signable_documents", "id,lead_id,firm_id,status,signed_at,created_at,audit", "lead_id", q => q.not("audit->emergency->>claim_id", "is", null)),
     chunks("lead_activity", "id,lead_id,firm_id,meta", "lead_id", q => q.eq("meta->>source", "lawruler").eq("meta->>event", "original_document")),
     chunks("lead_activity", "id,lead_id,firm_id,meta,actor", "lead_id", q => q.eq("meta->>event", "owner_signed_delivery_confirmation")),
-    chunks("firm_deliveries", "id,lead_id,firm_id,claim_id,campaign_id,ok,to_email,cc_email,created_at"),
+    chunks("firm_deliveries", "id,lead_id,firm_id,claim_id,campaign_id,ok,to_email,cc_email,created_at,triggered_by"),
     reportPages(() => sb.from("esign_templates").select("id,key").eq("firm_id", campaign.firm_id).eq("campaign_id", campaign.id).like("key", "REHEARSAL_%")),
     reportPages(() => sb.from("app_users").select("id,email").eq("role", "owner").eq("active", true)),
     chunks("lead_activity", "id,lead_id,firm_id,created_at,meta", "lead_id", q => q.eq("meta->>event", "firm_file_review").eq("meta->>campaign_id", campaign.id)),

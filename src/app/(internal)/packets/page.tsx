@@ -45,7 +45,7 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
     inChunks(sb, "claims", "id,lead_id,campaign,campaign_id,claim_type,status,firm_id,firm_sent_at,firm_send_result", "id", claimIds),
     inChunks(sb, "intake_calls", "id,agent_id,agent_name", "id", callIds),
     inChunks(sb, "app_users", "id,full_name", "id", userIds),
-    inChunks(sb, "firm_deliveries", "id,lead_id,claim_id,ok,to_email,cc_email,created_at", "lead_id", leadIds),
+    inChunks(sb, "firm_deliveries", "id,lead_id,claim_id,ok,to_email,cc_email,created_at,triggered_by", "lead_id", leadIds),
   ]);
   const campaignIds = [...new Set(claims.map((claim) => claim.campaign_id).filter(Boolean))] as string[];
   const [campaigns, ownerResult] = await Promise.all([
@@ -65,7 +65,7 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   const importedLeads = await inChunks(sb, "leads", "id,lead_no,claimant_name,archived_at", "id", [...new Set(importedClaims.map((claim: any) => claim.lead_id))]);
   const importedFirms = await inChunks(sb, "firms", "id,name", "id", [...new Set(importedClaims.map((claim: any) => claim.firm_id).filter(Boolean))]);
   const importedCampaigns = await inChunks(sb, "campaigns", "id,firm_email", "id", [...new Set(importedClaims.map((claim: any) => claim.campaign_id).filter(Boolean))]);
-  const importedDeliveries = await inChunks(sb, "firm_deliveries", "claim_id,ok,to_email,cc_email,created_at", "claim_id", importedClaimIds);
+  const importedDeliveries = await inChunks(sb, "firm_deliveries", "claim_id,ok,to_email,cc_email,created_at,triggered_by", "claim_id", importedClaimIds);
   const importedNames = new Map(importedLeads.map((lead: any) => [lead.id, lead]));
   const importedFirmNames = new Map(importedFirms.map((firm: any) => [firm.id, firm.name]));
   const importedRecipients = new Map(importedCampaigns.map((campaign: any) => [campaign.id, campaign.firm_email]));

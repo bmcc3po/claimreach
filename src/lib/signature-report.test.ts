@@ -90,6 +90,19 @@ test("date filters use signature Pacific day, not created date, and undated stay
   assert.equal(signatureRowsInRange([{ ...row, signedAt: null }], "", "").length, 1);
   assert.equal(signatureRowsInRange([{ ...row, signedAt: null }], "2026-10-01", "2026-10-02").length, 0);
 });
+
+test("invoice report retains delivery date after changing the firm email without crediting a sibling", () => {
+  const f = fixture();
+  f.deliveries = [
+    { firm_id: 'other', lead_id: 'l', claim_id: 'c', ok: true, to_email: f.firmEmail, triggered_by: 'manual', created_at: '2026-09-01T00:00:00Z' },
+    { firm_id: 'f', lead_id: 'l', claim_id: 'sibling', ok: true, to_email: f.firmEmail, triggered_by: 'manual', created_at: '2026-09-02T00:00:00Z' },
+    { firm_id: 'f', lead_id: 'l', claim_id: 'c', ok: true, to_email: f.firmEmail, triggered_by: 'manual', created_at: '2026-10-02T00:00:00Z' },
+  ];
+  const before = signatureReport(f)[0]; f.firmEmail = 'replacement@firm.test';
+  const after = signatureReport(f)[0];
+  assert.equal(after.deliveredAt, '2026-10-02T00:00:00Z');
+  assert.equal(after.returnEndsAt, before.returnEndsAt);
+});
 test("archive and rehearsal classification preserved for explicit inclusion", () => {
   const f = fixture(); f.leads[0].archived_at = "2026-10-03"; f.rehearsalKeys = ["REHEARSAL_l_OTHER"];
   const [row] = signatureReport(f); assert.equal(row.archived, true); assert.equal(row.test, true);
