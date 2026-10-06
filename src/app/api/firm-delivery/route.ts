@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
     const [{ data: config }, { data: owners }, { data: history, error: historyError }] = await Promise.all([
       admin.from("campaigns").select("firm_email").eq("id", matter.claim.campaign_id).maybeSingle(),
       admin.from("app_users").select("email").eq("role", "owner").eq("active", true),
-      admin.from("firm_deliveries").select("ok, to_email, cc_email, created_at").eq("claim_id", matter.claim.id).order("created_at", { ascending: false }),
+      admin.from("firm_deliveries").select("ok, to_email, cc_email, created_at, triggered_by").eq("claim_id", matter.claim.id).order("created_at", { ascending: false }),
     ]);
     if (historyError) return NextResponse.json({ error: "Could not verify prior delivery; nothing was resent." }, { status: 503 });
     const ownerEmail = (owners ?? []).map((row: any) => String(row.email || "").toLowerCase()).find((address: string) => address === "bmc@innovativeintake.com") || null;

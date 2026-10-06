@@ -43,7 +43,7 @@ async function snapshotForContext(db: any, admin: any, context: SigningContext) 
   if (delivery.error) throw new Error('Could not verify delivery history.');
   const dispatch = await readFirmDispatch(admin, leadId, claimId);
   if (dispatch.error) throw new Error('Could not verify the last delivery attempt.');
-  const history = await admin.from('firm_deliveries').select('ok,to_email,cc_email,created_at')
+  const history = await admin.from('firm_deliveries').select('ok,to_email,cc_email,created_at,triggered_by')
     .eq('lead_id', leadId).or(matterRowsFilter(matter));
   if (history.error) throw new Error('Could not verify the delivery receipts.');
   const sent = dispatch.row?.state === 'sent' || !!confirmedFirmDeliveryAt(history.data || [], campaign.firm_email, 'bmc@innovativeintake.com') || ownerConfirmedDelivery(delivery.data.firm_send_result);

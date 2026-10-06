@@ -91,6 +91,18 @@ test("a newer void or correction cannot make an older signature ready to send", 
   assert.equal(rows[0].stage, "held");
 });
 
+test("changing firm email keeps the delivered packet out of the pending worklist", () => {
+  const [row] = packetWorklist({
+    submissions: [{ id: 's', lead_id: 'l', claim_id: 'c', signed_at: '2026-10-01T00:00:00Z', created_at: '2026-10-01T00:00:00Z', status: 'signed' }],
+    leads: [{ id: 'l', case_type: 'mva' }], claims: [{ id: 'c', lead_id: 'l', campaign_id: 'camp', claim_type: 'mva', status: 'delivered' }],
+    calls: [], users: [], firms: [], campaigns: [{ id: 'camp', firm_email: 'new@firm.test' }], ownerEmail: 'owner@example.test',
+    deliveries: [{ claim_id: 'c', ok: true, to_email: 'old@firm.test', created_at: '2026-10-02T00:00:00Z', triggered_by: 'manual' }],
+  });
+  assert.equal(row.stage, 'delivered');
+  assert.equal(row.deliveredAt, '2026-10-02T00:00:00Z');
+  assert.equal(row.returnEndsAt, '2026-10-09T00:00:00.000Z');
+});
+
 test("weekly grouping uses Los Angeles dates", () => {
   assert.equal(pacificDay("2026-10-01T06:30:00Z"), "2026-09-30");
   assert.equal(pacificCalendarDay("2026-10-01T06:30:00Z"), "2026-09-30");
