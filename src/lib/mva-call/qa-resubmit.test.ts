@@ -5,6 +5,9 @@ import ts from "typescript";
 import { FakeDb } from "../test-fake-db";
 import * as statuses from "../statuses";
 import * as matter from "../matter";
+import * as passengerSigning from './passenger-signing';
+import * as signedDecline from '../signed-decline';
+import * as ownerConfirmation from '../owner-file-confirmation';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const LEAD = id(1), CLAIM = id(2), FIRM = id(3), CAMP = id(4), REVIEW = id(5), AGENT = id(6), AGREEMENT = id(7), REQUEST = id(8), SIBLING = id(9);
@@ -30,6 +33,9 @@ function fixture() {
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => { state.admin++; return db; } },
     "@/lib/statuses": statuses,
     "@/lib/matter": matter,
+    "./passenger-signing": passengerSigning,
+    "./signed-decline": signedDecline,
+    "@/lib/owner-file-confirmation": ownerConfirmation,
     "@/lib/linked-files": { paxParentId: () => null },
     "./server": { LEAD_CALL_COLS: "*" },
     "@/lib/mva-call/server": { requireStaff: async () => state.staff },
