@@ -1,8 +1,7 @@
-import { approvedAgreementUrl } from './netfly-handoff';
+import { approvedAgreementUrl, netflyContactNameKey } from './netfly-handoff';
 import { cappedBytes } from './resend-inbound';
 
 const api = 'https://services.leadconnectorhq.com/proposals/document/public';
-const normalizedName = (name: string) => name.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
 /** Public viewer API used by NETFLY's own Download PDF button. No credentials. */
 export async function netflyAgreementPdf(link: string, clientName: string, fetcher: typeof fetch = fetch) {
@@ -18,7 +17,7 @@ export async function netflyAgreementPdf(link: string, clientName: string, fetch
   if (!document || document.status !== 'completed') throw new Error('NETFLY has not confirmed this agreement as completed.');
   const signers = (Array.isArray(document.recipients) ? document.recipients : []).filter((person: any) => person.role === 'signer');
   if (!signers.length || signers.some((person: any) => person.hasCompleted !== true)) throw new Error('This NETFLY agreement still needs a signature.');
-  if (!signers.some((person: any) => normalizedName(person.contactName || [person.firstName, person.lastName].filter(Boolean).join(' ')) === normalizedName(clientName)))
+  if (!signers.some((person: any) => netflyContactNameKey(person.contactName || [person.firstName, person.lastName].filter(Boolean).join(' ')) === netflyContactNameKey(clientName)))
     throw new Error('The NETFLY agreement names a different client. Review the original before attaching it.');
   if (!/^[a-zA-Z0-9]{10,80}$/.test(document._id || '') || !/^[a-zA-Z0-9]{10,80}$/.test(document.locationId || ''))
     throw new Error('NETFLY returned an invalid document identity.');
