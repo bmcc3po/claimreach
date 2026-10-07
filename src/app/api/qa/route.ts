@@ -15,7 +15,7 @@ export const runtime = "edge";
 // QA pipeline. Human QA submits a checklist + report card and routes the file.
 // Routing maps to the Zip 2 status model:
 //   approve -> approved | signed_approved (unlocks firm)
-//   decline -> signed_dropped (signed but DQ, billable, drop letter)
+//   decline -> signed_dropped (signed but DQ; INNO MVA uses the dedicated signed-decline workflow)
 //   wip     -> wip | signed_wip (back to agent, fix inbox)
 //   flag    -> flag | signed_flag (escalate to BMC)
 // Hard gate: any red on the 3 gates blocks approve.
@@ -177,6 +177,11 @@ export async function POST(req: NextRequest) {
       : (allClaims ?? [])[0];
     if (claim_id && !claim) return NextResponse.json({ error: "That claim is not on this file. Refresh and pick the matter again." }, { status: 400 });
     if (!claim) return NextResponse.json({ error: "This file has no claim to review." }, { status: 400 });
+    if (b.decision === "decline" && claim.claim_type === "mva") {
+      const campaign = await admin.from("campaigns").select("name").eq("id", claim.campaign_id).eq("firm_id", claim.firm_id).maybeSingle();
+      if (campaign.error) return NextResponse.json({ error: "Could not verify the campaign." }, { status: 503 });
+      if (campaign.data?.name === "INNO MVA") return NextResponse.json({ error: "Use Decline signed file / request drop letter at the top of this file. It records the bad sign and emails the firm." }, { status: 409 });
+    }
     if (agentReady) {
       if (claim.claim_type !== "mva" || b.decision !== "approve"
         || [b.g_qa_pass, b.g_esign, b.g_criteria].some((grade: unknown) => grade !== "green")

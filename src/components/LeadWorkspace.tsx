@@ -10,6 +10,7 @@ import FileStatusControl from "./FileStatusControl";
 import { resolveFileStatus } from "@/lib/statuses";
 import FileArchiveButton from "./FileArchiveButton";
 import FirmDecision from "./FirmDecision";
+import SignedDecline from "./SignedDecline";
 import { fileAgentSummary } from '@/lib/file-agents';
 import { areaHref, inWorkArea } from '@/lib/work-area';
 import ActivityLog from "./ActivityLog";
@@ -176,6 +177,7 @@ function LeadWorkspaceRecord({
         </div>
         {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
       </div>
+      {canTools && activeClaimId && activeClaim?.claim_type === "mva" && activeClaim?.campaign === "INNO MVA" && ["owner", "admin"].includes(lead.current_user_role || "") && !lead.archived_at && <SignedDecline key={activeClaimId} claimId={activeClaimId} />}
       {canTools && activeClaimId && lead.current_user_role === "owner" && !lead.archived_at && ['delivered', 'retained'].includes(activeClaim?.status || '') && <FirmDecision key={activeClaimId} claimId={activeClaimId} />}
       {activeClaimId && activeClaim?.claim_type === "mva" && ["owner", "admin"].includes(lead.current_user_role || "") && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
       {activeClaimId && activeClaim?.claim_type === "mva" && lead.current_user_role === "owner" && !importedSignedPacket &&
@@ -264,7 +266,7 @@ function LeadWorkspaceRecord({
                 <CaseDetails lead={leadLive} staff={staff} callAgent={appCall?.agent} callDisposition={appCall?.dispo} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} onSaved={liveUp} />
               </>
             )}
-            {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
+            {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} signedDeclineAction={activeClaim?.claim_type === "mva" && activeClaim?.campaign === "INNO MVA"} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
             {tab === "Retainer" && <><RetainerTab key={activeClaimId} leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} fence={fence} initialRetainers={retainers} initialSignables={signables} /><CaseDocuments key={`docs-${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} /></>}
             {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="messages" fence={fence} />}
             {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="call" fence={fence} />}

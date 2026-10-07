@@ -59,14 +59,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   ] = await Promise.all([
     computeAlerts(sb).catch(() => [] as Alert[]),
     scopeClaim(sb.from("claims").select("id, leads!inner(archived_at)", { count: "exact", head: true }).is("leads.archived_at", null).in("status", ["new", "contacting"])),
-    scopeLead(sb.from("leads").select("id", { count: "exact", head: true }).gte("signed_at", weekAgo).is("archived_at", null)),
+    scopeLead(sb.from("leads").select("id, claims!inner(status)", { count: "exact", head: true }).neq("claims.status", "signed_dropped").gte("signed_at", weekAgo).is("archived_at", null)),
     scopeLead(sb.from("leads").select("id, created_at").gte("created_at", since).is("archived_at", null).limit(5000)),
-    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, signed_at, claims(id, status, campaign, campaign_id, claim_type, firm_send_result)")
-      .is("archived_at", null).order("updated_at", { ascending: false }).limit(8)),
+    scopeLead(sb.from("leads").select("id, lead_no, claimant_name, phone, case_type, updated_at, signed_at, claims!inner(id, status, campaign, campaign_id, claim_type, firm_send_result)")
+      .neq("claims.status", "signed_dropped").is("archived_at", null).order("updated_at", { ascending: false }).limit(8)),
     sb.from("statuses").select("*").eq("active", true),
     pilot || area === "mva" ? Promise.resolve({ data: [] }) : sb.from("boards").select("*").order("sort_order"),
     pilot || area === "mva" ? Promise.resolve({ data: [] }) : sb.from("bulletins").select("*").order("created_at", { ascending: false }).limit(60),
-    scopeClaim(sb.from("claims").select("id, lead_id, campaign, leads!inner(claimant_name, lead_no, archived_at)").is("leads.archived_at", null).eq("supervisor_flag", true).limit(10)),
+    scopeClaim(sb.from("claims").select("id, lead_id, campaign, leads!inner(claimant_name, lead_no, archived_at)").is("leads.archived_at", null).eq("supervisor_flag", true).neq("status", "signed_dropped").limit(10)),
     scopeClaim(sb.from("claims").select("id, lead_id, updated_at, leads!inner(claimant_name, lead_no, archived_at)")
       .is("leads.archived_at", null).in("status", ["new", "contacting"]).lt("updated_at", twoDayAgo).order("updated_at", { ascending: true }).limit(12)),
     scopeClaim(sb.from("claims").select("id, lead_id, tier, tier_letter, tier_number, leads!inner(claimant_name, lead_no, archived_at)")

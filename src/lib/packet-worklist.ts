@@ -1,6 +1,7 @@
 import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
 import { paxParentId } from "@/lib/linked-files";
 import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
+import { isSignedDeclined } from "./signed-decline";
 import { SIGNED_SENT_TO_FIRM } from "@/lib/statuses";
 
 export type PacketRow = {
@@ -67,6 +68,7 @@ export function packetWorklist(input: Input): PacketRow[] {
     const lead = byLead.get(row.lead_id);
     if (!lead) continue;
     const claim = byClaim.get(row.claim_id);
+    if (isSignedDeclined(claim)) continue;
     // The NETFLY original is an uploaded signed document, not a DocuSeal
     // acquisition packet. Do not silently count it as a delivered INNO deal.
     if ((claim?.claim_type || lead.case_type) !== "mva") continue;
