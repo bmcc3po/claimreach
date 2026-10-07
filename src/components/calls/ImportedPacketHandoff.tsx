@@ -72,7 +72,7 @@ export default function ImportedPacketHandoff({ leadId, claimId }: { leadId: str
 
   return <section className="imported-handoff" aria-label="Imported signed packet handoff">
     <h2>{sentAt ? "SENT TO FIRM" : "NEXT: REVIEW ORIGINALS AND SEND TO FIRM"}</h2>
-    {sentAt ? <div role="status"><strong>Firm delivery confirmed {new Date(sentAt).toLocaleString()}.</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${returnEnd?.toLocaleString()}.` : "Seven-day return window cleared. Ready for billing review."}</p></div> : <>
+    {sentAt ? <div role="status"><strong>Firm delivery confirmed {new Date(sentAt).toLocaleString()}.</strong><p>{daysLeft ? `Return window: ${daysLeft} day${daysLeft === 1 ? "" : "s"} left. Ends ${returnEnd?.toLocaleString()}.` : "Seven-day return window cleared. Review window cleared."}</p></div> : <>
       <p>LawRuler reported this signed. Inspect the actual packet below. The imported signing date is {state.source_signed_at ? new Date(state.source_signed_at).toLocaleDateString() : "not supplied"}; review does not invent one.</p>
       <div className="imported-handoff-docs"><a href={intakeUrl} target="_blank" rel="noopener noreferrer" onClick={() => setOpened((old) => [...new Set([...old, "intake"])])}>1. Open intake PDF {opened.includes("intake") ? "✓" : "↗"}</a>
         {state.documents.map((file, index) => <a key={file.id} href={file.url || "#"} target="_blank" rel="noopener noreferrer" aria-disabled={!file.url} onClick={(event) => { if (!file.url) { event.preventDefault(); return; } setOpened((old) => [...new Set([...old, file.id])]); }}>{index + 2}. Open {file.kind === "retainer" ? "signed retainer" : "original PDF"}: {file.name} {opened.includes(file.id) ? "✓" : "↗"}</a>)}

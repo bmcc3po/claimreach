@@ -56,7 +56,7 @@ for (const route of ["/leads", "/signed", "/packets", "/reports/inno?campaign=sy
 assert.equal(navigation.activeNavigation("/app/help/netfly", navigation.primaryNavigation(false)), "/app/help");
 assert.equal(navigation.activeNavigation("/app/netfly/TMP-SYNTH", navigation.primaryNavigation(false)), "/app");
 assert.equal(navigation.activeNavigation("/application", navigation.primaryNavigation(false)), "");
-assert.deepEqual(navigation.FILE_VIEWS.map(view => view.href), ["/leads", "/signed", "/packets", "/reports/inno", "/leads/archive"], "signed files, work list and invoice report are separate destinations");
+assert.deepEqual(navigation.FILE_VIEWS.map(view => view.href), ["/leads", "/signed", "/packets", "/payroll", "/leads/archive"], "signed files, work list and invoice report are separate destinations");
 for (const role of ["agent", "qa", "manager", "admin", "owner"]) {
   const instance = fresh(), props = { name: "Synthetic Operator", role };
   const tree = render(instance, Chrome, props);

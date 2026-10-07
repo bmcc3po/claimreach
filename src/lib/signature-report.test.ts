@@ -11,6 +11,14 @@ function fixture(): SignatureReportInput {
     submissions: [{ id: "s", lead_id: "l", firm_id: "f", claim_id: "c", campaign_id: "inno", status: "signed", signed_at: "2026-10-02T06:00:00Z", created_at: "2026-10-01T06:00:00Z" }],
     emergencies: [], originals: [], confirmations: [], ownerIds: ["owner"], deliveries: [], users: [], rehearsalKeys: [] };
 }
+
+test('NETFLY original needs the latest same-matter PDF reviewed; review date is never signing date',()=>{
+  const f=fixture();f.submissions=[];f.claims[0].answers={netfly_secondary:{review:{retainer_reviewed_document_id:'pdf',status:'retainer_reviewed'}}};
+  f.documents=[{id:'pdf',firm_id:'f',lead_id:'l',claim_id:'c',doc_type:'netfly_signed_retainer',created_at:'2026-10-01'}];
+  const [r]=signatureReport(f);assert.equal(r.state,'signed');assert.equal(r.signedAt,null);
+  f.documents.push({...f.documents[0],id:'new',created_at:'2026-10-02'});assert.equal(signatureReport(f)[0].state,'verify');
+  f.documents=[{...f.documents[0],claim_id:'sibling'}];assert.notEqual(signatureReport(f)[0].state,'signed');
+});
 test('firm rejection and reason remain visible without erasing signature/delivery; sibling decisions stay isolated', () => {
   const f=fixture(); f.claims[0].firm_send_result=OWNER_SENT_UNKNOWN_DATE;
   f.reviews=[{id:'a',firm_id:'f',lead_id:'l',created_at:'2026-10-05',meta:{event:'firm_file_review',claim_id:'c',campaign_id:'inno',action:'turned_down',explanation:'Treatment gap'}},
