@@ -1,4 +1,4 @@
-import { isSignedDeclined, signedDecline } from "./signed-decline";
+import { declineOutcome, isSignedDeclined, signedDecline } from "./signed-decline";
 import { rowBelongsToMatter } from "@/lib/matter";
 import { paxParentId } from "@/lib/linked-files";
 import { clientSignatureConfirmed } from "@/lib/mva-call/passenger-signing";
@@ -18,7 +18,7 @@ export type SignatureReportRow = {
   packet: string; status: string; agent: string; archived: boolean; test: boolean; ownerSent: boolean;
   firmDecision?: string; firmReason?: string;
   agentId?: string | null; agentName?: string;
-  declined?: boolean; declineReason?: string; declinedAt?: string | null; badSignAgent?: string;
+  declined?: boolean; declineReason?: string; declinedAt?: string | null; badSignAgent?: string; declineOutcome?: string;
 };
 export type SignatureReportInput = {
   firmId: string; campaignId: string; firmEmail: string | null; ownerEmail: string | null;
@@ -57,7 +57,7 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
     const window = returnWindow(deliveredAt);
     const packet = ownerSigned ? "Imported — owner approved" : state !== "signed" ? "—" : current.status === "completed" && current.agent_reviewed_at && current.completed_pdf_path && current.cert_pdf_path
       ? "Office step complete" : "Office step needs review";
-    const decision = reviewState((input.reviews || []).filter(r => r.firm_id === c.firm_id && r.lead_id === l.id && r.meta?.event === REVIEW_EVENT && r.meta?.claim_id === c.id && r.meta?.campaign_id === c.campaign_id));
+    const decision = reviewState((input.reviews || []).filter(r => r.firm_id === c.firm_id && r.lead_id === l.id && r.meta?.event === REVIEW_EVENT && r.meta?.claim_id === c.id && r.meta?.campaign_id === c.campaign_id), c);
     // Assignment alone is not proof of who worked this signed file.
     const agentId = l.intake_agent_id || current?.sent_by || null;
     const agentName = input.users.find(u => u.id === agentId)?.full_name || 'Agent not recorded';
@@ -75,6 +75,7 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
       firmReason: decision.explanation,
       declined: isSignedDeclined(c), declineReason: signedDecline(c)?.reason || c.dq_reason || "",
       declinedAt: signedDecline(c)?.at || null, badSignAgent: signedDecline(c)?.agentName || "",
+      declineOutcome: signedDecline(c) ? declineOutcome(signedDecline(c)!) : '',
       archived: !!l.archived_at,
       ownerSent: ownerConfirmedDelivery(c.firm_send_result),
       test: isTestFile(l) || input.rehearsalKeys.includes("REHEARSAL_" + (paxParentId(l.external_id) || l.id) + "_OTHER") ||

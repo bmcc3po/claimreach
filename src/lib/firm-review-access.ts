@@ -1,3 +1,4 @@
+import { signedDecline } from './signed-decline';
 // Restricted reviewers deliberately have NO app_users or firm_access entry.
 // Only the Auth administrator can set app_metadata. Never trust user_metadata.
 export const FIRM_REVIEW_HOME = '/firm-review';
@@ -24,13 +25,18 @@ export function reviewerPathAllowed(path: string): boolean {
   return path === FIRM_REVIEW_HOME || path === FIRM_REVIEW_LOGIN || path.startsWith('/auth/');
 }
 export function releasedToReviewer(scope: FirmReviewScope, claim: any, lead: any): boolean {
+  const decline = signedDecline(claim);
+  // Keep previously released files available after a decline, never introduce
+  // an undelivered file into the restricted firm inbox.
+  const wasReleased = ['delivered', 'retained'].includes(claim?.status) ||
+    !!decline && ['delivered', 'retained'].includes(decline.previousStatus);
   return !!claim && !!lead && claim.lead_id === lead.id && claim.firm_id === scope.firmId && lead.firm_id === scope.firmId &&
-    claim.campaign_id === scope.campaignId && !lead.archived_at && ['delivered', 'retained'].includes(claim.status) &&
+    claim.campaign_id === scope.campaignId && !lead.archived_at && wasReleased &&
     !lead.vendor_fields?.signing_rehearsal && !/\b(TEST|TESTER|NONBINDING|REHEARSAL)\b/i.test(lead.claimant_name || '');
 }
 export const REVIEW_ACTIONS = ['received', 'accepted', 'turned_down'] as const;
 export const REVIEW_EVENT = 'firm_file_review';
-export const FIRM_DECISION_LABELS = { accepted: 'Firm approved', turned_down: 'Firm rejected' } as const;
+export const FIRM_DECISION_LABELS = { accepted: 'Firm approved', turned_down: 'Firm declined' } as const;
 export type ReviewAction = typeof REVIEW_ACTIONS[number];
 export const REVIEW_LABELS: Record<ReviewAction, string> = { received: 'Received', accepted: 'Case Accepted', turned_down: 'Case Turn Down' };
 export function reviewInput(body: any): { action: ReviewAction; explanation: string } | null {
@@ -39,11 +45,14 @@ export function reviewInput(body: any): { action: ReviewAction; explanation: str
   if (explanation.length > 5000 || body.action === 'turned_down' && !explanation) return null;
   return { action: body.action, explanation: body.action === 'turned_down' ? explanation : '' };
 }
-export function reviewState(events: any[]) {
-  const valid = events.filter(e => REVIEW_ACTIONS.includes(e.meta?.action)).sort((a, b) =>
+export function reviewState(events: any[], claim?: any) {
+  const d = signedDecline(claim);
+  const snapshot = d?.source === 'firm' ? [{ id: d.reviewEventId, created_at: d.at,
+    meta: { action: 'turned_down', explanation: d.reason, reviewer_name: d.actorName } }] : [];
+  const valid = [...events, ...snapshot].filter(e => REVIEW_ACTIONS.includes(e.meta?.action)).sort((a, b) =>
     String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(b.id || '').localeCompare(String(a.id || '')));
   const received = valid.find(e => e.meta.action === 'received');
-  const decision = valid.find(e => e.meta.action !== 'received');
+  const decision = snapshot[0] || valid.find(e => e.meta.action !== 'received');
   return { receivedAt: received?.created_at || null, decision: decision?.meta.action || null,
     decisionAt: decision?.created_at || null, explanation: decision?.meta.explanation || '',
     reviewer: decision?.meta.reviewer_name || received?.meta.reviewer_name || '' };

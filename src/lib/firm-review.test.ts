@@ -50,6 +50,7 @@ const db = { from(table: string) {
 } };
 const route = compile('../app/api/firm-review/route.ts', {
   'next/server': require('next/server'), '@/lib/firm-review-access': access,
+  'next/cache':{revalidatePath(){}}, '@/lib/signed-decline-workflow':{DeclineError:class extends Error{}}, '@/lib/signed-decline':require('./signed-decline'), '@/lib/alerts':{invalidateAlertCache(){}},
   '@/lib/matter': require('./matter'), '@/lib/linked-files': require('./linked-files'),
   '@/lib/firm-review-server': { REVIEW_EVENT: 'firm_file_review', reviewerContext: async () => authenticated ? { db, user, scope } : null,
     reviewerFile: async (_db: any, _scope: any, id: string) => visible && id === claimId ? { claim, lead } : null,

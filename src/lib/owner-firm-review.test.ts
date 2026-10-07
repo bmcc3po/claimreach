@@ -6,11 +6,11 @@ import * as access from './firm-review-access';
 const claimId='33333333-3333-4333-8333-333333333333', firmId='11111111-1111-4111-8111-111111111111', campaignId='22222222-2222-4222-8222-222222222222';
 const claim={id:claimId,lead_id:'lead',firm_id:firmId,campaign_id:campaignId,status:'delivered',firm_sent_at:'2026-10-01',firm_send_result:'saved receipt'};
 const lead={id:'lead',firm_id:firmId,claimant_name:'Fictional person',archived_at:null};
-const db=new FakeDb({claims:[claim],leads:[lead],lead_activity:[]});
+const db=new FakeDb({claims:[claim],leads:[lead],campaigns:[{id:campaignId,firm_id:firmId,name:'Other campaign'}],lead_activity:[]});
 let role:string|null='owner';
 function compile(file:string,mods:Record<string,any>){const code=ts.transpileModule(fs.readFileSync(path.resolve(__dirname,file),'utf8'),{compilerOptions:{target:9,module:1}}).outputText;const out:any={};new Function('require','exports',code)((k:string)=>{assert.ok(k in mods,k);return mods[k]},out);return out;}
-const server=compile('firm-review-server.ts',{'@/lib/supabase-server':{},'./firm-review-access':access,'./intake-render':{},'./imported-packet':{},'./matter':{},'./mva-call/signing-matter':{},'./mva-call/esign':{},'./signed-docs':{},'./mva-call/client-signed':{}});
-const route=compile('../app/api/owner-firm-review/route.ts',{'next/server':require('next/server'),'next/cache':{revalidatePath(){}},'@/lib/supabase-server':{supabaseServer:async()=>db},'@/lib/gate':{gateUser:async()=>role?{id:'owner',role,name:'Owner'}:null},'@/lib/firm-review-access':access,'@/lib/firm-review-server':server});
+const server=compile('firm-review-server.ts',{'@/lib/supabase-server':{},'./firm-review-access':access,'./intake-render':{},'./imported-packet':{},'./matter':{},'./mva-call/signing-matter':{},'./mva-call/esign':{},'./signed-docs':{},'./mva-call/client-signed':{},'./signature-report-loader':{loadSignatureReport:async()=>[{claimId,state:'signed'}]}});
+const route=compile('../app/api/owner-firm-review/route.ts',{'next/server':require('next/server'),'next/cache':{revalidatePath(){}},'@/lib/supabase-server':{supabaseServer:async()=>db},'@/lib/gate':{gateUser:async()=>role?{id:'owner',role,name:'Owner'}:null},'@/lib/firm-review-access':access,'@/lib/firm-review-server':server,'@/lib/signed-decline-workflow':{DeclineError:class extends Error{}},'@/lib/signed-decline':require('./signed-decline'),'@/lib/alerts':{invalidateAlertCache(){}}});
 const request=(body:any,origin='https://claimreach.test')=>new NextRequest('https://claimreach.test/api/owner-firm-review',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)});
 (async()=>{
  const before=JSON.stringify(claim);
