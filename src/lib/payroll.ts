@@ -51,7 +51,7 @@ export function payrollReport(files: PayrollFile[], notes: PayrollNote[], lines:
     const hold = holding?.kind === 'attorney_hold';
     const credit = ownNotes.find(n => n.kind === 'agent_credit');
     const agentId = credit?.data.agent_id || f.agentId || null;
-    const agent = credit?.data.agent_name || f.agent;
+    const agent = credit?.data.agent_name || f.agentName || f.agent;
     const sent = !!f.deliveredAt || f.ownerSent;
     const rejected = f.decisionKey === 'turned_down';
     const group: PayrollGroup = sent && rejected ? 'rejected' : hold ? 'hold' : !sent && f.disqualified ? 'dq' : sent ? 'sent' : 'waiting';

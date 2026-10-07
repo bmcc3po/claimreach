@@ -18,6 +18,10 @@ test('five exclusive groups; signed DQ or attorney hold earns nothing',()=>{
   assert.deepEqual(payrollTotals(r).groups,{waiting:1,sent:1,hold:1,dq:1,rejected:1});
   assert.deepEqual(r.rows.filter(r=>r.bill).map(r=>r.claimId),['sent']);assert.equal(r.adjustments.length,0);
 });
+test('commission names the credited agent, not the combined intake, signing and assignment display',()=>{
+  const r=payrollReport([file('c',{ownerSent:true,agent:'Intake: Agent A · Agreement: Agent B · Assigned: Agent C',agentName:'Agent A'})],[],[],end,now);
+  assert.equal(r.rows[0].creditedAgent,'Agent A');assert.equal(r.rows[0].creditedAgentId,'a');
+});
 test('older hold release carries separately and cannot bill twice',()=>{
   const f=file('c',{signedAt:'2026-09-25T12:00:00Z',ownerSent:true});
   const held=note('attorney_hold',{reason:'Unusual facts'}),release={...note('attorney_release',{reason:'Attorney agreed'},'c','new'),created_at:'2026-10-07T12:00:00Z'};

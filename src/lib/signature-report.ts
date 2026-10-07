@@ -16,7 +16,7 @@ export type SignatureReportRow = {
   deliveredAt: string | null; returnEndsAt: string | null;
   packet: string; status: string; agent: string; archived: boolean; test: boolean; ownerSent: boolean;
   firmDecision?: string; firmReason?: string;
-  leadId?: string; firmId?: string; campaignId?: string; agentId?: string | null;
+  leadId?: string; firmId?: string; campaignId?: string; agentId?: string | null; agentName?: string | null;
   statusKey?: string; disqualified?: boolean; decisionKey?: string | null; decisionAt?: string | null;
 };
 export type SignatureReportInput = {
@@ -67,6 +67,7 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
       claimId: c.id, leadNo: l.lead_no || "File", name: l.claimant_name || "Name missing",
       leadId: l.id, firmId: c.firm_id, campaignId: c.campaign_id,
       agentId: l.intake_agent_id || current?.sent_by || null,
+      agentName: input.users.find(u => u.id === (l.intake_agent_id || current?.sent_by))?.full_name || null,
       statusKey: c.status, disqualified: isDisqualify(c.status), decisionKey: decision.decision, decisionAt: decision.decisionAt,
       href: "/leads/" + encodeURIComponent(l.id) + "?claim=" + encodeURIComponent(c.id),
       state, signedAt, deliveredAt, returnEndsAt: window?.endsAt || null, packet,
