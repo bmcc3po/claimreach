@@ -165,7 +165,7 @@ function LeadWorkspaceRecord({
           </div>
         </div>
         <div className="lf-status-row">
-          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} currentLabel={resolveFileStatus(activeClaim, undefined, claims.length === 1 && !!lead.signed_at).label} role={lead.current_user_role} />
+          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} currentLabel={resolveFileStatus(activeClaim, undefined, claims.length === 1 && !!lead.signed_at).label} role={lead.current_user_role} signedDeclineAvailable={canTools && activeClaim?.claim_type === 'mva' && activeClaim.campaign === 'INNO MVA' && !lead.archived_at} />
         </div>
         <div className="lf-acts" aria-label="Main file actions">
           {headerActions}

@@ -1,9 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import StatusBadge from "./ui/StatusBadge";
-import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, manualIntakeStatusAllowed, type StatusDef, type DqReason } from "@/lib/statuses";
+import SignedDecline from "./SignedDecline";
+import { SIGNED_DECLINE_STATUS } from "@/lib/signed-decline";
+import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, isSignedKey, manualIntakeStatusAllowed, statusLabel, type StatusDef, type DqReason } from "@/lib/statuses";
 
-export default function FileStatusControl({ leadId, current, currentLabel, role, claimId, onChanged }: { leadId: string; current: string; currentLabel?: string; role?: string; claimId?: string | null; onChanged?: (status: string) => void }) {
+export default function FileStatusControl({ leadId, current, currentLabel, role, claimId, signedDeclineAvailable = false, onChanged }: { leadId: string; current: string; currentLabel?: string; role?: string; claimId?: string | null; signedDeclineAvailable?: boolean; onChanged?: (status: string) => void }) {
   const [status, setStatus] = useState(current);
   const [open, setOpen] = useState(false);
   const [statuses, setStatuses] = useState<StatusDef[]>(DEFAULT_STATUSES);
@@ -16,13 +19,17 @@ export default function FileStatusControl({ leadId, current, currentLabel, role,
   const [confirming, setConfirming] = useState<StatusDef | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [declining, setDeclining] = useState(false);
 
-  const canEdit = role !== "firm";
+  const canDecline = signedDeclineAvailable && !!claimId && ["owner", "admin"].includes(role || "");
+  const signed = isSignedKey(status, statuses);
+  const canEdit = role !== "firm" && (!signed || canDecline);
 
   // Switching to another claim (or a server refresh) must show THAT claim's
   // status, not the one this control mounted with — the next change targets
   // the newly selected claim (Astra round 5: claim A's badge over claim B).
   useEffect(() => { setStatus(current); setMsg(""); }, [claimId, current]);
+  useEffect(() => { setOpen(false); setDeclining(false); setPicking(null); setConfirming(null); }, [claimId]);
 
   useEffect(() => {
     if (!open) return;
@@ -63,16 +70,20 @@ export default function FileStatusControl({ leadId, current, currentLabel, role,
   return (
     <div className="file-status-control">
       <span className="file-status-label">Current status</span>
-      <StatusBadge status={status} label={status === current ? currentLabel : undefined} live={statuses} />
-      {canEdit && <button type="button" className="file-status-change" onClick={() => { setMsg(""); setOpen(true); }}>Change status</button>}
+      {canEdit ? <button type="button" className="file-status-change" aria-label={`Change status: ${status === current && currentLabel || statusLabel(status, statuses)}`} onClick={() => { setMsg(""); setOpen(true); }}>
+        <StatusBadge status={status} label={status === current ? currentLabel : undefined} live={statuses} /><span aria-hidden="true"> ▾</span>
+      </button> : <StatusBadge status={status} label={status === current ? currentLabel : undefined} live={statuses} />}
 
       {open && canEdit && !picking && !confirming && (
         <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}>
           <div className="modal status-dialog" role="dialog" aria-modal="true" aria-label="Change status">
           <div className="status-dialog-head"><strong>Change status</strong><button type="button" className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>Close</button></div>
-          <p className="muted status-dialog-note">Choose the next call status. Signed, QA, and delivery statuses update through their own workflows.</p>
+          <p className="muted status-dialog-note">{signed ? canDecline ? 'Choose the file outcome. Declining also requests the firm’s drop letter.' : 'This file is signed. Ask BMC to record a decline or the firm’s decision.' : 'Choose the next call status. Signatures and firm delivery update when those actions complete.'}</p>
           <div className="status-menu-list">
-            {statuses.filter(manualIntakeStatusAllowed).map((s) => (
+            {canDecline && <button type="button" className={`status-opt${status === SIGNED_DECLINE_STATUS ? ' on' : ''}`} onClick={() => { setOpen(false); setDeclining(true); }}>
+              <span className="sb-dot bad" /><span>{statusLabel(SIGNED_DECLINE_STATUS)}</span><span className="status-opt-tag">{status === SIGNED_DECLINE_STATUS ? 'details' : 'reason + email'}</span>
+            </button>}
+            {!signed && statuses.filter(manualIntakeStatusAllowed).map((s) => (
               <button type="button" key={s.key} className={`status-opt ${s.key === status ? "on" : ""}`} disabled={busy} onClick={() => choose(s)}>
                 <span className={`sb-dot ${s.tone}`} />
                 <span>{s.label}</span>
@@ -84,6 +95,12 @@ export default function FileStatusControl({ leadId, current, currentLabel, role,
           </div>
         </div>
       )}
+
+      {declining && canDecline && createPortal(<div className="modal-back">
+        <div className="modal status-dialog" role="dialog" aria-modal="true" aria-label="Signed and declined" style={{ maxWidth: 480 }}>
+          <SignedDecline key={claimId} claimId={claimId!} statusAction embedded onClose={() => setDeclining(false)} onChanged={(next) => { setStatus(next); onChanged?.(next); }} />
+        </div>
+      </div>, document.body)}
 
       {confirming && (
         <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) setConfirming(null); }}>
