@@ -27,6 +27,7 @@ const modules: Record<string, any> = {
   "next/server": { NextResponse: { json: (body: any, init?: any) => ({ status: init?.status ?? 200, body }) } },
   "@/lib/supabase-server": { supabaseServer: async () => sb, supabaseAdmin: () => admin },
   "@/lib/gate": { gateUser: async () => g },
+  "@/lib/signed-decline": require("./signed-decline"),
   "@/lib/statuses": { manualIntakeStatusAllowed: () => true },
   "@/lib/mva-call/signing-matter": {},
 };

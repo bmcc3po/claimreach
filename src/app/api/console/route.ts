@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { preserveDeclineEvidence } from "@/lib/signed-decline";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { gateUser } from "@/lib/gate";
 import { manualIntakeStatusAllowed } from "@/lib/statuses";
@@ -159,7 +160,7 @@ export async function POST(req: NextRequest) {
   // still leaves a usable file.
   if (b.op === "save") {
     if (!b.claim_id) return NextResponse.json({ error: "claim_id required" }, { status: 400 });
-    const visible = await sb.from("claims").select("id, lead_id").eq("id", b.claim_id).maybeSingle();
+    const visible = await sb.from("claims").select("id, lead_id, answers, updated_at").eq("id", b.claim_id).maybeSingle();
     if (visible.error) return NextResponse.json({ error: "Could not verify this matter's access. Refresh and try again." }, { status: 503 });
     if (!visible.data) return NextResponse.json({ error: "This matter is unavailable to this account." }, { status: 403 });
     if (b.call_id) {
@@ -167,10 +168,13 @@ export async function POST(req: NextRequest) {
       if (call.error) return NextResponse.json({ error: "Could not verify this call's access. Refresh and try again." }, { status: 503 });
       if (!call.data || call.data.lead_id !== visible.data.lead_id) return NextResponse.json({ error: "This call does not belong to the selected matter." }, { status: 403 });
     }
-    const patch: any = { answers: b.answers ?? {} };
+    const patch: any = { answers: preserveDeclineEvidence(b.answers, visible.data.answers) };
     if (b.summary) patch.case_summary = b.summary;
-    const { error } = await admin.from("claims").update(patch).eq("id", b.claim_id);
+    let write = admin.from("claims").update(patch).eq("id", b.claim_id).eq("lead_id", visible.data.lead_id);
+    write = visible.data.updated_at == null ? write.is("updated_at", null) : write.eq("updated_at", visible.data.updated_at);
+    const { data: saved, error } = await write.select("id").maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!saved) return NextResponse.json({ error: "The file changed. Reload before saving again." }, { status: 409 });
     if (b.call_id) {
       await admin.from("intake_calls").update({ answers: b.answers ?? {}, summary: b.summary ?? null }).eq("id", b.call_id);
     }

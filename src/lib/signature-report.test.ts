@@ -119,3 +119,11 @@ test("pagination reads beyond 1,000; a failed page fails the complete report", a
   assert.equal((await reportPages(() => ({ order() { return this; }, range(from: number, to: number) { return { data: data.slice(from, to + 1) }; } }))).length, 1201);
   await assert.rejects(reportPages(() => ({ order() { return this; }, range(from: number) { return from ? { error: { message: "failed" } } : { data: data.slice(0, 500) }; } })), /complete signature report/);
 });
+
+test('declined signed file retains its signature and delivery clock with bad-sign reason in export', () => {
+  const f=fixture(); f.claims[0].status='signed_dropped';f.claims[0].dq_reason='Treatment gap';
+  f.deliveries=[{firm_id:'f',lead_id:'l',claim_id:'c',ok:true,to_email:f.firmEmail,created_at:'2026-10-02T00:00:00Z'}];
+  const [r]=signatureReport(f);assert.equal(r.state,'signed');assert.equal(r.declined,true);
+  assert.equal(r.returnEndsAt,'2026-10-09T00:00:00.000Z');assert.equal(r.declineReason,'Treatment gap');
+  assert.match(signatureCsv([r],'Firm','2026-10-07'),/Excluded — signed file declined/);
+});

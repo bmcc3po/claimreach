@@ -9,6 +9,7 @@
 // webhook and firm delivery run per CHANGED claim, with that claim's own
 // answers and campaign, and name a signing only when a signing happened.
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { isSignedDeclined, type SignedDecline } from "./signed-decline";
 import { needsQaReview, resolveStatus, type StatusDef } from "@/lib/statuses";
 import { resolveMatter } from "@/lib/matter";
 
@@ -106,6 +107,8 @@ export async function setClaimStatusForLeads(opts: {
   historical?: boolean;
   /** A human-confirmed handoff sends only after its separate final action. */
   suppressAutoDelivery?: boolean;
+  /** Owner decline evidence committed atomically with the terminal status. */
+  signedDecline?: SignedDecline;
 }, deps: StatusDeps = {}): Promise<SetStatusResult> {
   const db = deps.db ?? supabaseAdmin();
   const audit = deps.audit ?? (async (row: any) => { const { recordAudit } = await import("@/lib/audit"); await recordAudit(row); });
@@ -151,7 +154,20 @@ export async function setClaimStatusForLeads(opts: {
     if (prior.some((r) => !leadSet.has(r.lead_id))) return { ok: false, error: "That claim does not belong to this file. Refresh and try again." };
   }
 
+  if (prior.some(isSignedDeclined) && opts.status !== "signed_dropped" && !opts.historical) {
+    return { ok: false, error: "This signed file was declined. It cannot be reopened by an intake or QA status change." };
+  }
+  if (opts.status === 'signed_dropped' && !opts.signedDecline && !opts.historical && prior.some(c => c.campaign === 'INNO MVA')) {
+    return { ok: false, error: 'Use Decline signed file / request drop letter so the firm is notified and the reason is recorded.' };
+  }
+  if (opts.signedDecline && (prior.length !== 1 || opts.status !== "signed_dropped" || !opts.expectedUpdatedAt)) {
+    return { ok: false, error: "A signed decline requires one exact matter and its current version." };
+  }
   const patch: any = { status: opts.status, updated_at: new Date().toISOString() };
+  if (opts.signedDecline) {
+    patch.answers = { ...(prior[0].answers || {}), signed_decline: opts.signedDecline };
+    patch.supervisor_flag = false;
+  }
   if (def.qualify === "disqualify") {
     patch.dq_reason_key = opts.dqReasonKey ?? null;
     if (opts.dqNote != null) patch.dq_reason = opts.dqNote;

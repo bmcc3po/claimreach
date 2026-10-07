@@ -1,3 +1,4 @@
+import { isSignedDeclined, signedDecline } from "./signed-decline";
 import { rowBelongsToMatter } from "@/lib/matter";
 import { paxParentId } from "@/lib/linked-files";
 import { clientSignatureConfirmed } from "@/lib/mva-call/passenger-signing";
@@ -16,6 +17,8 @@ export type SignatureReportRow = {
   deliveredAt: string | null; returnEndsAt: string | null;
   packet: string; status: string; agent: string; archived: boolean; test: boolean; ownerSent: boolean;
   firmDecision?: string; firmReason?: string;
+  agentId?: string | null; agentName?: string;
+  declined?: boolean; declineReason?: string; declinedAt?: string | null; badSignAgent?: string;
 };
 export type SignatureReportInput = {
   firmId: string; campaignId: string; firmEmail: string | null; ownerEmail: string | null;
@@ -55,6 +58,9 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
     const packet = ownerSigned ? "Imported — owner approved" : state !== "signed" ? "—" : current.status === "completed" && current.agent_reviewed_at && current.completed_pdf_path && current.cert_pdf_path
       ? "Office step complete" : "Office step needs review";
     const decision = reviewState((input.reviews || []).filter(r => r.firm_id === c.firm_id && r.lead_id === l.id && r.meta?.event === REVIEW_EVENT && r.meta?.claim_id === c.id && r.meta?.campaign_id === c.campaign_id));
+    // Assignment alone is not proof of who worked this signed file.
+    const agentId = l.intake_agent_id || current?.sent_by || null;
+    const agentName = input.users.find(u => u.id === agentId)?.full_name || 'Agent not recorded';
     return {
       claimId: c.id, leadNo: l.lead_no || "File", name: l.claimant_name || "Name missing",
       href: "/leads/" + encodeURIComponent(l.id) + "?claim=" + encodeURIComponent(c.id),
@@ -64,8 +70,11 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
         uncertain ? "Signature history needs review" : "No current verified signature",
       status: resolveFileStatus(c, undefined, state === "signed").label,
       agent: fileAgentSummary(l, input.users, null, current?.sent_by),
+      agentId, agentName,
       firmDecision: decision.decision ? FIRM_DECISION_LABELS[decision.decision as keyof typeof FIRM_DECISION_LABELS] : 'Awaiting firm decision',
       firmReason: decision.explanation,
+      declined: isSignedDeclined(c), declineReason: signedDecline(c)?.reason || c.dq_reason || "",
+      declinedAt: signedDecline(c)?.at || null, badSignAgent: signedDecline(c)?.agentName || "",
       archived: !!l.archived_at,
       ownerSent: ownerConfirmedDelivery(c.firm_send_result),
       test: isTestFile(l) || input.rehearsalKeys.includes("REHEARSAL_" + (paxParentId(l.external_id) || l.id) + "_OTHER") ||
@@ -83,10 +92,10 @@ export function signatureCsv(rows: SignatureReportRow[], firm: string, generated
     return '"' + (/^[\s]*[=+@-]/.test(value) ? "'" : "") + value.replace(/"/g, '""') + '"';
   };
   const date = (v: string | null) => v ? new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", dateStyle: "short", timeStyle: "short" }).format(new Date(v)) : "";
-  const header = ["File", "Client", "Firm", "Signature", "Signed (Pacific)", "Office packet", "Firm delivery", "Delivered (Pacific)", "Return window ends (Pacific)", "Agent / role", "Workflow status", "Signature note", "Archived", "Test", "Invoice history", "File link", "Report generated (UTC)", "Firm decision", "Rejection reason"];
+  const header = ["File", "Client", "Firm", "Signature", "Signed (Pacific)", "Office packet", "Firm delivery", "Delivered (Pacific)", "Return window ends (Pacific)", "Agent / role", "Workflow status", "Signature note", "Archived", "Test", "Invoice history", "File link", "Report generated (UTC)", "Firm decision", "Rejection reason", "Bad sign", "Decline reason", "Commission eligibility"];
   const body = rows.map(r => [r.leadNo, r.name, firm, r.state === "signed" ? "Signed" : r.state === "verify" ? "Needs verification" : "Not signed",
     date(r.signedAt), r.packet, r.deliveredAt ? "Confirmed" : r.ownerSent ? "Sent — owner confirmed; date unknown" : "Not recorded / verified", date(r.deliveredAt), date(r.returnEndsAt),
     r.agent, r.status, r.detail, r.archived ? "Yes" : "No", r.test ? "Yes" : "No", "Not tracked — reconcile prior invoices",
-    "https://claimreach.com" + r.href, generatedAt, r.firmDecision, r.firmReason]);
+    "https://claimreach.com" + r.href, generatedAt, r.firmDecision, r.firmReason, r.declined ? "Yes" : "", r.declineReason, r.declined ? "Excluded — signed file declined" : "Review in payroll"]);
   return "\uFEFF" + [header, ...body].map(row => row.map(cell).join(",")).join("\r\n");
 }

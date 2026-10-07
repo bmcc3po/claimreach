@@ -8,7 +8,7 @@
 // and DIFFERENT content is refused by Resend (409). This makes a retry safe,
 // not exactly-once: past the window, or with changed content, it can send again.
 
-export async function sendEmail(opts: { to: string | string[]; cc?: string[]; subject: string; html: string; text?: string; replyTo?: string; attachments?: { filename: string; content: string }[]; idempotencyKey?: string }): Promise<{ ok: boolean; error?: string }> {
+export async function sendEmail(opts: { to: string | string[]; cc?: string[]; subject: string; html: string; text?: string; replyTo?: string; attachments?: { filename: string; content: string }[]; idempotencyKey?: string }): Promise<{ ok: boolean; error?: string; uncertain?: boolean; providerId?: string }> {
   const key = (globalThis as any)?.process?.env?.RESEND_API_KEY;
   const from = (globalThis as any)?.process?.env?.EMAIL_FROM || "ClaimReach <noreply@claimreach.com>";
   if (!key) return { ok: false, error: "email not configured (RESEND_API_KEY missing)" };
@@ -21,6 +21,7 @@ export async function sendEmail(opts: { to: string | string[]; cc?: string[]; su
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
       headers,
       body: JSON.stringify({
         from, to, cc: cc.length ? cc : undefined, subject: opts.subject, html: opts.html,
@@ -31,11 +32,12 @@ export async function sendEmail(opts: { to: string | string[]; cc?: string[]; su
     });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
-      return { ok: false, error: (d as any)?.message || `email send failed (${r.status})` };
+      return { ok: false, uncertain: r.status >= 500 || [408, 409].includes(r.status), error: (d as any)?.message || `email send failed (${r.status})` };
     }
-    return { ok: true };
+    const sent = await r.json().catch(() => ({})) as { id?: string };
+    return { ok: true, providerId: sent.id };
   } catch (e: any) {
-    return { ok: false, error: e?.message || "email send error" };
+    return { ok: false, uncertain: true, error: e?.message || "email send error" };
   }
 }
 

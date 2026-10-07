@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { manualIntakeStatusAllowed } from "@/lib/statuses";
+import { preserveDeclineEvidence } from "@/lib/signed-decline";
 
 export const runtime = "edge";
 
@@ -79,8 +80,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `These fields do not save through a form: ${rejected.join(", ")}. Use their own commands (status, campaign, QA).` }, { status: 400 });
     }
     if (!Object.keys(patch).length) return NextResponse.json({ error: "Nothing to save." }, { status: 400 });
-    const { error } = await sb.from("claims").update(patch).eq("id", p.claim_id);
+    const current = await sb.from("claims").select("id,answers,updated_at").eq("id", p.claim_id).maybeSingle();
+    if (current.error || !current.data) return NextResponse.json({ error: "Could not verify the file before saving." }, { status: 409 });
+    if ('answers' in patch) patch.answers = preserveDeclineEvidence(patch.answers, current.data.answers);
+    let write = sb.from("claims").update(patch).eq("id", p.claim_id);
+    write = current.data.updated_at == null ? write.is("updated_at", null) : write.eq("updated_at", current.data.updated_at);
+    const { data: saved, error } = await write.select("id").maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!saved) return NextResponse.json({ error: "The file changed. Reload before saving again." }, { status: 409 });
     return NextResponse.json({ ok: true });
   }
 

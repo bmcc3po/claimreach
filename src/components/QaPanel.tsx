@@ -46,11 +46,12 @@ function FirmQaStatus({ claimStatus, grievousVerdict }: { claimStatus?: string; 
 }
 
 export default function QaPanel({
-  leadId, claimId, role, fence, claimStatus, grievousVerdict,
+  leadId, claimId, role, fence, claimStatus, grievousVerdict, signedDeclineAction,
 }: {
   leadId: string; claimId?: string; role?: string;
   fence?: FileFence;
   claimStatus?: string;
+  signedDeclineAction?: boolean;
   grievousVerdict?: string | null;
 }) {
   const firmView = !fileMayRunQa(fence);
@@ -241,7 +242,8 @@ export default function QaPanel({
         <button className="btn" disabled={busy || submitted || anyRed || !gatesSet} title={anyRed ? "A red hard gate blocks approval" : !gatesSet ? "Set all three hard gates first" : ""} onClick={() => submit("approve")}>Approve (unlock firm)</button>
         <button className="btn ghost" disabled={busy || submitted} onClick={() => submit("wip")}>Back to agent (WIP)</button>
         <button className="btn ghost" disabled={busy || submitted} onClick={() => submit("flag")}>Flag BMC</button>
-        {isBmc && <button className="btn ghost danger" disabled={busy || submitted} onClick={onDecline}>Decline (drop letter)</button>}
+        {isBmc && signedDeclineAction && <a className="btn ghost danger" href="#signed-decline">Decline signed file / request drop letter ↑</a>}
+        {isBmc && !signedDeclineAction && <button className="btn ghost danger" disabled={busy || submitted} onClick={onDecline}>Decline (drop letter)</button>}
       </div>
       {anyRed && <p className="qa-gate-warn">A red hard gate is set. Approval is blocked. Route to WIP{isBmc ? ", Flag BMC, or Decline" : " or Flag BMC"}.</p>}
 
