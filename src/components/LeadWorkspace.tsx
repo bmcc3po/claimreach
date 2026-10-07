@@ -177,8 +177,8 @@ function LeadWorkspaceRecord({
         </div>
         {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
       </div>
-      {canTools && activeClaimId && activeClaim?.claim_type === "mva" && activeClaim?.campaign === "INNO MVA" && ["owner", "admin"].includes(lead.current_user_role || "") && !lead.archived_at && <SignedDecline key={activeClaimId} claimId={activeClaimId} />}
-      {canTools && activeClaimId && lead.current_user_role === "owner" && !lead.archived_at && ['delivered', 'retained'].includes(activeClaim?.status || '') && <FirmDecision key={activeClaimId} claimId={activeClaimId} />}
+      {canTools && activeClaimId && activeClaim?.claim_type === "mva" && activeClaim?.campaign === "INNO MVA" && ["owner", "admin"].includes(lead.current_user_role || "") && !lead.archived_at && !(lead.current_user_role === "owner" && ['delivered', 'retained'].includes(activeClaim.status)) && <SignedDecline key={activeClaimId} claimId={activeClaimId} declined={activeClaim.status === 'signed_dropped'} />}
+      {canTools && activeClaimId && lead.current_user_role === "owner" && !lead.archived_at && ['delivered', 'retained'].includes(activeClaim?.status || '') && <FirmDecision key={activeClaimId} claimId={activeClaimId} allowBmc={activeClaim?.claim_type === 'mva' && activeClaim.campaign === 'INNO MVA'} />}
       {activeClaimId && activeClaim?.claim_type === "mva" && ["owner", "admin"].includes(lead.current_user_role || "") && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
       {activeClaimId && activeClaim?.claim_type === "mva" && lead.current_user_role === "owner" && !importedSignedPacket &&
         ["signed_grievous", "signed_qa", "signed_wip", "signed_approved", "delivered"].includes(activeClaim.status) &&

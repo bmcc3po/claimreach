@@ -23,6 +23,12 @@ const mods: Record<string, any> = {
   '@/lib/claim-status':{ setClaimStatusForLeads:(o:any,d:any)=>setClaimStatusForLeads(o,{...d,audit:async()=>{}}) },
   '@/lib/signed-decline-notification':{ ...notification, notifySignedDecline:(c:any,retry:boolean)=>notification.notifySignedDecline(c,retry,async()=>{ sends++;return {ok:true,providerId:'test'}; }) },
 };
+const workflow:any={};
+const workflowMods:Record<string,any>={'./signature-report-loader':mods['@/lib/signature-report-loader'],'./claim-status':mods['@/lib/claim-status'],
+  './signed-decline':decline,'./signed-decline-notification':mods['@/lib/signed-decline-notification'],'./firm-review-access':access};
+new Function('require','exports',ts.transpileModule(fs.readFileSync(path.resolve(__dirname,'signed-decline-workflow.ts'),'utf8'),{compilerOptions:{target:9,module:1}}).outputText)
+  ((k:string)=>{assert.ok(k in workflowMods,k);return workflowMods[k];},workflow);
+mods['@/lib/signed-decline-workflow']=workflow;
 const route:any={};new Function('require','exports',code)((k:string)=>{assert.ok(k in mods,k);return mods[k];},route);
 const request=(body:any,origin='https://claimreach.test')=>new NextRequest('https://claimreach.test/api/signed-decline',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)});
 const body = { claim:id, confirm:true, action:'decline', reason:'Fictional treatment gap', version, to:'firm@example.test' };

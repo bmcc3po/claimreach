@@ -25,6 +25,7 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
 
   // qualification state -> single clear status chip
   const stateChip = (() => {
+    if (status === "signed_dropped") return { label: resolveStatus(status).label, cls: "bad" };
     if (status === "sent") return { label: "Sent to firm", cls: "info" };
     if (status === "delivered") return { label: resolveFileStatus(activeClaim, undefined, signatureConfirmed).label, cls: "ok" };
     if (isSignedKey(status)) return { label: activeClaim?.claim_type === "mva" && /^signed_/.test(status) ? "Signed · agent review" : resolveStatus(status).label, cls: "ok" };
