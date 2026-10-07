@@ -9,6 +9,7 @@ Send or forward NETFLY signed-case emails to `netfly@oourkaudor.resend.app` afte
    - `NETFLY_RESEND_WEBHOOK_SECRET`: the signing secret for that exact webhook, stored as a secret.
    - `NETFLY_RECEIVING_TO`: `netfly@oourkaudor.resend.app`.
    - `NETFLY_EMAIL_FROM_DOMAINS`: `netflydigital.com,innovativeintake.com` (exact authenticated sender domains).
+   - `NETFLY_EMAIL_FROM_ADDRESSES`: optional comma-separated individual forwarders; defaults to `bcurry@turnbullfirm.com`. An explicitly empty value disables this list. These addresses still require Resend's verified DMARC result; quoted From lines and email headers never grant permission.
    - `NETFLY_RESEND_API_KEY`: a dedicated Resend Full access key for retrieving incoming messages, stored as a secret. Resend does not offer a receiving-only key. Leave the existing sending-only `RESEND_API_KEY` unchanged.
 3. Redeploy after setting production variables. Do not copy production receiving credentials to public PR previews.
 4. Send a clearly marked synthetic case with a PDF, inspect the new NETFLY file and original attachment, then replay its webhook. There should still be one lead and one copy of the PDF. Archive the synthetic file after verification.
@@ -21,7 +22,9 @@ Missing name, phone, note, or PDF creates a visible partial file. Phone can be a
 
 Exact repeated case-note content reuses the same file; webhook retries are idempotent. An explicit LawRuler Lead ID can bind to one active, same-campaign file with a matching client name. Name or shared phone alone never attaches a legal document to an existing file. A materially changed email without the LawRuler ID may create another partial file requiring staff reconciliation.
 
-Only signed, recent Resend events for the configured inbox and DMARC-authenticated allowed sender domains are accepted. Unverified sender authentication is held in Resend for review. A failed attachment import keeps the partial lead and returns a retryable response; replay the event after fixing the cause. The integration imports up to eight PDFs, 15 MB each. Other attachment types stay in Resend. The complete original text is retained even when longer than the 20,000-character handoff note.
+Only signed, recent Resend events for the configured inbox and DMARC-authenticated allowed sender domains or individual forwarders are accepted. Unverified sender authentication is held in Resend for review. A failed attachment import keeps the partial lead and returns a retryable response; replay the event after fixing the cause. The integration imports up to eight PDFs, 15 MB each. Other attachment types stay in Resend. The complete original text is retained even when longer than the 20,000-character handoff note.
+
+Unapproved senders to this receiving inbox produce a visible held-email receipt. They do not create client files. Their webhook is acknowledged without repeated retries; an owner can replay the preserved message after correcting the sender configuration.
 
 ## Manual paste
 

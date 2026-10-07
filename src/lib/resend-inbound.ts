@@ -38,12 +38,13 @@ export type ReceivedEmail = { id: string; from: string; to: string[]; received_f
   text: string | null; html: string | null; created_at: string; message_id: string;
   headers?: Record<string, string>; authentication?: { dmarc?: string; dkim?: string; spf?: string };
   attachments?: { id: string; filename: string; content_type: string; content_disposition?: string; size?: number }[] };
-export const mailbox = (raw: string) => (raw.match(/<([^<>]+)>/)?.[1] || raw).trim().toLowerCase();
-export function receiveAllowed(email: ReceivedEmail, recipient: string, domains: string[]) {
+export const mailbox = (raw: string) => (raw.match(/^[^<>\r\n]*<([^<>\r\n]+)>$/)?.[1] || raw).trim().toLowerCase();
+export function receiveAllowed(email: ReceivedEmail, recipient: string, domains: string[], forwarders: string[] = []) {
   const recipients = [...(email.to || []), ...(email.received_for || [])].map(mailbox);
   if (!recipient || !recipients.includes(recipient.toLowerCase())) return 'different_recipient';
   const sender = mailbox(email.from);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender) || !domains.includes(sender.split('@')[1])) return 'unapproved_sender';
+  if (!/^[^\s@<>(),;]+@[^\s@<>(),;]+\.[^\s@<>(),;]+$/.test(sender) ||
+      (!domains.includes(sender.split('@')[1]) && !forwarders.includes(sender))) return 'unapproved_sender';
   if (email.authentication?.dmarc?.toLowerCase() !== 'pass') return 'sender_authentication_unverified';
   return null;
 }

@@ -26,7 +26,8 @@ const multiline = new Set(['Accident Summary', 'Insurance', 'Injuries & Treatmen
 
 /** HTML is converted to plain text only; no email markup is ever rendered. */
 export function emailPlainText(input: string): string {
-  return input.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+  return input.replace(/([^\s<>]+@[^\s<>]+)<mailto:\1>/gi, '$1')
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
     .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?<\/a>/gi,
       (tag, href) => approvedAgreementUrl(href.replace(/&amp;/gi, '&')) ? `\n${href.replace(/&amp;/gi, '&')}\n` : tag)
     .replace(/<\/?(?:div|p|tr|li|blockquote)\b[^>]*>|<br\s*\/?\s*>/gi, '\n')
@@ -48,7 +49,14 @@ export function approvedAgreementUrl(value: string): string | null {
 }
 
 const cleanLine = (raw: string) => raw.trim().replace(/^>\s?/, '').replace(/\*\*/g, '').replace(/\\$/, '').trim();
-const contactNameKey = (name: string) => name.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+// Notes and their contact block can spell the same name with or without
+// accents. Use this comparison for the provider's PDF signer as well.
+export const netflyContactNameKey = (name: string) => name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+function handoffLocation(value: string) {
+  const match = /^([^,]+),\s*([A-Za-z .]+?)(?:\s+[–—-]\s+(.+))?$/.exec(value);
+  const state = match && stateCodeOf(match[2]);
+  return match && state ? { city: match[1], state, road: match[3] } : null;
+}
 function handoffContactBlock(lines: string[]) {
   const start = lines.findIndex(line => /^contact\s+information\s*:?$/i.test(line));
   if (start < 0) return null;
@@ -93,7 +101,7 @@ export function parseNetflyHandoff(note: string): { label: string; value: string
     }
   }
   const contact = handoffContactBlock(lines);
-  if (contact && (!values.get('Client/Driver') || contactNameKey(contact.name) === contactNameKey(values.get('Client/Driver')!))) {
+  if (contact && (!values.get('Client/Driver') || netflyContactNameKey(contact.name) === netflyContactNameKey(values.get('Client/Driver')!))) {
     if (!values.get('Client/Driver')) values.set('Client/Driver', contact.name);
     if (contact.email && !values.get('Client Email')) values.set('Client Email', contact.email);
     if (contact.phone && !values.get('Client Phone')) values.set('Client Phone', contact.phone);
@@ -109,7 +117,9 @@ export function parseNetflyHandoff(note: string): { label: string; value: string
       if (details.length >= 12) break;
     }
     const compact = details.join(' ');
+    const noteLocation = handoffLocation(values.get('Location') || '');
     for (const [key, label] of [['State', 'Accident State'], ['City', 'Accident City'], ['Accident Type', 'Accident Type'], ['At fault', 'At Fault']]) {
+      if (noteLocation && (label === 'Accident State' || label === 'Accident City')) continue;
       const match = new RegExp('(?:^|,)\\s*' + key + '\\s*:\\s*([^,]*)', 'i').exec(compact);
       if (match?.[1].trim() && !values.has(label)) values.set(label, match[1].trim());
     }
@@ -151,7 +161,7 @@ export function extractNetflyEmail(note: string) {
   const source = Object.fromEntries(rows.map(row => [row.label, row.value]));
   const lines = emailPlainText(note).split('\n').map(cleanLine);
   const contact = handoffContactBlock(lines);
-  const mismatchedContact = !!contact && !!source['Client/Driver'] && contactNameKey(contact.name) !== contactNameKey(source['Client/Driver']);
+  const mismatchedContact = !!contact && !!source['Client/Driver'] && netflyContactNameKey(contact.name) !== netflyContactNameKey(source['Client/Driver']);
   const warnings: string[] = [];
   if (mismatchedContact) warnings.push('The contact block names a different client. Its phone, email and agreement link were not applied. Check the original email.');
   const agreementLinks: string[] = [];
@@ -188,11 +198,10 @@ export function extractNetflyEmail(note: string) {
   const state = stateCodeOf(source['Accident State']); if (state) add('accident_state', 'Accident State', state);
   // Only split the explicit "City, State – Road" format; otherwise preserve
   // Location as source text and let the rep resolve it.
-  const location = /^([^,]+),\s*([A-Za-z .]+?)(?:\s+[–—-]\s+(.+))?$/.exec(source.Location || '');
-  const locationState = location && stateCodeOf(location[2]);
-  if (location && locationState) {
-    add('accident_city', 'Location', location[1]); add('accident_state', 'Location', locationState);
-    if (location[3]) add('road', 'Location', location[3]);
+  const location = handoffLocation(source.Location || '');
+  if (location) {
+    add('accident_city', 'Location', location.city); add('accident_state', 'Location', location.state);
+    if (location.road) add('road', 'Location', location.road);
   }
   add('police_report', 'Case #'); add('police_department', 'Reporting Agency');
   add('incident_story', 'Accident Summary');
