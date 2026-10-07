@@ -34,6 +34,15 @@ test('atomic decline preserves answers/signature/delivery and sibling QA; stale 
 test('old catalog cannot make signed disqualifications billable', () => {
   assert.equal(resolveStatus('signed_dropped', DEFAULT_STATUSES.map(s => ({ ...s, billable: true }))).billable, false);
 });
+
+test('BMC drop-letter email explains the erroneous signing without attributing a firm decision to BMC', () => {
+  const bmc = dropLetterMessage('Synthetic Client', 'TEST-1', 'Does not qualify');
+  assert.match(bmc.html, /signed in error and BMC has declined/);
+  assert.match(bmc.html, /Please send the client the appropriate drop letter/);
+  const firm = dropLetterMessage('Synthetic Client', 'TEST-1', 'Firm decision', '', 'Firm declined');
+  assert.match(firm.html, /The firm has declined/);
+  assert.doesNotMatch(firm.html, /signed in error|BMC has declined/);
+});
 test('concurrent drop requests and later retries send exactly once; no packet receipt or clock is written', async () => {
   const c = fixture(); let sends = 0;
   const send = async (mail: any) => { sends++; assert.deepEqual(mail.to, 'firm@example.test'); assert.equal(mail.attachments, undefined); return { ok: true, providerId: 'provider-1' }; };

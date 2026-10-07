@@ -106,7 +106,7 @@ export default function DeskPanel({ v, tab, setTab, phase, fill, lead, preview, 
       {tab === "know" && <Knowledge v={v} phase={phase} fill={fill} focusLines={focusLines} />}
       {tab === "texts" && <Texts v={v} />}
       {tab === "retainer" && <div className="cc-side-b"><button type="button" className="cc-btn" onClick={v.reviewAgreement}>Open client details and contract in intake</button></div>}
-      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} lead={lead} canOpenClassic={v.agentRole === "owner"} canDownloadFirmPacket={["owner", "admin"].includes(v.agentRole)} caseSummary={caseSummary} noteDraft={noteDraft} updateNoteDraft={updateNoteDraft} sendHoldNotice={v.sendHoldNotice || ""} reconcileActions={v.reconcileActions || []} reconcileBusy={!!v.reconcileBusy} reconcileMessage={v.reconcileMessage || ""} onFinishOffice={v.reviewAgreement} beforeQaResubmit={v.beforeQaResubmit} onCorrect={v.reviewAgreement} />}
+      {tab === "file" && <FileTab key={claimId} leadId={leadId} claimId={claimId} role={v.agentRole} lead={lead} canOpenClassic={v.agentRole === "owner"} canDownloadFirmPacket={["owner", "admin"].includes(v.agentRole)} caseSummary={caseSummary} noteDraft={noteDraft} updateNoteDraft={updateNoteDraft} sendHoldNotice={v.sendHoldNotice || ""} reconcileActions={v.reconcileActions || []} reconcileBusy={!!v.reconcileBusy} reconcileMessage={v.reconcileMessage || ""} onFinishOffice={v.reviewAgreement} beforeQaResubmit={v.beforeQaResubmit} onCorrect={v.reviewAgreement} />}
       {tab === "tools" && <Tools v={v} story={story} />}
       {phoneOn && (
         <div className="cc-side-b cc-side-phone" hidden={tab !== "phone"}>
@@ -349,7 +349,7 @@ const fmtWhen = (iso?: string | null) => {
 
 // The file: status, agreements, notes, documents and history, without leaving
 // the call. Loads when the tab opens.
-function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket, caseSummary, noteDraft, updateNoteDraft, sendHoldNotice, reconcileActions, reconcileBusy, reconcileMessage, onCorrect, onFinishOffice, beforeQaResubmit }: { leadId: string; claimId: string; lead: { from: string; said: string; tags: string[] } | null; canOpenClassic: boolean; canDownloadFirmPacket: boolean; caseSummary?: ReactNode; noteDraft: FileNoteDraft; updateNoteDraft: (update: (draft: FileNoteDraft) => FileNoteDraft) => void; sendHoldNotice: string; reconcileActions: { label: string; go: () => void }[]; reconcileBusy: boolean; reconcileMessage: string; onCorrect: () => void; onFinishOffice?: () => void; beforeQaResubmit?: () => Promise<boolean> }) {
+function FileTab({ leadId, claimId, role, lead, canOpenClassic, canDownloadFirmPacket, caseSummary, noteDraft, updateNoteDraft, sendHoldNotice, reconcileActions, reconcileBusy, reconcileMessage, onCorrect, onFinishOffice, beforeQaResubmit }: { leadId: string; claimId: string; role?: string; lead: { from: string; said: string; tags: string[] } | null; canOpenClassic: boolean; canDownloadFirmPacket: boolean; caseSummary?: ReactNode; noteDraft: FileNoteDraft; updateNoteDraft: (update: (draft: FileNoteDraft) => FileNoteDraft) => void; sendHoldNotice: string; reconcileActions: { label: string; go: () => void }[]; reconcileBusy: boolean; reconcileMessage: string; onCorrect: () => void; onFinishOffice?: () => void; beforeQaResubmit?: () => Promise<boolean> }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState("");
   const noteInput = useRef<HTMLTextAreaElement | null>(null);
@@ -419,7 +419,7 @@ function FileTab({ leadId, claimId, lead, canOpenClassic, canDownloadFirmPacket,
       {canDownloadFirmPacket && <OwnerFirmDownload leadId={leadId} claimId={claimId} compact />}
       {!!sendHoldNotice && <div className="cc-stop" role="status"><strong>{sendHoldNotice.startsWith("Send outcome unconfirmed") ? "Send outcome unconfirmed" : "Signing actions paused"}</strong><p>{sendHoldNotice}</p><span className="cc-cue">Existing signed copies and history remain available below. The owner must reconcile the send before another link or office completion.</span>{reconcileActions.map((action) => <button type="button" key={action.label} className="cc-btn" disabled={reconcileBusy} onClick={action.go}>{reconcileBusy ? "Checking" : action.label}</button>)}{!!reconcileMessage && <p>{reconcileMessage}</p>}</div>}
       <div className="cc-card cc-file-status-card">
-        <FileStatusControl leadId={leadId} claimId={claimId} current={d.status?.key || "new"} currentLabel={d.status?.label} onChanged={() => { void load(); }} />
+        <FileStatusControl leadId={leadId} claimId={claimId} role={role} signedDeclineAvailable={L.campaign === "INNO MVA" && !L.archived} current={d.status?.key || "new"} currentLabel={d.status?.label} onChanged={() => { void load(); }} />
       </div>
       {qaMessage && <div className="cc-cue" role="status">{qaMessage}</div>}
       {(d.status?.key === SIGNED_QA_RETURN_STATUS || (d.status?.key === "signed_qa" && d.qa_resubmit_retry)) && <div className="cc-card">
