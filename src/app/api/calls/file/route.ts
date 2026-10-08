@@ -31,6 +31,15 @@ export async function GET(req: NextRequest) {
     .eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
+  // The persistent header needs current metadata, not signed document URLs.
+  // Reuse the same authenticated, exact-matter resolver as the full File view.
+  if (req.nextUrl.searchParams.get('summary') === '1') {
+    const visible = resolveFileStatus(matter.claim, await loadStatuses(), matter.sole && !!lead.signed_at);
+    return NextResponse.json({ claim_id: matter.claim.id, status: visible,
+      campaign: matter.claim.campaign, archived_at: context.lead.archived_at,
+      role: me.role, can_archive: me.can('leads.delete') }, { headers: { 'Cache-Control': 'private, no-store' } });
+  }
+
   const [esignRes, notesRaw, auditRes, docsRes, staffRes, statuses] = await Promise.all([
     sb.from("esign_submissions").select("id, template_key, signer_name, injured_name, via, status, pax_index, doc_count, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error, voided_at, void_reason, replacement_requested_at, replacement_requested_by, replacement_reason, replacement_of, agent_reviewed_at, agent_reviewed_by")
       .eq("lead_id", leadId).or(matterRowsFilter(matter)).order("created_at", { ascending: false }).limit(20),

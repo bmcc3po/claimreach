@@ -2,6 +2,10 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import NetflyDocuments from "./NetflyDocuments";
+import FileHeader from '../FileHeader';
+import FileStatusControl from '../FileStatusControl';
+import FileOutcomeActions from '../FileOutcomeActions';
+import FileArchiveButton from '../FileArchiveButton';
 import HandoffImport from "./HandoffImport";
 import HandoffEvidence from "./HandoffEvidence";
 import { extractNetflyEmail } from "@/lib/netfly-handoff";
@@ -17,7 +21,7 @@ import "./netfly.css";
 import "./netfly-workspace.css";
 
 type Handoff = { note: string; at: string; by_name?: string; channel?: string };
-type Detail = { original_email_url?: string | null; file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string; mail_addr1?: string; mail_city?: string; mail_state?: string; mail_zip?: string }; actor_id: string; actor_name?: string; live_call: NetflyLiveCall | null; answers: { email_import?: { warnings?: string[]; received_at?: string }; fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; source_field_revisions?: { fields: Record<string, string>; at: string; source_id: string }[]; handoff_verification?: { status: string; note: string; source_revision: number; source_field_revision?: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; source_field_revision?: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
+type Detail = { actor_role: string; can_archive: boolean; claim: { id: string; status: string }; original_email_url?: string | null; file: { id: string; lead_no: string; claimant_name: string; phone: string; email: string; mail_addr1?: string; mail_city?: string; mail_state?: string; mail_zip?: string }; actor_id: string; actor_name?: string; live_call: NetflyLiveCall | null; answers: { email_import?: { warnings?: string[]; received_at?: string }; fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; source_field_revisions?: { fields: Record<string, string>; at: string; source_id: string }[]; handoff_verification?: { status: string; note: string; source_revision: number; source_field_revision?: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; source_field_revision?: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
 
 const fieldById = new Map(NETFLY_FIELDS.map((field) => [field.id, field]));
 const emptyCallClose: NetflyCallClose = { closeout_version: 2, completion: "" as NetflyCallClose["completion"], disposition: "" as NetflyCallClose["disposition"], dq_reason_key: "", assessment_reason: "", transfer_destination: "", transfer_outcome: "not_attempted", transfer_note: "", client_notified_48_business_hours: false, callback_promised_24_48_hours: false };
@@ -304,7 +308,17 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     </div>;
   };
   return <main className="nf-page nf-workspace nf-flow">
-    <div className="nf-head"><div><Link href="/app/netfly" className="nf-back">← NETFLY files</Link><h1>{detail.file.claimant_name}</h1><p>{detail.file.lead_no} · {detail.file.phone || "Phone needed"}</p></div></div>
+    <FileHeader name={detail.file.claimant_name} leadNo={detail.file.lead_no} backHref="/app/netfly"
+      status={<FileStatusControl leadId={detail.file.id} claimId={detail.claim.id} current={detail.claim.status} role={detail.actor_role} onChanged={status => setDetail(old => old && ({ ...old, claim: { ...old.claim, status } }))} />}>
+      <div className="file-header-details">{detail.file.phone || 'Phone needed'} · NETFLY</div>
+      <div className="file-header-actions">
+        <FileOutcomeActions claimId={detail.claim.id} campaign="NETFLY" status={detail.claim.status} role={detail.actor_role} onChanged={status => setDetail(old => old && ({ ...old, claim: { ...old.claim, status } }))} />
+        <button type="button" className="nf-secondary" onClick={() => { setWorkspaceTab('call'); setSection(0); setViewMode('step'); }}>Client details</button>
+        <button type="button" className="nf-secondary" onClick={() => { setWorkspaceTab('call'); setSection(4); setViewMode('step'); }}>Review &amp; send</button>
+        <button type="button" className="nf-secondary" onClick={() => { setCommandTab('agreement'); setCommandOpen(true); }}>Signed agreement</button>
+        <FileArchiveButton leadId={detail.file.id} label={detail.file.claimant_name} allowed={detail.can_archive === true} />
+      </div>
+    </FileHeader>
     <div className={`nf-live-status${activeNetflyCall(liveCall) ? " nf-live-active" : " nf-live-idle"}`} role="status"><strong>{activeNetflyCall(liveCall) ? `On phone · ${liveCall!.by_name}` : "Ready for the welcome call"}</strong>
       {detail.canReview && (!activeNetflyCall(liveCall) ? <button type="button" className="nf-secondary" disabled={presenceBusy} onClick={() => void markCall("start")}>I’m speaking with this client</button>
         : liveCall?.by === detail.actor_id ? <button type="button" className="nf-secondary" disabled={presenceBusy} onClick={() => void markCall("end")}>I’m off the call</button> : null)}</div>

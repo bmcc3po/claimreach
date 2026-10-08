@@ -2274,3 +2274,13 @@ div.ws-row{cursor:default}
 .cc-app.ix .ix-intake-time { display: grid; gap: 1px; text-align: center; background: #f1f4f8; color: #52657a; padding: 5px 8px; }
 .cc-app.ix .ix-intake-time small { font-size: 10px; font-weight: 600; line-height: 1; }
 
+
+/* One collapsible file header above every call, disposition and review view. */
+.call-file-shell{height:calc(100dvh - 56px);min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.call-file-shell>.file-header{margin:0;border-radius:0;z-index:20;max-height:50dvh;overflow:visible}
+.call-file-shell>.file-header .file-header-content{max-height:32dvh;overflow:auto}
+.call-file-shell>.cc-desk{position:relative;flex:1;min-height:0;width:100%;height:auto!important;margin:0}
+.call-file-shell>.cc-desk>.cc-app{height:100%!important}
+.call-file-shell>.post-review{flex:1;min-height:0;overflow:auto}
+.call-file-shell>.file-header-collapsed~.cc-desk .ix-top{display:none}
+@media(max-width:767px){.call-file-shell{height:calc(100dvh - 52px)}}

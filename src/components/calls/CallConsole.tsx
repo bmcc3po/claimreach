@@ -6,6 +6,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CallView from "./CallView";
+import CallFileHeader from "./CallFileHeader";
 import PostCallReview from "./PostCallReview";
 import DeskPanel, { type DeskTab, type PreviewInfo, type PhoneRow } from "./DeskPanel";
 import ClientContact from "./ClientContact";
@@ -1084,9 +1085,15 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
     preview={init.canPreview ? preview : { href: null, checks: [{ label: "Agreement", value: "No agreement is set up for this campaign", ok: false }] }}
     focusLines={focusLines} phones={phones} leadId={init.leadId} claimId={init.claimId} onDialState={setDialState}
     story={{ city: String(engine.state.story.city || ""), crash: engine.crashDate() }} />;
-  if (view.postCallReview && !view.dispoOpen) return <PostCallReview v={view} />;
-  return (
-    <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ws === "ipad" ? " cc-ipad-on" : ""}${sideOn && commandCollapsed ? " cc-command-collapsed" : ""}`}>
+  return (<div className="call-file-shell">
+    <CallFileHeader leadId={init.leadId} claimId={init.claimId} name={view.callerName} leadNo={view.leadNo}
+      saveNotice={view.saveBad ? view.saveError : view.saveText} saveBad={!!view.saveBad}
+      revision={JSON.stringify([engine.state.send.status, view.dispo?.saved, view.postCallReview])}>
+      <button type="button" className="cl-btn cl-ghost" onClick={() => { engine.setState({ postCallReview: false, dispo: { ...engine.state.dispo, open: false } }); view.jumpTo('contact'); }}>Client &amp; agreement</button>
+      <button type="button" className="cl-btn cl-ghost" onClick={view.openDispo}>Finish file</button>
+      <a className="cl-btn cl-ghost" href={'/leads/' + encodeURIComponent(init.props.leadNo || init.leadId) + '?claim=' + encodeURIComponent(init.claimId)}>File details</a>
+    </CallFileHeader>
+    {view.postCallReview && !view.dispoOpen ? <PostCallReview v={view} /> : <div ref={deskRef} className={`cc-desk${deskOn ? " cc-desk-on ws-cockpit" : ws === "ipad" ? " cc-ipad-on" : ""}${sideOn && commandCollapsed ? " cc-command-collapsed" : ""}`}>
       <CallView v={view} />
       {deskOn && !ws && (
         <div className="cc-split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the call and the panel" tabIndex={0}
@@ -1099,8 +1106,8 @@ function MatterCallConsole({ init }: { init: ConsoleInit }) {
         {!sideOn && <button type="button" className="cc-btn" style={{ margin: 12 }} onClick={() => setUtilityOpen(false)}>Back to intake</button>}
         {casePanel}
       </div>
-    </div>
-  );
+    </div>}
+  </div>);
 }
 
 const prettyPhone = (raw: string) => { const d = raw.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, ""); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : raw; };
@@ -1131,4 +1138,3 @@ function previewInfo(s: any, init: ConsoleInit, templateKeys: string[]): Preview
   if (choice.key === "NV_FLAT") q.set("nv_variant", "flat");
   return { href: `/api/calls/esign/preview?${q}`, checks };
 }
-
