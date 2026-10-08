@@ -7,6 +7,7 @@ import { isInternalRole } from "@/lib/permissions";
 import { isPartnerIdentity, partnerMayUsePath } from "@/lib/partner-access";
 import { pilotStaffApiAllowed, pilotStaffPageAllowed } from "@/lib/inno-pilot-access";
 import { FIRM_REVIEW_API, FIRM_REVIEW_HOME, FIRM_REVIEW_LOGIN, isFirmReviewer, reviewerPathAllowed } from '@/lib/firm-review-access';
+import { PARTNER_REPORT_HOME, PARTNER_REPORT_API, REPORT_RESPONSE_HEADERS } from '@/lib/partner-report-access';
 
 function isAuthPage(path: string) {
   return path === "/login" || path === "/firm-login" || path === "/partner-login" || path === FIRM_REVIEW_LOGIN || path === "/auth" || path.startsWith("/auth/");
@@ -31,6 +32,14 @@ function isPublicPath(path: string) {
 // Refresh the Supabase session on every gated request and guard route groups.
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
+  // This page has no client data in its HTML. Its one read-only API requires
+  // a separate signed cookie; staff and firm sessions never grant access.
+  if (path === PARTNER_REPORT_HOME || path === PARTNER_REPORT_API) {
+    const response = NextResponse.next({ request: req });
+    for (const [key, value] of Object.entries(REPORT_RESPONSE_HEADERS)) response.headers.set(key, value);
+    response.headers.set('X-Frame-Options', 'DENY');
+    return response;
+  }
   const api = path.startsWith("/api/");
   const authPage = isAuthPage(path);
   const isProtected = !isPublicPath(path);
