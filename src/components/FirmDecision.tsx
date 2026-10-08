@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { FIRM_DECISION_LABELS, reviewState, type ReviewAction } from '@/lib/firm-review-access';
 import SignedDecline from './SignedDecline';
 
-export default function FirmDecision({ claimId, allowBmc = false }: { claimId: string; allowBmc?: boolean }) {
+export default function FirmDecision({ claimId, allowBmc = false, onChanged }: { claimId: string; allowBmc?: boolean; onChanged?: (status: string) => void }) {
   const router = useRouter();
   const [events, setEvents] = useState<any[]>([]);
   const [ready, setReady] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -27,7 +27,7 @@ export default function FirmDecision({ claimId, allowBmc = false }: { claimId: s
       const r = await fetch('/api/owner-firm-review', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ claim: claimId, action: choice, explanation: reason, confirm: true, version: preview?.version, to: preview?.to }) });
       const d = await r.json(); if (!r.ok || !d.ok) throw new Error(d.error || 'The decision has not saved.');
-      setEvents(old => d.event ? [d.event, ...old] : old); setChoice(null); setReason(''); router.refresh();
+      setEvents(old => d.event ? [d.event, ...old] : old); setChoice(null); setReason(''); if (d.status) onChanged?.(d.status); router.refresh();
     } catch (e) { setError(e instanceof Error ? e.message : 'The decision has not saved.'); }
     finally { setBusy(false); }
   }

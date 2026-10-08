@@ -9,8 +9,8 @@ import StatusBadge from "./ui/StatusBadge";
 import FileStatusControl from "./FileStatusControl";
 import { resolveFileStatus } from "@/lib/statuses";
 import FileArchiveButton from "./FileArchiveButton";
-import FirmDecision from "./FirmDecision";
-import SignedDecline from "./SignedDecline";
+import FileHeader, { FileHeaderDialog } from "./FileHeader";
+import FileOutcomeActions from "./FileOutcomeActions";
 import { fileAgentSummary } from '@/lib/file-agents';
 import { areaHref, inWorkArea } from '@/lib/work-area';
 import ActivityLog from "./ActivityLog";
@@ -103,7 +103,12 @@ function LeadWorkspaceRecord({
   );
   const [tab, setTab] = useState("Overview");
   const [editMode, setEditMode] = useState(false);
-  const activeClaim = claims.find((c) => c.id === activeClaimId);
+  const router = useRouter();
+  const [statusChanges, setStatusChanges] = useState<Record<string, string>>({});
+  useEffect(() => { setStatusChanges({}); }, [claims]);
+  const originalClaim = claims.find((c) => c.id === activeClaimId);
+  const activeClaim = originalClaim && { ...originalClaim, status: statusChanges[originalClaim.id] || originalClaim.status };
+  const statusChanged = (status: string) => { if (activeClaimId) setStatusChanges(old => ({ ...old, [activeClaimId]: status })); router.refresh(); };
   // A LawRuler-sourced lead can later be signed inside ClaimReach. Route by
   // this matter's signing workflow, not the lead's original source label.
   const importedSignedPacket = activeClaim?.claim_type === "mva" && lead.source_system === "lawruler" &&
@@ -136,54 +141,29 @@ function LeadWorkspaceRecord({
 
   return (
     <div className="case-workspace">
-      {/* The file header: name as the anchor, everything else calm around it. */}
-      <div className="lf-head">
-        <a className="lf-back" href={backHref} title="Back to your queue" aria-label="Back to your queue">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
-        </a>
-        <div className="lf-id">
-          <div className="lf-name">
-            <span>{leadLive.claimant_name ?? "Unnamed claimant"}</span>
-            <span className="lf-no">{lead.lead_no}</span>
-          </div>
-          <div className="lf-sub">
-            {canTools && <strong>{fileAgentSummary(leadLive, staff, appCall?.agent)}</strong>}
-            <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={claims.length === 1 ? lead.current_user_role : undefined} />
-            {appCall && lead.firm_name && (<>
-              <span className="leadhead-dot">·</span>
-              <span title="The attorney this case signs with">Attorney: {lead.firm_name}</span>
-            </>)}
-            {lead.created_at && (<>
-              <span className="leadhead-dot">·</span>
-              <span>Opened {new Date(lead.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })} Pacific</span>
-            </>)}
-            {canTools && stats ? (<>
-              <span className="leadhead-dot">·</span>
-              <span className="lf-stat"><b>{stats.signed}</b> signed</span>
-              <span className="lf-stat"><b>{stats.wip}</b> WIP</span>
-            </>) : null}
-          </div>
+      <FileHeader name={leadLive.claimant_name || "Unnamed claimant"} leadNo={lead.lead_no} backHref={backHref}
+        status={<FileStatusControl key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} currentLabel={resolveFileStatus(activeClaim, undefined, claims.length === 1 && !!lead.signed_at).label} role={lead.current_user_role} signedDeclineAvailable={canTools && activeClaim?.claim_type === 'mva' && activeClaim.campaign === 'INNO MVA' && !lead.archived_at} onChanged={statusChanged} />}>
+        <div className="file-header-details">
+          {canTools && <strong>{fileAgentSummary(leadLive, staff, appCall?.agent)}</strong>}
+          <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={claims.length === 1 ? lead.current_user_role : undefined} />
+          {lead.firm_name && <span>Attorney: {lead.firm_name}</span>}
         </div>
-        <div className="lf-status-row">
-          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} currentLabel={resolveFileStatus(activeClaim, undefined, claims.length === 1 && !!lead.signed_at).label} role={lead.current_user_role} signedDeclineAvailable={canTools && activeClaim?.claim_type === 'mva' && activeClaim.campaign === 'INNO MVA' && !lead.archived_at} />
-        </div>
-        <div className="lf-acts" aria-label="Main file actions">
+        <div className="file-header-actions">
           {headerActions}
-          {canTools && appCall && <a className="cl-btn lf-primary-action" href={appCall.href}>Resume intake</a>}
-          {fileMayExportPdf(fence) && (
-            <a className="cl-btn cl-ghost lf-primary-action" href={`/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${activeClaimId || ""}`} target="_blank" rel="noopener noreferrer" title="Download this matter's full intake as a PDF">Export intake PDF</a>
-          )}
-          {canTools && ["owner", "admin", "manager", "qa", "agent"].includes(lead.current_user_role || "") && !importedSignedPacket && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
+          {canTools && activeClaim && <FileOutcomeActions claimId={activeClaim.id} campaign={activeClaim.campaign} status={activeClaim.status} role={lead.current_user_role} archived={!!lead.archived_at} onChanged={statusChanged} />}
+          {canEdit && <button type="button" className="cl-btn cl-ghost" onClick={() => { setTab('Contact Info'); setEditMode(false); }}>Client details</button>}
+          {canTools && appCall && <a className="cl-btn" href={appCall.href}>Resume intake</a>}
+          {fileMayExportPdf(fence) && <a className="cl-btn cl-ghost" href={'/api/export/intake-pdf?lead_id=' + lead.id + '&claim_id=' + (activeClaimId || '')} target="_blank" rel="noopener noreferrer">Intake PDF</a>}
+          {canTools && ['owner', 'admin', 'manager', 'qa', 'agent'].includes(lead.current_user_role || '') && !importedSignedPacket && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
+          {canTools && <FileArchiveButton leadId={lead.id} label={leadLive.claimant_name || 'This file'} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} />}
+          {canTools && <FileHeaderDialog label="More file actions">
+            <LockFileButton lead={lead} />
+            {activeClaimId && activeClaim?.claim_type === 'mva' && ['owner', 'admin'].includes(lead.current_user_role || '') && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+            {activeClaimId && activeClaim?.claim_type === 'mva' && lead.current_user_role === 'owner' && !importedSignedPacket && ['signed_grievous', 'signed_qa', 'signed_wip', 'signed_approved', 'delivered'].includes(activeClaim.status) && <ExternalFirmDelivery key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+            {activeClaimId && importedSignedPacket && <ImportedPacketHandoff key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+          </FileHeaderDialog>}
         </div>
-        {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
-      </div>
-      {canTools && activeClaimId && activeClaim?.claim_type === "mva" && activeClaim?.campaign === "INNO MVA" && ["owner", "admin"].includes(lead.current_user_role || "") && !lead.archived_at && !(lead.current_user_role === "owner" && ['delivered', 'retained'].includes(activeClaim.status)) && <SignedDecline key={activeClaimId} claimId={activeClaimId} declined={activeClaim.status === 'signed_dropped'} />}
-      {canTools && activeClaimId && lead.current_user_role === "owner" && !lead.archived_at && ['delivered', 'retained'].includes(activeClaim?.status || '') && <FirmDecision key={activeClaimId} claimId={activeClaimId} allowBmc={activeClaim?.claim_type === 'mva' && activeClaim.campaign === 'INNO MVA'} />}
-      {activeClaimId && activeClaim?.claim_type === "mva" && ["owner", "admin"].includes(lead.current_user_role || "") && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
-      {activeClaimId && activeClaim?.claim_type === "mva" && lead.current_user_role === "owner" && !importedSignedPacket &&
-        ["signed_grievous", "signed_qa", "signed_wip", "signed_approved", "delivered"].includes(activeClaim.status) &&
-        <ExternalFirmDelivery key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
-      {canTools && activeClaimId && importedSignedPacket && <ImportedPacketHandoff key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+      </FileHeader>
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
           {claims.map((c) => (
