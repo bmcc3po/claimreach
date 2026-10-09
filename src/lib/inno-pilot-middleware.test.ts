@@ -7,6 +7,8 @@ import ts from "typescript";
 import { pilotStaffApiAllowed, pilotStaffPageAllowed } from "./inno-pilot-access";
 import { isInternalRole } from "./permissions";
 import { isPartnerIdentity, partnerMayUsePath } from "./partner-access";
+import * as firmReviewAccess from "./firm-review-access";
+import * as partnerReportAccess from "./partner-report-access";
 
 const source = fs.readFileSync(path.resolve(__dirname, "../middleware.ts"), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
@@ -30,6 +32,8 @@ async function run(urlPath: string, role: string | null = "agent", method = "GET
     "@/lib/mva-call/links": { safeAppNext: () => null },
     "@/lib/permissions": { isInternalRole }, "@/lib/partner-access": { isPartnerIdentity, partnerMayUsePath },
     "@/lib/inno-pilot-access": { pilotStaffApiAllowed, pilotStaffPageAllowed },
+    "@/lib/firm-review-access": firmReviewAccess,
+    "@/lib/partner-report-access": partnerReportAccess,
   };
   const exports: any = {};
   new Function("require", "exports", code)((name: string) => { assert.ok(name in modules, `Unstubbed module ${name}`); return modules[name]; }, exports);
@@ -50,6 +54,7 @@ async function main() {
       assert.equal((await run(target, role)).result.kind, "next", `${role} ${target}`);
     }
     assert.equal((await run("/api/me/password", role, "POST")).result.kind, "next");
+    assert.equal((await run("/api/leads/bulk", role, "POST")).result.init.status, 403, `${role} archive remains fenced`);
     for (const [target, method] of [["/api/me/password", "GET"], ["/api/me/profile", "POST"], ["/api/users", "POST"], ["/api/documents", "POST"], ["/api/calls/esign-setup", "POST"]]) {
       assert.equal((await run(target, role, method)).result.init.status, 403, `${role} ${method} ${target}`);
     }
@@ -78,6 +83,7 @@ async function main() {
   }
   assert.equal((await run("/signed", null)).result.init.location, "/login");
   assert.equal((await run("/signed", "owner")).result.kind, "next");
+  assert.equal((await run("/api/leads/bulk", "owner", "POST")).result.kind, "next");
   assert.equal((await run("/settings", "owner")).result.kind, "next");
   assert.equal((await run("/settings", "owner", "GET", { metadata: { must_change_password: true } })).result.kind, "next");
   assert.equal((await run("/portal", "firm", "GET", { metadata: { must_change_password: true } })).result.kind, "next");

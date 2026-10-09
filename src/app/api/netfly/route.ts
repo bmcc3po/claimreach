@@ -8,6 +8,7 @@ import { assertHandoffFirm, saveNetflyHandoff } from "@/lib/netfly-handoff-save"
 import { normPhone } from "@/lib/comms";
 import { extractNetflyEmail } from "@/lib/netfly-handoff";
 import { canEditNetflyDelivery, netflyFirmEmailProblem } from "@/lib/netfly-delivery-settings";
+import { archiveControlAvailable } from "@/lib/archive-control";
 export const runtime = "edge";
 
 const fail = (message: string, status: number) => NextResponse.json({ error: message }, { status });
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest) {
     }
   }
   return NextResponse.json({ file: matter.lead, original_email_url, actor_id: ctx.actor.id, actor_name: ctx.actor.name, live_call: activeNetflyCall((matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.live_call),
-    canReview: ctx.actor.can("intake.fill"), actor_role: ctx.actor.role, can_archive: ctx.actor.can('leads.delete'), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
+    canReview: ctx.actor.can("intake.fill"), actor_role: ctx.actor.role, can_archive: archiveControlAvailable(ctx.actor.role, ctx.actor.can('leads.delete')), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
     answers: (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] ?? {}, retainer: safeDocs });
 }
 
