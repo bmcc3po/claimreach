@@ -1,6 +1,6 @@
 "use client";
 export const runtime = "edge";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -23,16 +23,22 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
 
   async function signIn() {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true); setErr(null);
-    const sb = supabaseBrowser();
-    const { error } = await sb.auth.signInWithPassword({ email, password });
-    setBusy(false);
-    if (error) { setErr(quietSignInError(error.message)); return; }
-    // Came from a lead link in a text: go straight back to that lead.
-    const next = typeof window !== "undefined" ? safeAppNext(new URLSearchParams(window.location.search).get("next")) : null;
-    router.push(next || "/dashboard");
+    try {
+      const sb = supabaseBrowser();
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) { setErr(quietSignInError(error.message)); return; }
+      // Came from a lead link in a text: go straight back to that lead.
+      const next = typeof window !== "undefined" ? safeAppNext(new URLSearchParams(window.location.search).get("next")) : null;
+      router.push(next || "/dashboard");
+    } catch {
+      setErr("Couldn’t sign in. Check your connection and try again.");
+    } finally { pending.current = false; setBusy(false); }
   }
 
   return (
@@ -44,26 +50,27 @@ export default function Login() {
         </div>
         <h1 style={{ fontSize: 22, margin: "0 0 4px" }}>Sign in</h1>
         <p className="muted" style={{ marginTop: 0 }}>Staff access to ClaimReach</p>
+        <form onSubmit={e => { e.preventDefault(); void signIn(); }}>
         <div className="field">
           <label htmlFor="cr-email">Email</label>
-          <input id="cr-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input id="cr-email" type="email" autoComplete="username" required disabled={busy} value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="field">
           <label htmlFor="cr-password">Password</label>
           <div className="pw-wrap">
-            <input id="cr-password" type={showPw ? "text" : "password"} autoComplete="current-password" value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && signIn()} />
-            <button type="button" className="pw-toggle" onClick={() => setShowPw((v) => !v)}
+            <input id="cr-password" type={showPw ? "text" : "password"} autoComplete="current-password" required disabled={busy} value={password}
+              onChange={(e) => setPassword(e.target.value)} />
+            <button type="button" disabled={busy} className="pw-toggle" onClick={() => setShowPw((v) => !v)}
               aria-label={showPw ? "Hide password" : "Show password"}>
               {showPw ? "Hide" : "Show"}
             </button>
           </div>
         </div>
-        {err && <p className="login-err">{err}</p>}
-        <button className="btn" style={{ width: "100%" }} disabled={busy} onClick={signIn}>
+        {err && <p className="login-err" role="alert">{err}</p>}
+        <button type="submit" className="btn" style={{ width: "100%" }} disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
+        </form>
         <p className="muted" style={{ marginTop: 14 }}>
           Firm partner? <Link href="/firm-login">Firm portal login</Link>
         </p>
