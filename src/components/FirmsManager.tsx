@@ -32,7 +32,7 @@ export default function FirmsManager() {
       </div>
       {msg && !edit && <p className="muted" style={{ marginTop: 6 }}>{msg}</p>}
 
-      <table className="docket" style={{ marginTop: 12 }}>
+      <table className="docket firm-directory" style={{ marginTop: 12 }}>
         <thead><tr><th>Firm</th><th>Lead prefix</th><th>Example lead ID</th><th></th></tr></thead>
         <tbody>
           {firms.map((f) => (
