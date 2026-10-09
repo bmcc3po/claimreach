@@ -14,6 +14,7 @@ import { matterRowsFilter } from "@/lib/matter";
 import { mayOpenFullFile } from "@/lib/file-fence";
 import { netflyWorkspaceCall } from "@/lib/netfly-workspace";
 import { isNetflyIntake } from '@/lib/intake-links';
+import { archiveControlAvailable } from '@/lib/archive-control';
 
 export default async function LeadDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ classic?: string; claim?: string }> }) {
   const { id: key } = await params;
@@ -110,7 +111,7 @@ export default async function LeadDetail({ params, searchParams }: { params: Pro
 
   (lead as any).current_user_role = meRow?.role ?? null;
   (lead as any).current_user_name = meRow?.full_name ?? "Staff";
-  (lead as any).current_user_can_archive = meRow?.active !== false && (["owner", "admin"].includes(meRow?.role || "") || (meRow?.perm_overrides as any)?.["leads.delete"] === true);
+  (lead as any).current_user_can_archive = archiveControlAvailable(meRow?.role || "", meRow?.active !== false && (["owner", "admin"].includes(meRow?.role || "") || (meRow?.perm_overrides as any)?.["leads.delete"] === true));
 
   // Resolve published builder forms for each claim type present on this file,
   // so the workspace renders the RIGHT questionnaire (not the trafficking default).

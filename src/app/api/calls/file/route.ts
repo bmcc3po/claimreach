@@ -11,6 +11,7 @@ import { loadLawRulerProvenance } from "@/lib/lawruler-recovery";
 import { readPendingSendAttempt } from "@/lib/mva-call/send-attempt";
 import { paxParentId } from "@/lib/linked-files";
 import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
+import { archiveControlAvailable } from "@/lib/archive-control";
 
 export const runtime = "edge";
 
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
     const visible = resolveFileStatus(matter.claim, await loadStatuses(), matter.sole && !!lead.signed_at);
     return NextResponse.json({ claim_id: matter.claim.id, status: visible,
       campaign: matter.claim.campaign, archived_at: context.lead.archived_at,
-      role: me.role, can_archive: me.can('leads.delete') }, { headers: { 'Cache-Control': 'private, no-store' } });
+      role: me.role, can_archive: archiveControlAvailable(me.role, me.can('leads.delete')) }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
 
   const [esignRes, notesRaw, auditRes, docsRes, staffRes, statuses] = await Promise.all([
