@@ -30,7 +30,7 @@ function fixture(mode='ok') {
   const nodes=(root:any=tree):any[]=>!root||typeof root!=='object'?[]:Array.isArray(root)?root.flatMap(x=>nodes(x??null)):[root,...nodes(root.props?.children??null)];
   const text=(root:any=tree):string=>root==null||typeof root==='boolean'?'':typeof root!=='object'?String(root):Array.isArray(root)?root.map(x=>text(x??null)).join(''):text(root.props?.children??null);
   const field=()=>nodes().find(n=>n.props?.field);
-  const button=()=>nodes().find(n=>n.type==='button'&&['Next','Save','Saving'].includes(text(n)));
+  const button=()=>nodes().find(n=>n.type==='button'&&['Next','Save','Saving','Retry save'].includes(text(n)));
   const edit=(v:string)=>{field().props.onChange(v);render();};
   const flush=async()=>{await new Promise(r=>setImmediate(r));render();};
   const autosave=()=>{const fns=[...timers.values()];timers.clear();fns.forEach(fn=>fn());};

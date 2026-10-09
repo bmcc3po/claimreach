@@ -141,7 +141,7 @@ export default function PfsFill({
               }
             }}
           >
-            {saving ? "Saving" : idx < visible.length - 1 ? "Next" : "Save"}
+            {saving ? "Saving" : err ? "Retry save" : idx < visible.length - 1 ? "Next" : "Save"}
           </button>
           <a className="m6-btn" href={`/api/m6/pfs?export=1&lead_id=${encodeURIComponent(leadId)}`}>
             Download this file
