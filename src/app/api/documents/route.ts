@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const lead = new URL(req.url).searchParams.get("lead");
-  const { data: docs } = await sb.from("case_documents").select("*").eq("lead_id", lead).order("created_at", { ascending: false });
+  const { data: docs, error } = await sb.from("case_documents").select("*").eq("lead_id", lead).order("created_at", { ascending: false });
+  if (error) return NextResponse.json({ error: "Could not load the documents. Please retry." }, { status: 503 });
   const admin = supabaseAdmin();
   const withUrls = await Promise.all((docs ?? []).map(async (d) => {
     const key = canonicalKeyFor(d);
