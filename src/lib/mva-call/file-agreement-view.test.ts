@@ -1,3 +1,5 @@
+import * as archiveControl from '../archive-control';
+import { NextRequest } from 'next/server';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,6 +31,7 @@ function fixture(externalId: string | null, pax: number | null) {
     return q;
   } };
   const modules: Record<string, any> = {
+    "@/lib/archive-control": archiveControl,
     'next/server': { NextResponse: { json: (body: any, init: any = {}) => ({ status: init.status || 200, body }) } },
     '@/lib/mva-call/agreement-names': { agreementName: () => 'TEST packet' },
     '@/lib/supabase-server': { supabaseServer: async () => db, supabaseAdmin: () => db },
@@ -45,7 +48,7 @@ function fixture(externalId: string | null, pax: number | null) {
   };
   const route: any = {};
   new Function('require', 'exports', code)((name: string) => { assert.ok(name in modules, `Unexpected import ${name}`); return modules[name]; }, route);
-  return { filters, rows, get: () => route.GET(new Request('https://example.invalid/api/calls/file?lead_id=child&claim_id=own-claim')),
+  return { filters, rows, get: () => route.GET(new NextRequest('https://example.invalid/api/calls/file?lead_id=child&claim_id=own-claim')),
     deny: () => { staff = false; }, fail: () => { readError = true; } };
 }
 
@@ -69,3 +72,4 @@ function fixture(externalId: string | null, pax: number | null) {
   const denied = fixture(null, null); denied.deny(); assert.equal((await denied.get()).status, 401); assert.deepEqual(denied.filters, []);
   console.log('file agreement view: passenger 0/1, own primary, parent exclusion, scope filters, provenance, read failure and auth checks passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
