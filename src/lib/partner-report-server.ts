@@ -1,6 +1,6 @@
 import { reportPages, loadSignatureReport } from './signature-report-loader';
 import { PARTNER_REPORT_KEY, validReportAccess, type ReportAccess } from './partner-report-access';
-import { partnerReportRows } from './partner-report';
+import { partnerReportData } from './partner-report';
 
 export async function loadReportAccess(db: any): Promise<ReportAccess | null> {
   const result = await db.from('partner_report_access').select('report_key,firm_id,campaign_id,scope,active,password_salt,password_hash,token_secret')
@@ -33,5 +33,5 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
     }
   }
   const signatures = await loadSignatureReport(db, campaign.data);
-  return { rows: partnerReportRows(access, leads, claims, signatures, refs), updatedAt: new Date().toISOString() };
+  return { ...partnerReportData(access, leads, claims, signatures, refs), updatedAt: new Date().toISOString() };
 }
