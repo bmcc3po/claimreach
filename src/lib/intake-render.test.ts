@@ -28,7 +28,7 @@ function db(rows: Record<string, any[]>) {
       const matches = (rows[table] ?? []).filter((r) => filters.every((f) => f(r)));
       return { data: selection.head ? null : matches, error: null, count: selection.count === "exact" ? matches.length : null };
     };
-    const q: any = { select: (_columns?: string, options?: typeof selection) => { selection = options ?? {}; return q; }, eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; }, order: () => q,
+    const q: any = { select: (_columns?: string, options?: typeof selection) => { selection = options ?? {}; return q; }, eq: (k: string, v: any) => { filters.push((r) => r[k] === v); return q; }, order: () => q, in: (k: string, values: any[]) => { filters.push(r => values.includes(r[k])); return q; },
       maybeSingle: async () => ({ data: (rows[table] ?? []).find((r) => filters.every((f) => f(r))) ?? null, error: null }),
       then: (a: any, b: any) => Promise.resolve(result()).then(a, b) };
     return q;
@@ -141,6 +141,18 @@ function exportRoute(sb: any, makePdf: (b: IntakeBundle) => Promise<Uint8Array>,
       const r = await exportRoute(db({ leads: [lead], claims: [claim] }), async () => { throw Error("must not render"); }, user).GET({ url: `https://synthetic.invalid/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${claim.id}&preview=1` });
       assert.equal(r.status, user ? 403 : 401);
     }
+  });
+  await t("saved intake agent follows the file into email, CSV and actual PDF, not the sender or assignee", async () => {
+    const savedLead = { ...lead, intake_agent_id: 'intaker', assigned_agent: 'assigned' };
+    const users = [{ id: 'intaker', full_name: 'Synthetic Intake Agent' }, { id: 'assigned', full_name: 'Different Assignee' }];
+    const loaded = await loadIntakeBundle(db({ leads: [savedLead], claims: [claim], app_users: users }), lead.id, claim.id);
+    assert.equal(loaded!.intakeAgent, 'Synthetic Intake Agent');
+    for (const output of [buildIntakeEmailHtml(loaded!), buildIntakeCsvSingle(loaded!), await pdfText(await buildIntakePdf(loaded!))]) {
+      assert.match(output, /Intake agent/); assert.match(output, /Synthetic Intake Agent/); assert.doesNotMatch(output, /Different Assignee/);
+    }
+    const missing = await loadIntakeBundle(db({ leads: [{ ...savedLead, intake_agent_id: null }], claims: [claim], app_users: users }), lead.id, claim.id);
+    assert.equal(missing!.intakeAgent, 'Not recorded');
+    assert.match(buildIntakeEmailHtml({ ...loaded!, intakeAgent: '<b>Agent & Co</b>' }), /&lt;b&gt;Agent &amp; Co&lt;\/b&gt;/);
   });
   console.log(`${count} passed`);
 })().catch((e) => { console.error(e); process.exitCode = 1; });

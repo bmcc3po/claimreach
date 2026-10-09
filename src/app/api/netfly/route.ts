@@ -9,6 +9,7 @@ import { normPhone } from "@/lib/comms";
 import { extractNetflyEmail } from "@/lib/netfly-handoff";
 import { canEditNetflyDelivery, netflyFirmEmailProblem } from "@/lib/netfly-delivery-settings";
 import { archiveControlAvailable } from "@/lib/archive-control";
+import { intakeAgentName, loadIntakeAgents } from '@/lib/file-agents';
 export const runtime = "edge";
 
 const fail = (message: string, status: number) => NextResponse.json({ error: message }, { status });
@@ -28,10 +29,11 @@ export async function GET(req: NextRequest) {
       receiving = { ...receiving, latest: recent.data || null, check_error: recent.error ? 'Could not check the latest email import.' : null };
     }
     const { data, error } = await ctx.db.from("leads")
-      .select("id, lead_no, claimant_name, phone, created_at")
+      .select("id, intake_agent_id, lead_no, claimant_name, phone, created_at")
       .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).is("archived_at", null)
       .order("created_at", { ascending: false }).limit(150);
     if (error) return fail("Could not load NETFLY files.", 503);
+    const intakeAgents = await loadIntakeAgents(ctx.db, data ?? []);
     const ids = (data ?? []).map(row => row.id);
     const claims = ids.length ? await ctx.db.from("claims").select("id, lead_id, answers, status, firm_sent_at")
       .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).in("lead_id", ids) : { data: [], error: null };
@@ -50,7 +52,7 @@ export async function GET(req: NextRequest) {
         ...(!Array.isArray(saved?.handoffs) || !saved.handoffs.length ? ["handoff_note"] : []),
         ...(!documentKeys.has(`${row.id}:${claim?.id}`) ? ["signed_retainer_pdf"] : []),
       ];
-      return { ...row, claims: claim ? [claim] : [], missing_source, live_call: activeNetflyCall(saved?.live_call) };
+      return { ...row, intake_agent: intakeAgentName(row, intakeAgents), claims: claim ? [claim] : [], missing_source, live_call: activeNetflyCall(saved?.live_call) };
     }) });
   }
   const matter = await netflyMatter(ctx, key);
@@ -77,7 +79,7 @@ export async function GET(req: NextRequest) {
       original_email_url = signed.data?.signedUrl || null;
     }
   }
-  return NextResponse.json({ file: matter.lead, original_email_url, actor_id: ctx.actor.id, actor_name: ctx.actor.name, live_call: activeNetflyCall((matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.live_call),
+  return NextResponse.json({ file: { ...matter.lead, intake_agent: intakeAgentName(matter.lead, await loadIntakeAgents(ctx.db, [matter.lead])) }, original_email_url, actor_id: ctx.actor.id, actor_name: ctx.actor.name, live_call: activeNetflyCall((matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.live_call),
     canReview: ctx.actor.can("intake.fill"), actor_role: ctx.actor.role, can_archive: archiveControlAvailable(ctx.actor.role, ctx.actor.can('leads.delete')), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
     answers: (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] ?? {}, retainer: safeDocs });
 }

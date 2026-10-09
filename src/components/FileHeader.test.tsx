@@ -12,6 +12,7 @@ assert.doesNotMatch(actions('owner','new'), /BMC declined|Firm decision/);
 assert.doesNotMatch(actions('owner','delivered','NETFLY'), /BMC declined/);
 assert.doesNotMatch(actions('owner','delivered','INNO MVA',true), /BMC declined|Firm decision/);
 assert.match(actions('owner','signed_dropped'), /Decline details/);
-const html = renderToStaticMarkup(<FileHeader name="Synthetic client" leadNo="TEST-1" backHref="/app" status="Signed"><input aria-label="Draft" defaultValue="Preserve me" /></FileHeader>);
+const html = renderToStaticMarkup(<FileHeader name="Synthetic client" leadNo="TEST-1" backHref="/app" status="Signed" intakeAgent="Synthetic Intake Agent"><input aria-label="Draft" defaultValue="Preserve me" /></FileHeader>);
+assert.match(html,/Intake agent: Synthetic Intake Agent/);
 assert.match(html,/aria-expanded="true"/); assert.match(html,/Hide header/); assert.match(html,/Preserve me/);
 console.log('Shared header: existing role/campaign/archive boundaries and accessible collapse passed');

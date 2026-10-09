@@ -1,3 +1,4 @@
+import * as fileAgents from '../file-agents';
 import * as archiveControl from '../archive-control';
 import { NextRequest } from 'next/server';
 import assert from 'node:assert/strict';
@@ -31,6 +32,7 @@ function fixture(externalId: string | null, pax: number | null) {
     return q;
   } };
   const modules: Record<string, any> = {
+    "@/lib/file-agents": fileAgents,
     "@/lib/archive-control": archiveControl,
     'next/server': { NextResponse: { json: (body: any, init: any = {}) => ({ status: init.status || 200, body }) } },
     '@/lib/mva-call/agreement-names': { agreementName: () => 'TEST packet' },

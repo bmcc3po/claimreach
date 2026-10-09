@@ -1,3 +1,4 @@
+import { intakeAgentName, loadIntakeAgents } from '@/lib/file-agents';
 export const runtime = "edge";
 
 import { redirect } from "next/navigation";
@@ -41,7 +42,7 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   const callIds = [...new Set((submissions || []).map((row) => row.call_id).filter(Boolean))] as string[];
   const userIds = [...new Set((submissions || []).map((row) => row.sent_by).filter(Boolean))] as string[];
   const [leads, claims, calls, users, deliveries] = await Promise.all([
-    inChunks(sb, "leads", "id,lead_no,claimant_name,campaign,case_type,firm_id,firm_sent_at,archived_at,external_id", "id", leadIds),
+    inChunks(sb, "leads", "id,intake_agent_id,lead_no,claimant_name,campaign,case_type,firm_id,firm_sent_at,archived_at,external_id", "id", leadIds),
     inChunks(sb, "claims", "id,lead_id,campaign,campaign_id,claim_type,status,firm_id,firm_sent_at,firm_send_result", "id", claimIds),
     inChunks(sb, "intake_calls", "id,agent_id,agent_name", "id", callIds),
     inChunks(sb, "app_users", "id,full_name", "id", userIds),
@@ -56,16 +57,18 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
   const ownerEmail = (ownerResult.data || []).map((row: any) => String(row.email || "").toLowerCase()).find((value: string) => value === "bmc@innovativeintake.com") || null;
   const firmIds = [...new Set([...leads.map((lead) => lead.firm_id), ...claims.map((claim) => claim.firm_id)].filter(Boolean))] as string[];
   const firms = await inChunks(sb, "firms", "id,name", "id", firmIds);
+  users.push(...await loadIntakeAgents(sb, leads));
   const rows = packetWorklist({ submissions: submissions || [], leads, claims, calls, users, firms, deliveries, campaigns, ownerEmail });
   const sourceResult = await sb.from("lead_activity").select("lead_id,meta,created_at")
     .eq("meta->>source", "lawruler").eq("meta->>event", "original_document").limit(1000);
   if (sourceResult.error) throw new Error(`Could not load imported signed originals: ${sourceResult.error.message}`);
   const importedClaimIds = [...new Set((sourceResult.data || []).map((item: any) => item.meta?.claim_id).filter(Boolean))] as string[];
   const importedClaims = await inChunks(sb, "claims", "id,lead_id,firm_id,campaign,campaign_id,status,claim_type,firm_send_result", "id", importedClaimIds);
-  const importedLeads = await inChunks(sb, "leads", "id,lead_no,claimant_name,archived_at", "id", [...new Set(importedClaims.map((claim: any) => claim.lead_id))]);
+  const importedLeads = await inChunks(sb, "leads", "id,intake_agent_id,lead_no,claimant_name,archived_at", "id", [...new Set(importedClaims.map((claim: any) => claim.lead_id))]);
   const importedFirms = await inChunks(sb, "firms", "id,name", "id", [...new Set(importedClaims.map((claim: any) => claim.firm_id).filter(Boolean))]);
   const importedCampaigns = await inChunks(sb, "campaigns", "id,firm_email", "id", [...new Set(importedClaims.map((claim: any) => claim.campaign_id).filter(Boolean))]);
   const importedDeliveries = await inChunks(sb, "firm_deliveries", "claim_id,ok,to_email,cc_email,created_at,triggered_by", "claim_id", importedClaimIds);
+  const importedAgents = await loadIntakeAgents(sb, importedLeads);
   const importedNames = new Map(importedLeads.map((lead: any) => [lead.id, lead]));
   const importedFirmNames = new Map(importedFirms.map((firm: any) => [firm.id, firm.name]));
   const importedRecipients = new Map(importedCampaigns.map((campaign: any) => [campaign.id, campaign.firm_email]));
@@ -76,6 +79,7 @@ export default async function PacketsPage({ searchParams }: { searchParams: Prom
     const deliveredAt = confirmedFirmDeliveryAt(importedDeliveries.filter((delivery: any) => delivery.claim_id === claim.id), importedRecipients.get(claim.campaign_id), ownerEmail);
     const window = returnWindow(deliveredAt);
     return { leadId: claim.lead_id, claimId: claim.id, leadNo: importedNames.get(claim.lead_id)?.lead_no || claim.lead_id,
+      intakeAgent: intakeAgentName(importedNames.get(claim.lead_id), importedAgents),
       name: importedNames.get(claim.lead_id)?.claimant_name || "Name missing", campaign: claim.campaign,
       firm: importedFirmNames.get(claim.firm_id) || "Firm not mapped",
       archived: !!importedNames.get(claim.lead_id)?.archived_at,

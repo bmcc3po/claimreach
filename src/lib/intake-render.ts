@@ -6,6 +6,7 @@
 import { caseReport, type ReportSection } from "@/lib/mva-call/report";
 import { NETFLY_FIELDS, NETFLY_CAMPAIGN } from "@/lib/netfly-ontake";
 import { parseNetflyHandoff } from "@/lib/netfly-handoff";
+import { intakeAgentName, loadIntakeAgents } from './file-agents';
 
 const SKIP_KINDS = ["section", "script", "gate"];
 
@@ -66,6 +67,7 @@ export interface IntakeBundle {
   answers: Record<string, any>;
   caseType: string;
   fields: any[];
+  intakeAgent?: string;
 }
 
 // Compiled MVA calls are stored under answers.mva_call, not the form builder's
@@ -128,7 +130,7 @@ export function buildIntakeEmailHtml(b: IntakeBundle): string {
     return `<h3 style="font-size:15px;margin:20px 0 6px">${escape(section.title)}</h3>` +
       `<table style="border-collapse:collapse;width:100%;font-size:13px">${rows}</table>`;
   }).join("");
-  return `<section aria-label="Intake questions and answers"><h2 style="font-size:18px;margin:24px 0 8px">Intake questions and answers</h2>${sections}</section>`;
+  return `<section aria-label="Intake questions and answers"><p><strong>Intake agent:</strong> ${escape(b.intakeAgent || 'Not recorded')}</p><h2 style="font-size:18px;margin:24px 0 8px">Intake questions and answers</h2>${sections}</section>`;
 }
 
 // Load everything needed to render ONE matter's intake: the named claim's
@@ -156,7 +158,8 @@ export async function loadIntakeBundle(sb: any, leadId: string, claimId: string)
   // resolveFormKey uses.
   const fields = caseType === "mva" && (answers.mva_call && typeof answers.mva_call === "object" || claim.campaign === NETFLY_CAMPAIGN && answers.netfly_secondary)
     ? [] : await resolveFields(sb, caseType, claim.campaign_id || lead.campaign_id || null);
-  return { lead, claim, answers, caseType, fields };
+  const intakeAgent = intakeAgentName(lead, await loadIntakeAgents(sb, [lead]));
+  return { lead, claim, answers, caseType, fields, intakeAgent };
 }
 
 // Build a clean intake PDF (every question + answer) for one claimant.
@@ -191,7 +194,7 @@ export async function buildIntakePdf(b: IntakeBundle): Promise<Uint8Array> {
     const width = W - 64;
     let height = 19 + lineCount(lead.claimant_name || "Unnamed claimant", bold, 11, width) * 13
       + lineCount(`${lead.lead_no || ""}   ·   ${claim?.campaign || lead.campaign || ""}   ·   ${caseType}`, font, 8, width) * 10
-      + 10 + 3 + 10;
+      + lineCount(`Intake agent: ${b.intakeAgent || 'Not recorded'}`, font, 8, width) * 10 + 10 + 3 + 10;
     for (const section of sections) {
       height += 3 + lineCount(section.title.toUpperCase(), bold, 9, width) * 11 + 1;
       for (const row of section.rows) height += lineCount(row.q, bold, 8.5, width) * 10.5
@@ -225,6 +228,7 @@ export async function buildIntakePdf(b: IntakeBundle): Promise<Uint8Array> {
   page.drawText("CLAIM INTAKE", { x: M, y, size: compact ? 16 : 20, font: bold, color: ink }); y -= compact ? 19 : 26;
   draw(lead.claimant_name || "Unnamed claimant", bold, compact ? 11 : 14, ink);
   draw(`${lead.lead_no || ""}   ·   ${claim?.campaign || lead.campaign || ""}   ·   ${caseType}`, font, compact ? 8 : 10, soft);
+  draw(`Intake agent: ${b.intakeAgent || 'Not recorded'}`, bold, compact ? 8 : 10, ink);
   draw(`Exported ${new Date().toLocaleString()}`, font, compact ? 8 : 9, soft);
   y -= compact ? 3 : 6;
   page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 1, color: rgb(0.9, 0.92, 0.95) }); y -= compact ? 10 : 18;
@@ -259,10 +263,11 @@ export function buildIntakeCsvSingle(b: IntakeBundle): string {
     return `"${s.replace(/"/g, '""')}"`;
   };
   const rows = intakeSections(b).flatMap((s) => s.rows);
-  const header = ["Lead #", "Claimant", "Campaign", "Created", ...rows.map((r) => r.q)];
+  const header = ["Lead #", "Claimant", "Campaign", "Created", "Intake agent", ...rows.map((r) => r.q)];
   const l = b.lead;
   const row = [
     l.lead_no, l.claimant_name, b.claim?.campaign || l.campaign || "", l.created_at ? new Date(l.created_at).toLocaleDateString() : "",
+    b.intakeAgent || 'Not recorded',
     ...rows.map((r) => r.a === "—" ? "" : r.a),
   ];
   return [header.map(esc).join(","), row.map(esc).join(",")].join("\n");

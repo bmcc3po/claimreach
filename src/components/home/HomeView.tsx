@@ -14,9 +14,9 @@ export interface HomeData {
   dateLabel: string;
   kpis: { newToday: number; newYesterday: number; open: number; signed7: number; needs: number };
   series: { label: string; n: number; today: boolean }[];
-  needs: { key: string; href: string; name: string; why: string; tone: "bad" | "warn" }[];
-  folds: { id: string; title: string; sub: string; rows: { key: string; href: string; name: string; right: string }[] }[];
-  recent: { key: string; href: string; name: string; sub: string; status: string; tone: Tone; updated: string }[];
+  needs: { key: string; href: string; name: string; agent?: string; why: string; tone: "bad" | "warn" }[];
+  folds: { id: string; title: string; sub: string; rows: { key: string; href: string; name: string; agent?: string; right: string }[] }[];
+  recent: { key: string; href: string; name: string; agent?: string; sub: string; status: string; tone: Tone; updated: string }[];
   boards: { id: string; title: string; description: string | null; canPost: boolean; posts: { title?: string | null; body: string; author_name?: string | null; created_at: string }[] }[];
 }
 
@@ -128,7 +128,7 @@ function NeedsPanel({ rows }: { rows: HomeData["needs"] }) {
           {shown.map((r, i) => (
             <a key={r.key + i} className="cl-row" href={r.href}>
               <span className={`cl-dot cl-${r.tone}`} />
-              <span className="cl-row-m"><span className="cl-t1">{r.name}</span><span className="cl-t2">{r.why}</span></span>
+              <span className="cl-row-m"><span className="cl-t1">{r.name}</span><span className="cl-t2">Intake agent: {r.agent || "Not recorded"}</span><span className="cl-t2">{r.why}</span></span>
               <span className="cl-row-r"><span className="cl-mono">{r.key}</span><span className="cl-go"><Icon name="right" size={16} /></span></span>
             </a>
           ))}
@@ -157,7 +157,7 @@ function SlippingPanel({ folds }: { folds: HomeData["folds"] }) {
               <div className="cl-fold-b">
                 {f.rows.map((r, i) => (
                   <a key={r.key + i} className="cl-row" href={r.href}>
-                    <span className="cl-row-m"><span className="cl-t1">{r.name}</span></span>
+                    <span className="cl-row-m"><span className="cl-t1">{r.name}</span><span className="cl-t2">Intake agent: {r.agent || "Not recorded"}</span></span>
                     <span className="cl-row-r"><span>{r.right}</span><span className="cl-mono">{r.key}</span><span className="cl-go"><Icon name="right" size={16} /></span></span>
                   </a>
                 ))}
@@ -180,7 +180,7 @@ function RecentPanel({ rows, allHref, allLabel }: { rows: HomeData["recent"]; al
           {rows.length === 0 && <div className="cl-empty">No files yet.</div>}
           {rows.map((r) => (
             <a key={r.key} className="cl-row" href={r.href}>
-              <span className="cl-row-m"><span className="cl-t1">{r.name}</span><span className="cl-t2">{r.sub}</span></span>
+              <span className="cl-row-m"><span className="cl-t1">{r.name}</span><span className="cl-t2">Intake agent: {r.agent || "Not recorded"}</span><span className="cl-t2">{r.sub}</span></span>
               <span className="cl-row-r">
                 <span className="cl-status cl-recent-status"><span className={`cl-dot cl-${r.tone}`} />{r.status}</span>
                 <span className="cl-recent-time"><Ago ts={r.updated} /></span>
