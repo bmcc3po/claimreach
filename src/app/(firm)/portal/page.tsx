@@ -3,6 +3,8 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import BoardCard from "@/components/BoardCard";
+import ReadError from "@/components/ReadError";
+import { isSignedKey, needsQaReview, resolveStatus } from "@/lib/statuses";
 
 export default async function FirmHome() {
   const sb = await supabaseServer();
@@ -17,9 +19,11 @@ export default async function FirmHome() {
   for (const b of bulletins ?? []) (byBoard[b.board_id] ||= []).push(b);
 
   // RLS scopes to the firm.
-  const { data: leads } = await sb.from("leads")
+  const { data: leads, error: leadsError } = await sb.from("leads")
     .select("id, lead_no, firm_ref_no, stage, updated_at, claims(status, stage, supervisor_flag)")
     .is("archived_at", null).order("updated_at", { ascending: false }).limit(500);
+  const { data: catalog, error: catalogError } = await sb.from("statuses").select("*");
+  if (leadsError || catalogError) return <ReadError title="Firm cases" message="Case counts could not load. Try again before relying on this summary." href="/portal" />;
 
   const all = leads ?? [];
   const now = Date.now();
@@ -27,25 +31,25 @@ export default async function FirmHome() {
 
   // Counters
   const total = all.length;
-  const intakeInProgress = all.filter((l) => (l.claims ?? []).some((c: any) => ["new","contact_attempted","in_progress"].includes(c.status))).length;
-  const qualified = all.filter((l) => (l.claims ?? []).some((c: any) => c.status === "qualified")).length;
-  const signed = all.filter((l) => (l.claims ?? []).some((c: any) => c.status === "signed")).length;
+  const intakeInProgress = all.filter((l) => (l.claims ?? []).some((c: any) => resolveStatus(c.status, catalog ?? []).phase === "pre_qa")).length;
+  const qualified = all.filter((l) => (l.claims ?? []).some((c: any) => resolveStatus(c.status, catalog ?? []).qualify === "qualify")).length;
+  const signed = all.filter((l) => (l.claims ?? []).some((c: any) => isSignedKey(c.status, catalog))).length;
 
   // Holes in the boat
-  const agingIntake = all.filter((l) => (l.claims ?? []).some((c: any) => ["new","contact_attempted","in_progress"].includes(c.status)) && daysAgo(l.updated_at) > 2);
-  const flagged = all.filter((l) => (l.claims ?? []).some((c: any) => c.supervisor_flag));
-  const awaitingFirm = all.filter((l) => (l.claims ?? []).some((c: any) => c.status === "qualified") && daysAgo(l.updated_at) > 1);
+  const agingIntake = all.filter((l) => (l.claims ?? []).some((c: any) => resolveStatus(c.status, catalog ?? []).phase === "pre_qa") && daysAgo(l.updated_at) > 2);
+  const flagged = all.filter((l) => (l.claims ?? []).some((c: any) => c.supervisor_flag && resolveStatus(c.status, catalog ?? []).phase !== "terminal"));
+  const awaitingReview = all.filter((l) => (l.claims ?? []).some((c: any) => needsQaReview(c.status, catalog ?? [])) && daysAgo(l.updated_at) > 1);
 
   const kpis = [
-    { v: total, l: "Total cases", sub: "in your docket" },
-    { v: intakeInProgress, l: "Intake in progress", sub: "being worked" },
-    { v: qualified, l: "Qualified", sub: "ready for firm" },
-    { v: signed, l: "Signed / retained", sub: "active" },
+    { v: total, l: "Cases", sub: "in this view" },
+    { v: intakeInProgress, l: "Intake in progress", sub: "before QA" },
+    { v: qualified, l: "Approved files", sub: "including delivered files" },
+    { v: signed, l: "Signed files", sub: "including later declines" },
   ];
 
   const holes = [
     { n: agingIntake.length, label: "Aging intake (2+ days)", tone: "flag", items: agingIntake },
-    { n: awaitingFirm.length, label: "Awaiting firm reach-out", tone: "danger", items: awaitingFirm },
+    { n: awaitingReview.length, label: "Waiting for review (1+ days)", tone: "flag", items: awaitingReview },
     { n: flagged.length, label: "Flagged for attention", tone: "danger", items: flagged },
   ];
 
@@ -55,6 +59,7 @@ export default async function FirmHome() {
       <p className="muted" style={{ marginTop: 0 }}>
         {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
       </p>
+      {all.length === 500 && <p role="status" className="muted">Showing the 500 most recently updated cases. These counts cover this view.</p>}
 
       <div className="dash-grid">
         {kpis.map((k) => (
@@ -65,7 +70,7 @@ export default async function FirmHome() {
       <div className="dash-cols">
         <div>
           <div className="board">
-            <div className="board-h"><h3>Holes in the boat</h3>
+            <div className="board-h"><h3>Needs attention</h3>
               <Link href="/portal/cases" className="btn ghost sm" style={{ marginLeft: "auto" }}>All cases →</Link>
             </div>
             <div className="board-body">
