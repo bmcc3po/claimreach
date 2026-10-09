@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Field } from "@/lib/questionnaire";
 import { PFS_ASK_KINDS, pfsKindLabel, pfsListRows, pfsSectionOf } from "@/lib/pfs";
@@ -44,10 +44,13 @@ export default function PfsDesk({
   const [err, setErr] = useState("");
   const [panel, setPanel] = useState<"none" | "add" | "import">("none");
   const [draft, setDraft] = useState<Draft>(blankDraft());
+  const [removeId, setRemoveId] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
   const rows = useMemo(() => pfsListRows(fields), [fields]);
   const empty = rows.length === 0;
   const choice = needsOptions(draft.kind);
+  const feedback = <>{msg && <p className="m6-ok" role="status">{msg}</p>}{err && <p className="m6-error" role="alert">{err}</p>}</>;
 
   function applyFields(next: Field[] | undefined, okMsg?: string) {
     if (Array.isArray(next)) setFields(next);
@@ -55,28 +58,32 @@ export default function PfsDesk({
   }
 
   async function onFile(file: File | null) {
-    if (!file) return;
+    if (!file || inFlight.current) return;
+    inFlight.current = true;
     setErr(""); setMsg("");
-    const csv = await file.text();
     setBusy("import");
     try {
+      const csv = await file.text();
       const r = await fetch("/api/m6/pfs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ op: "import", csv, name: file.name.replace(/\.csv$/i, "") }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) { setErr(d.error || "That file did not import."); return; }
-      applyFields(d.fields, `Saved ${d.count} questions. They are on every Motel 6 file now.`);
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.error || d?.ok !== true || !Array.isArray(d.fields)) { setErr(d?.error || "Could not confirm the import. Check the question list before importing again."); return; }
+      applyFields(d.fields, `Saved ${pfsListRows(d.fields).length} questions. They are on every Motel 6 file now.`);
       setPanel("none");
     } catch {
-      setErr("Could not import. Check your connection.");
+      setErr("Could not read the file or confirm the import. Check the question list before importing again.");
     } finally {
       setBusy("");
+      inFlight.current = false;
     }
   }
 
   async function saveQuestion() {
+    if (inFlight.current || !draft.label.trim()) return;
+    inFlight.current = true;
     setErr(""); setMsg("");
     setBusy("save");
     const options = draft.optionsText.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -98,19 +105,22 @@ export default function PfsDesk({
           options,
         }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) { setErr(d.error || "That did not save."); return; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.error || d?.ok !== true || !Array.isArray(d.fields)) { setErr(d?.error || "Could not confirm the save. Your draft is still here. Check the question list before trying again."); return; }
       applyFields(d.fields, draft.id ? "Question saved." : "Question added. It is on every Motel 6 file now.");
       setDraft(blankDraft());
       setPanel("none");
     } catch {
-      setErr("That did not save. Check your connection.");
+      setErr("Could not confirm the save. Your draft is still here. Check the question list before trying again.");
     } finally {
       setBusy("");
+      inFlight.current = false;
     }
   }
 
   async function move(id: string, dir: -1 | 1) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setErr(""); setMsg("");
     setBusy(`move-${id}`);
     try {
@@ -119,18 +129,20 @@ export default function PfsDesk({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, dir }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) { setErr(d.error || "Could not reorder."); return; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.error || d?.ok !== true || !Array.isArray(d.fields)) { setErr(d?.error || "Could not confirm the order. Reload the question list before trying again."); return; }
       applyFields(d.fields);
     } catch {
       setErr("Could not reorder. Check your connection.");
     } finally {
       setBusy("");
+      inFlight.current = false;
     }
   }
 
   async function remove(id: string) {
-    if (!window.confirm("Remove this question? Answers already on files stay.")) return;
+    if (inFlight.current || removeId !== id) return;
+    inFlight.current = true;
     setErr(""); setMsg("");
     setBusy(`del-${id}`);
     try {
@@ -139,24 +151,30 @@ export default function PfsDesk({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok) { setErr(d.error || "Could not delete."); return; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.error || d?.ok !== true || !Array.isArray(d.fields)) { setErr(d?.error || "Could not confirm removal. Reload the question list before trying again."); return; }
       applyFields(d.fields, "Question removed. Answers already on files stay.");
+      setRemoveId(null);
       if (draft.id === id) { setDraft(blankDraft()); setPanel("none"); }
     } catch {
       setErr("Could not delete. Check your connection.");
     } finally {
       setBusy("");
+      inFlight.current = false;
     }
   }
 
   function startAdd() {
+    if (inFlight.current) return;
+    setRemoveId(null);
     setErr(""); setMsg("");
     setDraft(blankDraft());
     setPanel("add");
   }
 
   function startEdit(f: Field) {
+    if (inFlight.current) return;
+    setRemoveId(null);
     setErr(""); setMsg("");
     setDraft({
       id: f.id,
@@ -172,6 +190,7 @@ export default function PfsDesk({
     <section className="m6-card">
       <h2>{draft.id ? "Edit question" : "Add a question"}</h2>
       <p className="m6-hint">Same types as the ClaimReach builder. Answers already on files stay.</p>
+      <fieldset disabled={!!busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <label className="m6-field">
         <span>Question</span>
         <textarea
@@ -218,6 +237,8 @@ export default function PfsDesk({
           Cancel
         </button>
       </div>
+      </fieldset>
+      {feedback}
     </section>
   );
 
@@ -234,18 +255,20 @@ export default function PfsDesk({
           type="file"
           accept=".csv,text/csv"
           disabled={!!busy}
-          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => { const file = e.currentTarget.files?.[0] ?? null; e.currentTarget.value = ""; void onFile(file); }}
         />
       </label>
       {busy === "import" && <p className="m6-hint">Saving…</p>}
       <button type="button" className="m6-btn" disabled={!!busy} onClick={() => setPanel("none")}>
         Cancel
       </button>
+      {feedback}
     </section>
   );
 
   return (
     <>
+      {panel === "none" && feedback}
       {empty ? (
         <section className="m6-card">
           <h2>No questionnaire yet</h2>
@@ -277,8 +300,8 @@ export default function PfsDesk({
 
       {canImport && !empty && panel === "none" && (
         <div className="m6-desk-acts">
-          <button type="button" className="m6-btn primary" onClick={startAdd}>Add a question</button>
-          <button type="button" className="m6-btn" onClick={() => setPanel("import")}>Import CSV</button>
+          <button type="button" className="m6-btn primary" disabled={!!busy} onClick={startAdd}>Add a question</button>
+          <button type="button" className="m6-btn" disabled={!!busy} onClick={() => setPanel("import")}>Import CSV</button>
         </div>
       )}
 
@@ -302,7 +325,11 @@ export default function PfsDesk({
                     <button type="button" className="m6-btn sm" disabled={!!busy || i === 0} onClick={() => void move(field.id, -1)}>↑</button>
                     <button type="button" className="m6-btn sm" disabled={!!busy || i === rows.length - 1} onClick={() => void move(field.id, 1)}>↓</button>
                     <button type="button" className="m6-btn sm" disabled={!!busy} onClick={() => startEdit(field)}>Edit</button>
-                    <button type="button" className="m6-btn sm" disabled={!!busy} onClick={() => void remove(field.id)}>Delete</button>
+                    {removeId === field.id ? <div role="group" aria-label="Confirm question removal">
+                      <p>Remove this question? Answers already on files stay.</p>
+                      <button type="button" className="m6-btn sm" disabled={!!busy} onClick={() => setRemoveId(null)}>Keep question</button>
+                      <button type="button" className="m6-btn sm" disabled={!!busy} onClick={() => void remove(field.id)}>{busy === `del-${field.id}` ? "Removing…" : "Remove question"}</button>
+                    </div> : <button type="button" className="m6-btn sm" disabled={!!busy} onClick={() => { setRemoveId(field.id); setErr(""); setMsg(""); }}>Delete</button>}
                   </div>
                 )}
               </li>
@@ -311,8 +338,6 @@ export default function PfsDesk({
         </section>
       )}
 
-      {msg && <p className="m6-ok">{msg}</p>}
-      {err && <p className="m6-error">{err}</p>}
 
       {!canImport && empty && (
         <section className="m6-card">

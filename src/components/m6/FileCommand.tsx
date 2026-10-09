@@ -100,7 +100,7 @@ export default function FileCommand({
     commsMonitored: !!lead.comms_monitored,
   });
   const lacking = facts.filter((f) => !f.done);
-  const done = facts.filter((f) => f.done);
+  const done = facts.filter((f) => f.done && f.id !== "monitored");
   const stages = Object.keys(STAGE_LABELS) as CadenceStage[];
   const phone = lead.phone || live.find((p) => p.kind === "mobile" || p.kind === "landline")?.value || null;
 
