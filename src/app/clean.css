@@ -520,3 +520,9 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
   .cl-files-table .cl-dot{margin-top:5px;flex-shrink:0}
   .cl-files-table .cl-mobile-file-meta{display:block}
 }
+
+/* Keep wide configuration grids navigable on phones without clipping actions. */
+.admin-table-scroll{max-width:100%;min-width:0}
+.admin-table-scroll table{min-width:640px;width:100%}
+.admin-table-scroll .btn{width:auto}
+.admin-table-scroll:focus-visible{outline:2px solid var(--accent,#2c61a0);outline-offset:2px}
