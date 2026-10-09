@@ -2288,7 +2288,9 @@ div.ws-row{cursor:default}
 /* The shared header already owns client identity, back and finish actions. */
 .call-file-shell .ix-head .ix-back,
 .call-file-shell .ix-head .ix-name,
-.call-file-shell .ix-head .ix-finish{display:none}
+.call-file-shell .ix-head .ix-finish,
+.call-file-shell .ws-review-identity .ws-back,
+.call-file-shell .ws-review-identity .ws-name{display:none}
 .call-file-shell .ix-head{padding-block:6px}
 .call-file-shell .cc-live-presence{padding-block:6px}
 @media(max-width:767px){.call-file-shell{height:calc(100dvh - 52px)}}
