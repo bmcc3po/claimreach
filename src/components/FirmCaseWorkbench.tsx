@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
 import TierEditor from "./TierEditor";
 import CallLog from "./CallLog";
@@ -14,6 +14,9 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs, lo
   const [note, setNote] = useState("");
   const [reqInfo, setReqInfo] = useState("");
   const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const inFlight = useRef(false);
 
   // Visibility wall: before QA approval the firm sees only identity + a stage.
   if (locked) {
@@ -35,16 +38,31 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs, lo
     );
   }
 
+  async function postAction(endpoint: string, payload: Record<string, unknown>, success: string) {
+    if (inFlight.current) return false;
+    inFlight.current = true; setBusy(true); setFeedback("");
+    try {
+      const r = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || (!d?.ok && !d?.note)) {
+        setFeedback(r.status === 401 ? "Your session expired. Sign in again. Your draft is still here."
+          : r.status === 403 ? "Your account cannot make this change. Your draft is still here."
+          : d?.error || "Could not confirm this action. Check the file history before retrying. Your draft is still here.");
+        return false;
+      }
+      setFeedback(success); return true;
+    } catch {
+      setFeedback("Could not confirm this action. Check the connection and file history before retrying. Your draft is still here.");
+      return false;
+    } finally { inFlight.current = false; setBusy(false); }
+  }
   async function setStageVal(s: string) {
-    setStage(s);
-    await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "stage", lead_id: lead.id, stage: s }) }).catch(() => {});
+    if (await postAction("/api/leads", { op: "stage", lead_id: lead.id, stage: s }, "Stage saved.")) setStage(s);
   }
   async function sendNote(scope: string, body: string) {
-    if (!body.trim()) return;
+    if (!body.trim()) return false;
     const endpoint = scope === "request_info" ? "/api/request-info" : "/api/notes";
-    await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lead_id: lead.id, claim_id: claim.id, scope, body }) }).catch(() => {});
+    return postAction(endpoint, { lead_id: lead.id, claim_id: claim.id, scope, body }, scope === "request_info" ? "Request sent to the intake team." : "Note saved.");
   }
 
   const TABS = ["overview", "intake", "messages", "calls", "documents", "text client", "activity"];
@@ -64,22 +82,23 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs, lo
           <div className="tabs">
             {TABS.map((t) => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}
           </div>
-          <div className="formbody">
+          {feedback && <p className="firm-action-feedback" role="status">{feedback}</p>}
+          <fieldset className="formbody firm-workbench-actions" disabled={busy}>
             {tab === "overview" && (
               <div>
                 <div className="section-title">Update stage</div>
-                <select value={stage} onChange={(e) => setStageVal(e.target.value)} style={{ maxWidth: 320 }}>
+                <select aria-label="Case stage" value={stage} onChange={(e) => setStageVal(e.target.value)} style={{ maxWidth: 320 }}>
                   {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s] ?? s}</option>)}
                 </select>
                 <p className="muted" style={{ fontSize: 13 }}>Advance the case as your firm completes each step.</p>
 
                 <div className="section-title" style={{ marginTop: 18 }}>Request more info from Innovative</div>
                 <textarea rows={3} placeholder="What do you need? (sent to the intake team)" value={reqInfo} onChange={(e) => setReqInfo(e.target.value)} />
-                <button className="btn" style={{ marginTop: 8 }} onClick={() => { sendNote("request_info", reqInfo); setReqInfo(""); }}>Send request</button>
+                <button className="btn" disabled={busy || !reqInfo.trim()} style={{ marginTop: 8 }} onClick={async () => { if (await sendNote("request_info", reqInfo)) setReqInfo(""); }}>Send request</button>
 
                 <div className="section-title" style={{ marginTop: 18 }}>Case note</div>
                 <textarea rows={3} placeholder="Add a note to this case" value={note} onChange={(e) => setNote(e.target.value)} />
-                <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => { sendNote("case", note); setNote(""); }}>Add note</button>
+                <button className="btn ghost" disabled={busy || !note.trim()} style={{ marginTop: 8 }} onClick={async () => { if (await sendNote("case", note)) setNote(""); }}>Add note</button>
               </div>
             )}
             {tab === "intake" && (
@@ -98,9 +117,9 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs, lo
               <div>
                 <div className="section-title">Text the client</div>
                 <textarea rows={3} placeholder="Message to the client (JustCall, comms-safety enforced)" value={msg} onChange={(e) => setMsg(e.target.value)} />
-                <button className="btn" style={{ marginTop: 8 }} onClick={async () => {
-                  await fetch("/api/justcall", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "text", lead_id: lead.id, to: lead.phone, body: msg }) }).catch(() => {});
-                  setMsg("");
+                <button className="btn" disabled={busy || !msg.trim() || !lead.phone} style={{ marginTop: 8 }} onClick={async () => {
+                  if (!msg.trim() || !lead.phone) return;
+                  if (await postAction("/api/justcall", { action: "text", lead_id: lead.id, to: lead.phone, body: msg }, "Text sent.")) setMsg("");
                 }}>Send text</button>
               </div>
             )}
@@ -112,7 +131,7 @@ export default function FirmCaseWorkbench({ lead, claims, activity, callLogs, lo
                 {(!activity || activity.length === 0) && <p className="muted">No activity yet.</p>}
               </div>
             )}
-          </div>
+          </fieldset>
         </div>
 
         <div>
