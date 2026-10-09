@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {payrollReport,payrollTotals,payrollCsv,payrollPeriod,defaultPayrollEnd,validDay,processedLine,type PayrollFile,type PayrollNote,type PayrollLine} from './payroll';
+import {payrollReport,payrollTotals,payrollCsv,payrollDealSummary,payrollSummaryCsv,payrollPeriod,defaultPayrollEnd,validDay,processedLine,type PayrollFile,type PayrollNote,type PayrollLine} from './payroll';
 import {payrollClosePayload,payrollView,type PayrollData} from './payroll-server';
 const now='2026-10-07T18:00:00.000Z',end='2026-10-04';
 function file(id='c',patch:Partial<PayrollFile>={}):PayrollFile{return{claimId:id,leadId:'l'+id,firmId:'f',campaignId:'inno',campaign:'INNO MVA',firm:'Firm',leadNo:'TMP-'+id,name:id,href:'/file/'+id,state:'signed',detail:'Verified',signedAt:'2026-10-02T18:00:00Z',deliveredAt:null,returnEndsAt:null,packet:'complete',status:'Signed',agent:'Agent A',agentId:'a',archived:false,test:false,ownerSent:false,...patch};}
@@ -105,4 +105,25 @@ test('BMC decline needs its own valid date; an unrelated firm decision cannot cr
   assert.equal(payrollReport([{...f,declinedAt:'2026-10-08T12:00:00Z'}],[],[line('commission')],end,now).adjustments.length,0);
   const firm=payrollReport([{...f,declineSource:'firm',declinedAt:now,declineReason:'Firm rejected'}],[],[line('commission')],end,now);
   assert.equal(firm.adjustments[0].declineSource,'firm');assert.equal(firm.adjustments[0].reason,'Firm rejected');
+});
+
+test('deal summary separates the signature cohort and original-agent chargebacks without double-counting firm credits',()=>{
+  const files=[file('paid',{ownerSent:true}),file('waiting'),file('dq',{disqualified:true}),
+    file('olderReady',{signedAt:'2026-09-25T12:00:00Z',ownerSent:true}),
+    file('oldDecline',{signedAt:'2026-09-25T12:00:00Z',ownerSent:true,decisionKey:'turned_down',decisionAt:now,agentId:'new'})];
+  const report=payrollReport(files,[],[line('billing','b','oldDecline'),line('commission','p','oldDecline',{data:{...line('commission').data,agentId:'original',agent:'Original paid agent'}})],end,now);
+  const summary=payrollDealSummary(report);
+  assert.deepEqual(summary.rows,[{agent:'Agent A',signed:3,payable:1,chargebacks:0,net:1},{agent:'Original paid agent',signed:0,payable:0,chargebacks:1,net:-1}]);
+  assert.deepEqual(summary.total,{agent:'Total',signed:3,payable:1,chargebacks:1,net:0});
+  assert.equal(report.carried.length,1);
+  const csv=payrollSummaryCsv(report);assert.match(csv,/Prior-period chargebacks/);assert.match(csv,/Net deals to pay/);assert.match(csv,/,"-1"/);
+  assert.doesNotMatch(csv,/\$|USD|olderReady|oldDecline/);
+});
+
+test('summary groups by agent identity, keeps empty totals zero and protects CSV names',()=>{
+  const report=payrollReport([file('a',{ownerSent:true,agent:'Same name'}),file('b',{ownerSent:true,agentId:'b',agent:'Same name'})],[],[],end,now);
+  assert.equal(payrollDealSummary(report).rows.length,2);
+  assert.equal(payrollDealSummary({...report,rows:[]}).total.net,0);
+  report.rows[0].creditedAgent='=HYPERLINK("unsafe")';
+  assert.match(payrollSummaryCsv(report),/"'=HYPERLINK/);
 });

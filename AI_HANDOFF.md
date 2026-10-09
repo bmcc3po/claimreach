@@ -23,7 +23,8 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 - Working branch: `codex/pay-period-billing`, PR #162. Current work reconciles the branch with production main `1096589d04c973967ca581797e355061f244c9c0` (PR194).
 - Merge conflicts are resolved while preserving current intake/header fixes, delivery wording, agent attribution and decline evidence.
 - BMC and firm declines both stop new billing/commission. Prior-period adjustments require recorded processed payments and a valid decline date, retain the original paid agent, and cannot repeat.
-- Current local gates passed; the reconciled commit still needs its own Cloudflare preview gates before the migration approval request.
+- The reconciled preview at 59e03d1 passed Build Completed, 236 Edge Function Routes and deployment. Production migration/release approval remains pending.
+- Latest user request: payroll is deal counts only. Added per-agent signature-period signed/payable counts, a separate original-agent prior-period chargeback column and net deals to pay; no dollar amounts. Older newly eligible deals remain separate. Current count-only update requires its new preview build.
 - Migration 0128 adds three owner-only RLS tables and an invoker transaction for closing payroll. It has not been applied to production.
 - No real payroll period, invoice, payment, credit, clawback, or Wave correction was created during development.
 
@@ -65,3 +66,4 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 - 2026-10-09 05:15 PT — Codex — reconciled current production, added BMC decline and failed-save coverage, passed local code/SQL/browser gates; no production data or schema changes.
 - 2026-10-08 19:18 PT — Codex — refreshed payroll continuity after four more main merges; branch is 3 ahead and 8 behind with new signature-report/source-binding conflict surface; next: reconcile and reverify before migration approval.
 - 2026-10-07 19:38 PT — Codex — replaced the obsolete branch handoff with current PR #162 state; branch was green on its original head but conflicted with four newer decline/status commits; next: reconcile and reverify before migration approval.
+

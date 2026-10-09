@@ -94,10 +94,42 @@ export function payrollTotals(r: PayrollReport) {
     bill: all.filter(f => f.bill).length, pay: all.filter(f => f.pay).length,
     credit: r.adjustments.filter(a => a.kind === 'firm_credit').length, clawback: r.adjustments.filter(a => a.kind === 'clawback').length };
 }
+/** Deal counts only. Older releases are kept outside this signature-period summary. */
+export function payrollDealSummary(r: PayrollReport) {
+  const agents = new Map<string, { agent: string; signed: number; payable: number; chargebacks: number; net: number }>();
+  const get = (id: string | null | undefined, name: string) => {
+    const key = id ? 'id:' + id : 'name:' + name;
+    let row = agents.get(key);
+    if (!row) { row = { agent: name || 'Agent not recorded', signed: 0, payable: 0, chargebacks: 0, net: 0 }; agents.set(key, row); }
+    return row;
+  };
+  for (const file of r.rows) {
+    const row = get(file.creditedAgentId, file.creditedAgent);
+    row.signed++;
+    if (file.pay) row.payable++;
+  }
+  for (const adjustment of r.adjustments) {
+    if (adjustment.kind === 'clawback') get(adjustment.agentId, adjustment.agent).chargebacks++;
+  }
+  const rows = [...agents.values()].sort((a, b) => a.agent.localeCompare(b.agent));
+  for (const row of rows) row.net = row.payable - row.chargebacks;
+  const total = rows.reduce((sum, row) => ({ agent: 'Total', signed: sum.signed + row.signed,
+    payable: sum.payable + row.payable, chargebacks: sum.chargebacks + row.chargebacks, net: sum.net + row.net }),
+    { agent: 'Total', signed: 0, payable: 0, chargebacks: 0, net: 0 });
+  return { rows, total };
+}
+const csvCell = (v: unknown) => '"' + (typeof v === 'number' ? String(v) : String(v ?? '').replace(/^[\s]*[=+@-]/, "'$&")).replace(/"/g, '""') + '"';
+export function payrollSummaryCsv(r: PayrollReport) {
+  const summary = payrollDealSummary(r);
+  const rows = [
+    ['Period start', 'Period end', 'Agent', 'Signed this period', 'Payable this period', 'Prior-period chargebacks', 'Net deals to pay'],
+    ...[...summary.rows, summary.total].map(row => [r.start, r.end, row.agent, row.signed, row.payable, row.chargebacks, row.net]),
+  ];
+  return '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+}
 export function payrollCsv(r: PayrollReport) {
-  const cell = (v: unknown) => '"' + String(v ?? '').replace(/^[\s]*[=+@-]/, "'$&").replace(/"/g, '""') + '"';
   const header = ['Period start', 'Period end', 'Client', 'Lead #', 'Campaign', 'Agent', 'Signed (Pacific)', 'Group', 'Bill', 'Pay commission', 'Credit firm', 'Clawback', 'Original period', 'Reason', 'Link'];
   const rows = [...r.rows, ...r.carried].map(f => [r.start,r.end,f.name,f.leadNo,f.campaign,f.creditedAgent,f.signedDay,PAYROLL_GROUPS[f.group],f.bill ? 1 : 0,f.pay ? 1 : 0,0,0,f.originalPeriod,[f.blocked,f.declineReason || f.firmReason].filter(Boolean).join(': '),'https://claimreach.com'+f.href]);
   rows.push(...r.adjustments.map(a => [r.start,r.end,a.name,a.leadNo,'',a.agent,a.signedDay,'Prior-period adjustment',0,0,a.kind === 'firm_credit' ? 1 : 0,a.kind === 'clawback' ? 1 : 0,a.originalPeriod,a.reason,'https://claimreach.com'+a.href]));
-  return '\uFEFF' + [header,...rows].map(row => row.map(cell).join(',')).join('\r\n');
+  return '\uFEFF' + [header,...rows].map(row => row.map(csvCell).join(',')).join('\r\n');
 }
