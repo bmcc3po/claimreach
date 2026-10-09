@@ -102,6 +102,8 @@ a.cc-menu-b{text-decoration:none;color:#16324F;font-weight:500}
 .cc-btn.cc-full{width:100%;background:#22C55E;color:#06290F}
 .cc-btn.cc-full:disabled{background:#E5E5EA;color:#8E8E93;cursor:default}
 .cc-scrim{position:absolute;top:0;left:0;right:0;bottom:0;z-index:30;background:rgba(0,0,0,0.32);display:flex;flex-direction:column;justify-content:flex-end}
+/* Home banners may sit above the desk; its dialog must use the viewport. */
+.cc-homeapp>.cc-scrim{position:fixed;z-index:100}
 .cc-sheet{background:#F2F2F7;border-radius:14px 14px 0 0;height:78%;display:flex;flex-direction:column;overflow:hidden}
 .cc-grab{width:36px;height:5px;border-radius:3px;background:#C7C7CC;margin:7px auto 0}
 .cc-sheet-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 16px 12px}
