@@ -2410,7 +2410,7 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 
 /* --- log a touch ------------------------------------------------------------ */
 .m6-modal-wrap {
-  position: fixed; inset: 0; z-index: 60;
+  position: fixed; inset: 0; z-index: 80;
   background: rgba(13,20,32,.42);
   display: flex; align-items: center; justify-content: center; padding: 20px;
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { composeIntroHint, composeLiveReady, composeResultCopy } from "@/lib/m6-compose-copy";
 
 type Tpl = {
@@ -27,6 +27,7 @@ export default function ComposePanel({
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
   const [busy, setBusy] = useState("");
+  const inFlight = useRef(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   // Optimistic until GET /api/m6/compose reports rails — do not flash "keys missing".
@@ -65,6 +66,8 @@ export default function ComposePanel({
   }
 
   async function submit(live: boolean) {
+    if (inFlight.current || !body.trim()) return;
+    inFlight.current = true;
     setBusy(live ? "send" : "log"); setErr(""); setOk("");
     try {
       const r = await fetch("/api/m6/compose", {
@@ -78,17 +81,18 @@ export default function ComposePanel({
           live,
         }),
       });
-      const d = await r.json().catch(() => ({}));
+      const d = await r.json().catch(() => null);
       if (!r.ok) {
-        setErr(d.error || (d.gates?.messages || []).join(" ") || "That did not save.");
+        setErr(d?.error || "Could not confirm the result. Check the timeline before trying again. Your draft is still here.");
         return;
       }
       const result = composeResultCopy(d);
       if (result.err) setErr(result.err);
-      else setOk(result.ok || "Logged to the timeline.");
+      else setOk(result.ok || "");
     } catch {
-      setErr("That did not save. Check your connection and try again.");
+      setErr("Could not confirm the result. Your draft is still here. Check the timeline before trying again.");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
@@ -99,7 +103,7 @@ export default function ComposePanel({
       <p className="m6-hint">{composeIntroHint(rails, channel)}</p>
       <label className="m6-field">
         <span>Script</span>
-        <select value={key} onChange={(e) => pick(e.target.value)}>
+        <select disabled={!!busy} value={key} onChange={(e) => pick(e.target.value)}>
           <option value="">Choose a script</option>
           {templates.map((t) => (
             <option key={t.key} value={t.key}>
@@ -111,15 +115,15 @@ export default function ComposePanel({
       {selected?.subject != null && (
         <label className="m6-field">
           <span>Subject</span>
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} />
+          <input disabled={!!busy} value={subject} onChange={(e) => {setSubject(e.target.value);setOk("");}} />
         </label>
       )}
       <label className="m6-field">
         <span>Message</span>
-        <textarea className="m6-textarea" rows={6} value={body} onChange={(e) => setBody(e.target.value)} />
+        <textarea disabled={!!busy} className="m6-textarea" rows={6} value={body} onChange={(e) => {setBody(e.target.value);setOk("");}} />
       </label>
       {selected?.method && <p className="m6-hint">{selected.method}</p>}
-      {err && <p className="m6-error">{err}</p>}
+      {err && <p className="m6-error" role="alert">{err}</p>}
       {ok && <p className="m6-hint">{ok}</p>}
       <div className="m6-health-acts">
         <button type="button" className="m6-btn primary" disabled={!!busy || !body.trim()} onClick={() => void submit(false)}>

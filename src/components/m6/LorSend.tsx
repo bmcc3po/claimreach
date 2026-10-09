@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ModalShell } from "./M6Modals";
 import LorFacts, { lorFactsShowFromMissing } from "./LorFacts";
 
@@ -47,6 +47,7 @@ export default function LorSend({
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/m6/lor?lead_id=${encodeURIComponent(leadId)}`);
@@ -69,6 +70,8 @@ export default function LorSend({
   }, [load]);
 
   async function send() {
+    if (inFlight.current || !preview?.canSend || preview.alreadySent || ok) return;
+    inFlight.current = true;
     setBusy(true); setErr(""); setOk("");
     try {
       const r = await fetch("/api/m6/lor/send", {
@@ -76,14 +79,17 @@ export default function LorSend({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lead_id: leadId, recipient }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) { setErr(d.error || "The letter did not send."); return; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.error || d?.ok !== true || typeof d.live !== 'boolean') {
+        setErr(d?.error || "Could not confirm the letter. Check its status before trying again."); return;
+      }
       const mode = d.live ? "PostGrid mailed it." : "PostGrid test letter created. Nothing went to a live mailbox.";
       setOk(d.tracking ? `${mode} Tracking ${d.tracking}.` : mode);
       onSent?.();
     } catch {
-      setErr("The letter did not send. Check your connection.");
+      setErr("Could not confirm the letter. Check its status before trying again.");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -93,10 +99,10 @@ export default function LorSend({
   const factsShow = lorFactsShowFromMissing(shown?.missing);
 
   return (
-    <ModalShell title="Send LOR" onClose={onClose} err={err} wide>
+    <ModalShell title="Send LOR" onClose={onClose} err={err} wide busy={busy}>
       {!preview && !err && <p className="m6-hint">Loading the letter…</p>}
       {preview && shown && (
-        <div className="m6-lor-preview">
+        <fieldset className="m6-lor-preview" disabled={busy} style={{border:0,padding:0,margin:0,minWidth:0}}>
           <p className="m6-hint">{preview.rails.whatItDoes}</p>
           <LorFacts
             leadId={leadId}
@@ -146,7 +152,7 @@ export default function LorSend({
               {busy ? "Sending" : preview.alreadySent ? "Already sent" : preview.canSend ? "Send certified mail" : "Cannot send yet"}
             </button>
           </div>
-        </div>
+        </fieldset>
       )}
     </ModalShell>
   );
