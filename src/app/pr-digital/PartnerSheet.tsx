@@ -5,7 +5,7 @@ import './sheet.css';
 
 type Report = { rows: PartnerReportRow[]; updatedAt: string };
 function date(value: string | null) {
-  return value ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'medium' }).format(new Date(value)) : 'Not recorded';
+  return value ? new Intl.DateTimeFormat('en-US', { timeZone: /^\d{4}-\d{2}-\d{2}$/.test(value) ? 'UTC' : 'America/Los_Angeles', dateStyle: 'medium' }).format(new Date(value)) : 'Not recorded';
 }
 function phone(value: string) {
   const n = value.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
