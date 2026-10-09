@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ModalShell } from "./M6Modals";
+import { composeResultCopy } from "@/lib/m6-compose-copy";
 
 function prettyFrom(raw: string) {
   const d = String(raw ?? "").replace(/\D/g, "").replace(/^1/, "");
@@ -22,6 +23,7 @@ export default function TextSend({
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
+  const inFlight = useRef(false);
   const [sendingNumber, setSendingNumber] = useState("+12562075828");
   const [justcall, setJustcall] = useState(true);
 
@@ -54,6 +56,8 @@ export default function TextSend({
   }
 
   async function submit(live: boolean) {
+    if (inFlight.current || !body.trim()) return;
+    inFlight.current = true;
     setBusy(live ? "send" : "log"); setErr(""); setOk("");
     try {
       const r = await fetch("/api/m6/compose", {
@@ -61,22 +65,20 @@ export default function TextSend({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lead_id: leadId, template_key: key || null, body, channel: "sms", live }),
       });
-      const d = await r.json().catch(() => ({}));
-      const status = String(d.send_status || "");
-      if (!r.ok || d.error) {
-        setErr(d.error || (d.gates?.messages || []).join(" ") || "That did not save.");
+      const d = await r.json().catch(() => null);
+      const status = String(d?.send_status || "");
+      if (!r.ok) {
+        setErr(d?.error || "Could not confirm the result. Check the timeline before trying again. Your draft is still here.");
         return;
       }
-      if (status === "queued" || status === "failed" || status === "blocked") {
-        setErr((d.gates?.messages || []).join(" ") || "The text did not send.");
-        return;
-      }
-      if (d.duplicate) setOk("Already on the timeline.");
-      else if (d.live && status === "sent") setOk(`Sent from ${prettyFrom(d.sendingNumber || sendingNumber)}.`);
-      else setOk("Logged.");
+      const result = composeResultCopy(d);
+      if (result.err) setErr(result.err);
+      else if (!d.duplicate && d.live && status === "sent") setOk(`Sent from ${prettyFrom(d.sendingNumber || sendingNumber)}.`);
+      else setOk(result.ok || "");
     } catch {
-      setErr("That did not save. Check your connection.");
+      setErr("Could not confirm the result. Your draft is still here. Check the timeline before trying again.");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
@@ -84,14 +86,14 @@ export default function TextSend({
   const fromLabel = prettyFrom(sendingNumber);
 
   return (
-    <ModalShell title="Text" onClose={onClose} err={err}>
+    <ModalShell title="Text" onClose={onClose} err={err} busy={!!busy}>
       <p className="m6-hint">Same number every time: {fromLabel}. Quiet hours, opt-out, and safe-contact still apply.</p>
       {!justcall && (
         <p className="m6-hint">JustCall keys are not in Cloudflare Pages. You can still log the text.</p>
       )}
       <label className="m6-field">
         <span>Script</span>
-        <select value={key} onChange={(e) => pick(e.target.value)}>
+        <select disabled={!!busy} value={key} onChange={(e) => pick(e.target.value)}>
           {templates.map((t) => (
             <option key={t.key} value={t.key}>{t.name}{t.approvedByFirm ? "" : " (draft)"}</option>
           ))}
@@ -99,11 +101,11 @@ export default function TextSend({
       </label>
       <label className="m6-field">
         <span>Message</span>
-        <textarea className="m6-textarea" rows={5} value={body} onChange={(e) => setBody(e.target.value)} />
+        <textarea disabled={!!busy} className="m6-textarea" rows={5} value={body} onChange={(e) => {setBody(e.target.value);setOk("");}} />
       </label>
       {ok && <p className="m6-hint">{ok}</p>}
       <div className="m6-modal-acts">
-        <button type="button" className="m6-btn" onClick={onClose}>Close</button>
+        <button type="button" className="m6-btn" disabled={!!busy} onClick={onClose}>Close</button>
         <button type="button" className="m6-btn" disabled={!!busy || !body.trim()} onClick={() => void submit(false)}>
           {busy === "log" ? "Saving" : "Log"}
         </button>

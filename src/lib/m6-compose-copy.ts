@@ -37,18 +37,22 @@ export function composeIntroHint(
 }
 
 export function composeResultCopy(d: {
+  ok?: boolean;
   error?: string | null;
   live?: boolean;
   duplicate?: boolean;
   send_status?: string | null;
   gates?: { messages?: string[] };
-}): { ok?: string; err?: string } {
+} | null | undefined): { ok?: string; err?: string } {
+  const unconfirmed = { err: "Could not confirm the result. Your draft is still here. Check the timeline before trying again." };
+  if (d?.error) return { err: d.error };
+  if (d?.ok !== true) return unconfirmed;
   const status = String(d.send_status || "");
-  if (d.error) return { err: d.error };
   if (status === "queued" || status === "failed" || status === "blocked") {
     return { err: (d.gates?.messages || []).join(" ") || "That did not send." };
   }
   if (d.duplicate) return { ok: "Already on the timeline. Not sent twice." };
   if (d.live && status === "sent") return { ok: "Sent." };
-  return { ok: "Logged to the timeline." };
+  if (status === "logged" && !d.live) return { ok: "Logged to the timeline." };
+  return unconfirmed;
 }

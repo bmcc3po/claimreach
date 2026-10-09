@@ -34,15 +34,20 @@ check("missing JustCall does not mention Josh", missingJc.includes("Josh"), fals
 const missingResend = composeIntroHint(justcallOnly, "email");
 check("missing Resend names Resend only", missingResend.includes("Resend") && !missingResend.includes("JustCall") && !missingResend.includes("Josh"), true);
 
-check("sent copy", composeResultCopy({ live: true, send_status: "sent" }), { ok: "Sent." });
-check("logged copy does not hold live send hostage", composeResultCopy({ live: false, send_status: "logged" }), { ok: "Logged to the timeline." });
+check("sent copy", composeResultCopy({ ok: true, live: true, send_status: "sent" }), { ok: "Sent." });
+check("logged copy does not hold live send hostage", composeResultCopy({ ok: true, live: false, send_status: "logged" }), { ok: "Logged to the timeline." });
 check("JustCall error from POST", composeResultCopy({ error: "number is invalid" }), { err: "number is invalid" });
 check("quiet hours from POST", composeResultCopy({
-  send_status: "blocked", gates: { messages: ["Quiet hours. Try after 8am in their time zone."] },
+  ok: true, send_status: "blocked", gates: { messages: ["Quiet hours. Try after 8am in their time zone."] },
 }), { err: "Quiet hours. Try after 8am in their time zone." });
 check("opt-out from POST", composeResultCopy({
   error: "This person opted out. Do not send.",
 }), { err: "This person opted out. Do not send." });
+
+for (const result of [null, undefined, {}, { ok: false, send_status: 'sent', live: true }, { ok: true }, { ok: true, live: true, send_status: 'logged' }]) {
+  check('unconfirmed response never reports saved or sent', !!composeResultCopy(result).err, true);
+}
+check('confirmed duplicate is explicit', composeResultCopy({ok:true,duplicate:true}),{ok:'Already on the timeline. Not sent twice.'});
 
 if (fail) { console.log(`\n${fail} failed, ${pass} passed`); process.exit(1); }
 console.log(`\n${pass} passed`);
