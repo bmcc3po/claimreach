@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import PlaceField from "./calls/PlaceField";
 
 const CATEGORIES = [
@@ -19,14 +19,24 @@ export default function ResourceFinder({ defaultAddress = "" }: { defaultAddress
   const [results, setResults] = useState<any[]>([]);
   const [saved, setSaved] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [searched, setSearched] = useState(false);
+  const searching = useRef(false);
   const [custom, setCustom] = useState({ name: "", phone: "", address: "" });
 
   async function search(category = cat) {
-    if (!near.trim()) return;
-    setCat(category); setLoading(true);
-    const r = await fetch("/api/resources", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category, near }) });
-    const d = await r.json();
-    setResults(r.ok ? (d.results ?? []) : []); setLoading(false);
+    if (searching.current) return;
+    if (!near.trim()) { setError("Enter an address or city first."); return; }
+    searching.current = true;
+    setCat(category); setLoading(true); setError(""); setSearched(false); setResults([]);
+    try {
+      const r = await fetch("/api/resources", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ category, near }) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || !Array.isArray(d?.results)) throw new Error(d?.error || "Resource search did not finish. Please try again.");
+      setResults(d.results); setSearched(true);
+    } catch (cause) {
+      setError(cause instanceof TypeError ? "Check your connection and try again." : cause instanceof Error ? cause.message : "Resource search did not finish. Please try again.");
+    } finally { searching.current = false; setLoading(false); }
   }
   function star(item: any) { setSaved((s) => s.find((x) => x.place_id === item.place_id) ? s : [...s, { ...item, category: cat }]); }
   function addCustom() {
@@ -40,20 +50,20 @@ export default function ResourceFinder({ defaultAddress = "" }: { defaultAddress
       <div>
         <div className="card" style={{ padding: 16, marginBottom: 14 }}>
           <label>Client address or city</label>
-          <div className="row" style={{ gap: 8, marginTop: 6 }}>
+          <div className="row" style={{ gap: 8, marginTop: 6, flexWrap: "wrap" }}>
             <PlaceField kind="address" label="Client address or city" placeholder="123 Main St, Las Vegas NV" value={near} onChange={setNear} />
             <button className="btn" onClick={() => search()} disabled={loading}>{loading ? "…" : "Search"}</button>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
             {CATEGORIES.map((c) => (
-              <button key={c.id} className={`chip ${cat === c.id ? "active" : ""}`} onClick={() => search(c.id)}>{c.icon} {c.label}</button>
+              <button key={c.id} disabled={loading} aria-pressed={cat === c.id} className={`chip ${cat === c.id ? "active" : ""}`} onClick={() => search(c.id)}>{c.icon} {c.label}</button>
             ))}
           </div>
         </div>
 
         {results.map((r) => (
           <div key={r.place_id} className="qcard" style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
               <div style={{ fontWeight: 700 }}>{r.name}</div>
               <div className="muted" style={{ fontSize: 13 }}>{r.address}</div>
               {r.phone && <div style={{ fontSize: 13, marginTop: 2 }}>{r.phone}</div>}
@@ -61,13 +71,14 @@ export default function ResourceFinder({ defaultAddress = "" }: { defaultAddress
             <button className="btn ghost sm" onClick={() => star(r)}>★ Save</button>
           </div>
         ))}
-        {!loading && results.length === 0 && <p className="muted">Search a category to see nearby resources.</p>}
+        {error && <p role="alert" style={{ color: "#9a2525" }}>{error}</p>}
+        {!loading && !error && results.length === 0 && <p className="muted" role="status">{searched ? "No resources found here. Try another category or nearby city." : "Search a category to see nearby resources."}</p>}
       </div>
 
       <div>
         <div className="side-card">
           <h3>★ Saved resources</h3>
-          {saved.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Star resources to keep them handy for this area.</p>}
+          <p className="muted" style={{ fontSize: 13 }}>Kept here for this session. Copy anything you need into the file before leaving.</p>
           {saved.map((s) => (
             <div key={s.place_id} className="vrow" style={{ flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
               <span style={{ fontWeight: 600 }}>{s.name}</span>
@@ -77,8 +88,8 @@ export default function ResourceFinder({ defaultAddress = "" }: { defaultAddress
         </div>
         <div className="side-card">
           <h3>Add your own</h3>
-          <input placeholder="Name" value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} style={{ marginBottom: 6 }} />
-          <input placeholder="Phone" value={custom.phone} onChange={(e) => setCustom({ ...custom, phone: e.target.value })} style={{ marginBottom: 6 }} />
+          <input aria-label="Resource name" placeholder="Name" value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} style={{ marginBottom: 6 }} />
+          <input aria-label="Resource phone" type="tel" placeholder="Phone" value={custom.phone} onChange={(e) => setCustom({ ...custom, phone: e.target.value })} style={{ marginBottom: 6 }} />
           <PlaceField kind="address" label="Resource address" placeholder="Address / notes" value={custom.address} onChange={address => setCustom({ ...custom, address })} />
           <button className="btn ghost" onClick={addCustom}>+ Add resource</button>
         </div>
