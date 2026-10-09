@@ -19,7 +19,9 @@ export function ModalShell({
           <button type="button" className="m6-linkbtn" disabled={busy} onClick={onClose}>Close</button>
         </div>
         {err && <p className="m6-error" role="alert">{err}</p>}
-        {children}
+        <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+          {children}
+        </fieldset>
       </div>
     </div>
   );
@@ -40,7 +42,7 @@ export function LogTouch({
   const [note, setNote] = useState("");
 
   return (
-    <ModalShell title="Log a touch" onClose={onClose} err={err}>
+    <ModalShell title="Log a touch" onClose={onClose} err={err} busy={busy}>
       <label className="m6-field">
         <span>Why</span>
         <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>

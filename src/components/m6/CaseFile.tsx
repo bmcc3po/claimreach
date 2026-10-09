@@ -1,6 +1,6 @@
 "use client";
 import AddressLookup from "../AddressLookup";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import PhoneInput from "@/components/PhoneInput";
@@ -40,6 +40,7 @@ export default function CaseFile({
   const [err, setErr] = useState("");
   const [modal, setModal] = useState<Modal>(null);
   const [noteText, setNoteText] = useState("");
+  const inFlight = useRef(false);
   const health: Health = (status?.health ?? "green") as Health;
   const name = displayName(lead);
   const addr = [lead.mail_addr1, lead.mail_city, lead.mail_state, lead.mail_zip].filter(Boolean).join(", ");
@@ -52,6 +53,8 @@ export default function CaseFile({
   }, [lead.id]);
 
   async function post(url: string, body: any, label: string) {
+    if (inFlight.current) return false;
+    inFlight.current = true;
     setBusy(label); setErr("");
     try {
       const r = await fetch(url, {
@@ -59,23 +62,26 @@ export default function CaseFile({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lead_id: lead.id, ...body }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) { setErr(d.error || "That did not save. Try again."); return false; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.error || d?.ok !== true) { setErr(d?.error || "Could not confirm the save. Your draft is still here. Check the file before trying again."); return false; }
       router.refresh();
       return true;
     } catch {
-      setErr("That did not save. Check your connection and try again.");
+      setErr("Could not confirm the save. Your draft is still here. Check the file before trying again.");
       return false;
     } finally {
       setBusy("");
+      inFlight.current = false;
     }
   }
 
   function openModal(kind: Modal) {
+    if (inFlight.current) return;
     setErr("");
     setModal(kind);
   }
   function closeModal() {
+    if (inFlight.current) return;
     setModal(null);
   }
 
@@ -158,7 +164,7 @@ export default function CaseFile({
           text, and follow the approved script with anyone else who answers.
         </p>
       )}
-      {pageErr && <p className="m6-error">{err}</p>}
+      {pageErr && <p className="m6-error" role="alert">{err}</p>}
 
       <FileCommand
         lead={lead}
@@ -338,6 +344,7 @@ export default function CaseFile({
               rows={3}
               placeholder="Write a message"
               value={noteText}
+              disabled={!!busy}
               onChange={(e) => setNoteText(e.target.value)}
             />
             <button
@@ -440,7 +447,7 @@ function ScheduleCall({
   }
 
   return (
-    <ModalShell title="Schedule a call" onClose={onClose} err={err || localErr}>
+    <ModalShell title="Schedule a call" onClose={onClose} err={err || localErr} busy={busy}>
       <label className="m6-field">
         <span>When</span>
         <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setLocalErr(""); }} />
@@ -514,7 +521,7 @@ function AddContact({
   }
 
   return (
-    <ModalShell title="Add a way to reach them" onClose={onClose} err={err || localErr}>
+    <ModalShell title="Add a way to reach them" onClose={onClose} err={err || localErr} busy={busy}>
       <label className="m6-field">
         <span>Kind</span>
         <select value={kind} onChange={(e) => { setKind(e.target.value as typeof kind); setLocalErr(""); }}>
