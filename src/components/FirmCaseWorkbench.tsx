@@ -1,125 +1,37 @@
-"use client";
-import { useState } from "react";
-import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
-import TierEditor from "./TierEditor";
-import CallLog from "./CallLog";
-import Crissi from "./Crissi";
 import CaseDocuments from "./CaseDocuments";
-import CaseMessages from "./CaseMessages";
+import { statusLabel } from "@/lib/statuses";
 
-export default function FirmCaseWorkbench({ lead, claims, activity, callLogs, locked = false, stageLabel }: { lead: any; claims: any[]; activity: any[]; callLogs: any[]; locked?: boolean; stageLabel?: string }) {
-  const claim = claims[0] ?? {};
-  const [stage, setStage] = useState(lead.stage);
-  const [tab, setTab] = useState("overview");
-  const [note, setNote] = useState("");
-  const [reqInfo, setReqInfo] = useState("");
-  const [msg, setMsg] = useState("");
+type FileIdentity = { id: string; lead_no?: string; claimant_name?: string; firm_ref_no?: string };
+type ReleasedMatter = { id: string; claim_type?: string; status?: string };
 
-  // Visibility wall: before QA approval the firm sees only identity + a stage.
-  if (locked) {
-    return (
-      <div>
-        <div className="row" style={{ marginBottom: 14 }}>
-          <h1 style={{ margin: 0 }}>{lead.claimant_name || lead.lead_no}</h1>
-          <span className="badge stage">{stageLabel || "In progress"}</span>
-        </div>
-        <div className="card" style={{ padding: 24, maxWidth: 560 }}>
-          <h3 style={{ marginTop: 0 }}>This file is still in progress</h3>
-          <p className="muted">The intake team is working this file. Full details unlock once it clears QA review.</p>
-          <div className="vrow"><span className="vk">Claimant</span><span className="vv">{lead.claimant_name || "—"}</span></div>
-          <div className="vrow"><span className="vk">Phone</span><span className="vv">{lead.phone || "—"}</span></div>
-          <div className="vrow"><span className="vk">Case type</span><span className="vv">{lead.case_type || "—"}</span></div>
-          <div className="vrow"><span className="vk">Status</span><span className="vv">{stageLabel}</span></div>
-        </div>
-      </div>
-    );
-  }
-
-  async function setStageVal(s: string) {
-    setStage(s);
-    await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "stage", lead_id: lead.id, stage: s }) }).catch(() => {});
-  }
-  async function sendNote(scope: string, body: string) {
-    if (!body.trim()) return;
-    const endpoint = scope === "request_info" ? "/api/request-info" : "/api/notes";
-    await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lead_id: lead.id, claim_id: claim.id, scope, body }) }).catch(() => {});
-  }
-
-  const TABS = ["overview", "intake", "messages", "calls", "documents", "text client", "activity"];
-
+// Start with released documents. Internal stage, scoring, messaging and
+// lead-wide export controls do not belong in this read-only view.
+export default function FirmCaseWorkbench({ lead, claim, locked = false }: {
+  lead: FileIdentity; claim?: ReleasedMatter; locked?: boolean;
+}) {
+  const available = !locked && !!claim;
   return (
-    <div>
-      <div className="row" style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0 }}>{lead.lead_no}</h1>
-        <span className="badge stage">{STAGE_LABELS[stage] ?? stage}</span>
-        {lead.firm_ref_no && <span className="muted">Firm ref {lead.firm_ref_no}</span>}
-        <div className="spacer" />
-        <a className="btn ghost" href={`/api/export?format=neos&lead=${lead.id}`}>⬇ Export intake</a>
-      </div>
-
-      <div className="lead-grid">
-        <div className="card" style={{ padding: 0 }}>
-          <div className="tabs">
-            {TABS.map((t) => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t[0].toUpperCase() + t.slice(1)}</button>)}
-          </div>
-          <div className="formbody">
-            {tab === "overview" && (
-              <div>
-                <div className="section-title">Update stage</div>
-                <select value={stage} onChange={(e) => setStageVal(e.target.value)} style={{ maxWidth: 320 }}>
-                  {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s] ?? s}</option>)}
-                </select>
-                <p className="muted" style={{ fontSize: 13 }}>Advance the case as your firm completes each step.</p>
-
-                <div className="section-title" style={{ marginTop: 18 }}>Request more info from Innovative</div>
-                <textarea rows={3} placeholder="What do you need? (sent to the intake team)" value={reqInfo} onChange={(e) => setReqInfo(e.target.value)} />
-                <button className="btn" style={{ marginTop: 8 }} onClick={() => { sendNote("request_info", reqInfo); setReqInfo(""); }}>Send request</button>
-
-                <div className="section-title" style={{ marginTop: 18 }}>Case note</div>
-                <textarea rows={3} placeholder="Add a note to this case" value={note} onChange={(e) => setNote(e.target.value)} />
-                <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => { sendNote("case", note); setNote(""); }}>Add note</button>
-              </div>
-            )}
-            {tab === "intake" && (
-              <div>
-                <div className="section-title">Intake answers</div>
-                {Object.keys(claim.answers ?? {}).length === 0 && <p className="muted">No intake answers recorded yet.</p>}
-                {Object.entries(claim.answers ?? {}).map(([k, v]) => (
-                  <div key={k} className="vrow"><span className="vk">{k}</span><span className="vv">{String(v)}</span></div>
-                ))}
-              </div>
-            )}
-            {tab === "calls" && <CallLog leadId={lead.id} claimId={claim.id} initial={callLogs} />}
-            {tab === "documents" && <CaseDocuments leadId={lead.id} claimId={claim.id} />}
-            {tab === "messages" && <CaseMessages leadId={lead.id} claimId={claim.id} me="Firm" />}
-            {tab === "text client" && (
-              <div>
-                <div className="section-title">Text the client</div>
-                <textarea rows={3} placeholder="Message to the client (JustCall, comms-safety enforced)" value={msg} onChange={(e) => setMsg(e.target.value)} />
-                <button className="btn" style={{ marginTop: 8 }} onClick={async () => {
-                  await fetch("/api/justcall", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "text", lead_id: lead.id, to: lead.phone, body: msg }) }).catch(() => {});
-                  setMsg("");
-                }}>Send text</button>
-              </div>
-            )}
-            {tab === "activity" && (
-              <div>
-                {(activity ?? []).map((a, i) => (
-                  <div key={i} className="post"><strong>{a.actor_name}</strong> <span className="muted">{a.description}</span><div className="pmeta">{new Date(a.created_at).toLocaleString()}</div></div>
-                ))}
-                {(!activity || activity.length === 0) && <p className="muted">No activity yet.</p>}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <TierEditor claimId={claim.id} claimType={lead.case_type} letter={claim.tier_letter} number={claim.tier_number} />
-          <Crissi trigger="inline" />
-        </div>
-      </div>
+    <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+      <a href="/portal/cases" className="btn ghost sm">← All files</a>
+      <header style={{ margin: "20px 0" }}>
+        <h1 style={{ margin: "0 0 8px", overflowWrap: "anywhere" }}>{lead.claimant_name || lead.lead_no || "Client file"}</h1>
+        <p className="muted" style={{ margin: "0 0 12px" }}>
+          {[lead.lead_no, available && claim?.claim_type, lead.firm_ref_no && `Firm reference ${lead.firm_ref_no}`].filter(Boolean).join(" · ")}
+        </p>
+        <span className="badge stage">{available ? statusLabel(claim?.status) : "Awaiting file review"}</span>
+      </header>
+      {!available ? (
+        <section className="card" style={{ padding: 24 }}>
+          <h2 style={{ marginTop: 0 }}>The intake team is finishing this file</h2>
+          <p className="muted">Its documents will be available here once the file is released to your firm.</p>
+        </section>
+      ) : (
+        <section className="card" style={{ padding: "clamp(16px, 3vw, 28px)" }}>
+          <h2 style={{ marginTop: 0 }}>File documents</h2>
+          <p className="muted">Open a document below to review or download it.</p>
+          <CaseDocuments key={claim.id} leadId={lead.id} claimId={claim.id} readOnly />
+        </section>
+      )}
     </div>
   );
 }
