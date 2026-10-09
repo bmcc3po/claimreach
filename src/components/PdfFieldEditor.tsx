@@ -23,6 +23,8 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+  const saveInFlight = useRef(false);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [campaignId, setCampaignId] = useState(initialCampaignId || "");
   const [bindCaseType, setBindCaseType] = useState(initialCaseType || "any");
@@ -94,6 +96,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
 
   // drop a new field where you click on the page
   function onPageDrop(e: React.DragEvent, pageNum: number) {
+    if (saveInFlight.current) return;
     const token = e.dataTransfer.getData("text/claimreach-token");
     if (!token) return;
     e.preventDefault();
@@ -105,10 +108,12 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
     const w = 20, h = 5;
     const nf: PField = { id: crypto.randomUUID(), type: "text", page: pageNum, xPct: clamp(xPct - w / 2, 0, 100 - w), yPct: clamp(yPct - h / 2, 0, 100 - h), wPct: w, hPct: h, role: "client", label, required: true, mapTo: token };
     setFields((arr) => [...arr, nf]);
+    setMsg("");
     setSelected(nf.id);
   }
 
   function onPageMouseDown(e: React.MouseEvent, pageNum: number) {
+    if (saveInFlight.current) return;
     // only drop if you clicked empty page area (not an existing field)
     if ((e.target as HTMLElement).closest(".pdf-field")) return;
     const pageEl = e.currentTarget as HTMLElement;
@@ -120,11 +125,13 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
     const def = FIELD_TYPES.find((t) => t.key === tool)!;
     const nf: PField = { id: crypto.randomUUID(), type: tool, page: pageNum, xPct: clamp(xPct - w / 2, 0, 100 - w), yPct: clamp(yPct - h / 2, 0, 100 - h), wPct: w, hPct: h, role, label: def.label, required: true };
     setFields((arr) => [...arr, nf]);
+    setMsg("");
     setSelected(nf.id);
   }
 
   function startDrag(e: React.MouseEvent, f: PField, mode: "move" | "resize") {
     e.stopPropagation();
+    if (saveInFlight.current) return;
     const pageEl = (e.currentTarget as HTMLElement).closest(".pdf-page") as HTMLElement;
     drag.current = { id: f.id, mode, startX: e.clientX, startY: e.clientY, pageEl, orig: { ...f }, moved: false };
     setSelected(f.id);
@@ -139,6 +146,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
     // Only count as a real move past a small threshold so a click that nudges a
     // pixel still selects (and keeps the menu open) instead of being a drag.
     if (Math.abs(e.clientX - dg.startX) > 3 || Math.abs(e.clientY - dg.startY) > 3) dg.moved = true;
+    setMsg("");
     setFields((arr) => arr.map((f) => {
       if (f.id !== dg.id) return f;
       if (dg.mode === "move") {
@@ -156,9 +164,9 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
     window.removeEventListener("mouseup", endDrag);
   }, [onDragMove]);
 
-  function removeField(id: string) { setFields((a) => a.filter((f) => f.id !== id)); setSelected(null); }
-  function setFieldRole(id: string, r: Role) { setFields((a) => a.map((f) => f.id === id ? { ...f, role: r } : f)); }
-  function setFieldMap(id: string, mapTo: string) { setFields((a) => a.map((f) => f.id === id ? { ...f, mapTo: mapTo || undefined } : f)); }
+  function removeField(id: string) { setFields((a) => a.filter((f) => f.id !== id)); setSelected(null); setMsg(""); }
+  function setFieldRole(id: string, r: Role) { setFields((a) => a.map((f) => f.id === id ? { ...f, role: r } : f)); setMsg(""); }
+  function setFieldMap(id: string, mapTo: string) { setFields((a) => a.map((f) => f.id === id ? { ...f, mapTo: mapTo || undefined } : f)); setMsg(""); }
 
   const [aiBusy, setAiBusy] = useState(false);
   async function aiPlace() {
@@ -209,22 +217,36 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
   }
 
   async function save() {
+    if (saveInFlight.current || loading || err || aiBusy) return;
+    saveInFlight.current = true;
+    setSaving(true);
     setMsg("Saving…");
-    const r = await fetch("/api/pdf-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_fields", id: templateId, name, fields, page_count: pages.length, page_dims: pageDims.current, campaign_id: campaignId || null, case_type: bindCaseType }) });
-    const d = await r.json();
-    setMsg(d.ok ? "Saved." : (d.error || "Save failed"));
+    try {
+      const r = await fetch("/api/pdf-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "save_fields", id: templateId, name, fields, page_count: pages.length, page_dims: pageDims.current, campaign_id: campaignId || null, case_type: bindCaseType }) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.ok !== true) {
+        setMsg(r.status === 401 ? "Your session expired. Sign in again, then retry. Your layout is still here." : d?.error || "Could not save the layout. Your changes are still here; please retry.");
+        return;
+      }
+      setMsg("Saved.");
+    } catch {
+      setMsg("Could not connect. Your layout is still here. Check the connection, then retry.");
+    } finally {
+      saveInFlight.current = false;
+      setSaving(false);
+    }
   }
 
   return (
-    <div className="pdf-editor">
+    <fieldset className="pdf-editor" disabled={saving} onChange={() => { if (msg === "Saved.") setMsg(""); }}>
       <div className="pdf-editor-bar">
         <button className="btn ghost sm" onClick={onClose}>← Back</button>
-        <input className="pdf-name" value={name} onChange={(e) => setName(e.target.value)} />
-        <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={{ width: "auto" }} title="Show on files for this campaign">
+        <input className="pdf-name" aria-label="PDF template name" value={name} onChange={(e) => setName(e.target.value)} />
+        <select aria-label="Campaign" value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={{ width: "auto" }} title="Show on files for this campaign">
           <option value="">Any campaign</option>
           {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select value={bindCaseType} onChange={(e) => setBindCaseType(e.target.value)} style={{ width: "auto" }} title="Bind to case type">
+        <select aria-label="Case type" value={bindCaseType} onChange={(e) => setBindCaseType(e.target.value)} style={{ width: "auto" }} title="Bind to case type">
           {["any", "motel_trafficking", "bard_powerport", "pfas", "medmal", "mva"].map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <span className="spacer" />
@@ -232,8 +254,8 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
           <button className={role === "client" ? "on client" : ""} onClick={() => setRole("client")}>👤 Client</button>
           <button className={role === "agent" ? "on agent" : ""} onClick={() => setRole("agent")}>🧑‍💼 Agent</button>
         </div>
-        <button className="btn ghost" onClick={aiPlace} disabled={aiBusy}>{aiBusy ? "AI placing…" : "✨ AI place fields"}</button>
-        <button className="btn" onClick={save}>Save layout</button>
+        <button className="btn ghost" onClick={aiPlace} disabled={aiBusy || loading || !!err}>{aiBusy ? "AI placing…" : "✨ AI place fields"}</button>
+        <button className="btn" onClick={save} disabled={saving || aiBusy || loading || !!err}>{saving ? "Saving…" : "Save layout"}</button>
       </div>
 
       <div className="pdf-editor-body">
@@ -307,7 +329,7 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
           <div className="pdf-count muted">{fields.length} field{fields.length === 1 ? "" : "s"} placed</div>
         </div>
 
-        <div className="pdf-canvas-scroll">
+        <div className="pdf-canvas-scroll" role="region" aria-label="PDF pages — scroll to position fields" tabIndex={0}>
           {loading && <p className="muted">Loading PDF…</p>}
           {err && <p className="save-msg warn">{err}</p>}
           <div className="pdf-pages">
@@ -351,8 +373,8 @@ export default function PdfFieldEditor({ templateId, initialName, initialFields,
           </div>
         </div>
       </div>
-      {msg && <div className="pdf-save-msg">{msg}</div>}
-    </div>
+      {msg && <div className="pdf-save-msg" role="status">{msg}</div>}
+    </fieldset>
   );
 }
 
