@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { LX } from "@/lib/lexicon";
 import FloatingDock from "./FloatingDock";
@@ -154,7 +154,7 @@ function LeadWorkspaceRecord({
           {canEdit && <button type="button" className="cl-btn cl-ghost" onClick={() => { setTab('Contact Info'); setEditMode(false); }}>Client details</button>}
           {canTools && appCall && <a className="cl-btn" href={appCall.href}>Resume intake</a>}
           {fileMayExportPdf(fence) && <a className="cl-btn cl-ghost" href={'/api/export/intake-pdf?lead_id=' + lead.id + '&claim_id=' + (activeClaimId || '')} target="_blank" rel="noopener noreferrer">Intake PDF</a>}
-          {canTools && ['owner', 'admin', 'manager', 'qa', 'agent'].includes(lead.current_user_role || '') && !importedSignedPacket && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
+          {canTools && ['owner', 'admin', 'manager', 'qa', 'agent'].includes(lead.current_user_role || '') && !importedSignedPacket && <SendToFirmButton key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} />}
           {canTools && <FileArchiveButton leadId={lead.id} label={leadLive.claimant_name || 'This file'} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} />}
           {canTools && <FileHeaderDialog label="More file actions">
             <LockFileButton lead={lead} />
@@ -453,7 +453,7 @@ function LockFileButton({ lead }: { lead: any }) {
 
 // Sends the matter this screen is showing (the active claim tab), never the
 // whole person: each matter has its own sent state (Astra round 7b #57).
-function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: string }) {
+export function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: string }) {
   const router = useRouter();
   const [state, setState] = useState<{ sentAt: string | null; result: string | null }>({ sentAt: null, result: null });
   const [delivery, setDelivery] = useState<any>(null);
@@ -462,11 +462,13 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [confirmSend, setConfirmSend] = useState(false);
+  const sending = useRef(false);
   const q = `lead_id=${encodeURIComponent(leadId)}${claimId ? `&claim_id=${encodeURIComponent(claimId)}` : ""}`;
 
   useEffect(() => {
     let alive = true;
-    setState({ sentAt: null, result: null }); setMsg(""); setLoaded(false);
+    setState({ sentAt: null, result: null }); setMsg(""); setLoaded(false); setConfirmSend(false);
     (async () => {
       try {
         const r = await fetch(`/api/firm-delivery?${q}`);
@@ -479,12 +481,11 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   }, [q]);
 
   async function send(force: boolean) {
-    const already = !!state.sentAt;
+    if (sending.current || busy || !loaded || state.sentAt || ["sending", "uncertain"].includes(dispatch?.state)) return;
     const to = String(delivery?.to || "").trim();
     const cc = Array.isArray(delivery?.cc) ? delivery.cc : String(delivery?.cc || "").split(/[,;]/).map((x) => x.trim()).filter(Boolean);
     if (!to) { setMsg("No firm recipient is configured. Nothing was sent."); return; }
-    if (!confirm(`Are you sure you want to ${already ? "RESEND" : "send"} this matter's packet?\n\nIt will deliver to: ${to}${cc.length ? `\nCC: ${cc.join(", ")}` : ""}\n\nFirm: ${delivery?.firm || "configured firm"}`)) return;
-    if (already) force = true;
+    sending.current = true;
     setBusy(true); setMsg("");
     try {
       const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId || undefined, force, expected_to: to, expected_cc: cc }) });
@@ -493,10 +494,12 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
       if (!r.ok || !d.ok) { setMsg(d.error || d.skipped || "Send failed"); try { const state = await (await fetch(`/api/firm-delivery?${q}`)).json(); setDispatch(state.dispatch); } catch {} return; }
       if (d.skipped) { setMsg(d.skipped); return; }
       setState({ sentAt: new Date().toISOString(), result: "sent" });
+      setConfirmSend(false);
       const n = (d.attachments || []).length;
       setMsg(`Sent to ${d.to || "firm"} (${n} attachment${n === 1 ? "" : "s"})${d.warning ? `. ${d.warning}` : ""}`);
       router.refresh();
     } catch (e: any) { setBusy(false); setMsg(e?.message || "Send error"); }
+    finally { sending.current = false; }
   }
   async function reconcile(delivered: boolean) {
     const note = window.prompt(`Record this attempt as ${delivered ? "delivered" : "NOT delivered"}. Check the email provider's delivery log first. Describe the evidence (at least 10 characters). This does not send an email.`);
@@ -516,10 +519,21 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   const label = busy ? "Sending…" : state.sentAt ? "Already sent to firm" : "Send signed packet to firm";
   return (
     <span className="lf-send-action">
-      <button className="cl-btn lf-primary-action lf-send-button" onClick={() => send(false)} disabled={busy || !loaded || unresolved || !!state.sentAt}
+      <button className="cl-btn lf-primary-action lf-send-button" onClick={() => setConfirmSend(true)} disabled={busy || !loaded || unresolved || !!state.sentAt}
         title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString("en-US", { timeZone: "America/Los_Angeles", timeZoneName: "short" })}` : "Email the firm this matter's documents"}>
         {label}
       </button>
+      {confirmSend && !state.sentAt && <span className="lf-send-confirm" role="group" aria-label="Confirm firm delivery">
+        <strong>Send this file to the firm?</strong>
+        <span>{delivery?.firm || "Configured firm"}</span>
+        <span>To: <strong>{delivery?.to || "No recipient configured"}</strong></span>
+        {delivery?.cc?.length > 0 && <span>Copy: {Array.isArray(delivery.cc) ? delivery.cc.join(", ") : delivery.cc}</span>}
+        <span>Includes this matter’s intake and signed agreement.</span>
+        <span className="lf-send-confirm-actions">
+          <button type="button" className="cl-btn" disabled={busy} onClick={() => setConfirmSend(false)}>Go back</button>
+          <button type="button" className="cl-btn lf-primary-action" disabled={busy || !loaded || unresolved || !String(delivery?.to || "").trim()} onClick={() => void send(false)}>{busy ? "Sending…" : "Confirm & send"}</button>
+        </span>
+      </span>}
       {unresolved && <span className="muted" role="status">Delivery outcome needs review.{canReconcile && <><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(true)}>Record delivered</button><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(false)}>Record not delivered</button></>}</span>}
       {msg && <span className="lf-send-message" role="status">{msg}</span>}
     </span>

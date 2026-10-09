@@ -62,6 +62,8 @@
 .case-workspace .lf-send-button{background:#174a87;color:#fff;border-color:#174a87}
 .case-workspace .lf-send-button:disabled{background:#e6edf5;color:#516278;border-color:#cdd9e7}
 .case-workspace .lf-send-message{font-size:14px;font-weight:700;color:#274363}
+.lf-send-confirm{display:grid;gap:8px;flex-basis:100%;padding:14px;border:1px solid #bbd3eb;border-radius:10px;background:#f4f8fd;color:#173d63;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}
+.lf-send-confirm-actions{display:flex;gap:8px;flex-wrap:wrap}
 .case-workspace .lf-more{grid-column:1/-1;justify-self:start;margin-top:2px;color:#50627a;font-size:14px}
 .case-workspace .lf-more summary{cursor:pointer;font-weight:700;padding:8px 0}
 .case-workspace .lf-more>div{display:flex;flex-wrap:wrap;gap:10px;padding:8px 0}
