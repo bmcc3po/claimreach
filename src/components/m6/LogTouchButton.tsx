@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogTouch, type TouchPoint } from "./M6Modals";
 
@@ -13,8 +13,11 @@ export default function LogTouchButton({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const inFlight = useRef(false);
 
   async function save(body: any) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true); setErr("");
     try {
       const r = await fetch("/api/m6/touch", {
@@ -22,14 +25,15 @@ export default function LogTouchButton({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lead_id: leadId, ...body }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) { setErr(d.error || "That did not save. Try again."); return; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.error || d?.ok !== true) { setErr(d?.error || "Could not confirm the save. Your note is still here. Check the timeline before trying again."); return; }
       setOpen(false);
       router.refresh();
     } catch {
-      setErr("That did not save. Check your connection and try again.");
+      setErr("Could not confirm the save. Your note is still here. Check the timeline before trying again.");
     } finally {
       setBusy(false);
+      inFlight.current = false;
     }
   }
 
@@ -41,7 +45,7 @@ export default function LogTouchButton({
       {open && (
         <LogTouch
           err={err}
-          onClose={() => setOpen(false)}
+          onClose={() => { if (!inFlight.current) setOpen(false); }}
           points={points}
           onSave={save}
           busy={busy}
