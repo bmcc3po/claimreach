@@ -28,7 +28,10 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
     if (status === "signed_dropped") return { label: resolveStatus(status).label, cls: "bad" };
     if (status === "sent") return { label: "Sent to firm", cls: "info" };
     if (status === "delivered") return { label: resolveFileStatus(activeClaim, undefined, signatureConfirmed).label, cls: "ok" };
-    if (isSignedKey(status)) return { label: activeClaim?.claim_type === "mva" && /^signed_/.test(status) ? "Signed · agent review" : resolveStatus(status).label, cls: "ok" };
+    if (isSignedKey(status)) {
+      const current = resolveFileStatus({ ...activeClaim, status }, undefined, signatureConfirmed);
+      return { label: current.label, cls: current.tone === "bad" ? "bad" : current.tone === "warn" ? "warn" : "ok" };
+    }
     if (qual === "dq" || status === "dq") return { label: "Disqualified", cls: "bad" };
     if (lead.currently_represented) return { label: "Already represented", cls: "warn" };
     if (qual === "qualified") return { label: "Qualified", cls: "ok" };
@@ -44,6 +47,8 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
   const recentNotes = (notes || []).slice(0, 3);
   const diagnosis = activeClaim?.answers?.qualified_injury || activeClaim?.answers?.date_of_diagnosis || lead.diagnosis;
   const intakeProgress = intakeAnswered ?? (activeClaim?.answers ? Object.keys(activeClaim.answers).filter((k) => !["__meta", "mva_call"].includes(k) && activeClaim.answers[k] !== "" && activeClaim.answers[k] != null).length : 0);
+  const hasSignature = signatureConfirmed || status.startsWith("signed_");
+  const reviewIntake = hasSignature || resolveStatus(status).phase === "terminal" || !fileMayEditLead(fence);
 
   const addr = [lead.mail_addr1, [lead.mail_city, lead.mail_state].filter(Boolean).join(", "), lead.mail_zip].filter(Boolean).join(" · ");
   const stamped = [lead.property_name, lead.property_street, [lead.property_city, lead.property_state].filter(Boolean).join(", "), lead.property_zip].filter(Boolean).join(" · ");
@@ -145,8 +150,8 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
       <div className="ov2-acts">
         <ActionRow
           icon="pencil"
-          title={fileMayEditLead(fence) ? (intakeProgress > 0 ? "Continue intake" : "Start intake") : "Review intake"}
-          sub={fileMayEditLead(fence) ? "Work the questionnaire" : "The questions that were asked"}
+          title={reviewIntake ? "Review intake" : intakeProgress > 0 ? "Continue intake" : "Start intake"}
+          sub={reviewIntake ? "The questions and answers on this file" : "Work the questionnaire"}
           onClick={() => onGo("Case Questions")}
           primary
         />
@@ -155,7 +160,7 @@ export default function CaseOverview({ lead, activeClaim, notes = [], callLogs =
         <ActionRow
           icon="sign"
           title="Retainer"
-          sub={fileMayEditLead(fence) ? "Generate, send for signature" : "Status and signed copies"}
+          sub={hasSignature ? "Review the signed agreement" : fileMayEditLead(fence) ? "Generate, send for signature" : "Status and signed copies"}
           onClick={() => onGo("Retainer")}
         />
         <ActionRow icon="phone" title="Calls" sub={lastCall ? "Review the call timeline" : "Nothing logged yet"} onClick={() => onGo("Calls")} />

@@ -2283,4 +2283,10 @@ div.ws-row{cursor:default}
 .call-file-shell>.cc-desk>.cc-app{height:100%!important}
 .call-file-shell>.post-review{flex:1;min-height:0;overflow:auto}
 .call-file-shell>.file-header-collapsed~.cc-desk .ix-top{display:none}
+/* The shared header already owns client identity, back and finish actions. */
+.call-file-shell .ix-head .ix-back,
+.call-file-shell .ix-head .ix-name,
+.call-file-shell .ix-head .ix-finish{display:none}
+.call-file-shell .ix-head{padding-block:6px}
+.call-file-shell .cc-live-presence{padding-block:6px}
 @media(max-width:767px){.call-file-shell{height:calc(100dvh - 52px)}}

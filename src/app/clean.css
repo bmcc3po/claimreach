@@ -475,3 +475,22 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
 .cl-file-nav a:hover{background:var(--surface-3);color:var(--ink)}
 .cl-file-nav a[aria-current="page"]{background:var(--tint);color:var(--surface)}
 .cl-mini-group{border:0;width:100%;background:transparent;cursor:pointer;font:inherit}
+
+/* Keep client identity and next steps readable instead of squeezing the name
+   between a fixed-width status and timestamp on phones and narrow tablets. */
+.cl-home .cl-head>div{min-width:0;max-width:100%}
+.cl-recent-status{min-width:150px}
+.cl-recent-time{min-width:64px;text-align:right}
+.cl-search{min-width:0}
+.cl-side{height:100dvh}
+@media(max-width:900px){
+  .cl-nl,.cl-sec-h,.cl-menu a,.cl-menu button,.cl-iconbtn{min-height:44px}
+  .cl-home .cl-row{flex-wrap:wrap;gap:6px 10px;padding-block:12px}
+  .cl-home .cl-row-m{flex-basis:calc(100% - 24px)}
+  .cl-home .cl-row-r{width:100%;min-width:0;flex-wrap:wrap;gap:6px 12px}
+  .cl-home .cl-row .cl-t1,.cl-home .cl-row .cl-t2{white-space:normal;overflow-wrap:anywhere}
+  .cl-home .cl-recent-status{min-width:0;flex:1;white-space:normal}
+  .cl-home .cl-recent-time{min-width:0;margin-left:auto}
+  .cl-home .cl-go{display:none}
+  .cl-home .cl-ph-r .cl-t2{white-space:normal;text-align:right}
+}
