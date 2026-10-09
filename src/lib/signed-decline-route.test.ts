@@ -35,7 +35,15 @@ const body = { claim:id, confirm:true, action:'decline', reason:'Fictional treat
 (async()=>{
   for(const r of [null,'agent','qa','manager','firm']){role=r;assert.equal((await route.POST(request(body))).status,403);}
   role='owner'; capability=false;assert.equal((await route.POST(request(body))).status,403);capability=true;
-  firmId='other';assert.equal((await route.POST(request(body))).status,404);firmId=null;
+  // The owner works from an intake-company account across authorized law firms.
+  firmId='intake-company';
+  assert.equal((await route.GET(new NextRequest('https://claimreach.test/api/signed-decline?claim='+id))).status,200);
+  // An invisible/missing claim must still fail closed; no privileged DB client.
+  db.tables.claims=[];
+  assert.equal((await route.POST(request(body))).status,404);
+  db.tables.claims=[claim];
+  role='admin';firmId='other';assert.equal((await route.POST(request(body))).status,404);
+  role='owner';firmId='intake-company';
   assert.equal((await route.POST(request(body,'https://hostile.test'))).status,403);
   for(const b of [{...body,claim:'bad'}, {...body,reason:' '}, {...body,confirm:false}])assert.equal((await route.POST(request(b))).status,400);
   for(const b of [{...body,version:'stale'}, {...body,to:'elsewhere@example.test'}])assert.equal((await route.POST(request(b))).status,409);

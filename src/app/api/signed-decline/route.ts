@@ -11,7 +11,11 @@ async function context(id: unknown) {
   const db = await supabaseServer(), me = await gateUser(db);
   if (!me || !['owner', 'admin'].includes(me.role) || !me.can('intake.qa')) throw new DeclineError('Only the owner or an authorized admin can decline a signed file.', 403);
   if (!uuid(id)) throw new DeclineError('Choose a file.', 400);
-  return { ...await loadDeclineContext(db, id, me.firmId), me };
+  // The owner belongs to the intake company, not each client's law firm.
+  // Like owner-firm-review, resolve the exact file through the authenticated
+  // connection (RLS), then scope its lead/campaign/evidence to that file's firm.
+  // Firm-bound admins retain their additional firm check.
+  return { ...await loadDeclineContext(db, id, me.role === 'owner' ? null : me.firmId), me };
 }
 export async function GET(req: NextRequest) {
   try { return json(await declineView(await context(req.nextUrl.searchParams.get('claim')))); }
