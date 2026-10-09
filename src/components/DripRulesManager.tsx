@@ -131,7 +131,8 @@ export default function DripRulesManager({
       {msg && !edit && <p className="sign-err" style={{ marginTop: 8 }}>{msg}</p>}
       {loadErr && <p className="sign-err" style={{ marginTop: 8 }}>{loadErr}</p>}
 
-      <table className="docket" style={{ marginTop: 12 }}>
+      <div className="table-scroll admin-table-scroll" role="region" aria-label="Scheduled sequences" tabIndex={0} style={{ marginTop: 12 }}>
+      <table className="docket">
         <thead>
           <tr>
             <th>Sequence</th>
@@ -176,6 +177,7 @@ export default function DripRulesManager({
           )}
         </tbody>
       </table>
+      </div>
 
       {edit && (
         <div className="modal-back" onClick={() => setEdit(null)}>

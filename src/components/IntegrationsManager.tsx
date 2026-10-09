@@ -144,6 +144,7 @@ export default function IntegrationsManager() {
               <button className="btn" onClick={createKey}>Create</button>
             </div>
           </div>
+          <div className="table-scroll admin-table-scroll" role="region" aria-label="API key list" tabIndex={0}>
           <table className="data-table"><thead><tr><th>Label</th><th>Key ID</th><th>Scope</th><th>Firm</th><th>Last used</th><th></th></tr></thead><tbody>
             {keys.map((k) => (
               <tr key={k.id} style={{ opacity: k.active ? 1 : 0.4 }}>
@@ -153,6 +154,7 @@ export default function IntegrationsManager() {
               </tr>
             ))}
           </tbody></table>
+          </div>
         </div>
       )}
 
@@ -184,6 +186,7 @@ export default function IntegrationsManager() {
               ))}
             </div>
           </div>
+          <div className="table-scroll admin-table-scroll" role="region" aria-label="Outbound webhooks" tabIndex={0}>
           <table className="data-table"><thead><tr><th>Name</th><th>URL</th><th>Firm</th><th>Campaign</th><th>Events</th><th>Fields</th><th></th></tr></thead><tbody>
             {endpoints.map((ep) => {
               const mapped = Object.keys(ep.field_map ?? {}).length;
@@ -207,6 +210,7 @@ export default function IntegrationsManager() {
               );
             })}
           </tbody></table>
+          </div>
 
           {mapFor && (
             <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) setMapFor(null); }}>
@@ -311,6 +315,7 @@ export default function IntegrationsManager() {
       {tab === "unmatched" && (
         <div>
           <p className="muted" style={{ fontSize: 13 }}>Calls/SMS/voicemails whose phone number didn't match any file. Assign manually, or they auto-attach when a file with that number is created.</p>
+          <div className="table-scroll admin-table-scroll" role="region" aria-label="Unmatched communications" tabIndex={0}>
           <table className="data-table"><thead><tr><th>When</th><th>Type</th><th>Dir</th><th>Phone</th><th>Preview</th><th></th></tr></thead><tbody>
             {unmatched.map((c) => (
               <tr key={c.id}>
@@ -322,10 +327,12 @@ export default function IntegrationsManager() {
             ))}
             {unmatched.length === 0 && <tr><td colSpan={6} className="muted">Nothing unmatched.</td></tr>}
           </tbody></table>
+          </div>
         </div>
       )}
 
       {tab === "log" && (
+        <div className="table-scroll admin-table-scroll" role="region" aria-label="Integration event log" tabIndex={0}>
         <table className="data-table"><thead><tr><th>When</th><th>Dir</th><th>Event</th><th>Status</th><th>HTTP</th></tr></thead><tbody>
           {events.map((e) => (
             <tr key={e.id}><td className="muted">{new Date(e.created_at).toLocaleString()}</td><td>{e.direction}</td><td>{e.event_type}</td>
@@ -333,6 +340,7 @@ export default function IntegrationsManager() {
           ))}
           {events.length === 0 && <tr><td colSpan={5} className="muted">No events yet.</td></tr>}
         </tbody></table>
+        </div>
       )}
 
       {tab === "docs" && (
