@@ -297,6 +297,7 @@ function CampaignPicker({ leadId, current, role }: { leadId: string; current?: s
 }
 
 function PipelineStrip({ status, mva = false }: { status: string; mva?: boolean }) {
+  if (resolveFileStatus({ status }).phase === "terminal") return null;
   // Map any status to one of five pipeline stages.
   const stages = mva ? ["Intake", "Agreement", "Agent review", "Firm"] : ["Intake", "Grievous", "QA", "Approved", "Firm"];
   let active = 0;
@@ -561,4 +562,3 @@ function AppAnswers({ call, onShowOld }: {
     </div>
   );
 }
-

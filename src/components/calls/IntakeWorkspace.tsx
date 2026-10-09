@@ -50,7 +50,7 @@ export function IxTop({ v }: { v: any }) {
     {!v.ws && <IxHead v={v} />}<IxBar v={v} />
   </div>
   {v.showPresence && <div className={'cc-live-presence' + (v.liveCall ? ' cc-live-active' : '')} role="status">
-    <strong>{v.liveCall ? 'On phone · ' + v.liveCall.by_name : 'No agent marked on the phone'}</strong>
+    {v.liveCall && <strong>On phone · {v.liveCall.by_name}</strong>}
     {v.liveCall?.by === v.presenceActorId
       ? <button type="button" disabled={v.presenceBusy} onClick={() => v.markCall('end')}>I’m off the call</button>
       : !v.liveCall && <button type="button" disabled={v.presenceBusy} onClick={() => v.markCall('start')}>I’m speaking with this client</button>}
