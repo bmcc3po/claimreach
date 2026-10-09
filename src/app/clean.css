@@ -533,6 +533,11 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
 .pdf-editor-body, .pdf-canvas-scroll { min-width: 0; }
 .pdf-pages { min-width: max-content; }
 .pdf-editor:disabled .pdf-page { pointer-events: none; }
+.pdf-field, .pdf-resize { touch-action: none; }
+.pdf-field:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+@media (pointer: coarse) {
+  .pdf-resize { width: 28px; height: 28px; right: -10px; bottom: -10px; }
+}
 @media (max-width: 767px) {
   .pdf-editor { height: auto; }
   .pdf-editor-bar .spacer { display: none; }
