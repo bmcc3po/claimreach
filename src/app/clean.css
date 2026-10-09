@@ -481,6 +481,11 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
 .cl-home .cl-head>div{min-width:0;max-width:100%}
 .cl-recent-status{min-width:150px}
 .cl-recent-time{min-width:64px;text-align:right}
+.cl-mobile-file-meta{display:none}
+@media(min-width:601px) and (max-width:1200px){
+  .cl-files-table .cl-hide-sm{display:none}
+  .cl-files-table .cl-t1,.cl-files-table .cl-t2{max-width:220px;white-space:normal;overflow-wrap:anywhere}
+}
 .cl-search{min-width:0}
 .cl-side{height:100dvh}
 @media(max-width:900px){
@@ -493,4 +498,17 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
   .cl-home .cl-recent-time{min-width:0;margin-left:auto}
   .cl-home .cl-go{display:none}
   .cl-home .cl-ph-r .cl-t2{white-space:normal;text-align:right}
+}
+@media(max-width:600px){
+  /* Keep the client's name and current status together on a phone. The name
+     opens the full file; case and lead number move under it. */
+  .cl-files-table{table-layout:fixed}
+  .cl-files-table .cl-c-case,.cl-files-table .cl-c-act{display:none}
+  .cl-files-table .cl-c-check{width:30px!important;padding-left:8px}
+  .cl-files-table .cl-c-status{width:42%}
+  .cl-files-table th,.cl-files-table td{padding-left:10px;padding-right:10px}
+  .cl-files-table .cl-t1,.cl-files-table .cl-t2,.cl-files-table .cl-status{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .cl-files-table .cl-status{align-items:flex-start}
+  .cl-files-table .cl-dot{margin-top:5px;flex-shrink:0}
+  .cl-files-table .cl-mobile-file-meta{display:block}
 }

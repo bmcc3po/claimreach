@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   try {
     answer = await askRelay(STORY_ASSIST_SYSTEM, JSON.stringify({
       fields: STORY_FIELDS.map(({ path: _, ...field }) => field), notes,
-    }), controller.signal);
+    }), controller.signal, { preferProxy: true });
   } catch { answer = ""; }
   finally { clearTimeout(timer); }
   if (!answer) return fail("The story helper is unavailable. Your notes are saved; you can fill the answers yourself.", 503);

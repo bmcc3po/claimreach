@@ -9,6 +9,7 @@ import HomeView, { type HomeData } from "@/components/home/HomeView";
 import { caseFileHref as unscopedFileHref } from "@/lib/mva-call/links";
 import { workArea, scopeWorkArea, areaHref, inWorkArea } from '@/lib/work-area';
 import { OFFICE_TIME_ZONE } from "@/lib/office-clock";
+import { groupHomeNeeds } from "@/lib/home-needs";
 
 // Days, "today" and the greeting follow the office clock, not the server's.
 const TZ = OFFICE_TIME_ZONE;
@@ -109,13 +110,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const hrs = (ts?: string | null) => (ts ? Math.max(0, Math.round((now.getTime() - new Date(ts).getTime()) / 3600000)) : 0);
   const waited = (ts?: string | null) => { const h = hrs(ts); return h >= 48 ? `${Math.round(h / 24)} days` : `${h}h`; };
 
-  const needs: HomeData["needs"] = [
+  const needs: HomeData["needs"] = groupHomeNeeds([
     ...(flagged ?? []).map((c: any) => ({ key: leadKey(c.leads, c.lead_id), href: caseFileHref(role, leadKey(c.leads, c.lead_id), c.id), name: nameOf(c.leads), why: "Flagged for a supervisor", tone: "bad" as const })),
     ...visibleAlerts.map((a) => {
       const name = String(a.title || "").split(/\s+[—-]\s+/).slice(1).join(" ") || a.lead_no || "File";
       return { key: a.lead_no || a.lead_id, href: caseFileHref(role, a.lead_no || a.lead_id, alertClaimIds.get(a.lead_id)), name, why: `${WHY[a.kind] ?? "Needs a look"}, ${a.hours >= 48 ? `${Math.round(a.hours / 24)} days` : `${a.hours}h`}`, tone: a.severity === "bad" ? "bad" as const : "warn" as const };
     }),
-  ];
+  ]);
 
   const folds: HomeData["folds"] = [
     { id: "aging", title: "Waiting 2+ days for a first call", sub: "New or being contacted, nothing has moved",
