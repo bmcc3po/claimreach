@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'; import { test } from 'node:test';
 import { NextRequest } from 'next/server';
 import { partnerReportHarness, REPORT_CAMP, REPORT_FIRM, REPORT_TEST_PASSWORD } from './partner-report-test-harness';
 import { createReportSession, verifyReportSession, reportPasswordMatches, PARTNER_REPORT_COOKIE, REPORT_SESSION_SECONDS } from './partner-report-access';
-import { partnerReportRows, partnerReceivedDate } from './partner-report';
+import { partnerReportRows, partnerReportData, partnerReceivedDate } from './partner-report';
 const req = (method = 'GET', body?: unknown, token?: string, origin = 'https://claimreach.test') => new NextRequest('https://claimreach.test/api/pr-digital', {
   method, headers: { origin, 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.1', ...(token ? { cookie: `${PARTNER_REPORT_COOKIE}=${token}` } : {}) },
   ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -48,6 +48,7 @@ test('successful login sets a path-limited HttpOnly cookie; read-only API expose
   assert.equal(response.status, 200); assert.match(response.headers.get('cache-control'), /no-store/); assert.match(response.headers.get('x-robots-tag'), /noindex/);
   assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status'].sort());
   assert.equal(data.rows[0].signed, 'Yes'); assert.equal(data.rows[0].called, true);
+  assert.deepEqual(data.summary, { total: 1, signed: 1, unsigned: 0, verify: 0, called: 1, awaitingDelivery: 0, sentToFirm: 1, declined: 0 });
   assert.ok(!JSON.stringify(data).includes(h.config.token_secret)); assert.ok(!h.db.ops.some(o => o.kind !== 'select'));
   const logout = await h.route.DELETE(req('DELETE')); assert.equal(logout.status, 200); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
 });
@@ -83,6 +84,34 @@ test('source-only access needs exact approved source identity; marketing label o
     assert.equal(partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, refs).length, 0);
   assert.equal(partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, [ref]).length, 1);
 });
+test('summary and list share source scope; delivery uses receipts or owner confirmation, never a status label', async () => {
+  const h = await partnerReportHarness(); h.config.scope = 'approved_sources';
+  const leads: any[] = [], claims: any[] = [], signatures: any[] = [], refs: any[] = [];
+  const variations = [
+    { deliveredAt: null }, // A sent label alone is not proof.
+    { deliveredAt: null, ownerSent: true },
+    { firmDecision: 'Firm declined' }, // Sent, then declined: both counts retain the truth.
+    { deliveredAt: null, declined: true },
+    { state: 'verify' },
+    { state: 'unsigned' },
+  ];
+  for (const [i, variation] of variations.entries()) {
+    leads.push({ ...h.lead, id: `lead${i}`, lawruler_ref_no: `${i}` });
+    claims.push({ ...h.claim, id: `claim${i}`, lead_id: `lead${i}` });
+    signatures.push({ ...h.signature, ...variation, claimId: `claim${i}` });
+    refs.push({ partner_key: 'pr-digital', firm_id: REPORT_FIRM, source_system: 'lawruler', source_lead_id: `${i}` });
+  }
+  // Another in-campaign lead without source approval cannot inflate any total.
+  leads.push(h.lead); claims.push(h.claim); signatures.push(h.signature);
+  const report = partnerReportData(h.config, leads, claims, signatures, refs);
+  assert.equal(report.rows.length, 6);
+  assert.deepEqual(report.summary, { total: 6, signed: 4, unsigned: 1, verify: 1, called: 6, awaitingDelivery: 1, sentToFirm: 2, declined: 2 });
+  for (const change of [{ archived_at: '2026-10-01' }, { firm_id: 'foreign' }, { claimant_name: 'TEST synthetic' }]) {
+    const excluded = partnerReportData(h.config, leads.map(l => ({ ...l, ...change })), claims, signatures, refs);
+    assert.equal(excluded.rows.length, 0); assert.ok(Object.values(excluded.summary).every(n => n === 0));
+  }
+});
+
 test('imported owner-approved signature retains Yes with unknown original date; no invented historical receipt or calls', async () => {
   const h = await partnerReportHarness(); h.lead.lawruler_created_at = null; h.lead.first_dialed_at = null; h.signature.signedAt = null;
   const [row] = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, []);
