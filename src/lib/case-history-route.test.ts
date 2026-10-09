@@ -1,3 +1,5 @@
+import * as archiveControl from './archive-control';
+import { NextRequest } from 'next/server';
 // Source routes with synthetic session rows and no network/provider access.
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -37,6 +39,7 @@ function world() {
 }
 function route(file: string, db: any) {
   const mods: Record<string, any> = {
+    "@/lib/archive-control": archiveControl,
     "next/server": { NextResponse: { json: (body: any, o: any = {}) => ({ body, status: o.status ?? 200 }) } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => db },
     "@/lib/mva-call/server": { requireStaff: async () => ({ id: "agent", role: "agent" }) },
@@ -58,7 +61,7 @@ function route(file: string, db: any) {
   new Function("require", "exports", code)((id: string) => { if (!(id in mods)) throw Error(`Unstubbed ${id}`); return mods[id]; }, exp);
   return exp;
 }
-const req = (claim = B) => ({ url: `https://synthetic.invalid/api/history?lead_id=${L}&claim_id=${claim}` });
+const req = (claim = B) => new NextRequest(`https://synthetic.invalid/api/history?lead_id=${L}&claim_id=${claim}`);
 const auditRows = () => [
   { id: "own-column", lead_id: L, claim_id: B, meta: null },
   { id: "sibling-column", lead_id: L, claim_id: A, meta: null },
@@ -182,3 +185,4 @@ async function main() {
   console.log(`${count} passed`);
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; });
+
