@@ -10,6 +10,7 @@ import { LR_MAX_BODY_BYTES, recordLawRulerSource, resolveLawRulerMatter, storeLa
 import { hasRemoteLawRulerOriginal, syncLawRulerMva } from "@/lib/lawruler-mva-sync";
 import { syncLawRulerNetfly, validateNetflyLawRulerPayload } from "@/lib/lawruler-netfly";
 import { NETFLY_CAMPAIGN, NETFLY_RETAINER_TYPE } from "@/lib/netfly-ontake";
+import { syncPrDigitalSource } from "@/lib/partner-source-sync";
 export const runtime = "edge";
 
 // ---------------------------------------------------------------------------
@@ -285,6 +286,7 @@ export async function POST(req: NextRequest) {
       if (innoMva && camp.name.trim().toLowerCase() === 'inno mva' && camp.case_type === 'mva') {
         try {
           const sync = await syncLawRulerMva(admin, { ...scope, campaignId: camp.id }, fields, files, historical);
+          await syncPrDigitalSource(admin, { ...scope, campaignId: camp.id }, fields);
           const retry = !!r.error || sync.retry_required;
           return NextResponse.json({ ok: !retry, lead_saved: true, lead_id: r.lead_id, claim_id: matter.claim.id, lead_no: r.lead_no,
             created: r.created, updated: !r.created, campaign: camp.name, ...sync,

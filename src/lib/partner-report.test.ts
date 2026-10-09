@@ -2,10 +2,20 @@ import assert from 'node:assert/strict'; import { test } from 'node:test';
 import { NextRequest } from 'next/server';
 import { partnerReportHarness, REPORT_CAMP, REPORT_FIRM, REPORT_TEST_PASSWORD } from './partner-report-test-harness';
 import { createReportSession, verifyReportSession, reportPasswordMatches, PARTNER_REPORT_COOKIE, REPORT_SESSION_SECONDS } from './partner-report-access';
-import { partnerReportRows } from './partner-report';
+import { partnerReportRows, partnerReceivedDate } from './partner-report';
 const req = (method = 'GET', body?: unknown, token?: string, origin = 'https://claimreach.test') => new NextRequest('https://claimreach.test/api/pr-digital', {
   method, headers: { origin, 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.1', ...(token ? { cookie: `${PARTNER_REPORT_COOKIE}=${token}` } : {}) },
   ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+});
+
+test('historical receipt uses original source date only when identity and date are valid', () => {
+  const source = { LeadID: '100', CaseType: 'INNO MVA', LeadCreated: '10-08-2026' };
+  const lead = { source_system: 'lawruler', lawruler_ref_no: '100', created_at: '2026-10-10T12:00:00Z', vendor_fields: { sources: { lawruler: source } } };
+  assert.equal(partnerReceivedDate(lead), '2026-10-08');
+  assert.equal(partnerReceivedDate({ ...lead, lawruler_created_at: '2026-10-07T13:00:00Z' }), '2026-10-07T13:00:00Z');
+  for (const invalid of ['02-30-2026', '13-01-2026', '', 'yesterday']) { source.LeadCreated = invalid; assert.equal(partnerReceivedDate(lead), null); }
+  source.LeadCreated = '10/8/2026'; assert.equal(partnerReceivedDate(lead), '2026-10-08');
+  source.LeadID = '101'; assert.equal(partnerReceivedDate(lead), null);
 });
 test('password hash and signed cookie fail closed for wrong password, tampering, expiry, rotation and scope changes', async () => {
   const h = await partnerReportHarness(), now = Date.now();
