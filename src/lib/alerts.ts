@@ -3,6 +3,7 @@
 // the configurable SLA thresholds. No stored alert rows, so nothing goes stale.
 // ============================================================================
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { needsQaReview } from "./statuses";
 
 export interface Alert {
   kind: "no_contact" | "qa_stuck" | "signed_unreviewed" | "stage_stale";
@@ -90,10 +91,15 @@ async function computeAlertsFresh(db?: any): Promise<Alert[]> {
 
   // 2) Files stuck in the QA queue.
   const qaCut = new Date(Date.now() - sla.qa_stuck_hours * 3600000).toISOString();
+  const { data: statusCatalog, error: statusError } = await admin.from('statuses').select('*');
+  if (statusError) throw new Error('Could not verify current file statuses for alerts.');
   const { data: qaStuck } = await admin.from("leads")
-    .select("id, lead_no, claimant_name, qa_entered_at")
+    .select("id, lead_no, claimant_name, qa_entered_at, claims(status)")
     .is("archived_at", null).eq("qa_pending", true).lt("qa_entered_at", qaCut).limit(200);
   for (const l of qaStuck ?? []) {
+    // Lead queue flags are a projection and can lag a saved terminal decision.
+    // Keep genuine sibling QA work, but never resurrect a declined-only file.
+    if (!(l.claims ?? []).some((c: any) => needsQaReview(c.status, statusCatalog ?? []))) continue;
     const h = hoursSince(l.qa_entered_at);
     alerts.push({ kind: "qa_stuck", severity: "bad", title: `Stuck in QA — ${l.claimant_name || l.lead_no}`,
       sub: `In the QA queue ${h}h (SLA ${sla.qa_stuck_hours}h).`, lead_id: l.id, lead_no: l.lead_no, hours: h });
