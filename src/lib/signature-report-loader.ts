@@ -12,7 +12,7 @@ export async function reportPages(query: () => any): Promise<any[]> {
   }
 }
 export async function loadSignatureReport(sb: any, campaign: { id: string; firm_id: string; firm_email: string | null }) {
-  const claims = await reportPages(() => sb.from("claims").select("id,lead_id,firm_id,campaign_id,claim_type,status,firm_send_result,answers")
+  const claims = await reportPages(() => sb.from("claims").select("id,lead_id,firm_id,campaign_id,claim_type,status,firm_send_result,answers,dq_reason")
     .eq("firm_id", campaign.firm_id));
   const ids = [...new Set(claims.filter(c => c.campaign_id === campaign.id && c.claim_type === "mva").map(c => c.lead_id))];
   const chunks = async (table: string, columns: string, column = "lead_id", extra?: (q: any) => any) => {

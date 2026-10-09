@@ -42,7 +42,7 @@ export default function PacketWorklist({ rows, imported = [], monday, truncated 
   const [showArchived, setShowArchived] = useState(false);
   const nextMonday = shiftWeek(monday, 1);
   const sunday = new Date(Date.parse(`${nextMonday}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
-  const importedRows = useMemo<PacketRow[]>(() => imported.map((r) => ({
+  const importedRows = useMemo<PacketRow[]>(() => imported.filter(r => r.status !== "signed_dropped").map((r) => ({
     leadId: r.leadId, claimId: r.claimId, leadNo: r.leadNo, name: r.name, campaign: r.campaign, firm: r.firm,
     signedAt: r.signedAt || "", deliveredAt: r.deliveredAt, returnEndsAt: r.returnEndsAt, returnDaysLeft: r.daysLeft,
     readyToBill: r.cleared, agent: "Imported from LawRuler", archived: r.archived, ownerSent: r.ownerSent,

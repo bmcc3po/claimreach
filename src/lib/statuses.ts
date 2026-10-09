@@ -43,7 +43,7 @@ export const DEFAULT_STATUSES: StatusDef[] = [
   { key: "signed_wip",      label: "Signed: WIP",         track: "esign",    phase: "in_qa",    tone: "warn", side: "agent",  qualify: "undetermined", requires_esign: true,  billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 60,  system_locked: true },
   { key: "signed_flag",     label: "Signed: Flag BMC",    track: "esign",    phase: "in_qa",    tone: "bad",  side: "owner",  qualify: "undetermined", requires_esign: true,  billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 70,  system_locked: true },
   { key: "signed_approved", label: "Signed: Approved",    track: "esign",    phase: "post_qa",  tone: "good", side: "firm",   qualify: "qualify",      requires_esign: true,  billable: true,  unlocks_firm: true,  is_final: false, lawruler_group: "Clients",        sort: 80,  system_locked: true },
-  { key: "signed_dropped",  label: "Signed: Drop Letter", track: "esign",    phase: "terminal", tone: "bad",  side: "firm",   qualify: "disqualify",   requires_esign: true,  billable: true,  unlocks_firm: false, is_final: true,  lawruler_group: "Rejected",       sort: 90,  system_locked: true },
+  { key: "signed_dropped",  label: "Signed and declined", track: "esign",    phase: "terminal", tone: "bad",  side: "firm",   qualify: "disqualify",   requires_esign: true,  billable: false,  unlocks_firm: false, is_final: true,  lawruler_group: "Rejected",       sort: 90,  system_locked: true },
   { key: "grievous",        label: "Grievous",            track: "nosig",    phase: "in_qa",    tone: "warn", side: "system", qualify: "undetermined", requires_esign: false, billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 100, system_locked: true },
   { key: "qa",              label: "QA",                  track: "nosig",    phase: "in_qa",    tone: "warn", side: "qa",     qualify: "undetermined", requires_esign: false, billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 110, system_locked: true },
   { key: "wip",             label: "WIP",                 track: "nosig",    phase: "in_qa",    tone: "warn", side: "agent",  qualify: "undetermined", requires_esign: false, billable: false, unlocks_firm: false, is_final: false, lawruler_group: "Wanted/Chasing", sort: 120, system_locked: true },
@@ -65,9 +65,8 @@ const DEFAULT_BY_KEY: Record<string, StatusDef> = Object.fromEntries(DEFAULT_STA
 // the default seed. Always returns something usable for rendering.
 export function resolveStatus(key?: string, live?: StatusDef[]): StatusDef {
   const k = (key || "").toLowerCase();
-  // Imported DQ remains closed even while the source reason is missing. Older
-  // catalogs incorrectly place this locked status in QA; never revive that rule.
-  if (k === "external_dq_review") return DEFAULT_BY_KEY[k];
+  // Closed DQ rows cannot be reopened or made payable by an older catalog.
+  if (k === "external_dq_review" || k === "signed_dropped") return DEFAULT_BY_KEY[k];
   if (live && live.length) {
     const hit = live.find((s) => s.key === k);
     if (hit) return hit.qualify === "disqualify" ? { ...hit, phase: "terminal", is_final: true } : hit;

@@ -194,6 +194,17 @@ function deps(db: any, o: Partial<DeliverDeps> = {}): DeliverDeps & { sent: Firm
 const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed\.pdf$/.test(a.filename))?.content;
 
 (async () => {
+  await t('declined signed file refuses delivery without modifying prior delivery evidence', async () => {
+    const db = world({ claims:[claimRow('aaa1','ca01',{status:'signed_dropped',firm_sent_at:'2026-10-01',firm_send_result:'sent'})], campaigns:[camp('ca01')] });
+    const d = deps(db), r = await deliverLeadToFirm({ leadId:L,claimId:'aaa1',triggeredBy:'manual',force:true },d);
+    assert.equal(r.ok,false);assert.match(r.error || '',/declined/);assert.equal(d.sent.length,0);assert.equal(db.writes.length,0);
+  });
+  await t('newer decline is never reopened by completion of an in-flight delivery', async () => {
+    const c=claimRow('aaa1','ca01'), db=world({claims:[c],campaigns:[camp('ca01')],agreements:[agreement('a','5001',{claim_id:'aaa1'})]});
+    const d=deps(db,{sendEmail:async()=>{ c.status='signed_dropped';return {ok:true}; }});
+    const r=await deliverLeadToFirm({leadId:L,claimId:'aaa1',triggeredBy:'manual'},d);
+    assert.equal(r.ok,true);assert.equal(c.status,'signed_dropped');assert.ok(c.firm_sent_at);assert.equal(db.tables.firm_deliveries.length,1);
+  });
   await t('owner-confirmed historical delivery with no date does not resend or start a clock', async () => {
     const db = world({ claims: [claimRow('c001', 'ca01', { status: 'delivered', firm_send_result: OWNER_SENT_UNKNOWN_DATE })], campaigns: [camp('ca01')] });
     const d = deps(db);

@@ -3,6 +3,10 @@ import { REVIEW_CLAIM_COLS, REVIEW_EVENT, REVIEW_LEAD_COLS, reviewEvents, review
 import { releasedToReviewer, reviewActivity, reviewInput, reviewState, uuid } from '@/lib/firm-review-access';
 import { rowBelongsToMatter } from '@/lib/matter';
 import { paxParentId } from '@/lib/linked-files';
+import { completeSignedDecline, DeclineError, loadDeclineContext } from '@/lib/signed-decline-workflow';
+import { isSignedDeclined, signedDecline, declineOutcome } from '@/lib/signed-decline';
+import { invalidateAlertCache } from '@/lib/alerts';
+import { revalidatePath } from 'next/cache';
 export const runtime = 'edge';
 const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' };
 const json = (value: unknown, status = 200) => NextResponse.json(value, { status, headers });
@@ -23,7 +27,7 @@ export async function GET(req: NextRequest) {
         'Content-Disposition': `inline; filename="${filename}"` } });
     }
     const { data: claims, error } = await c.db.from('claims').select(REVIEW_CLAIM_COLS)
-      .eq('firm_id', c.scope.firmId).eq('campaign_id', c.scope.campaignId).in('status', ['delivered', 'retained'])
+      .eq('firm_id', c.scope.firmId).eq('campaign_id', c.scope.campaignId).in('status', ['delivered', 'retained', 'signed_dropped'])
       .order('updated_at', { ascending: false }).limit(1000);
     if (error || claims?.length === 1000) throw new Error('Could not load the complete file list. Please contact ClaimReach.');
     if (!claims?.length) return json({ campaign: c.campaign, name: c.scope.name, files: [] });
@@ -46,8 +50,10 @@ export async function GET(req: NextRequest) {
       const matter = { claim, sole: (counts.data || []).filter(row => row.lead_id === lead.id).length === 1 };
       const current = (agreements.data || []).find(row => row.lead_id === lead.id && rowBelongsToMatter(row, matter) && (row.pax_index == null || paxParentId(lead.external_id)));
       return { id: claim.id, number: lead.lead_no, name: lead.claimant_name,
+        declined: isSignedDeclined(claim), outcome: signedDecline(claim) ? declineOutcome(signedDecline(claim)!) : null,
+        declineReason: signedDecline(claim)?.reason || '', version: claim.updated_at,
         packetNote: current?.status === 'signed' ? 'Client-signed copy · office completion not yet recorded' : '',
-        ...reviewState(events.filter((event: any) => event.meta.claim_id === claim.id && event.lead_id === lead.id)) };
+        ...reviewState(events.filter((event: any) => event.meta.claim_id === claim.id && event.lead_id === lead.id), claim) };
     }) });
   } catch (e) { return json({ error: e instanceof Error ? e.message : 'Could not open the file. Please try again.' }, 503); }
 }
@@ -64,12 +70,25 @@ export async function POST(req: NextRequest) {
     if (!uuid(body.claim) || !input) return json({ error: 'Choose an action. A turn down requires an explanation.' }, 400);
     const file = await reviewerFile(c.db, c.scope, body.claim);
     if (!file) return json({ error: 'File unavailable.' }, 404);
-    // Append-only audit: receipt and decision are separate from intake/signing
-    // status. Never change delivery evidence, signatures, or the seven-day clock.
+    if (input.action === 'turned_down' && c.campaign === 'INNO MVA') {
+      if (body.confirm !== true || !isSignedDeclined(file.claim) && body.version !== file.claim.updated_at) return json({ error: 'Refresh and confirm the turn down and drop-letter request.' }, 409);
+      const dc = await loadDeclineContext(c.db, file.claim.id, c.scope.firmId);
+      if (dc.claim.campaign_id !== c.scope.campaignId || !releasedToReviewer(c.scope, dc.claim, file.lead)) return json({ error: 'File unavailable.' }, 404);
+      if (!dc.decline && dc.claim.updated_at !== body.version) return json({ error: 'The file changed. Refresh before turning it down.' }, 409);
+      const saved = await completeSignedDecline(dc, { source: 'firm', reason: input.explanation,
+        actor: { id: c.user.id, name: c.scope.name, type: 'firm' } });
+      invalidateAlertCache(); revalidatePath('/', 'layout');
+      const updated = { ...dc.claim, status: saved.status, answers: { ...dc.claim.answers, signed_decline: saved.decline } };
+      return json({ ok: true, ...reviewState((await reviewEvents(c.db, c.scope, [file.claim.id])).filter((e: any) => e.lead_id === file.lead.id), updated),
+        declined: true, outcome: declineOutcome(saved.decline), declineReason: saved.decline.reason, notification: saved.notification });
+    }
+    if (input.action === 'accepted' && isSignedDeclined(file.claim)) return json({ error: 'This signed file is declined. Contact BMC to review it before reopening.' }, 409);
+    // Receipt/acceptance keep the existing delivery and signing evidence.
     const result = await c.db.from('lead_activity').insert(reviewActivity(c.scope, file.claim, input,
       { id: c.user.id, name: c.scope.name, email: c.user.email })).select('id,created_at,meta').single();
     if (result.error || !result.data) throw new Error('Your review has not saved. Please try again.');
     const events = await reviewEvents(c.db, c.scope, [file.claim.id]);
-    return json({ ok: true, ...reviewState(events.filter((event: any) => event.lead_id === file.lead.id)) });
-  } catch (e) { return json({ error: e instanceof Error ? e.message : 'Your review has not saved. Please try again.' }, 503); }
+    revalidatePath('/', 'layout');
+    return json({ ok: true, ...reviewState(events.filter((event: any) => event.lead_id === file.lead.id), file.claim) });
+  } catch (e) { return json({ error: e instanceof Error ? e.message : 'Your review has not saved. Please try again.' }, e instanceof DeclineError ? e.status : 503); }
 }

@@ -347,6 +347,14 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
 .cl-body :is(input,textarea,select):not([type=checkbox]):not([type=radio]):focus{box-shadow:inset 0 0 0 1px var(--cl-gold),var(--cl-ring) !important}
 .cl-body table.docket thead th{font-size:11.5px;letter-spacing:0.04em;background:var(--surface-2) !important;padding:11px 14px}
 .cl-body table.docket tbody td{font-size:14px;padding:11px 14px}
+.cl-body table.firm-directory{min-width:0;table-layout:fixed}
+.firm-directory th,.firm-directory td{overflow-wrap:anywhere}
+@media(max-width:600px){
+  .firm-directory th:nth-child(3),.firm-directory td:nth-child(3){display:none}
+  .firm-directory th:nth-child(2){width:76px}
+  .firm-directory th:last-child{width:72px}
+  .cl-body table.firm-directory th,.cl-body table.firm-directory td{padding:10px 8px}
+}
 :is(.cl-body,.m6-file) .tabs button.active{border-bottom:2px solid var(--cl-gold) !important}
 .cl-body .seg-toggle button.active{box-shadow:0 1px 2px rgba(16,24,40,0.12),inset 0 0 0 1px var(--line) !important}
 
@@ -475,3 +483,67 @@ a.cl-tab:hover{text-decoration:none;opacity:1}
 .cl-file-nav a:hover{background:var(--surface-3);color:var(--ink)}
 .cl-file-nav a[aria-current="page"]{background:var(--tint);color:var(--surface)}
 .cl-mini-group{border:0;width:100%;background:transparent;cursor:pointer;font:inherit}
+
+/* Keep client identity and next steps readable instead of squeezing the name
+   between a fixed-width status and timestamp on phones and narrow tablets. */
+.cl-home .cl-head>div{min-width:0;max-width:100%}
+.cl-recent-status{min-width:150px}
+.cl-recent-time{min-width:64px;text-align:right}
+.cl-mobile-file-meta{display:none}
+@media(min-width:601px) and (max-width:1200px){
+  .cl-files-table .cl-hide-sm{display:none}
+  .cl-files-table .cl-t1,.cl-files-table .cl-t2{max-width:220px;white-space:normal;overflow-wrap:anywhere}
+}
+.cl-search{min-width:0}
+.cl-side{height:100dvh}
+@media(max-width:900px){
+  .cl-nl,.cl-sec-h,.cl-menu a,.cl-menu button,.cl-iconbtn{min-height:44px}
+  .cl-home .cl-row{flex-wrap:wrap;gap:6px 10px;padding-block:12px}
+  .cl-home .cl-row-m{flex-basis:calc(100% - 24px)}
+  .cl-home .cl-row-r{width:100%;min-width:0;flex-wrap:wrap;gap:6px 12px}
+  .cl-home .cl-row .cl-t1,.cl-home .cl-row .cl-t2{white-space:normal;overflow-wrap:anywhere}
+  .cl-home .cl-recent-status{min-width:0;flex:1;white-space:normal}
+  .cl-home .cl-recent-time{min-width:0;margin-left:auto}
+  .cl-home .cl-go{display:none}
+  .cl-home .cl-ph-r .cl-t2{white-space:normal;text-align:right}
+}
+@media(max-width:600px){
+  /* Keep the client's name and current status together on a phone. The name
+     opens the full file; case and lead number move under it. */
+  .cl-files-table{table-layout:fixed}
+  .cl-files-table .cl-c-case,.cl-files-table .cl-c-act{display:none}
+  .cl-files-table .cl-c-check{width:30px!important;padding-left:8px}
+  .cl-files-table .cl-c-status{width:42%}
+  .cl-files-table th,.cl-files-table td{padding-left:10px;padding-right:10px}
+  .cl-files-table .cl-t1,.cl-files-table .cl-t2,.cl-files-table .cl-status{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .cl-files-table .cl-status{align-items:flex-start}
+  .cl-files-table .cl-dot{margin-top:5px;flex-shrink:0}
+  .cl-files-table .cl-mobile-file-meta{display:block}
+}
+
+/* Keep wide configuration grids navigable on phones without clipping actions. */
+.admin-table-scroll{max-width:100%;min-width:0}
+.admin-table-scroll table{min-width:640px;width:100%}
+.admin-table-scroll .btn{width:auto}
+.admin-table-scroll:focus-visible{outline:2px solid var(--accent,#2c61a0);outline-offset:2px}
+.pdf-editor { min-width: 0; margin: 0; padding: 0; border: 0; }
+.pdf-editor-bar { flex-wrap: wrap; }
+.pdf-editor-bar > * { max-width: 100%; }
+.pdf-editor-bar .pdf-name { flex: 1 1 200px; min-width: 0; }
+.pdf-editor-body, .pdf-canvas-scroll { min-width: 0; }
+.pdf-pages { min-width: max-content; }
+.pdf-editor:disabled .pdf-page { pointer-events: none; }
+.pdf-field, .pdf-resize { touch-action: none; }
+.pdf-field:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+@media (pointer: coarse) {
+  .pdf-resize { width: 28px; height: 28px; right: -10px; bottom: -10px; }
+}
+@media (max-width: 767px) {
+  .pdf-editor { height: auto; }
+  .pdf-editor-bar .spacer { display: none; }
+  .pdf-editor-body { flex-direction: column; }
+  .pdf-tools { width: 100%; max-height: 260px; }
+  .pdf-canvas-scroll { flex: none; height: 60vh; min-height: 300px; }
+}
+.firm-workbench-actions { min-width: 0; border: 0; margin: 0; }
+.firm-action-feedback { padding: 12px 18px; margin: 0; overflow-wrap: anywhere; }

@@ -50,7 +50,7 @@ export default function StatusManager({ initial }: { initial: StatusDef[] }) {
       <p className="muted" style={{ marginTop: 4 }}>The status set that drives the QA pipeline, billing, and what the firm can see. Core statuses can be edited but not deleted.</p>
       {msg && <p className="banner" style={{ margin: "8px 0" }}>{msg}</p>}
 
-      <div className="table-scroll">
+      <div className="table-scroll admin-table-scroll" role="region" aria-label="Status settings" tabIndex={0}>
         <table className="docket statuses-table">
           <thead><tr>
             <th>Label</th><th>Key</th><th>Phase</th><th>Qualify</th><th>Side</th>

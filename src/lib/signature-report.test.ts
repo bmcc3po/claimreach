@@ -23,8 +23,8 @@ test('firm rejection and reason remain visible without erasing signature/deliver
   const f=fixture(); f.claims[0].firm_send_result=OWNER_SENT_UNKNOWN_DATE;
   f.reviews=[{id:'a',firm_id:'f',lead_id:'l',created_at:'2026-10-05',meta:{event:'firm_file_review',claim_id:'c',campaign_id:'inno',action:'turned_down',explanation:'Treatment gap'}},
     {id:'b',firm_id:'f',lead_id:'l',created_at:'2026-10-06',meta:{event:'firm_file_review',claim_id:'other',campaign_id:'inno',action:'accepted'}}];
-  const [r]=signatureReport(f);assert.equal(r.state,'signed');assert.equal(r.ownerSent,true);assert.equal(r.firmDecision,'Firm rejected');assert.equal(r.firmReason,'Treatment gap');
-  assert.match(signatureCsv([r],'Firm','2026-10-05'),/Firm rejected/);assert.match(signatureCsv([r],'Firm','2026-10-05'),/Treatment gap/);
+  const [r]=signatureReport(f);assert.equal(r.state,'signed');assert.equal(r.ownerSent,true);assert.equal(r.firmDecision,'Firm declined');assert.equal(r.firmReason,'Treatment gap');
+  assert.match(signatureCsv([r],'Firm','2026-10-05'),/Firm declined/);assert.match(signatureCsv([r],'Firm','2026-10-05'),/Treatment gap/);
 });
 test("confirmed signatures count independently of workflow status; no receipt means no clock", () => {
   const [row] = signatureReport(fixture());
@@ -126,4 +126,12 @@ test("pagination reads beyond 1,000; a failed page fails the complete report", a
   const data = Array.from({ length: 1201 }, (_, id) => ({ id }));
   assert.equal((await reportPages(() => ({ order() { return this; }, range(from: number, to: number) { return { data: data.slice(from, to + 1) }; } }))).length, 1201);
   await assert.rejects(reportPages(() => ({ order() { return this; }, range(from: number) { return from ? { error: { message: "failed" } } : { data: data.slice(0, 500) }; } })), /complete signature report/);
+});
+
+test('declined signed file retains its signature and delivery clock with bad-sign reason in export', () => {
+  const f=fixture(); f.claims[0].status='signed_dropped';f.claims[0].dq_reason='Treatment gap';
+  f.deliveries=[{firm_id:'f',lead_id:'l',claim_id:'c',ok:true,to_email:f.firmEmail,created_at:'2026-10-02T00:00:00Z'}];
+  const [r]=signatureReport(f);assert.equal(r.state,'signed');assert.equal(r.declined,true);
+  assert.equal(r.returnEndsAt,'2026-10-09T00:00:00.000Z');assert.equal(r.declineReason,'Treatment gap');
+  assert.match(signatureCsv([r],'Firm','2026-10-07'),/Excluded — signed file declined/);
 });

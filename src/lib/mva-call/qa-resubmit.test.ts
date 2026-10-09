@@ -1,3 +1,5 @@
+import * as archiveControl from '../archive-control';
+import { NextRequest } from 'next/server';
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -5,6 +7,9 @@ import ts from "typescript";
 import { FakeDb } from "../test-fake-db";
 import * as statuses from "../statuses";
 import * as matter from "../matter";
+import * as passengerSigning from './passenger-signing';
+import * as signedDecline from '../signed-decline';
+import * as ownerConfirmation from '../owner-file-confirmation';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const LEAD = id(1), CLAIM = id(2), FIRM = id(3), CAMP = id(4), REVIEW = id(5), AGENT = id(6), AGREEMENT = id(7), REQUEST = id(8), SIBLING = id(9);
@@ -26,10 +31,14 @@ function fixture() {
   });
   const state = { staff: { id: AGENT, name: "Agent", role: "agent" } as any, pending: null as any, pendingError: false, automation: 0, events: [] as string[], admin: 0 };
   const modules: Record<string, any> = {
+    "@/lib/archive-control": archiveControl,
     "next/server": { NextResponse: { json: (body: any, opts: any = {}) => ({ body, status: opts.status || 200 }) } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => { state.admin++; return db; } },
     "@/lib/statuses": statuses,
     "@/lib/matter": matter,
+    "./passenger-signing": passengerSigning,
+    "./signed-decline": signedDecline,
+    "@/lib/owner-file-confirmation": ownerConfirmation,
     "@/lib/linked-files": { paxParentId: () => null },
     "./server": { LEAD_CALL_COLS: "*" },
     "@/lib/mva-call/server": { requireStaff: async () => state.staff },
@@ -46,7 +55,7 @@ function fixture() {
   const route = load("app/api/calls/qa/resubmit/route.ts", modules);
   const file = load("app/api/calls/file/route.ts", modules);
   const post = (patch: any = {}) => route.POST({ json: async () => ({ lead_id: LEAD, claim_id: CLAIM, qa_review_id: REVIEW, request_id: REQUEST, ...patch }) });
-  return { db, state, post, readFile: (claim = CLAIM) => file.GET({ url: `https://example.invalid/api/calls/file?lead_id=${LEAD}&claim_id=${claim}` }), claim: db.tables.claims[0], agreement: db.tables.esign_submissions[0] };
+  return { db, state, post, readFile: (claim = CLAIM) => file.GET(new NextRequest(`https://example.invalid/api/calls/file?lead_id=${LEAD}&claim_id=${claim}`)), claim: db.tables.claims[0], agreement: db.tables.esign_submissions[0] };
 }
 let count = 0;
 async function test(name: string, run: () => Promise<void>) { await run(); count++; console.log("ok", name); }
@@ -151,3 +160,4 @@ const noWrite = (f: ReturnType<typeof fixture>) => assert.equal(f.db.ops.filter(
   });
   console.log(`${count} actual resubmit route checks passed`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
+

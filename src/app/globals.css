@@ -213,8 +213,8 @@ table.docket.statuses-table .col-flag { text-align: center; width: 62px; white-s
 .dedupe-note { background: var(--ok-bg); border: 1px solid var(--ok); color: var(--ok);
   border-radius: 10px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
 
-.login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
-.login-card { width: 380px; max-width: 100%; }
+.login-wrap { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 20px; }
+.login-card { width: 380px; max-width: 100%; min-width: 0; }
 .muted { color: var(--ink-soft); font-size: 13px; }
 
 @media (max-width: 640px) {
@@ -2410,7 +2410,7 @@ tr.row-selected td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
 
 /* --- log a touch ------------------------------------------------------------ */
 .m6-modal-wrap {
-  position: fixed; inset: 0; z-index: 60;
+  position: fixed; inset: 0; z-index: 80;
   background: rgba(13,20,32,.42);
   display: flex; align-items: center; justify-content: center; padding: 20px;
 }

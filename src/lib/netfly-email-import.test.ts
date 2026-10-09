@@ -114,6 +114,26 @@ sender@netflydigital.com` }, 'test-key', (async () => { throw new Error('A viewe
   const amended = await importNetflyEmail(viewerDb, campaign, { ...email, id: 'amended-mail', text: viewerBody.replace('Case #: TEST-1', 'Case #: TEST-2'), attachments: [] }, 'test-key', viewerFetcher, enrich);
   assert.equal(amended.lead_id, viaLink.lead_id, 'same original agreement keeps later note revisions on the same file');
   assert.equal(viewerDb.tables.claims[0].answers.netfly_secondary.fields.first_provider, 'Agent corrected clinic');
+  const outlookDb = database();
+  const outlookBody = viewerBody.replace('Client/Driver: Synthetic Test', 'Client/Driver: Synthétic Test')
+    .replace('client@example.test', 'client@example.test<mailto:client@example.test>')
+    .replace('Accident Details:', 'Accident Details:\nState: , City: Kansas city, Accident Type: Auto Accident');
+  const outlookEmail = { ...email, id: 'outlook-mail', from: 'Brett <BCurry@turnbullfirm.com>', text: outlookBody, attachments: [] };
+  const outlook = await importNetflyEmail(outlookDb, campaign, outlookEmail, 'test-key', viewerFetcher, enrich);
+  assert.equal(outlook.partial, false); assert.equal(outlook.retry_required, false);
+  assert.equal(outlookDb.tables.leads[0].claimant_name, 'Synthétic Test');
+  assert.equal(outlookDb.tables.leads[0].phone, '2025550146'); assert.equal(outlookDb.tables.leads[0].email, 'client@example.test');
+  const outlookFields = outlookDb.tables.claims[0].answers.netfly_secondary.fields;
+  assert.equal(outlookFields.accident_city, 'Kansas City'); assert.equal(outlookFields.accident_state, 'MO');
+  assert.equal(outlookFields.road, 'Highway 70'); assert.equal(outlookFields.accident_date, '2026-09-04');
+  assert.equal(outlookFields.first_provider, 'Synthetic Clinic'); assert.equal(outlookFields.first_visit, '2026-09-05');
+  assert.equal(outlookDb.tables.claims[0].answers.netfly_secondary.review.status, 'in_progress');
+  assert.equal(outlookDb.tables.leads[0].perm_text, false);
+  assert.equal(outlookDb.tables.case_documents.filter(row => row.doc_type === 'netfly_signed_retainer').length, 1);
+  assert.ok([...outlookDb.blobs.values()].some(bytes => new TextDecoder().decode(bytes).includes(outlookBody)), 'the complete forwarded source is preserved');
+  await importNetflyEmail(outlookDb, campaign, outlookEmail, 'test-key', viewerFetcher, enrich);
+  assert.equal(outlookDb.tables.leads.length, 1); assert.equal(outlookDb.tables.claims.length, 1);
+  assert.equal(outlookDb.tables.case_documents.length, 2, 'replay preserves one source email and one completed PDF');
   const isolation = database();
   isolation.tables.leads.push({ id: 'foreign', firm_id: 'different', campaign_id: 'camp', lawruler_ref_no: '123', claimant_name: 'Synthetic Test' });
   const scoped = await importNetflyEmail(isolation, campaign, { ...email, text: email.text + '\nLawRuler Lead ID: 123' }, 'test-key', fetcher);

@@ -42,7 +42,7 @@ export default function HomeView({ data }: { data: HomeData }) {
   const allLabel = data.links.all === "/app" ? "Desk queues" : "All leads";
   const total14 = data.series.reduce((a, b) => a + b.n, 0);
   return (
-    <div>
+    <div className="cl-home">
       <div className="cl-head">
         <div>
           <h1 className="cl-h1">{data.greeting}{data.first ? `, ${data.first}` : ""}</h1>
@@ -182,8 +182,8 @@ function RecentPanel({ rows, allHref, allLabel }: { rows: HomeData["recent"]; al
             <a key={r.key} className="cl-row" href={r.href}>
               <span className="cl-row-m"><span className="cl-t1">{r.name}</span><span className="cl-t2">{r.sub}</span></span>
               <span className="cl-row-r">
-                <span className="cl-status" style={{ minWidth: 150 }}><span className={`cl-dot cl-${r.tone}`} />{r.status}</span>
-                <span style={{ minWidth: 64, textAlign: "right" }}><Ago ts={r.updated} /></span>
+                <span className="cl-status cl-recent-status"><span className={`cl-dot cl-${r.tone}`} />{r.status}</span>
+                <span className="cl-recent-time"><Ago ts={r.updated} /></span>
                 <span className="cl-go"><Icon name="right" size={16} /></span>
               </span>
             </a>

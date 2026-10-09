@@ -11,7 +11,7 @@ import { loadSignatureReport } from './signature-report-loader';
 
 export { REVIEW_EVENT } from './firm-review-access';
 export const REVIEW_LEAD_COLS = 'id,firm_id,lead_no,claimant_name,phone,email,dob,mail_addr1,mail_city,mail_state,mail_zip,archived_at,vendor_fields,external_id';
-export const REVIEW_CLAIM_COLS = 'id,lead_id,firm_id,campaign_id,campaign,claim_type,status,firm_sent_at,firm_send_result,updated_at';
+export const REVIEW_CLAIM_COLS = 'id,lead_id,firm_id,campaign_id,campaign,claim_type,status,answers,firm_sent_at,firm_send_result,updated_at';
 export async function reviewerSignedClaimIds(db: any, scope: FirmReviewScope): Promise<Set<string>> {
   // Use the same evidence rules as the invoice report: a delivery label is
   // insufficient, and replacement/voided/unverified imported packets stay out.
@@ -35,7 +35,7 @@ export async function reviewerContext() {
 }
 export async function reviewerFile(db: any, scope: FirmReviewScope, claimId: string) {
   const { data: claim, error } = await db.from('claims').select(REVIEW_CLAIM_COLS).eq('id', claimId)
-    .eq('firm_id', scope.firmId).eq('campaign_id', scope.campaignId).in('status', ['delivered', 'retained']).maybeSingle();
+    .eq('firm_id', scope.firmId).eq('campaign_id', scope.campaignId).in('status', ['delivered', 'retained', 'signed_dropped']).maybeSingle();
   if (error) throw new Error('Could not read the file. Please try again.');
   if (!claim) return null;
   const leadResult = await db.from('leads').select(REVIEW_LEAD_COLS).eq('id', claim.lead_id).eq('firm_id', scope.firmId).is('archived_at', null).maybeSingle();

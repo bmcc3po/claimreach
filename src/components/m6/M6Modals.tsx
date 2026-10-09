@@ -7,19 +7,21 @@ export type TouchPoint = {
 };
 
 export function ModalShell({
-  title, onClose, err, children, wide,
+  title, onClose, err, children, wide, busy,
 }: {
-  title: string; onClose: () => void; err: string; children: ReactNode; wide?: boolean;
+  title: string; onClose: () => void; err: string; children: ReactNode; wide?: boolean; busy?: boolean;
 }) {
   return (
     <div className="m6-modal-wrap" role="dialog" aria-modal="true" aria-label={title}>
       <div className={wide ? "m6-modal m6-modal-wide" : "m6-modal"}>
         <div className="m6-modal-head">
           <h2>{title}</h2>
-          <button type="button" className="m6-linkbtn" onClick={onClose}>Close</button>
+          <button type="button" className="m6-linkbtn" disabled={busy} onClick={onClose}>Close</button>
         </div>
-        {err && <p className="m6-error">{err}</p>}
-        {children}
+        {err && <p className="m6-error" role="alert">{err}</p>}
+        <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+          {children}
+        </fieldset>
       </div>
     </div>
   );
@@ -40,7 +42,7 @@ export function LogTouch({
   const [note, setNote] = useState("");
 
   return (
-    <ModalShell title="Log a touch" onClose={onClose} err={err}>
+    <ModalShell title="Log a touch" onClose={onClose} err={err} busy={busy}>
       <label className="m6-field">
         <span>Why</span>
         <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>

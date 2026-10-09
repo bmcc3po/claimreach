@@ -98,6 +98,9 @@ export class FakeQuery {
     const rows = (this.db.tables[this.op.table] ??= []);
     if (this.op.kind === "insert") {
       const added = (Array.isArray(this.op.patch) ? this.op.patch : [this.op.patch]).map((patch) => ({ id: this.db.nextId(), ...patch }));
+      if (added.some((r, i) => rows.some(old => old.id === r.id) || added.slice(0, i).some(old => old.id === r.id))) {
+        return { data: null, error: { code: '23505', message: 'duplicate primary key' } };
+      }
       rows.push(...added);
       return { data: this.one ? { ...added[0] } : added.map((r) => ({ ...r })), error: null };
     }

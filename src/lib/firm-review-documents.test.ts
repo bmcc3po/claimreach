@@ -40,6 +40,13 @@ const server: any = {}; new Function('require', 'exports', code)((key: string) =
   const p = await PDFDocument.create(); p.addPage(); pdfBytes = await p.save();
   await server.reviewerPdf({}, scope, file, 'intake'); assert.equal(rendered.lead.answers, undefined); assert.equal(rendered.lead.vendor_fields, undefined); assert.deepEqual(rendered.answers, { own_answer: true });
   const joined = await server.reviewerPdf({}, scope, file, 'retainer'); assert.equal((await PDFDocument.load(joined)).getPageCount(), 2); assert.deepEqual(downloaded, ['firm/signed-ds-123.pdf', 'firm/signed-ds-123-2.pdf']);
+  const declined = { ...file, claim: { ...file.claim, status: 'signed_dropped', answers: { signed_decline: {
+    id: 'decline', at: '2026-10-07', reason: 'Synthetic reason', previousStatus: 'delivered', source: 'firm' } } } };
+  assert.equal((await PDFDocument.load(await server.reviewerPdf({}, scope, declined, 'retainer'))).getPageCount(), 2, 'declining a delivered file preserves its original PDFs');
+  await assert.rejects(() => server.reviewerPdf({}, { ...scope, firmId: 'other' }, declined, 'retainer'));
+  await assert.rejects(() => server.reviewerPdf({}, { ...scope, campaignId: 'other' }, declined, 'intake'));
+  await assert.rejects(() => server.reviewerPdf({}, { ...scope }, { ...declined, claim: { ...declined.claim, answers: {
+    signed_decline: { ...declined.claim.answers.signed_decline, previousStatus: 'signed_qa' } } } }, 'retainer'), /unavailable/);
   const original = { ...row };
   for (const change of [{ firm_id: 'other' }, { status: 'voided' }, { replacement_requested_at: 'now' }, { completed_pdf_path: 'other/signed-ds-123.pdf' }, { submission_id: '../escape' }, { doc_count: null }]) {
     row = { ...original, ...change }; await assert.rejects(() => server.reviewerPdf({}, scope, file, 'retainer'));

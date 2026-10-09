@@ -54,7 +54,8 @@ export default function RetainerTemplatesManager() {
       </div>
       {msg && <p className="muted" style={{ marginTop: 6 }}>{msg}</p>}
 
-      <table className="docket" style={{ marginTop: 12 }}>
+      <div className="table-scroll" role="region" aria-label="Retainer templates" tabIndex={0} style={{ marginTop: 12 }}>
+      <table className="docket">
         <thead><tr><th>Name</th><th>Case type</th><th>Default</th><th></th></tr></thead>
         <tbody>
           {templates.map((t) => (
@@ -71,6 +72,7 @@ export default function RetainerTemplatesManager() {
           {templates.length === 0 && <tr><td colSpan={4} className="muted">No retainer templates yet. Create one, or let AI draft it.</td></tr>}
         </tbody>
       </table>
+      </div>
 
       {/* PDF retainers */}
       <div className="section-title" style={{ marginTop: 28 }}>PDF retainers (upload + place fields)</div>
@@ -78,7 +80,8 @@ export default function RetainerTemplatesManager() {
       <input ref={fileRef} type="file" accept="application/pdf" hidden onChange={uploadPdf} />
       <button className="btn" onClick={() => fileRef.current?.click()}>⬆ Upload PDF</button>
 
-      <table className="docket" style={{ marginTop: 12 }}>
+      <div className="table-scroll" role="region" aria-label="PDF retainer templates" tabIndex={0} style={{ marginTop: 12 }}>
+      <table className="docket">
         <thead><tr><th>Name</th><th>Case type</th><th>Default</th><th>Fields</th><th>Pages</th><th></th></tr></thead>
         <tbody>
           {pdfs.map((p) => (
@@ -97,6 +100,7 @@ export default function RetainerTemplatesManager() {
           {pdfs.length === 0 && <tr><td colSpan={6} className="muted">No PDF retainers uploaded yet.</td></tr>}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

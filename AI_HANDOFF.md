@@ -20,11 +20,10 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current state
 
-- Working branch: `codex/pay-period-billing`, current head `2f20dabe9f0a38a6ba53309f0467abaa0c59d22d`. The latest commit is documentation-only; application head remains `4a742785d99793ee3dd2005915231ddfcef99133`.
-- Current production main: `768a9a8ae1074d71bf8f1b1dd31cc9ee7dd7fe8f`.
-- The branch carries two application commits plus continuity-only updates, is 8 behind main, and currently conflicts.
-- The eight newer main commits include signed-file decline and terminal-status synchronization plus shared file actions and PR Digital signature-report/source-binding work. Payroll eligibility, signature cohorts, and prior-paid clawbacks must be reconciled against all of them.
-- PR #162 has successful Cloudflare and Netlify evidence at the documentation head. The original application head passed TypeScript, focused payroll/API/signature-report/delivery tests, both engine suites, isolated PostgreSQL RLS/transaction checks, and synthetic desktop/mobile review.
+- Working branch: `codex/pay-period-billing`, PR #162. Current work reconciles the branch with production main `1096589d04c973967ca581797e355061f244c9c0` (PR194).
+- Merge conflicts are resolved while preserving current intake/header fixes, delivery wording, agent attribution and decline evidence.
+- BMC and firm declines both stop new billing/commission. Prior-period adjustments require recorded processed payments and a valid decline date, retain the original paid agent, and cannot repeat.
+- Current local gates passed; the reconciled commit still needs its own Cloudflare preview gates before the migration approval request.
 - Migration 0128 adds three owner-only RLS tables and an invoker transaction for closing payroll. It has not been applied to production.
 - No real payroll period, invoice, payment, credit, clawback, or Wave correction was created during development.
 
@@ -35,34 +34,34 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 - Added attorney hold/release handling, firm-rejection exclusion, processed-entry-only credits/clawbacks, duplicate prevention, CSV export, mobile layout, and append-only Wave correction audits.
 - Kept unknown signature dates excluded and reviewable; import or review timestamps do not substitute for signature dates.
 - Added migration 0128 and recorded isolated RLS, exact-matter, atomic rollback, and duplicate-entry checks.
-- Refreshed this branch handoff only; no runtime code, schema, permissions, funds, or client records changed.
+- Added confirmed-save checks, pending-control locking and duplicate-submit protection to the payroll screen; failed saves retain the draft and show the error beside the action.
 
 ## Files and systems changed
 
 - `RUN_THESE_MIGRATIONS.sql` and `supabase/migrations/0128_pay_period_billing.sql`.
 - Payroll page, API, server/domain logic, styles, tests, navigation, signature reporting, attorney-hold helper, packet worklist, delivery, and final-handoff integration.
-- See PR #162 for the exact 22-file current diff, including this handoff.
+- See PR #162 for the exact current diff, including this handoff.
 
 ## Verification performed
 
-- Original application head: TypeScript zero errors; payroll 12 tests plus API authorization, stale-preview, failure, signature-report, navigation, and delivery regressions.
-- Original application head: MVA engine 71/71, intake engine 78/78, delivery 48/48.
+- Reconciled code: TypeScript zero errors; payroll 15/15, signature-report 17/17, delivery 50/50, MVA engine 71/71 and intake engine 78/78.
+- Payroll UI unknown/failed-save and duplicate-write checks, API owner/CSRF/matter/stale-preview/cutoff/transaction checks, and navigation regression passed.
 - Isolated PostgreSQL checks covered owner-only RLS, exact-matter writes, atomic rollback, and duplicate billing/clawback prevention.
-- Actual React screen was tested with synthetic data on desktop and 390x844 phone, including hold/release, exclusions acknowledgment, synthetic close, frozen readback, and CSV download.
-- Current documentation head has completed successful Cloudflare and Netlify checks.
-- Current-main reconciliation, post-reconciliation regression tests, production migration execution, and real owner acceptance remain unverified.
+- Actual React screen tested with synthetic data at 375, 390, 768, 1024 and 1440 widths: no document overflow, five period filters, hold/release, required closing acknowledgments, synthetic close/readback and retained failed-save draft. Browser evidence is in the local work directory. Earlier original-head CSV download also passed.
+- Production migration, production owner acceptance and physical Safari remain unverified. Local viewport tests do not claim physical iOS coverage.
 
 ## Active blockers or open questions
 
-- PR #162 conflicts with eight newer main commits. Reconcile both the decline/status logic and the newer signature-report/source-binding behavior before treating payroll eligibility or clawbacks as release-ready.
+- Obtain Cloudflare Build Completed, Edge Function Routes and preview deployment success for the reconciled head.
 - Brett must explicitly approve production migration 0128 and the migration-before-code release order after the reconciled branch passes its full gates.
 - Do not process a real payroll period, invoice, payment, credit, clawback, or Wave correction during acceptance.
 
 ## Next safe action
 
-- Reconcile PR #162 onto main `768a9a8a`, review the decline/status, signature cohort, source-binding, and prior-paid clawback intersections, rerun all application, database, build, and synthetic close/readback gates, then present the verified migration-before-code rollout for Brett's explicit approval.
+- Push the reconciled tested head, verify preview build, and present the migration-before-code rollout for Brett's explicit approval. Never merge dependent production code before migration 0128 exists. The earlier automatic approval rejection remains in force until explicit approval.
 
 ## Session log
 
+- 2026-10-09 05:15 PT — Codex — reconciled current production, added BMC decline and failed-save coverage, passed local code/SQL/browser gates; no production data or schema changes.
 - 2026-10-08 19:18 PT — Codex — refreshed payroll continuity after four more main merges; branch is 3 ahead and 8 behind with new signature-report/source-binding conflict surface; next: reconcile and reverify before migration approval.
 - 2026-10-07 19:38 PT — Codex — replaced the obsolete branch handoff with current PR #162 state; branch was green on its original head but conflicted with four newer decline/status commits; next: reconcile and reverify before migration approval.

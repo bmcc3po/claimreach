@@ -75,3 +75,34 @@ test('closing snapshots remain unchanged after later file decisions and payments
 test('CSV includes prior-period source and prevents spreadsheet formula injection',()=>{
   const f=file('c',{name:'=HYPERLINK("evil")',ownerSent:true});const csv=payrollCsv(payrollReport([f],[],[],end,now));assert.ok(csv.includes('"\'=HYPERLINK'));assert.ok(csv.includes('2026-09-28'));
 });
+
+test('BMC declines override attorney holds before and after delivery and never earn new commission',()=>{
+  const decline={declined:true,declineSource:'bmc' as const,declinedAt:now,declineReason:'Driver at fault; no responsible party'};
+  const r=payrollReport([file('before',decline),file('after',{...decline,ownerSent:true})],[note('attorney_hold',{reason:'Old hold'},'after')],[],end,now);
+  assert.equal(r.rows.find(r=>r.claimId==='before')!.group,'dq');
+  assert.equal(r.rows.find(r=>r.claimId==='after')!.group,'rejected');
+  assert.ok(r.rows.every(r=>!r.bill&&!r.pay&&r.blocked==='BMC declined'));
+  assert.equal(r.adjustments.length,0);assert.match(payrollCsv(r),/Driver at fault; no responsible party/);
+});
+
+test('BMC decline reverses only recorded prior payments once, against the original paid agent',()=>{
+  const f=file('c',{signedAt:'2026-09-25T12:00:00Z',ownerSent:true,declined:true,declineSource:'bmc',declinedAt:now,declineReason:'Treatment gap',agentId:'new',agentName:'New agent'});
+  const prior=[line('billing','bill'),line('commission','pay')];
+  const r=payrollReport([f],[],prior,end,now);assert.equal(r.adjustments.length,2);
+  assert.ok(r.adjustments.every(a=>a.reason==='Treatment gap'&&a.declineSource==='bmc'&&a.agentId==='a'&&a.agent==='Originally paid A'));
+  assert.deepEqual(payrollReport([f],[],[...prior,line('firm_credit','credit','c',{source_line_id:'bill'}),line('clawback','undo','c',{source_line_id:'pay'})],end,now).adjustments,[]);
+  assert.deepEqual(payrollReport([f],[note('reconcile',{line_id:'pay',processed:false,reason:'Not paid'})],prior,end,now).adjustments.map(a=>a.kind),['firm_credit']);
+  assert.equal(payrollReport([{...f,test:true}],[],prior,end,now).adjustments.length,0);
+  assert.equal(payrollReport([f],[],prior.map(l=>({...l,campaign_id:'another-matter'})),end,now).adjustments.length,0);
+});
+
+test('BMC decline needs its own valid date; an unrelated firm decision cannot create a clawback',()=>{
+  const f=file('c',{signedAt:'2026-09-25T12:00:00Z',ownerSent:true,declined:true,declineSource:'bmc',decisionAt:now,decisionKey:'accepted'});
+  for(const declinedAt of [undefined,'invalid']){
+    const r=payrollReport([{...f,declinedAt}],[],[line('commission')],end,now);
+    assert.equal(r.adjustments.length,0);assert.equal(r.rejectionReview.length,1);
+  }
+  assert.equal(payrollReport([{...f,declinedAt:'2026-10-08T12:00:00Z'}],[],[line('commission')],end,now).adjustments.length,0);
+  const firm=payrollReport([{...f,declineSource:'firm',declinedAt:now,declineReason:'Firm rejected'}],[],[line('commission')],end,now);
+  assert.equal(firm.adjustments[0].declineSource,'firm');assert.equal(firm.adjustments[0].reason,'Firm rejected');
+});

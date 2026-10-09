@@ -12,3 +12,9 @@
 .imported-handoff-send{width:100%;margin-top:18px;padding:15px;border:0;border-radius:8px;background:#184b91;color:#fff;font-weight:800;font-size:16px;cursor:pointer}
 .imported-handoff-send:disabled{opacity:.55;cursor:not-allowed}
 .imported-handoff-error{color:#9a2525;font-weight:700}
+.imported-handoff-confirm{margin-top:18px;padding:16px;border:1px solid #aebfd8;border-radius:8px;background:#f4f8ff;overflow-wrap:anywhere}
+.imported-handoff-confirm ul{padding-left:20px}
+.imported-handoff-back{margin-top:10px;min-height:44px;width:100%;padding:10px;border:1px solid #acbdd4;border-radius:8px;background:#fff;color:#12376f;cursor:pointer}
+.imported-handoff-recipient{overflow-wrap:anywhere}
+.imported-handoff-extra input{min-width:0;width:100%;box-sizing:border-box}
+@media(max-width:600px){.imported-handoff{padding:16px}.imported-handoff h2{font-size:21px}}

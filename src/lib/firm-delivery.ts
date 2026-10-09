@@ -25,6 +25,7 @@
 // claim it was for.
 // ============================================================================
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { isSignedDeclined } from './signed-decline';
 import { retainerTokens, fillTemplate } from "@/lib/retainer-tokens";
 import { loadIntakeBundle, buildIntakePdfAttachment, buildIntakeCsvSingle, buildIntakeEmailHtml, hasIntakeQuestions, type IntakeBundle } from "@/lib/intake-render";
 import { buildCertificatePdf } from "@/lib/certificate";
@@ -214,6 +215,7 @@ export async function deliverLeadToFirm(opts: {
   const res = await resolveMatter(db, opts.leadId, { claimId: opts.claimId ?? null, campaignId: lead.campaign_id ?? null });
   if (!res.ok) return { ok: false, ambiguous: !!res.ambiguous, error: `${res.error} ${NOTHING_SENT}` };
   const claim = res.claim;
+  if (isSignedDeclined(claim)) return { ok: false, claimId: claim.id, error: 'This signed file was declined. Use its drop-letter request; do not send a new intake packet.' };
   const matter: Matter = { claim, sole: res.sole };
   // The campaign whose setup applies: the claim's own. A legacy claim with no
   // campaign recorded uses the file's only when it is the file's sole matter.
@@ -242,12 +244,16 @@ export async function deliverLeadToFirm(opts: {
     } catch (e) { problems.push(`the delivery log did not save (${errText(e)})`); }
     try {
       const { data: hit, error: e } = await db.from("claims")
-        .update(ok ? { firm_sent_at: stamp, firm_send_result: "sent",
-          ...(claim.claim_type === "mva" && (claim.status === "signed_approved" || !!opts.netflySnapshot) ? { status: "delivered" } : {})
-        } : { firm_send_result: `error: ${error}` })
+        .update(ok ? { firm_sent_at: stamp, firm_send_result: "sent" } : { firm_send_result: `error: ${error}` })
         .eq("id", claim.id).select("id");
       if (e) problems.push(`this matter's delivery record did not save (${e.message})`);
       else if (!hit?.length) problems.push("this matter's delivery record did not save (the matter was not found)");
+      // A decline that raced an already-running email must not be reopened.
+      if (ok && claim.claim_type === 'mva' && (claim.status === 'signed_approved' || !!opts.netflySnapshot)) {
+        const moved = await db.from('claims').update({ status: 'delivered' }).eq('id', claim.id)
+          .eq('status', claim.status).select('id');
+        if (moved.error || !moved.data?.length) problems.push('the workflow changed during delivery; its newer decision was preserved');
+      }
     } catch (e) { problems.push(`this matter's delivery record did not save (${errText(e)})`); }
     try {
       const { error: e } = await db.from("leads")
@@ -658,6 +664,12 @@ export async function deliverLeadToFirm(opts: {
   };
   const attemptKey = reservation.attemptKey;
   dispatchKey = attemptKey;
+  const finalClaim = await db.from('claims').select('id,status').eq('id', claim.id).eq('lead_id', lead.id).maybeSingle();
+  if (finalClaim.error || !finalClaim.data || isSignedDeclined(finalClaim.data)) {
+    const message = 'The file could not be rechecked or was declined while preparing delivery. Nothing was emailed.';
+    const finishError = await finishFirmDispatch(db, claim.id, attemptKey, 'failed', message);
+    return { ok: false, claimId: claim.id, error: message, ...(finishError ? { warning: finishError, recoveryRequired: true } : {}) };
+  }
   const from = (globalThis as any)?.process?.env?.EMAIL_FROM || "ClaimReach <noreply@claimreach.com>";
   let sendOk = false; let sendErr: string | undefined; let uncertain = false;
   try {

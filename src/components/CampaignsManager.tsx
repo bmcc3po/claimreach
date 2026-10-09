@@ -52,6 +52,7 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
       <p className="muted" style={{ marginTop: 4 }}>A campaign is one firm running one case type (e.g. "TMP MVA"). It carries the firm, type, intake form, default retainer, and billing so Add lead only needs a name and the campaign.</p>
       {msg && <p className="banner" style={{ margin: "8px 0" }}>{msg}</p>}
 
+      <div className="table-scroll admin-table-scroll" role="region" aria-label="Campaign settings" tabIndex={0}>
       <table className="docket">
         <thead><tr><th>Campaign</th><th>Firm</th><th>Type</th><th>Tier</th><th>Rate</th><th>Status</th><th></th></tr></thead>
         <tbody>
@@ -73,6 +74,7 @@ export default function CampaignsManager({ initial, firms, retainerTemplates }: 
           {rows.length === 0 && <tr><td colSpan={7} className="muted">No campaigns yet. Create one to route Add lead.</td></tr>}
         </tbody>
       </table>
+      </div>
 
       {edit && (
         <div className="modal-back" onClick={() => setEdit(null)}>

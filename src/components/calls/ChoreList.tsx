@@ -229,4 +229,4 @@ export default function ChoreList({ v, sectionActions = true, scrollSections = t
   );
 }
 
-const STATUS_WORD: Record<string, string> = { done: "Done", now: "Do this now", needs: "Needs an answer", todo: "Not started" };
+const STATUS_WORD: Record<string, string> = { done: "Done", now: "Do this now", needs: "Needs an answer", todo: "To finish" };

@@ -51,4 +51,22 @@
 .packet-toolbar .packet-archive-toggle{display:flex;align-items:center;gap:8px;width:auto;white-space:nowrap;font-size:14px}.packet-archive-toggle input{width:18px;height:18px;accent-color:#24599b}
 .packet-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;border-top:1px solid #d8e0e9}.packet-item:first-child{border-top:0}.packet-item-action{position:relative;padding-right:16px}.packet-item-action [role="dialog"]{position:absolute;z-index:5;right:0;top:38px;width:min(350px,80vw);background:#fff;box-shadow:0 12px 30px #162e4b2e}.packet-item .packet-row{border:0}
 .packet-list{overflow:visible}
+.packet-person strong{white-space:normal;overflow-wrap:anywhere}
+/* The sidebar narrows the work list on landscape tablets. Stack the context
+   before it overlaps the status or archive action, and keep full names visible. */
+@media(max-width:1200px){
+  .call-agent-head,.call-agent-row{grid-template-columns:minmax(0,1fr) repeat(3,52px);gap:5px}
+  .call-agent-head span:nth-child(5),.call-agent-head span:nth-child(6),.call-agent-row span:nth-child(5),.call-agent-row span:nth-child(6){display:none}
+  .call-agent-head>*,.call-agent-row>*{min-width:0;overflow-wrap:anywhere}
+  .packet-row,.packet-imported .packet-row{grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:14px}
+  .packet-person{grid-column:1/-1}
+  .packet-context,.packet-date{grid-column:1}
+  .packet-stage{grid-column:2;grid-row:2;max-width:150px}
+  .packet-arrow{display:none}
+  .packet-row strong,.packet-row small{white-space:normal;overflow-wrap:anywhere}
+  .packet-item{grid-template-columns:minmax(0,1fr)}
+  .packet-item-action{padding:0 14px 12px}
+  .packet-toolbar{flex-wrap:wrap}
+  .packet-metrics.needs,.packet-week-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @media(max-width:850px){.packet-toolbar{flex-wrap:wrap}.packet-item{grid-template-columns:1fr}.packet-item-action{padding:0 14px 12px}.packet-item-action [role="dialog"]{left:0;right:auto}}

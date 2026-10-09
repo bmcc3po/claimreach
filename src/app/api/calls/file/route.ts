@@ -11,6 +11,7 @@ import { loadLawRulerProvenance } from "@/lib/lawruler-recovery";
 import { readPendingSendAttempt } from "@/lib/mva-call/send-attempt";
 import { paxParentId } from "@/lib/linked-files";
 import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
+import { archiveControlAvailable } from "@/lib/archive-control";
 
 export const runtime = "edge";
 
@@ -30,6 +31,15 @@ export async function GET(req: NextRequest) {
     .select("id, firm_id, lead_no, claimant_name, first_name, last_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, home_phone, work_phone, email, mail_addr1, mail_city, mail_state, mail_zip, signed_at, firms(name)")
     .eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
+
+  // The persistent header needs current metadata, not signed document URLs.
+  // Reuse the same authenticated, exact-matter resolver as the full File view.
+  if (req.nextUrl.searchParams.get('summary') === '1') {
+    const visible = resolveFileStatus(matter.claim, await loadStatuses(), matter.sole && !!lead.signed_at);
+    return NextResponse.json({ claim_id: matter.claim.id, status: visible,
+      campaign: matter.claim.campaign, archived_at: context.lead.archived_at,
+      role: me.role, can_archive: archiveControlAvailable(me.role, me.can('leads.delete')) }, { headers: { 'Cache-Control': 'private, no-store' } });
+  }
 
   const [esignRes, notesRaw, auditRes, docsRes, staffRes, statuses] = await Promise.all([
     sb.from("esign_submissions").select("id, template_key, signer_name, injured_name, via, status, pax_index, doc_count, sent_at, opened_at, signed_at, completed_at, completed_pdf_path, cert_pdf_path, error, voided_at, void_reason, replacement_requested_at, replacement_requested_by, replacement_reason, replacement_of, agent_reviewed_at, agent_reviewed_by")

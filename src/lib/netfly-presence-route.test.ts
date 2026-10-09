@@ -1,3 +1,4 @@
+import * as archiveControl from './archive-control';
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -23,7 +24,8 @@ const ctx = () => ({ actor, db, campaign: { id: "netfly", firm_id: FIRM } });
 const code = fs.readFileSync(path.resolve(__dirname, "../app/api/netfly/route.ts"), "utf8");
 const compiled = ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const modules: Record<string, any> = {
-  "next/server": { NextResponse: { json: (body: any, options: any = {}) => ({ body, status: options.status || 200 }) } },
+  "@/lib/archive-control": archiveControl,
+    "next/server": { NextResponse: { json: (body: any, options: any = {}) => ({ body, status: options.status || 200 }) } },
   "@/lib/netfly-server": { netflyContext: async () => ctx(), netflyMatter: async (_ctx: any, key: string) => key === LEAD ? { lead: { id: LEAD }, claim: db.tables.claims[0] } : null },
   "@/lib/netfly-ontake": ontake,
   "@/lib/netfly-delivery-settings": deliverySettings,
@@ -91,3 +93,4 @@ async function main() {
   console.log("NETFLY call presence ownership and expiry checks passed");
 }
 void main().catch(error => { console.error(error); process.exitCode = 1; });
+

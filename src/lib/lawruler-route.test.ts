@@ -16,6 +16,7 @@ import * as standard from './standard-fields';
 import * as mvaSync from './lawruler-mva-sync';
 import * as netflySync from './lawruler-netfly';
 import * as netflyOntake from './netfly-ontake';
+import * as partnerSourceSync from './partner-source-sync';
 import { DEFAULT_STATUSES } from './statuses';
 const F = '11111111-1111-4111-8111-111111111111', L = '22222222-2222-4222-8222-222222222222', C = '33333333-3333-4333-8333-333333333333';
 function harness(route: string, role = 'owner') {
@@ -37,6 +38,7 @@ function harness(route: string, role = 'owner') {
     '@/lib/mva-call/server': { requireStaff: async () => role === 'none' ? null : { id: 'synthetic-owner', role: role === 'owner-denied' ? 'owner' : role, can: (key: string) => !(role === 'owner-denied' && key === 'claims.status') } },
     '@/lib/lawruler-recovery': recovery, '@/lib/lawruler-recovery-apply': apply, '@/lib/lawruler-documents': originals, '@/lib/lawruler-mva-sync': mvaSync,
     '@/lib/lawruler-netfly': netflySync, '@/lib/netfly-ontake': netflyOntake,
+    '@/lib/partner-source-sync': partnerSourceSync,
     '@/lib/lead-ingest': { ...ingest, ingestLead: async (_db: any, options: any) => { ingests++; ingestOptions.push(options); return { ok: true, lead_id: L, lead_no: 'TEST-1' }; } },
     '@/lib/lawruler-status': lrStatus, '@/lib/claim-status': { ...status, setClaimStatusForLeads: async (options: any) => { statusWrites.push(options); return { ok: true }; } }, '@/lib/us-address': address, '@/lib/m6': m6, '@/lib/webhooks': webhooks,
   };
@@ -345,6 +347,17 @@ let count = 0; const t = async (name: string, fn: () => Promise<void>) => { awai
     const h = harness('replay'); const r = await h.GET({ url: `https://synthetic.invalid?firm_id=${F}` });
     assert.equal(r.status, 200); assert.equal(r.body.dry_run, true); assert.equal(r.body.actions_executed, false); assert.equal(h.ingests(), 0); assert.ok(h.database.ops.every((o: any) => o.kind === 'select'));
     assert.equal((await harness('replay', 'agent').GET({ url: `https://synthetic.invalid?firm_id=${F}` })).status, 403);
+  });
+  await t('authenticated INNO imports automatically bind PR Digital sources and surface approval failures', async () => {
+    const h = innoHarness(); h.database.tables.leads[0].lawruler_ref_no = '264972';
+    h.database.tables.partner_report_access = [{ report_key: 'pr-digital', active: true, scope: 'approved_sources', firm_id: F, campaign_id: 'mva' }];
+    const payload = { LeadID: '264972', CaseType: 'INNO MVA', ContactMethod: 'PR DIGITAL', Status: 'New Lead' };
+    h.database.failOn = (o: { table: string; kind: string }) => o.table === 'partner_source_leads' && o.kind === 'insert' ? 'source table unavailable' : null;
+    const failed = await h.POST(req(payload)); assert.equal(failed.status, 500); assert.equal(failed.body.retry_required, true);
+    h.database.failOn = () => null;
+    const result = await h.POST(req(payload)); assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(h.database.tables.partner_source_leads.length, 1); assert.equal(h.database.tables.partner_source_leads[0].source_lead_id, '264972');
+    const replay = await h.POST(req(payload)); assert.equal(replay.status, 200); assert.equal(h.database.tables.partner_source_leads.length, 1);
   });
   console.log(`${count} LawRuler route tests passed`);
 })().catch(e => { console.error(e); process.exitCode = 1; });

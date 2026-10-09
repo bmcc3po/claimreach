@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { LX } from "@/lib/lexicon";
 import FloatingDock from "./FloatingDock";
@@ -9,7 +9,8 @@ import StatusBadge from "./ui/StatusBadge";
 import FileStatusControl from "./FileStatusControl";
 import { resolveFileStatus } from "@/lib/statuses";
 import FileArchiveButton from "./FileArchiveButton";
-import FirmDecision from "./FirmDecision";
+import FileHeader, { FileHeaderDialog } from "./FileHeader";
+import FileOutcomeActions from "./FileOutcomeActions";
 import { fileAgentSummary } from '@/lib/file-agents';
 import { areaHref, inWorkArea } from '@/lib/work-area';
 import ActivityLog from "./ActivityLog";
@@ -102,7 +103,12 @@ function LeadWorkspaceRecord({
   );
   const [tab, setTab] = useState("Overview");
   const [editMode, setEditMode] = useState(false);
-  const activeClaim = claims.find((c) => c.id === activeClaimId);
+  const router = useRouter();
+  const [statusChanges, setStatusChanges] = useState<Record<string, string>>({});
+  useEffect(() => { setStatusChanges({}); }, [claims]);
+  const originalClaim = claims.find((c) => c.id === activeClaimId);
+  const activeClaim = originalClaim && { ...originalClaim, status: statusChanges[originalClaim.id] || originalClaim.status };
+  const statusChanged = (status: string) => { if (activeClaimId) setStatusChanges(old => ({ ...old, [activeClaimId]: status })); router.refresh(); };
   // A LawRuler-sourced lead can later be signed inside ClaimReach. Route by
   // this matter's signing workflow, not the lead's original source label.
   const importedSignedPacket = activeClaim?.claim_type === "mva" && lead.source_system === "lawruler" &&
@@ -135,53 +141,29 @@ function LeadWorkspaceRecord({
 
   return (
     <div className="case-workspace">
-      {/* The file header: name as the anchor, everything else calm around it. */}
-      <div className="lf-head">
-        <a className="lf-back" href={backHref} title="Back to your queue" aria-label="Back to your queue">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
-        </a>
-        <div className="lf-id">
-          <div className="lf-name">
-            <span>{leadLive.claimant_name ?? "Unnamed claimant"}</span>
-            <span className="lf-no">{lead.lead_no}</span>
-          </div>
-          <div className="lf-sub">
-            {canTools && <strong>{fileAgentSummary(leadLive, staff, appCall?.agent)}</strong>}
-            <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={claims.length === 1 ? lead.current_user_role : undefined} />
-            {appCall && lead.firm_name && (<>
-              <span className="leadhead-dot">·</span>
-              <span title="The attorney this case signs with">Attorney: {lead.firm_name}</span>
-            </>)}
-            {lead.created_at && (<>
-              <span className="leadhead-dot">·</span>
-              <span>Opened {new Date(lead.created_at).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles" })} Pacific</span>
-            </>)}
-            {canTools && stats ? (<>
-              <span className="leadhead-dot">·</span>
-              <span className="lf-stat"><b>{stats.signed}</b> signed</span>
-              <span className="lf-stat"><b>{stats.wip}</b> WIP</span>
-            </>) : null}
-          </div>
+      <FileHeader name={leadLive.claimant_name || "Unnamed claimant"} leadNo={lead.lead_no} backHref={backHref}
+        status={<FileStatusControl key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} currentLabel={resolveFileStatus(activeClaim, undefined, claims.length === 1 && !!lead.signed_at).label} role={lead.current_user_role} signedDeclineAvailable={canTools && activeClaim?.claim_type === 'mva' && activeClaim.campaign === 'INNO MVA' && !lead.archived_at} onChanged={statusChanged} />}>
+        <div className="file-header-details">
+          {canTools && <strong>{fileAgentSummary(leadLive, staff, appCall?.agent)}</strong>}
+          <CampaignPicker leadId={lead.id} current={activeClaim?.campaign || lead.campaign} role={claims.length === 1 ? lead.current_user_role : undefined} />
+          {lead.firm_name && <span>Attorney: {lead.firm_name}</span>}
         </div>
-        <div className="lf-status-row">
-          <FileStatusControl key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} currentLabel={resolveFileStatus(activeClaim, undefined, claims.length === 1 && !!lead.signed_at).label} role={lead.current_user_role} />
-        </div>
-        <div className="lf-acts" aria-label="Main file actions">
+        <div className="file-header-actions">
           {headerActions}
-          {canTools && appCall && <a className="cl-btn lf-primary-action" href={appCall.href}>Resume intake</a>}
-          {fileMayExportPdf(fence) && (
-            <a className="cl-btn cl-ghost lf-primary-action" href={`/api/export/intake-pdf?lead_id=${lead.id}&claim_id=${activeClaimId || ""}`} target="_blank" rel="noopener noreferrer" title="Download this matter's full intake as a PDF">Export intake PDF</a>
-          )}
-          {canTools && ["owner", "admin", "manager", "qa", "agent"].includes(lead.current_user_role || "") && !importedSignedPacket && <SendToFirmButton key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} />}
+          {canTools && activeClaim && <FileOutcomeActions claimId={activeClaim.id} campaign={activeClaim.campaign} status={activeClaim.status} role={lead.current_user_role} archived={!!lead.archived_at} onChanged={statusChanged} />}
+          {canEdit && <button type="button" className="cl-btn cl-ghost" onClick={() => { setTab('Contact Info'); setEditMode(false); }}>Client details</button>}
+          {canTools && appCall && <a className="cl-btn" href={appCall.href}>Resume intake</a>}
+          {fileMayExportPdf(fence) && <a className="cl-btn cl-ghost" href={'/api/export/intake-pdf?lead_id=' + lead.id + '&claim_id=' + (activeClaimId || '')} target="_blank" rel="noopener noreferrer">Intake PDF</a>}
+          {canTools && ['owner', 'admin', 'manager', 'qa', 'agent'].includes(lead.current_user_role || '') && !importedSignedPacket && <SendToFirmButton key={`${lead.id}:${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} />}
+          {canTools && <FileArchiveButton leadId={lead.id} label={leadLive.claimant_name || 'This file'} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} />}
+          {canTools && <FileHeaderDialog label="More file actions">
+            <LockFileButton lead={lead} />
+            {activeClaimId && activeClaim?.claim_type === 'mva' && ['owner', 'admin'].includes(lead.current_user_role || '') && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+            {activeClaimId && activeClaim?.claim_type === 'mva' && lead.current_user_role === 'owner' && !importedSignedPacket && ['signed_grievous', 'signed_qa', 'signed_wip', 'signed_approved', 'delivered'].includes(activeClaim.status) && <ExternalFirmDelivery key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+            {activeClaimId && importedSignedPacket && <ImportedPacketHandoff key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+          </FileHeaderDialog>}
         </div>
-        {canTools && <details className="lf-more"><summary>More file actions</summary><div><LockFileButton lead={lead} /><FileArchiveButton key={lead.id} leadId={lead.id} label={`${lead.claimant_name || "This file"}${lead.lead_no ? ` (${lead.lead_no})` : ""}`} archivedAt={lead.archived_at} allowed={lead.current_user_can_archive === true} /></div></details>}
-      </div>
-      {canTools && activeClaimId && lead.current_user_role === "owner" && !lead.archived_at && ['delivered', 'retained'].includes(activeClaim?.status || '') && <FirmDecision key={activeClaimId} claimId={activeClaimId} />}
-      {activeClaimId && activeClaim?.claim_type === "mva" && ["owner", "admin"].includes(lead.current_user_role || "") && <OwnerFirmDownload key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
-      {activeClaimId && activeClaim?.claim_type === "mva" && lead.current_user_role === "owner" && !importedSignedPacket &&
-        ["signed_grievous", "signed_qa", "signed_wip", "signed_approved", "delivered"].includes(activeClaim.status) &&
-        <ExternalFirmDelivery key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
-      {canTools && activeClaimId && importedSignedPacket && <ImportedPacketHandoff key={activeClaimId} leadId={lead.id} claimId={activeClaimId} />}
+      </FileHeader>
       {claims.length > 1 && (
         <div className="claimsrow" style={{ margin: "0 0 12px" }}>
           {claims.map((c) => (
@@ -264,7 +246,7 @@ function LeadWorkspaceRecord({
                 <CaseDetails lead={leadLive} staff={staff} callAgent={appCall?.agent} callDisposition={appCall?.dispo} editMode={canEdit && editMode} onRequestEdit={canEdit ? () => setEditMode(true) : undefined} fence={fence} onSaved={liveUp} />
               </>
             )}
-            {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
+            {tab === "QA" && <QaPanel leadId={lead.id} claimId={activeClaim?.id} role={lead.current_user_role} signedDeclineAction={activeClaim?.claim_type === "mva" && activeClaim?.campaign === "INNO MVA"} fence={fence} claimStatus={activeClaim?.status} grievousVerdict={activeClaim?.grievous_verdict} />}
             {tab === "Retainer" && <><RetainerTab key={activeClaimId} leadId={lead.id} claimId={activeClaimId} role={lead.current_user_role} fence={fence} initialRetainers={retainers} initialSignables={signables} /><CaseDocuments key={`docs-${activeClaimId}`} leadId={lead.id} claimId={activeClaim?.id} /></>}
             {tab === "Messages" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="messages" fence={fence} />}
             {tab === "Calls" && <CommsTimeline leadId={lead.id} phone={leadLive.phone} channel="call" fence={fence} />}
@@ -315,6 +297,7 @@ function CampaignPicker({ leadId, current, role }: { leadId: string; current?: s
 }
 
 function PipelineStrip({ status, mva = false }: { status: string; mva?: boolean }) {
+  if (resolveFileStatus({ status }).phase === "terminal") return null;
   // Map any status to one of five pipeline stages.
   const stages = mva ? ["Intake", "Agreement", "Agent review", "Firm"] : ["Intake", "Grievous", "QA", "Approved", "Firm"];
   let active = 0;
@@ -470,7 +453,7 @@ function LockFileButton({ lead }: { lead: any }) {
 
 // Sends the matter this screen is showing (the active claim tab), never the
 // whole person: each matter has its own sent state (Astra round 7b #57).
-function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: string }) {
+export function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: string }) {
   const router = useRouter();
   const [state, setState] = useState<{ sentAt: string | null; result: string | null }>({ sentAt: null, result: null });
   const [delivery, setDelivery] = useState<any>(null);
@@ -479,11 +462,13 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [confirmSend, setConfirmSend] = useState(false);
+  const sending = useRef(false);
   const q = `lead_id=${encodeURIComponent(leadId)}${claimId ? `&claim_id=${encodeURIComponent(claimId)}` : ""}`;
 
   useEffect(() => {
     let alive = true;
-    setState({ sentAt: null, result: null }); setMsg(""); setLoaded(false);
+    setState({ sentAt: null, result: null }); setMsg(""); setLoaded(false); setConfirmSend(false);
     (async () => {
       try {
         const r = await fetch(`/api/firm-delivery?${q}`);
@@ -496,12 +481,11 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   }, [q]);
 
   async function send(force: boolean) {
-    const already = !!state.sentAt;
+    if (sending.current || busy || !loaded || state.sentAt || ["sending", "uncertain"].includes(dispatch?.state)) return;
     const to = String(delivery?.to || "").trim();
     const cc = Array.isArray(delivery?.cc) ? delivery.cc : String(delivery?.cc || "").split(/[,;]/).map((x) => x.trim()).filter(Boolean);
     if (!to) { setMsg("No firm recipient is configured. Nothing was sent."); return; }
-    if (!confirm(`Are you sure you want to ${already ? "RESEND" : "send"} this matter's packet?\n\nIt will deliver to: ${to}${cc.length ? `\nCC: ${cc.join(", ")}` : ""}\n\nFirm: ${delivery?.firm || "configured firm"}`)) return;
-    if (already) force = true;
+    sending.current = true;
     setBusy(true); setMsg("");
     try {
       const r = await fetch("/api/firm-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lead_id: leadId, claim_id: claimId || undefined, force, expected_to: to, expected_cc: cc }) });
@@ -510,10 +494,12 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
       if (!r.ok || !d.ok) { setMsg(d.error || d.skipped || "Send failed"); try { const state = await (await fetch(`/api/firm-delivery?${q}`)).json(); setDispatch(state.dispatch); } catch {} return; }
       if (d.skipped) { setMsg(d.skipped); return; }
       setState({ sentAt: new Date().toISOString(), result: "sent" });
+      setConfirmSend(false);
       const n = (d.attachments || []).length;
       setMsg(`Sent to ${d.to || "firm"} (${n} attachment${n === 1 ? "" : "s"})${d.warning ? `. ${d.warning}` : ""}`);
       router.refresh();
     } catch (e: any) { setBusy(false); setMsg(e?.message || "Send error"); }
+    finally { sending.current = false; }
   }
   async function reconcile(delivered: boolean) {
     const note = window.prompt(`Record this attempt as ${delivered ? "delivered" : "NOT delivered"}. Check the email provider's delivery log first. Describe the evidence (at least 10 characters). This does not send an email.`);
@@ -533,10 +519,21 @@ function SendToFirmButton({ leadId, claimId }: { leadId: string; claimId?: strin
   const label = busy ? "Sending…" : state.sentAt ? "Already sent to firm" : "Send signed packet to firm";
   return (
     <span className="lf-send-action">
-      <button className="cl-btn lf-primary-action lf-send-button" onClick={() => send(false)} disabled={busy || !loaded || unresolved || !!state.sentAt}
+      <button className="cl-btn lf-primary-action lf-send-button" onClick={() => setConfirmSend(true)} disabled={busy || !loaded || unresolved || !!state.sentAt}
         title={state.sentAt ? `Already sent ${new Date(state.sentAt).toLocaleString("en-US", { timeZone: "America/Los_Angeles", timeZoneName: "short" })}` : "Email the firm this matter's documents"}>
         {label}
       </button>
+      {confirmSend && !state.sentAt && <span className="lf-send-confirm" role="group" aria-label="Confirm firm delivery">
+        <strong>Send this file to the firm?</strong>
+        <span>{delivery?.firm || "Configured firm"}</span>
+        <span>To: <strong>{delivery?.to || "No recipient configured"}</strong></span>
+        {delivery?.cc?.length > 0 && <span>Copy: {Array.isArray(delivery.cc) ? delivery.cc.join(", ") : delivery.cc}</span>}
+        <span>Includes this matter’s intake and signed agreement.</span>
+        <span className="lf-send-confirm-actions">
+          <button type="button" className="cl-btn" disabled={busy} onClick={() => setConfirmSend(false)}>Go back</button>
+          <button type="button" className="cl-btn lf-primary-action" disabled={busy || !loaded || unresolved || !String(delivery?.to || "").trim()} onClick={() => void send(false)}>{busy ? "Sending…" : "Confirm & send"}</button>
+        </span>
+      </span>}
       {unresolved && <span className="muted" role="status">Delivery outcome needs review.{canReconcile && <><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(true)}>Record delivered</button><button type="button" className="cl-btn cl-sm" disabled={busy} onClick={() => void reconcile(false)}>Record not delivered</button></>}</span>}
       {msg && <span className="lf-send-message" role="status">{msg}</span>}
     </span>
@@ -579,4 +576,3 @@ function AppAnswers({ call, onShowOld }: {
     </div>
   );
 }
-

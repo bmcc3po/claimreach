@@ -25,7 +25,9 @@ export default function FileArchiveButton({ leadId, label, archivedAt, allowed }
     try {
       const res = await fetch("/api/leads/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ op: restore ? "restore" : "archive", ids: [leadId], ...(restore ? {} : { reason: reason.trim() || null }) }) });
-      const body = await res.json();
+      if (res.status === 401) throw new Error("Your session expired. Sign in again before changing this file.");
+      if (res.status === 403) throw new Error("This account cannot archive or restore files. Ask the owner to do this.");
+      const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.ok) throw new Error(body.error || "The file did not update. Try again.");
       setArchived(!restore); setConfirming(false); setReason("");
       setMessage(restore ? "File restored to active lists." : "File archived. Its records and documents are preserved; you can restore it here.");
