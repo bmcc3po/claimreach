@@ -7,8 +7,9 @@ export async function GET(req: NextRequest) {
   const { data: auth } = await sb.auth.getUser();
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const lead = new URL(req.url).searchParams.get("lead");
-  const { data } = await sb.from("notes").select("id, author_name, body, created_at")
+  const { data, error } = await sb.from("notes").select("id, author_name, body, created_at")
     .eq("lead_id", lead).eq("scope", "message").order("created_at", { ascending: true }).limit(200);
+  if (error) return NextResponse.json({ error: "Could not load the messages. Please retry." }, { status: 503 });
   return NextResponse.json({ messages: data ?? [] });
 }
 
