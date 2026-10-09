@@ -39,7 +39,9 @@ async function fixture(component: string, initial: Mode) {
   const submit=()=>nodes().find(n=>n.type==='button'&&['Send text','Send','Send certified mail'].includes(text(n)));
   const edit=(value:string)=>{nodes().find(n=>n.type==='textarea').props.onChange({target:{value}});render();};
   const flush=async()=>{await new Promise(r=>setImmediate(r));render();};
-  render();effects.forEach(fn=>fn());await flush();
+  render();
+  if(component==='TextSend')assert.equal(nodes().find(n=>n.type==='textarea').props.disabled,true,'do not allow typing a draft that the loading script would replace');
+  effects.forEach(fn=>fn());await flush();
   if(component!=='LorSend')edit('Synthetic unsaved message');
   return {render,submit,edit,flush,feedback,nodes,writes,mode:(m:Mode)=>mode=m,sent:()=>sent};
 }

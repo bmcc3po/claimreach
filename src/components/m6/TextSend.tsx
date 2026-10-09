@@ -23,12 +23,14 @@ export default function TextSend({
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState("");
+  const [loading, setLoading] = useState(true);
   const inFlight = useRef(false);
   const [sendingNumber, setSendingNumber] = useState("+12562075828");
   const [justcall, setJustcall] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     (async () => {
       try {
         const r = await fetch(`/api/m6/compose?lead_id=${encodeURIComponent(leadId)}`);
@@ -43,6 +45,8 @@ export default function TextSend({
         if (pick) { setKey(pick.key); setBody(pick.body); }
       } catch {
         if (!cancelled) setErr("Could not load scripts.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -56,7 +60,7 @@ export default function TextSend({
   }
 
   async function submit(live: boolean) {
-    if (inFlight.current || !body.trim()) return;
+    if (inFlight.current || loading || !body.trim()) return;
     inFlight.current = true;
     setBusy(live ? "send" : "log"); setErr(""); setOk("");
     try {
@@ -87,13 +91,14 @@ export default function TextSend({
 
   return (
     <ModalShell title="Text" onClose={onClose} err={err} busy={!!busy}>
+      {loading && <p className="m6-hint" role="status">Loading scripts…</p>}
       <p className="m6-hint">Same number every time: {fromLabel}. Quiet hours, opt-out, and safe-contact still apply.</p>
       {!justcall && (
         <p className="m6-hint">JustCall keys are not in Cloudflare Pages. You can still log the text.</p>
       )}
       <label className="m6-field">
         <span>Script</span>
-        <select disabled={!!busy} value={key} onChange={(e) => pick(e.target.value)}>
+        <select disabled={!!busy || loading} value={key} onChange={(e) => pick(e.target.value)}>
           {templates.map((t) => (
             <option key={t.key} value={t.key}>{t.name}{t.approvedByFirm ? "" : " (draft)"}</option>
           ))}
@@ -101,18 +106,18 @@ export default function TextSend({
       </label>
       <label className="m6-field">
         <span>Message</span>
-        <textarea disabled={!!busy} className="m6-textarea" rows={5} value={body} onChange={(e) => {setBody(e.target.value);setOk("");}} />
+        <textarea disabled={!!busy || loading} className="m6-textarea" rows={5} value={body} onChange={(e) => {setBody(e.target.value);setOk("");}} />
       </label>
       {ok && <p className="m6-hint">{ok}</p>}
       <div className="m6-modal-acts">
         <button type="button" className="m6-btn" disabled={!!busy} onClick={onClose}>Close</button>
-        <button type="button" className="m6-btn" disabled={!!busy || !body.trim()} onClick={() => void submit(false)}>
+        <button type="button" className="m6-btn" disabled={!!busy || loading || !body.trim()} onClick={() => void submit(false)}>
           {busy === "log" ? "Saving" : "Log"}
         </button>
         <button
           type="button"
           className="m6-btn primary"
-          disabled={!!busy || !body.trim() || !justcall}
+          disabled={!!busy || loading || !body.trim() || !justcall}
           onClick={() => void submit(true)}
         >
           {busy === "send" ? "Sending" : "Send text"}
