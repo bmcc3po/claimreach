@@ -33,6 +33,7 @@ import { recordAudit } from "@/lib/audit";
 import { downloadSignedDoc, listSubmissionDocs, signedDocPath } from "@/lib/signed-docs";
 import { establishDocCount, expectedPacketPaths } from "@/lib/mva-call/esign";
 import { resolveMatter, matterRowsFilter, rowBelongsToMatter, type MatterClaim } from "@/lib/matter";
+import { attorneyHold } from './attorney-hold';
 import { getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { signingReleaseGate } from "@/lib/mva-call/replacement";
 import { beginFirmDispatch, finishFirmDispatch } from "@/lib/firm-delivery-dispatch";
@@ -308,6 +309,15 @@ export async function deliverLeadToFirm(opts: {
   // QA approval. A generic status edit or an earlier approval followed by WIP
   // must not release a packet to the firm.
   let netflyPacket: Awaited<ReturnType<typeof netflyPacketReview>> | null = null;
+  const attorneyHoldError = async (): Promise<string | null> => {
+    if (claim.claim_type !== 'mva') return null;
+    try {
+      return await attorneyHold(db,lead.firm_id,claim.id,campaignId)
+        ? 'Waiting on attorney. The owner must release this hold in Payroll & billing before sending to the firm. Nothing was emailed.' : null;
+    } catch(e) { return errText(e); }
+  };
+  const holdError = await attorneyHoldError();
+  if (holdError) return {ok:false,claimId:claim.id,error:holdError};
   if (opts.netflySnapshot) {
     if (opts.triggeredBy !== "manual" || !opts.includeOwner || opts.importedPacket || opts.force) return refuse("Use the NETFLY final review to send this packet.");
     try { netflyPacket = await netflyPacketReview(db, lead, claim, cfg); }
@@ -643,6 +653,9 @@ export async function deliverLeadToFirm(opts: {
       if (current.snapshot !== opts.netflySnapshot || current.errors.length) return refuse("The file changed while building the packet. Refresh the final review before sending.");
     } catch (error) { return refuse(errText(error)); }
   }
+  // Packet assembly may take time. Honor an owner hold added while it ran.
+  const finalHoldError = await attorneyHoldError();
+  if (finalHoldError) return refuse(finalHoldError);
   const reservation = await beginFirmDispatch(db, opts.leadId, claim.id, lead.firm_id ?? null, campaignId, !!opts.force);
   if (!reservation.ok) return {
     ok: !!reservation.skipped, claimId: claim.id, skipped: reservation.skipped,

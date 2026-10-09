@@ -347,6 +347,21 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.ok(r3.ok && r3.skipped, "A itself is guarded");
     assert.equal(d.sent.length, 2);
   });
+  await t('attorney hold stops native and NETFLY sends; releases and sibling holds are matter scoped', async()=>{
+    for(const mode of ['held','released','sibling','unreadable']){
+      const w=netflyWorld(),d=deps(w.db);
+      w.db.tables.cr_payroll_notes=[{id:'h',firm_id:FIRM,claim_id:mode==='sibling'?'other':'aaa1',campaign_id:'ca01',kind:mode==='released'?'attorney_release':'attorney_hold',data:{reason:'Ask attorney'},created_at:'2026-10-06T12:00:00Z'}];
+      if(mode==='unreadable') { const from=w.db.from.bind(w.db);w.db.from=(table:string)=>table==='cr_payroll_notes'?{select(){return this;},eq(){return this;},in(){return this;},order(){return this;},limit(){return this;},maybeSingle:async()=>({error:{message:'failed'}})}:from(table); }
+      const preview=await netflyPacketReview(w.db,w.lead,w.claim,w.campaign);
+      const result=await deliverLeadToFirm({leadId:L,claimId:'aaa1',triggeredBy:'manual',includeOwner:true,netflySnapshot:preview.snapshot},d);
+      assert.equal(result.ok,mode==='released'||mode==='sibling',mode);assert.equal(d.sent.length,result.ok?1:0);
+      if(mode==='held')assert.match(result.error||'',/Waiting on attorney/);
+      if(mode==='held') {
+        const native=await deliverLeadToFirm({leadId:L,claimId:'aaa1',triggeredBy:'manual'},d);
+        assert.match(native.error||'',/Waiting on attorney/);assert.equal(d.sent.length,0);
+      }
+    }
+  });
   await t("INNO delivery links to the authenticated firm inbox without an access token", async () => {
     const a = agreement("inbox", "5020", { claim_id: "aaa1", campaign_id: "ca01" });
     const db = world({ claims: [claimRow("aaa1", "ca01")], campaigns: [camp("ca01", { name: "INNO MVA" })], agreements: [a] });
@@ -826,6 +841,16 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(d.sent.length, 1);
   });
 
+  await t('attorney hold added during packet assembly prevents provider send', async () => {
+    const db = world({ claims: [claimRow('aaa1', 'ca01')], campaigns: [camp('ca01')], agreements: [agreement('e1', '5001', { claim_id: 'aaa1' })] });
+    const d = deps(db, { loadBundle: async () => {
+      db.tables.cr_payroll_notes = [{id:'late-hold',firm_id:FIRM,claim_id:'aaa1',campaign_id:'ca01',kind:'attorney_hold',created_at:'2026-10-07T12:00:00Z',data:{reason:'Attorney checking'}}];
+      return {lead:leadRow(),claim:claimRow('aaa1','ca01'),caseType:'mva',answers:{city:'Houston'},fields:[{id:'city',kind:'text',label:'City'}]};
+    }});
+    const result = await deliverLeadToFirm({leadId:L,claimId:'aaa1',triggeredBy:'manual'},d);
+    assert.equal(result.ok,false); assert.match(result.error!,/Waiting on attorney/);
+    assert.equal(d.sent.length,0); assert.equal((db.tables.firm_delivery_dispatch ?? []).length,0);
+  });
   console.log(`${pass} passed`);
 })().catch((e) => { console.error(e); process.exit(1); });
 

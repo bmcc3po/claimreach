@@ -15,45 +15,55 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current objective
 
-- Outcome: v8 checkpoint saved at Brett's request (stop and save). See HANDOFF.md for the full completed / open list.
-- Definition of done for the next session: one MVA question spine across all four views, remaining matter binding, signing lifecycle, classic Retainer tab, cadence phase 1.
+- Outcome: add owner-only weekly payroll and billing for Monday-Sunday Pacific signature cohorts, with attorney holds, immutable period snapshots, prior-period credits/clawbacks, and auditable Wave corrections.
+- Definition of done: the branch is reconciled with current main, migration 0128 and application behavior pass the full gates together, Brett explicitly approves the production migration and release order, the migration is applied before dependent code, and controlled synthetic acceptance passes without processing real invoices, funds, or payroll periods.
 
 ## Current state
 
-- Status: checkpoint. Not deployed. Live = PR #40 (round 7b).
-- Working branch: round8 (local; zip delivery; push is 403 from this session). Base main 822338f.
-- Last verified result: tsc zero errors; next-on-pages Build completed, Edge Function Routes (193); offline suites all passing (matter 5, standard-fields 24, us-address 10, lead-ingest 12, server 13, engine 51, SSN/DOB 3, docuseal 12, firm-delivery 20, bulk-move-firm 13, qa-evidence 18, contact-saves 23, notify-signed 23, statuses 8, drip-dispatch 11, comms 11, inbound-media 19, signed-docs 17, file-fence 41, drip-rules 17).
-- No new migrations in this checkpoint (0108, 0109, 0109b already applied live).
+- Working branch: `codex/pay-period-billing`, PR #162. Current work reconciles the branch with production main `1096589d04c973967ca581797e355061f244c9c0` (PR194).
+- Merge conflicts are resolved while preserving current intake/header fixes, delivery wording, agent attribution and decline evidence.
+- BMC and firm declines both stop new billing/commission. Prior-period adjustments require recorded processed payments and a valid decline date, retain the original paid agent, and cannot repeat.
+- The reconciled preview at 59e03d1 passed Build Completed, 236 Edge Function Routes and deployment. Production migration/release approval remains pending.
+- Latest user request: payroll is deal counts only. Added per-agent signature-period signed/payable counts, a separate original-agent prior-period chargeback column and net deals to pay; no dollar amounts. Older newly eligible deals remain separate. Current count-only update requires its new preview build.
+- Migration 0128 adds three owner-only RLS tables and an invoker transaction for closing payroll. It has not been applied to production.
+- No real payroll period, invoice, payment, credit, clawback, or Wave correction was created during development.
 
 ## Work completed
 
-- Round 6 (see DEPLOY_THIS.md top section for the full list): claim-status setter hardening + claim scope through every caller; packet manifest/recovery on the real esign GET route incl. passengers; QA capability/evidence/write-gates; drip wrapper, atomic firm move (0107), property targeting, save allowlists; contact-state sync; notify retry; honest speed/signed metrics; Nevada tiered + non-tiered retainer packets with approval-reason gate; passenger-as-own-PNC (own cell, rep/willing/address, linked files, story prefill); PNC wording sweep with saved-answer migration; console contact card; MMS auto-filing; Simple form view; clickable missing items; numbered File steps; quick case-type filters on Leads/Signed.
+- Added an owner-only Payroll & billing page with five exclusive weekly groups and a separate older-newly-eligible review path.
+- Added immutable close snapshots and separate billing/commission ledger entries.
+- Added attorney hold/release handling, firm-rejection exclusion, processed-entry-only credits/clawbacks, duplicate prevention, CSV export, mobile layout, and append-only Wave correction audits.
+- Kept unknown signature dates excluded and reviewable; import or review timestamps do not substitute for signature dates.
+- Added migration 0128 and recorded isolated RLS, exact-matter, atomic rollback, and duplicate-entry checks.
+- Added confirmed-save checks, pending-control locking and duplicate-submit protection to the payroll screen; failed saves retain the draft and show the error beside the action.
 
 ## Files and systems changed
 
-- src/lib/claim-status.ts, mva-call/esign.ts, firm-delivery.ts, signed-docs.ts, notify-signed.ts, comms.ts, statuses.ts, linked-files.ts (new), esign-packets/tmp-mva.ts, docuseal.ts
-- api routes: calls/dispo, calls/esign (+preview), calls/email, calls/file, qa, drip, leads (+bulk), claims, signable packet+submit, justcall/webhook
-- console: engine.ts (+test), CallView, ChoreList, FullIntake, OneQuestion, FormView (new), DeskPanel, CallConsole, IntakeWorkspace, SsnDob, WhereField, scripts.ts, calls.css
-- CRM: LeadWorkspace, ContactInfo, CaseDetails, FileStatusControl, LeadsView, ReportsView, leads/signed/reports pages, clean.css
-- DB: supabase/migrations/0107_round6_hardening.sql (APPLIED live, probe-verified)
-- public/esign-src/.../tmp-mva-nv.pdf, tmp-mva-nv-flat.pdf (new packet PDFs)
+- `RUN_THESE_MIGRATIONS.sql` and `supabase/migrations/0128_pay_period_billing.sql`.
+- Payroll page, API, server/domain logic, styles, tests, navigation, signature reporting, attorney-hold helper, packet worklist, delivery, and final-handoff integration.
+- See PR #162 for the exact current diff, including this handoff.
 
 ## Verification performed
 
-- Commands or checks: rm -rf .next/types && npx tsc --noEmit -p .; npx tsx engine.test.ts (46), lead-ingest.test.ts (10), SsnDob.test.ts (3); Playwright shots (Simple form, passenger card, NV chooser blocks send without a reason, pain notes); npx @cloudflare/next-on-pages; overlay of the full changed set on a clean checkout of origin/main; 0107 probes via has_function_privilege + rolled-back synthetic two-firm move.
-- Result: all green (build route count noted in DEPLOY_THIS).
+- Reconciled code: TypeScript zero errors; payroll 15/15, signature-report 17/17, delivery 50/50, MVA engine 71/71 and intake engine 78/78.
+- Payroll UI unknown/failed-save and duplicate-write checks, API owner/CSRF/matter/stale-preview/cutoff/transaction checks, and navigation regression passed.
+- Isolated PostgreSQL checks covered owner-only RLS, exact-matter writes, atomic rollback, and duplicate billing/clawback prevention.
+- Actual React screen tested with synthetic data at 375, 390, 768, 1024 and 1440 widths: no document overflow, five period filters, hold/release, required closing acknowledgments, synthetic close/readback and retained failed-save draft. Browser evidence is in the local work directory. Earlier original-head CSV download also passed.
+- Production migration, production owner acceptance and physical Safari remain unverified. Local viewport tests do not claim physical iOS coverage.
 
 ## Active blockers or open questions
 
-- Exact issue: LawRuler MVA hook posts rejected 401 "bad or missing x-lr-secret" since Sep 27 15:41Z (Motel hook fine — TMP-1184/1185 posted). Brett fixing the header in LawRuler; /api/webhooks/lawruler/replay?hours=48 recovers the rejected posts afterward.
-- Cadence system: design agreed in chat, four decisions still open with Brett (ownership, status key, e-sign chase SMS wording, quiet hours). DO NOT build until he answers.
-- Global UI consolidation round (Users, Firms, Templates, Integrations, Settings, Campaigns manager, Form builder, firm portal): committed as its own reviewable round, still to do.
-- Nevada contracts carry no printed TMP countersignature (unlike AL/GA) — flagged to Brett; docs went in as supplied.
+- Obtain Cloudflare Build Completed, Edge Function Routes and preview deployment success for the reconciled head.
+- Brett must explicitly approve production migration 0128 and the migration-before-code release order after the reconciled branch passes its full gates.
+- Do not process a real payroll period, invoice, payment, credit, clawback, or Wave correction during acceptance.
 
 ## Next safe action
 
-- Brett uploads claimreach_round6.zip; then triage Astra's next handback the same verify-fix-dispute way, and start the global UI round.
+- Push the reconciled tested head, verify preview build, and present the migration-before-code rollout for Brett's explicit approval. Never merge dependent production code before migration 0128 exists. The earlier automatic approval rejection remains in force until explicit approval.
 
 ## Session log
 
-Add the newest entry first. Use: `YYYY-MM-DD HH:MM TZ — agent — outcome / blocker / next action`.
+- 2026-10-09 05:15 PT — Codex — reconciled current production, added BMC decline and failed-save coverage, passed local code/SQL/browser gates; no production data or schema changes.
+- 2026-10-08 19:18 PT — Codex — refreshed payroll continuity after four more main merges; branch is 3 ahead and 8 behind with new signature-report/source-binding conflict surface; next: reconcile and reverify before migration approval.
+- 2026-10-07 19:38 PT — Codex — replaced the obsolete branch handoff with current PR #162 state; branch was green on its original head but conflicted with four newer decline/status commits; next: reconcile and reverify before migration approval.
+

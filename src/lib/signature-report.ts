@@ -5,7 +5,7 @@ import { clientSignatureConfirmed } from "@/lib/mva-call/passenger-signing";
 import { confirmedFirmDeliveryAt, returnWindow } from "@/lib/firm-delivery-state";
 import { pacificDay } from "@/lib/packet-worklist";
 import { ownerConfirmedDelivery, ownerSignatureConfirmation } from "@/lib/owner-file-confirmation";
-import { resolveFileStatus } from "@/lib/statuses";
+import { resolveFileStatus, isDisqualify } from "@/lib/statuses";
 import { isTestFile } from "@/lib/file-visibility";
 import { fileAgentSummary } from './file-agents';
 import { reviewState, REVIEW_EVENT, FIRM_DECISION_LABELS } from './firm-review-access';
@@ -17,14 +17,17 @@ export type SignatureReportRow = {
   deliveredAt: string | null; returnEndsAt: string | null;
   packet: string; status: string; agent: string; archived: boolean; test: boolean; ownerSent: boolean;
   firmDecision?: string; firmReason?: string;
-  agentId?: string | null; agentName?: string;
+  leadId?: string; firmId?: string; campaignId?: string; agentId?: string | null; agentName?: string | null;
+  statusKey?: string; disqualified?: boolean; decisionKey?: string | null; decisionAt?: string | null;
   declined?: boolean; declineReason?: string; declinedAt?: string | null; badSignAgent?: string; declineOutcome?: string;
+  declineSource?: 'bmc' | 'firm' | null;
 };
 export type SignatureReportInput = {
   firmId: string; campaignId: string; firmEmail: string | null; ownerEmail: string | null;
   leads: any[]; claims: any[]; submissions: any[]; emergencies: any[];
   originals: any[]; confirmations: any[]; ownerIds: string[]; deliveries: any[]; users: any[]; rehearsalKeys: string[];
   reviews?: any[];
+  documents?: any[];
 };
 const validDate = (v: unknown): v is string => typeof v === "string" && Number.isFinite(Date.parse(v));
 
@@ -48,14 +51,19 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
     const signed = !!current && !current.voided_at && clientSignatureConfirmed(current.status) && validDate(current.signed_at);
     const imported = input.originals.some(r => r.firm_id === input.firmId && r.lead_id === l.id && r.meta?.claim_id === c.id);
     const held = !!current?.replacement_requested_at || !!superseded;
-    const uncertain = held || imported || agreements.some(r => !!r.signed_at) || !!emergency?.signed_at ||
+    const netflyDocuments = (input.documents || []).filter(d => own(d) && d.doc_type === 'netfly_signed_retainer')
+      .sort((a,b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(b.id).localeCompare(String(a.id)));
+    const uncertain = held || imported || !!netflyDocuments.length || agreements.some(r => !!r.signed_at) || !!emergency?.signed_at ||
       c.status === "external_signed_review" || (matter.sole && !!l.signed_at);
     const ownerSigned = !current && !superseded && imported && ownerSignatureConfirmation(input.confirmations, input.firmId, l.id, c.id, input.ownerIds);
-    const state: SignatureState = signed && !held || ownerSigned ? "signed" : uncertain ? "verify" : "unsigned";
+    const netflyReview = c.answers?.netfly_secondary?.review;
+    const netflyOriginal = !current && !superseded && netflyReview?.status !== 'correction_needed' &&
+      !!netflyDocuments[0] && netflyDocuments[0].id === netflyReview?.retainer_reviewed_document_id;
+    const state: SignatureState = signed && !held || ownerSigned || netflyOriginal ? "signed" : uncertain ? "verify" : "unsigned";
     const signedAt = state === "signed" && validDate(current?.signed_at) ? current.signed_at : null;
     const deliveredAt = confirmedFirmDeliveryAt(input.deliveries.filter(own), input.firmEmail, input.ownerEmail);
     const window = returnWindow(deliveredAt);
-    const packet = ownerSigned ? "Imported — owner approved" : state !== "signed" ? "—" : current.status === "completed" && current.agent_reviewed_at && current.completed_pdf_path && current.cert_pdf_path
+    const packet = netflyOriginal ? "NETFLY original reviewed" : ownerSigned ? "Imported — owner approved" : state !== "signed" ? "—" : current.status === "completed" && current.agent_reviewed_at && current.completed_pdf_path && current.cert_pdf_path
       ? "Office step complete" : "Office step needs review";
     const decision = reviewState((input.reviews || []).filter(r => r.firm_id === c.firm_id && r.lead_id === l.id && r.meta?.event === REVIEW_EVENT && r.meta?.claim_id === c.id && r.meta?.campaign_id === c.campaign_id), c);
     // Assignment alone is not proof of who worked this signed file.
@@ -63,9 +71,11 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
     const agentName = input.users.find(u => u.id === agentId)?.full_name || 'Agent not recorded';
     return {
       claimId: c.id, leadNo: l.lead_no || "File", name: l.claimant_name || "Name missing",
+      leadId: l.id, firmId: c.firm_id, campaignId: c.campaign_id,
+      statusKey: c.status, disqualified: isDisqualify(c.status), decisionKey: decision.decision, decisionAt: decision.decisionAt,
       href: "/leads/" + encodeURIComponent(l.id) + "?claim=" + encodeURIComponent(c.id),
       state, signedAt, deliveredAt, returnEndsAt: window?.endsAt || null, packet,
-      detail: ownerSigned ? "Signed — confirmed by owner; original date not supplied" : state === "signed" ? "Client signature confirmed" : held ? "Agreement correction or replacement needs review" :
+      detail: netflyOriginal ? "NETFLY signed original reviewed; signing date needs confirmation" : ownerSigned ? "Signed — confirmed by owner; original date not supplied" : state === "signed" ? "Client signature confirmed" : held ? "Agreement correction or replacement needs review" :
         imported || c.status === "external_signed_review" ? "Imported agreement — verify the original and signing date" :
         uncertain ? "Signature history needs review" : "No current verified signature",
       status: resolveFileStatus(c, undefined, state === "signed").label,
@@ -76,6 +86,7 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
       declined: isSignedDeclined(c), declineReason: signedDecline(c)?.reason || c.dq_reason || "",
       declinedAt: signedDecline(c)?.at || null, badSignAgent: signedDecline(c)?.agentName || "",
       declineOutcome: signedDecline(c) ? declineOutcome(signedDecline(c)!) : '',
+      declineSource: signedDecline(c) ? signedDecline(c)!.source || 'bmc' : null,
       archived: !!l.archived_at,
       ownerSent: ownerConfirmedDelivery(c.firm_send_result),
       test: isTestFile(l) || input.rehearsalKeys.includes("REHEARSAL_" + (paxParentId(l.external_id) || l.id) + "_OTHER") ||
