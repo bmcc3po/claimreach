@@ -22,7 +22,7 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 - Working branch: `codex/pay-period-billing`, current head `2f20dabe9f0a38a6ba53309f0467abaa0c59d22d`. The latest commit is documentation-only; application head remains `4a742785d99793ee3dd2005915231ddfcef99133`.
 - Current production main: `768a9a8ae1074d71bf8f1b1dd31cc9ee7dd7fe8f`.
-- The branch is 3 commits ahead and 8 behind main and currently conflicts.
+- The branch carries two application commits plus continuity-only updates, is 8 behind main, and currently conflicts.
 - The eight newer main commits include signed-file decline and terminal-status synchronization plus shared file actions and PR Digital signature-report/source-binding work. Payroll eligibility, signature cohorts, and prior-paid clawbacks must be reconciled against all of them.
 - PR #162 has successful Cloudflare and Netlify evidence at the documentation head. The original application head passed TypeScript, focused payroll/API/signature-report/delivery tests, both engine suites, isolated PostgreSQL RLS/transaction checks, and synthetic desktop/mobile review.
 - Migration 0128 adds three owner-only RLS tables and an invoker transaction for closing payroll. It has not been applied to production.
