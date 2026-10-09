@@ -1,7 +1,8 @@
 .file-header{position:relative;z-index:5;flex:none;background:#fff;color:#16304e;border:1px solid #dce4ed;border-radius:12px;margin-bottom:14px;min-width:0;font:14px/1.4 system-ui,sans-serif}
 .file-header-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px}
 .file-header-back{display:grid;place-items:center;width:40px;height:44px;text-decoration:none;color:inherit;font-size:22px;flex:none}
-.file-header-identity{flex:1;min-width:0;display:flex;gap:10px;align-items:baseline}
+.file-header-identity{flex:1;min-width:0;display:flex;gap:4px 10px;align-items:baseline;flex-wrap:wrap}
+.file-header-agent{flex-basis:100%;display:block;color:#405672;font-size:12px;overflow-wrap:anywhere}
 .file-header-identity strong{font-size:21px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .file-header:not(.file-header-collapsed) .file-header-identity strong{white-space:normal;overflow-wrap:anywhere}
 .file-header-identity>span{color:#64748b;white-space:nowrap}

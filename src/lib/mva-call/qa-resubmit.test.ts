@@ -1,3 +1,4 @@
+import * as fileAgents from '../file-agents';
 import * as archiveControl from '../archive-control';
 import { NextRequest } from 'next/server';
 import assert from "node:assert/strict";
@@ -31,6 +32,7 @@ function fixture() {
   });
   const state = { staff: { id: AGENT, name: "Agent", role: "agent" } as any, pending: null as any, pendingError: false, automation: 0, events: [] as string[], admin: 0 };
   const modules: Record<string, any> = {
+    "@/lib/file-agents": fileAgents,
     "@/lib/archive-control": archiveControl,
     "next/server": { NextResponse: { json: (body: any, opts: any = {}) => ({ body, status: opts.status || 200 }) } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => { state.admin++; return db; } },

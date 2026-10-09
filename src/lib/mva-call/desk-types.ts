@@ -8,6 +8,6 @@ export interface DeskRow {
   at?: string | null; due?: string | null; receivedAt?: string | null; tag?: string | null; href?: string | null; newPhone?: string | null;
   outreach?: import("./outreach-stage").OutreachPlacement;
   callCount?: number | null; lastCallAt?: string | null;
-  onPhoneBy?: string | null;
+  onPhoneBy?: string | null; intakeAgent?: string;
 }
 export type DeskQueues = Record<DeskTab, DeskRow[]>;

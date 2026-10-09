@@ -1,3 +1,4 @@
+import { intakeAgentName, loadIntakeAgents } from '@/lib/file-agents';
 export const runtime = "edge";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -46,7 +47,7 @@ export default async function AppHomePage() {
     ? campaigns.filter((c: any) => packetsFor((firmById.get(c.firm_id) as any)?.slug, c.case_type)) : [];
   const [leadRes, tplRes, textRes] = await Promise.all([
     campIds.length ? readDeskRows(() => sb.from("leads")
-      .select("id, firm_id, external_id, archived_at, lead_no, claimant_name, phone, campaign_id, campaign, created_at, last_called_at, first_dialed_at, signed_at, marketing_source, incident_state, vendor_fields, client_time_zone, perm_call, perm_text, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, answers, created_at, updated_at)")
+      .select("id, firm_id, intake_agent_id, external_id, archived_at, lead_no, claimant_name, phone, campaign_id, campaign, created_at, last_called_at, first_dialed_at, signed_at, marketing_source, incident_state, vendor_fields, client_time_zone, perm_call, perm_text, claims(id, lead_id, firm_id, campaign_id, campaign, claim_type, status, answers, created_at, updated_at)")
       .in("campaign_id", campIds).is("archived_at", null)) : { data: [], error: null },
     setupCamps.length ? sb.from("esign_templates").select("campaign_id, key").in("campaign_id", setupCamps.map((c: any) => c.id)).eq("provider", "docuseal") : { data: [], error: null },
     // Messages remain reachable outside the six work queues, including replies
@@ -97,6 +98,8 @@ export default async function AppHomePage() {
   try { holds = await loadMvaAcquisitionHolds(sb, leadIds); }
   catch (error) { acquisitionReady = false; notes.push(error instanceof Error ? error.message : "Could not check external contact holds."); }
   const queues = buildDeskQueues({ leads, calls, agreements, campaignIds: campIds, statuses: (statusRes.data || []) as StatusDef[], holds, acquisitionReady: acquisitionReady && signingReady, dialSummaries });
+  const intakeAgents = await loadIntakeAgents(sb, leads);
+  for (const list of Object.values(queues)) for (const row of list) row.intakeAgent = intakeAgentName(allLeads.get(row.id), intakeAgents);
   const reviews = [...holds.values()].filter(signal => signal.outcome === "review_required" &&
     allLeads.get(signal.lead_id)?.claims?.some((c: any) => c.id === signal.claim_id && c.firm_id === signal.firm_id && campIds.includes(c.campaign_id)));
 
@@ -109,7 +112,7 @@ export default async function AppHomePage() {
     const key = row.lead_id || `p:${row.phone_norm}`;
     if (seenTexts.has(key)) continue;
     seenTexts.add(key);
-    texts.push({ id: row.lead_id || "", name: lead?.claimant_name || null, phone: lead?.phone || row.phone_raw,
+    texts.push({ intakeAgent: intakeAgentName(allLeads.get(row.lead_id), intakeAgents), id: row.lead_id || "", name: lead?.claimant_name || null, phone: lead?.phone || row.phone_raw,
       sub: String(row.body || "").slice(0, 90), at: row.occurred_at, tag: row.lead_id ? "Text" : "No file",
       href: row.lead_id ? `/app/${row.lead_id}?text=1` : null, newPhone: row.lead_id ? null : row.phone_raw || row.phone_norm });
   }

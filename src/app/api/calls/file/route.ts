@@ -13,6 +13,7 @@ import { paxParentId } from "@/lib/linked-files";
 import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
 import { archiveControlAvailable } from "@/lib/archive-control";
 
+import { intakeAgentName, loadIntakeAgents } from '@/lib/file-agents';
 export const runtime = "edge";
 
 // GET /api/calls/file?lead_id=
@@ -28,15 +29,16 @@ export async function GET(req: NextRequest) {
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const { matter } = context;
   const { data: lead } = await sb.from("leads")
-    .select("id, firm_id, lead_no, claimant_name, first_name, last_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, home_phone, work_phone, email, mail_addr1, mail_city, mail_state, mail_zip, signed_at, firms(name)")
+    .select("id, firm_id, intake_agent_id, lead_no, claimant_name, first_name, last_name, campaign, created_at, marketing_source, lawruler_ref_no, lawruler_url, origin, phone, home_phone, work_phone, email, mail_addr1, mail_city, mail_state, mail_zip, signed_at, firms(name)")
     .eq("id", leadId).maybeSingle();
   if (!lead) return NextResponse.json({ error: "Lead not found." }, { status: 404 });
 
   // The persistent header needs current metadata, not signed document URLs.
   // Reuse the same authenticated, exact-matter resolver as the full File view.
   if (req.nextUrl.searchParams.get('summary') === '1') {
+    const intakeAgent = intakeAgentName(lead, await loadIntakeAgents(sb, [lead]));
     const visible = resolveFileStatus(matter.claim, await loadStatuses(), matter.sole && !!lead.signed_at);
-    return NextResponse.json({ claim_id: matter.claim.id, status: visible,
+    return NextResponse.json({ claim_id: matter.claim.id, status: visible, intake_agent: intakeAgent,
       campaign: matter.claim.campaign, archived_at: context.lead.archived_at,
       role: me.role, can_archive: archiveControlAvailable(me.role, me.can('leads.delete')) }, { headers: { 'Cache-Control': 'private, no-store' } });
   }

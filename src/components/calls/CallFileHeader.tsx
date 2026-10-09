@@ -33,7 +33,7 @@ export default function CallFileHeader({ leadId, claimId, name, leadNo, revision
   }, [leadId, claimId, revision, refresh]);
   const changed = (status: string) => { setData((old: any) => old && ({ ...old, status: { key: status } })); setRefresh(n => n + 1); };
   const current = data?.claim_id === claimId ? data : null;
-  return <FileHeader name={name} leadNo={leadNo} backHref="/app" status={<>{error
+  return <FileHeader name={name} leadNo={leadNo} backHref="/app" intakeAgent={current?.intake_agent || (error ? "Unavailable" : "Checking…")} status={<>{error
     ? <span role="alert">{error} <button type="button" onClick={() => setRefresh(n => n + 1)}>Retry</button></span>
     : current ? <FileStatusControl leadId={leadId} claimId={claimId} current={current.status.key} currentLabel={current.status.label} role={current.role}
       signedDeclineAvailable={current.campaign === 'INNO MVA' && !current.archived_at} onChanged={changed} /> : <span role="status">Checking status…</span>}

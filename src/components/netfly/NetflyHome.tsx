@@ -7,7 +7,7 @@ import NetflyDeliverySettings, { type NetflyDeliveryConfig } from './NetflyDeliv
 import "./netfly.css";
 import "./netfly-home.css";
 
-type FileRow = { id: string; lead_no: string; claimant_name: string; phone: string; created_at: string; missing_source: string[];
+type FileRow = { intake_agent?: string; id: string; lead_no: string; claimant_name: string; phone: string; created_at: string; missing_source: string[];
   live_call: { by_name: string; expires_at: string } | null; claims?: { answers?: any; firm_sent_at?: string }[] };
 export default function NetflyHome() {
   const router = useRouter();
@@ -71,7 +71,7 @@ export default function NetflyHome() {
     const label = sentAt ? `Sent to firm · ${new Date(sentAt).toLocaleString()} · ${days ? `${days}d in return window` : 'Return window ended'}` : row.missing_source?.length ? `Partial · needs ${row.missing_source.map(value => value === "handoff_note" ? "handoff note" : "signed PDF").join(" + ")}`
       : saved?.review?.status === "correction_needed" ? "Correction needed" : close?.disposition === "callback_to_finish" || close?.completion === "incomplete" ? "Callback to finish ontake" : close?.disposition === "appears_dq" ? "Appears DQ · supervisor review" : close?.disposition === "client_remorse" ? "Client remorse · supervisor review" : saved?.review?.status === "ready_for_review" ? "Ready for review" : close?.disposition === "appears_qualified" && close?.followup_required ? "Callback needed" : saved?.review?.status === "retainer_reviewed" ? "Retainer reviewed" : "Welcome call needed";
     const action = sentAt ? 'View sent file' : !close ? 'Start welcome call' : close.completion === 'incomplete' ? 'Continue call' : 'Review & send';
-    return <Link key={row.id} href={`/app/netfly/${row.lead_no || row.id}`} className="nf-work-row"><span className="nf-work-client"><strong>{row.claimant_name || 'Name missing'}</strong><small>{row.lead_no} · {row.phone || 'Phone needed'}</small></span><span className="nf-work-status">{row.live_call && <strong className="nf-work-presence">On phone · {row.live_call.by_name}</strong>}<span>{label}</span>{!sentAt && close?.callback_due_at && <small>Callback {new Date(close.callback_due_at).toLocaleString()}</small>}</span><span className="nf-work-action">{action} <span aria-hidden="true">→</span></span></Link>; });
+    return <Link key={row.id} href={`/app/netfly/${row.lead_no || row.id}`} className="nf-work-row"><span className="nf-work-client"><strong>{row.claimant_name || 'Name missing'}</strong><small>{row.lead_no} · {row.phone || 'Phone needed'}</small><small>Intake agent: {row.intake_agent || 'Not recorded'}</small></span><span className="nf-work-status">{row.live_call && <strong className="nf-work-presence">On phone · {row.live_call.by_name}</strong>}<span>{label}</span>{!sentAt && close?.callback_due_at && <small>Callback {new Date(close.callback_due_at).toLocaleString()}</small>}</span><span className="nf-work-action">{action} <span aria-hidden="true">→</span></span></Link>; });
   return <main className="nf-page nf-home">
     <Link href="/app" className="nf-back">← My desk</Link>
     <header className="nf-home-heading"><div><p>Turnbull, Moak &amp; Pendergrass</p><h1>NETFLY</h1><p>A warm welcome. A clear next step.</p></div><div className="nf-home-tools"><button type="button" className="nf-home-settings" onClick={() => setPanel('settings')}>Settings</button><button type="button" className="nf-primary" onClick={() => setPanel('create')}>+ Add file</button></div></header>

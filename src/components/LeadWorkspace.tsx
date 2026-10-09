@@ -11,7 +11,7 @@ import { resolveFileStatus } from "@/lib/statuses";
 import FileArchiveButton from "./FileArchiveButton";
 import FileHeader, { FileHeaderDialog } from "./FileHeader";
 import FileOutcomeActions from "./FileOutcomeActions";
-import { fileAgentSummary } from '@/lib/file-agents';
+import { fileAgentSummary, intakeAgentName } from '@/lib/file-agents';
 import { areaHref, inWorkArea } from '@/lib/work-area';
 import ActivityLog from "./ActivityLog";
 import ContactInfo from "./ContactInfo";
@@ -141,7 +141,7 @@ function LeadWorkspaceRecord({
 
   return (
     <div className="case-workspace">
-      <FileHeader name={leadLive.claimant_name || "Unnamed claimant"} leadNo={lead.lead_no} backHref={backHref}
+      <FileHeader name={leadLive.claimant_name || "Unnamed claimant"} leadNo={lead.lead_no} backHref={backHref} intakeAgent={intakeAgentName(leadLive, staff)}
         status={<FileStatusControl key={activeClaimId} leadId={lead.id} claimId={activeClaim?.id} current={activeClaim?.status ?? lead.status ?? "new"} currentLabel={resolveFileStatus(activeClaim, undefined, claims.length === 1 && !!lead.signed_at).label} role={lead.current_user_role} signedDeclineAvailable={canTools && activeClaim?.claim_type === 'mva' && activeClaim.campaign === 'INNO MVA' && !lead.archived_at} onChanged={statusChanged} />}>
         <div className="file-header-details">
           {canTools && <strong>{fileAgentSummary(leadLive, staff, appCall?.agent)}</strong>}

@@ -4,6 +4,7 @@ import { ownerConfirmedDelivery } from "@/lib/owner-file-confirmation";
 import { isSignedDeclined } from "./signed-decline";
 import { SIGNED_SENT_TO_FIRM } from "@/lib/statuses";
 
+import { intakeAgentName } from './file-agents';
 export type PacketRow = {
   leadId: string;
   claimId: string | null;
@@ -18,6 +19,7 @@ export type PacketRow = {
   returnDaysLeft: number | null;
   readyToBill: boolean;
   agent: string;
+  intakeAgent?: string;
   archived: boolean;
   stage: "ready" | "qa" | "finish" | "held" | "delivered";
   stageLabel: string;
@@ -104,6 +106,7 @@ export function packetWorklist(input: Input): PacketRow[] {
       returnEndsAt: window?.endsAt ?? null,
       returnDaysLeft: window?.daysLeft ?? null,
       readyToBill: window?.cleared ?? false,
+      intakeAgent: intakeAgentName(lead, input.users),
       agent: call?.agent_name || sender?.full_name || "Unassigned",
       archived: !!lead.archived_at,
       stage,
