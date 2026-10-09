@@ -49,12 +49,14 @@ async function main() {
     draft().props.onChange({ target: { value: 'Synthetic draft' } }); f.render();
     const send = f.button('Send').props.onClick; send(); send(); await f.flush();
     assert.equal(f.writes.length, 1); assert.equal(draft().props.value, 'Synthetic draft'); assert.equal(f.button('Send').props.disabled, false);
+    f.button('Refresh messages').props.onClick(); await f.flush(); assert.equal(draft().props.value, 'Synthetic draft');
     f.post('ok'); f.button('Send').props.onClick(); await f.flush(); assert.equal(draft().props.value, '');
     const d = await fixture('CaseDocuments', 'ok'); d.post(mode);
     const input = () => d.nodes().find(n => n.props?.type === 'file');
     const choose = input().props.onChange, file = new File(['NONBINDING synthetic content'], 'synthetic.txt', { type: 'text/plain' });
     choose({ target: { files: [file], value: 'synthetic.txt' } }); choose({ target: { files: [file], value: 'synthetic.txt' } }); await d.flush();
     assert.equal(d.writes.length, 1); assert.equal(input().props.disabled, false); assert.ok(!d.text().includes('File uploaded.'));
+    d.button('Refresh documents').props.onClick(); await d.flush(); assert.equal(d.writes.length, 1);
     d.post('ok'); input().props.onChange({ target: { files: [file], value: 'synthetic.txt' } }); await d.flush(); assert.match(d.text(), /File uploaded\./);
     assert.equal(d.writes[0].get('claim_id'), 'matter');
   }

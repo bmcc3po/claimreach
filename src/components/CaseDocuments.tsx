@@ -58,7 +58,7 @@ export default function CaseDocuments({ leadId, claimId }: { leadId: string; cla
       </div>
 
       {loading && <p className="muted">Loading…</p>}
-      {uploadMessage && <p role="status">{uploadMessage}</p>}
+      {uploadMessage && <p role="status">{uploadMessage} {uploadMessage !== "File uploaded." && !loadError && <button className="btn ghost sm" disabled={loading} onClick={load}>Refresh documents</button>}</p>}
       {loadError && <p role="alert">{loadError} <button className="btn ghost sm" onClick={load}>Retry loading documents</button></p>}
       {!loading && !loadError && docs.length === 0 && <p className="muted">No documents yet.</p>}
       {docs.map((d) => (

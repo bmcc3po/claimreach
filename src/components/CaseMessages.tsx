@@ -65,7 +65,7 @@ export default function CaseMessages({ leadId, claimId, me }: { leadId: string; 
         <input aria-label="Case message" disabled={busy} placeholder="Write a message…" value={body} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
         <button className="btn" onClick={send} disabled={busy || !body.trim()}>{busy ? "Sending…" : "Send"}</button>
       </div>
-      {sendError && <p role="alert">{sendError}</p>}
+      {sendError && <p role="alert">{sendError} {!loadError && <button className="btn ghost sm" disabled={loading} onClick={load}>Refresh messages</button>}</p>}
     </div>
   );
 }
