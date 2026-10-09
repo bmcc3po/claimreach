@@ -29,7 +29,7 @@ export default function SignedDecline({ claimId, declined = false, embedded = fa
   const mail = data?.notification;
   return <section id={statusAction ? undefined : 'signed-decline'} className={embedded ? undefined : 'card'} style={embedded ? { marginTop: 10 } : { padding: 16, marginBottom: 16 }} aria-label="Signed file outcome">
     {!open && !statusAction ? <button className="btn ghost danger" onClick={load}>{declined || data?.decline ? 'Signed and declined — view outcome' : 'BMC declined'}</button> : <>
-      <h3 style={{ marginTop: 0 }}>{statusAction || declined || data?.decline ? 'Signed and declined' : 'BMC declined'}</h3>
+      <h3 style={{ marginTop: 0 }}>{data?.decline ? 'Signed and declined' : 'Decline signed file'}</h3>
       {busy && !data && <p role="status">Checking this signed file…</p>}
       {data && <>
         <p><strong>{data.name} · {data.number}</strong></p>
@@ -43,6 +43,7 @@ export default function SignedDecline({ claimId, declined = false, embedded = fa
           {mail?.error && <p role="alert">{mail.error}</p>}
           {(!mail || mail.state === 'failed') && <button className="btn" disabled={busy} onClick={() => save(true)}>{busy ? 'Sending…' : 'Send drop-letter request'}</button>}
         </> : <>
+          <p role="status"><strong>Not declined yet.</strong> Enter the reason, then save below.</p>
           <label htmlFor={`decline-${claimId}`}>Why does this signed file not qualify? (required)</label>
           <textarea id={`decline-${claimId}`} value={reason} onChange={e => setReason(e.target.value)} maxLength={5000} rows={3} style={{ width: '100%', marginTop: 8 }} />
           <p>This records {statusAction ? 'BMC declined and ' : ''}a bad sign for <strong>{data.agent}</strong>, removes unpaid commission eligibility, and clears this file from active work.</p>
@@ -51,7 +52,7 @@ export default function SignedDecline({ claimId, declined = false, embedded = fa
           <button className="btn danger" disabled={busy || !reason.trim() || !data.to} onClick={() => save()}>{busy ? 'Saving…' : statusAction ? 'Save status & request drop letter' : 'Confirm BMC decline & request drop letter'}</button>
         </>}
       </>}
-      {error && <p role="alert">{error} <button className="btn ghost" disabled={busy} onClick={load}>Reload file status</button></p>}
+      {error && <p role="alert">{error} {data?.decline ? 'The file remains declined.' : 'The decline is not confirmed here.'} <button className="btn ghost" disabled={busy} onClick={load}>Reload file status</button></p>}
       <button className="btn ghost" style={{ marginLeft: 8 }} disabled={busy} onClick={() => { setOpen(false); setError(''); onClose?.(); }}>Close</button>
     </>}
   </section>;
