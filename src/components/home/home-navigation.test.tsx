@@ -11,6 +11,7 @@ import * as statuses from "../../lib/statuses";
 import * as officeClock from "../../lib/office-clock";
 import * as caseNames from "../../lib/case-name";
 import * as workArea from '../../lib/work-area';
+import * as homeNeeds from '../../lib/home-needs';
 import { pilotStaffPageAllowed } from "../../lib/inno-pilot-access";
 
 const stamp = "2026-01-01T00:00:00Z";
@@ -41,8 +42,13 @@ async function main() {
       "@/lib/mva-call/links": links, "@/components/home/HomeView": { default: View },
       "@/lib/office-clock": officeClock,
       '@/lib/work-area': workArea,
+      '@/lib/home-needs': homeNeeds,
     });
     const tree = await Page({ searchParams: Promise.resolve({}) }), data = tree.props.data;
+    assert.equal(data.needs.length, 1, "two reasons for the exact same matter share one row");
+    assert.equal(data.kpis.needs, 1, "the KPI counts files, not duplicate alerts");
+    assert.match(data.needs[0].why, /Flagged for a supervisor/);
+    assert.match(data.needs[0].why, /Signed, not reviewed/);
     const html = renderToStaticMarkup(tree);
     const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1].replaceAll("&amp;", "&"));
     if (role === "owner") {

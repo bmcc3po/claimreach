@@ -17,4 +17,7 @@ const html = renderToStaticMarkup(createElement(LeadsView, {
 assert.match(html, /DQ: reason missing/);
 assert.match(html, />Closed<span>1<\/span>/);
 assert.doesNotMatch(html, /role="tab"[^>]*>In QA/);
+assert.doesNotMatch(html, />Timeline<\/button>/, "MVA does not expose the unrelated manual-stage timeline");
+const otherHtml = renderToStaticMarkup(createElement(LeadsView, { leads: [], area: "other" }));
+assert.match(otherHtml, />Timeline<\/button>/, "existing non-MVA tools remain available");
 console.log("ok actual Leads view lists imported DQ as Closed with no In QA tab");

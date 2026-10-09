@@ -42,7 +42,9 @@ const route = load("../../app/api/calls/story/route.ts", {
     return { ok: true, lead: db.tables.leads[0], campaignId: "inno", matter: { claim: db.tables.claims[1] } };
   } },
   "@/lib/forms": { resolveFormKey: async (...args: any[]) => form === "mva" ? forms.resolveFormKey(...args) : form },
-  "@/lib/ai-relay": { askRelay: async (_: string, body: string) => {
+  "@/lib/ai-relay": { askRelay: async (_: string, body: string, signal: AbortSignal, options: any) => {
+    assert.equal(options.preferProxy, true, "interactive notes use the configured reachable bridge first");
+    assert.ok(signal instanceof AbortSignal, "keep the bounded request deadline");
     relayCalls++; const data = JSON.parse(body);
     assert.equal(data.notes, notes);
     assert.ok(data.fields.every((f: any) => !("path" in f)));

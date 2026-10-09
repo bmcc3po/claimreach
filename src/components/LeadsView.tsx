@@ -286,7 +286,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
             <div className="seg-toggle" role="tablist" aria-label="View">
               <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>Table</button>
               <button className={view === "board" ? "active" : ""} onClick={() => setView("board")}>Board</button>
-              <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>
+              {area === "other" && <button className={view === "gantt" ? "active" : ""} onClick={() => setView("gantt")}>Timeline</button>}
             </div>
           )}
           {!isFirm && <a className="cl-btn" href={exportHref} title={active.length ? "Every standard field for the matters these filters show (the tab and search box are not applied)" : "Every standard field, the same names every webhook uses"}><Icon name="download" size={16} />Export</a>}
@@ -320,7 +320,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         {!isFirm && view === "board" && (
           <select className="cl-select" value={groupBy} onChange={(e) => setGroupBy(e.target.value as any)} aria-label="Group the board by">
             <option value="status">Group by status</option>
-            <option value="stage">Group by stage</option>
+            {area === "other" && <option value="stage">Group by stage</option>}
             <option value="tier">Group by tier</option>
           </select>
         )}
@@ -379,13 +379,13 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
 
       {(isFirm || view === "table") && (
         <div className="cl-tablewrap">
-          <table className="cl-table">
+          <table className="cl-table cl-files-table">
             <thead>
               <tr>
                 {showBulk && <th className="cl-c-check"><input className="cl-check" type="checkbox" checked={allPageSelected} onChange={togglePage} aria-label="Select every file shown" /></th>}
-                {th("name", "Name")}
-                {th("case", "Case")}
-                {th("status", "Status")}
+                {th("name", "Name", "cl-c-name")}
+                {th("case", "Case", "cl-c-case")}
+                {th("status", "Status", "cl-c-status")}
                 {th("lead_no", "Lead", "cl-hide-sm")}
                 {th("state", "State", "cl-hide-sm")}
                 {th("updated", "Updated", "cl-hide-sm")}
@@ -402,9 +402,10 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                         <input className="cl-check" type="checkbox" checked={picked} onChange={() => toggleOne(r.id)} aria-label={`Select ${r.name || "this file"}`} />
                       </td>
                     )}
-                    <td>
+                    <td className="cl-c-name">
                       <div className="cl-cell">
                         <Link className="cl-t1" href={fileHref(r)} onClick={(e) => e.stopPropagation()} style={{ color: "var(--ink)", textDecoration: "none" }}>{r.name || "No name yet"}</Link>
+                        <span className="cl-mobile-file-meta cl-t2">{r.lead_no} · {r.caseLabel || "No campaign"}</span>
                         <span className="cl-t2">{prettyPhone(r.phone) || "No phone"}</span>
                         {!isFirm && <strong className="cl-t2">{r.agent}</strong>}
                         {!isFirm && r.callCount !== undefined && <span className="cl-t2">Calls: {r.callCount == null ? "unverified" : r.callCount} · Last call: {r.lastCallAt ? new Date(r.lastCallAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "none verified"}</span>}
@@ -416,7 +417,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                         <span className="cl-t2" title={r.summary}>{r.summary || (r.campaign ? "" : "Set a campaign before it can be papered")}</span>
                       </div>
                     </td>
-                    <td>
+                    <td className="cl-c-status">
                       <div className="cl-cell">
                         <span className="cl-status"><span className={`cl-dot cl-${r.tone}`} />{r.statusLabel}{r.tier_letter && tierLabel(r.tier_letter, r.tier_number, r.type) !== "\u2014" ? <span className="cl-mono" title="Tier" style={{ marginLeft: 4 }}>{tierLabel(r.tier_letter, r.tier_number, r.type)}</span> : null}</span>
                         {r.clock
@@ -461,10 +462,10 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
             <option value="">Change status</option>
             {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
-          <select className="cl-select" defaultValue="" aria-label="Change stage" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_stage", stage: e.target.value }); e.target.value = ""; } }}>
+          {area === "other" && <select className="cl-select" defaultValue="" aria-label="Change stage" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_stage", stage: e.target.value }); e.target.value = ""; } }}>
             <option value="">Change stage</option>
             {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s] ?? s}</option>)}
-          </select>
+          </select>}
           {agents.length > 0 && (
             <select className="cl-select" defaultValue="" aria-label="Assign" onChange={(e) => { if (e.target.value) { runBulk({ op: "assign", agentId: e.target.value === "_none" ? null : e.target.value }); e.target.value = ""; } }}>
               <option value="">Assign to</option>
@@ -513,7 +514,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                       <div style={{ fontWeight: 600, fontSize: 14, margin: "3px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name || "No name yet"}{r.clock && <ClockChip clock={r.clock} />}</div>
                       <div className="muted" style={{ fontSize: 12 }}>{[r.caseLabel, r.state].filter(Boolean).join(", ")}</div>
                       <div className="row" style={{ marginTop: 7, justifyContent: "space-between" }}>
-                        <span className="badge stage" style={{ fontSize: 10 }}>{STAGE_LABELS[r.stage] ?? r.stage}</span>
+                        <span className={`cl-status cl-tone-${r.tone}`} style={{ fontSize: 12 }}>{r.statusLabel}</span>
                         <span className="muted" style={{ fontSize: 11 }}>{Math.floor((Date.now() - new Date(r.updated).getTime()) / 86400000)}d</span>
                       </div>
                       </Link>
