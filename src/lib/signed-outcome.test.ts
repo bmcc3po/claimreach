@@ -75,3 +75,36 @@ test('concurrent BMC and firm decisions cannot overwrite the winner or send twic
   assert.match(h.sends[0].html,new RegExp(declineOutcome(d)));
   assert.equal(h.claim.status,'signed_dropped');
 });
+
+test('private dispatch guard uses only an exact server read; authenticated writes and busy guards remain enforced',async()=>{
+  for(const kind of ['bmc','owner','firm'] as const) for(const state of ['absent','sent','failed','sending','uncertain','read-error']){
+    const h=outcomeHarness();
+    // Other matters must neither block this decision nor be changed by it.
+    h.dispatchDb.tables.firm_delivery_dispatch.push({claim_id:'foreign',lead_id:'other',state:'sending'});
+    if(state!=='absent'&&state!=='read-error') h.dispatchDb.tables.firm_delivery_dispatch.push({claim_id:OUTCOME_ID,lead_id:'lead',state});
+    if(state==='read-error') h.dispatchDb.failOn=()=> 'Synthetic dispatch service unavailable';
+    const r=await h[kind].POST(h.req(kind,h.body(kind==='bmc'?'bmc':'firm')));
+    const blocked=['sending','uncertain','read-error'].includes(state);
+    assert.equal(r.status,state==='read-error'?503:blocked?409:200,kind+' '+state);
+    assert.equal(h.claim.status,blocked?'delivered':'signed_dropped');
+    assert.equal(h.sends.length,blocked?0:1);
+    assert.equal(h.db.ops.some(o=>o.table==='firm_delivery_dispatch'),false,'session must not read private dispatch table');
+    assert.deepEqual(h.dispatchDb.ops,[{table:'firm_delivery_dispatch',kind:'select',filters:[['eq','claim_id',OUTCOME_ID],['eq','lead_id','lead']]}]);
+    assert.equal(h.dispatchDb.tables.firm_delivery_dispatch[0].state,'sending');
+  }
+});
+
+test('unauthorized or unverified requests never reach the private dispatch reader',async()=>{
+  for(const kind of ['bmc','owner','firm'] as const) for(const invalid of ['role','missing','foreign','unsigned','stale']){
+    const h=outcomeHarness(),body=h.body(kind==='bmc'?'bmc':'firm');
+    if(invalid==='role'){h.role='agent';h.reviewer=false;}
+    if(invalid==='missing')h.db.tables.claims=[];
+    if(invalid==='foreign')h.lead.firm_id='other';
+    if(invalid==='unsigned')h.signed=false;
+    if(invalid==='stale')body.version='stale';
+    const r=await h[kind].POST(h.req(kind,body));
+    assert.ok(r.status>=400,kind+' '+invalid);
+    assert.equal(h.dispatchDb.ops.length,0);assert.equal(h.sends.length,0);
+    assert.equal(h.db.ops.some(o=>o.kind==='update'||o.kind==='insert'),false);
+  }
+});

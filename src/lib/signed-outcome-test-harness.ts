@@ -21,13 +21,17 @@ export function outcomeHarness() {
   const lead:any={id:'lead',firm_id:OUTCOME_FIRM,lead_no:'TEST-1',claimant_name:'Fictional Client',signed_at:'2026-10-01T12:00:00Z',archived_at:null};
   const db=new FakeDb({claims:[claim],leads:[lead],campaigns:[{id:OUTCOME_CAMP,firm_id:OUTCOME_FIRM,name:'INNO MVA',firm_email:'firm@example.test'}],
     statuses:DEFAULT_STATUSES,lead_activity:[],firm_delivery_dispatch:[]});
-  const h={db,claim,lead,role:'owner' as string|null,capability:true,firmId:null as string|null,reviewer:true,signed:true,
+  const dispatchDb=new FakeDb({firm_delivery_dispatch:[]});
+  db.failOn=o=>o.table==='firm_delivery_dispatch'?'permission denied for table firm_delivery_dispatch':null;
+  dispatchDb.failOn=o=>o.table!=='firm_delivery_dispatch'||o.kind!=='select'?'server connection may only read dispatch state':null;
+  const h={db,dispatchDb,claim,lead,role:'owner' as string|null,capability:true,firmId:null as string|null,reviewer:true,signed:true,
     scope:{firmId:OUTCOME_FIRM,campaignId:OUTCOME_CAMP,name:'Synthetic Reviewer'},sends:[] as any[],
     mailResult:{ok:true,providerId:'synthetic-mail'} as {ok:boolean;providerId?:string;uncertain?:boolean;error?:string}};
   const loader={loadSignatureReport:async()=>db.tables.claims.map(c=>({claimId:c.id,state:h.signed?'signed':'verify',agentId:'agent',agentName:'Test Agent'}))};
   const server=compile('firm-review-server.ts',{'@/lib/supabase-server':{},'./firm-review-access':access,'./intake-render':{},'./imported-packet':{},'./matter':{},
     './mva-call/signing-matter':{},'./mva-call/esign':{},'./signed-docs':{},'./mva-call/client-signed':{},'./signature-report-loader':loader});
   const workflow=compile('signed-decline-workflow.ts',{'./signature-report-loader':loader,'./signed-decline':decline,'./firm-review-access':access,
+    './supabase-server':{supabaseAdmin:()=>dispatchDb},
     './claim-status':{setClaimStatusForLeads:(o:any,d:any)=>setClaimStatusForLeads(o,{...d,audit:async()=>{}})},
     './signed-decline-notification':{...notification,notifySignedDecline:(c:any,retry:boolean)=>notification.notifySignedDecline(c,retry,async(mail:any)=>{h.sends.push(mail);return h.mailResult;})}});
   const common={'next/server':require('next/server'),'next/cache':{revalidatePath(){}},'@/lib/supabase-server':{supabaseServer:async()=>db},

@@ -25,6 +25,7 @@ const mods: Record<string, any> = {
 };
 const workflow:any={};
 const workflowMods:Record<string,any>={'./signature-report-loader':mods['@/lib/signature-report-loader'],'./claim-status':mods['@/lib/claim-status'],
+  './supabase-server':{supabaseAdmin:()=>db},
   './signed-decline':decline,'./signed-decline-notification':mods['@/lib/signed-decline-notification'],'./firm-review-access':access};
 new Function('require','exports',ts.transpileModule(fs.readFileSync(path.resolve(__dirname,'signed-decline-workflow.ts'),'utf8'),{compilerOptions:{target:9,module:1}}).outputText)
   ((k:string)=>{assert.ok(k in workflowMods,k);return workflowMods[k];},workflow);

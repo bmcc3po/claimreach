@@ -3,6 +3,7 @@ import { setClaimStatusForLeads } from './claim-status';
 import { signedDecline, declineOutcome, type SignedDecline } from './signed-decline';
 import { notifySignedDecline, readDropRequest } from './signed-decline-notification';
 import { reviewActivity, REVIEW_EVENT } from './firm-review-access';
+import { supabaseAdmin } from './supabase-server';
 
 export class DeclineError extends Error {
   constructor(message: string, public status = 409) { super(message); }
@@ -46,7 +47,11 @@ export async function completeSignedDecline(c: Awaited<ReturnType<typeof loadDec
   if (!d) {
     if (!input.reason.trim() || input.reason.length > 5000 || input.retryEmail) throw new DeclineError('Enter the reason this signed file does not qualify.', 400);
     if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(c.to)) throw new DeclineError('Set a valid firm delivery email before requesting the drop letter.');
-    const dispatch = await c.db.from('firm_delivery_dispatch').select('state').eq('claim_id', c.claim.id).eq('lead_id', c.claim.lead_id).maybeSingle();
+    // Dispatch reservations are server-private, including for owner logins.
+    // Routes must authorize the action and load this exact matter first. Use
+    // the server connection only for this read; all outcome writes still use
+    // the authorized context's connection. Never grant clients table access.
+    const dispatch = await supabaseAdmin().from('firm_delivery_dispatch').select('state').eq('claim_id', c.claim.id).eq('lead_id', c.claim.lead_id).maybeSingle();
     if (dispatch.error) throw new Error('Could not check for a firm delivery in progress. Nothing changed.');
     if (['sending', 'uncertain'].includes(dispatch.data?.state)) throw new DeclineError('A firm delivery is in progress or needs reconciliation. Check its result before declining this file.');
     d = { id: crypto.randomUUID(), at: new Date().toISOString(), reason: input.reason.trim(),
