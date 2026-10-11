@@ -180,10 +180,37 @@ export const AUTO_QUESTIONS: Question[] = [
     ],
   },
   {
+    key: "frame",
+    script: "I am going to get the broad strokes first to make sure this is something we can help with. Then we will initiate attorney-client privilege and gather the rest of the facts.",
+    note: "Read this after the greeting, before the qualify questions. It is part of the script, not a side note.",
+    kind: "single",
+    options: [{ value: "said", label: "Read it, continue" }],
+  },
+  {
     key: "attorney", script: "Are you already working with an attorney on this accident?", kind: "single",
     options: [
       { value: "no", label: "No" },
-      { value: "yes", label: "Yes", note: "Do not ask who; do not comment on the other firm" },
+      { value: "yes", label: "Yes", note: "Do not ask who; do not comment on the other firm. Stop here — do not ask the next two dual-rep questions." },
+    ],
+  },
+  {
+    key: "attorney_consult",
+    script: "Have you contacted or consulted with an attorney about this claim, even if you did not sign with them?",
+    note: "Second of three dual-rep asks. Informational. Yes does not disqualify. Do not combine this with the current-attorney question.",
+    kind: "single",
+    options: [
+      { value: "no", label: "No" },
+      { value: "yes", label: "Yes" },
+    ],
+  },
+  {
+    key: "pending_legal",
+    script: "Is there a pending lawsuit, legal action, or settlement process on this matter?",
+    note: "Third of three dual-rep asks. Informational. Pending is not the same as already settled — that is a later question. Do not combine this with the other two.",
+    kind: "single",
+    options: [
+      { value: "no", label: "No" },
+      { value: "yes", label: "Yes" },
     ],
   },
   {
@@ -344,8 +371,8 @@ export const AUTO_QUESTIONS: Question[] = [
   // math in engine.ts — they are recorded on the file and flow to the paperwork.
   {
     key: "how_found_us",
-    script: "Before we dig in, can you tell me how you found us?",
-    note: "Marketing attribution. Tap what they say — do not read the list.",
+    script: "How did you find us?",
+    note: "Marketing attribution. Asked after the signature. Tap what they say — do not read the list.",
     kind: "single",
     options: [
       { value: "ref_attorney",  label: "Referral from an attorney" },
@@ -655,39 +682,45 @@ export const BRIEF_QUESTIONS: Question[] = [
 // /api/console/case-types. Do not reintroduce a list here.
 
 // ---------------------------------------------------------------- ASK ORDER
-// The order questions are ASKED is not the order they print. This sequence is
-// built to kill a bad file fast: the story, then the date and the state, then
-// injury and treatment. A wreck from last year where nobody ever treated is
-// disqualified inside the first ten questions instead of the last five, so the
-// agent stops burning call time on a file that was never going to sign.
+// Spine: short rapport + frame → QUALIFY/DQ (complete) → SIGN → DETAILS.
+// evaluate() only walks the qualify rail. Capture fields on the details rail
+// must not block a signature — they are asked after the contract.
 //
+// The gates kill a bad file fast. Dual-rep is three separate asks, early.
 // State rides with the date because it drives the statute of limitations.
-// Anything a question does not depend on gets asked later.
-const AUTO_ASK_ORDER = [
-  // The caller has just told you what happened. Record it, then run the three
-  // gates before anything else.
+export const AUTO_QUALIFY_ORDER = [
+  "frame",
   "authority", "poa",
-  // The gates, in the order they kill fastest. Someone already represented or
-  // already settled is over in two questions. Someone who caused it is over in
-  // three. An accident past the window is over in four. Every one of those used
-  // to be found somewhere between question ten and question seventeen, after
-  // the agent had already spent five minutes on marketing attribution and
-  // collision type.
-  "attorney", "settled", "fault", "date", "incident_city_state",
+  // Dual-rep. Stop on current representation. Do not combine the three.
+  "attorney", "attorney_consult", "pending_legal",
+  "settled", "fault", "date", "incident_city_state",
   "injured",
-  // Only now is it worth spending time on the file.
-  "what_happened", "collision_type", "role", "agent_read", "incident_time",
-  "symptoms_ongoing", "treatment", "treatment_followup", "willing", "commit_appointment", "willing_more",
-  "injuries", "surgery", "hosp",
-  "police_report", "police_agency", "police_report_number", "citations", "commercial", "bills",
-  "ins_other", "ins_own", "auto_policy_id", "ins_uim",
+  "what_happened", "role", "agent_read",
+  "symptoms_ongoing", "treatment", "willing", "commit_appointment", "willing_more",
+  "injuries", "surgery", "hosp", "bills",
+  "commercial",
+  // Coverage yes/no still feeds SIGN/REFER math. Carrier NAMES stay post-sign.
+  // Flagged for Brett+Hugo: collecting the triangle after sign is a later talk.
+  "ins_other", "ins_own", "ins_uim",
+];
+
+export const AUTO_DETAIL_ORDER = [
+  "collision_type", "incident_time",
+  "police_report", "police_agency", "police_report_number", "citations",
+  "auto_policy_id",
   "others_in_vehicle", "others_names", "others_injured", "others_injured_contact", "others_need_help",
   "ins_forms", "ins_forms_signed", "ins_forms_said",
-  // Marketing attribution. Real, but it never decided whether a file lives, so
-  // it belongs after the questions that do.
   "how_found_us", "referral_source",
+  "treatment_followup",
   "case_manager_notes",
 ];
+
+const AUTO_ASK_ORDER = [...AUTO_QUALIFY_ORDER, ...AUTO_DETAIL_ORDER];
+
+export const AUTO_DETAIL_KEYS = new Set(AUTO_DETAIL_ORDER);
+export const AUTO_QUALIFY_KEYS = new Set(AUTO_QUALIFY_ORDER);
+
+export type AskRail = "qualify" | "details" | "all";
 
 const GPI_ASK_ORDER = [
   // Same shape as auto: record what they said, then gate, then work the file.
@@ -706,8 +739,13 @@ function inAskOrder(qs: Question[], order: string[]): Question[] {
   return [...qs].sort((a, b) => (rank.get(a.key) ?? 999) - (rank.get(b.key) ?? 999));
 }
 
-export function questionsFor(caseType: CaseTypeKey): Question[] {
-  if (caseType === "mva") return inAskOrder(AUTO_QUESTIONS, AUTO_ASK_ORDER);
+export function questionsFor(caseType: CaseTypeKey, rail: AskRail = "all"): Question[] {
+  if (caseType === "mva") {
+    const all = inAskOrder(AUTO_QUESTIONS, AUTO_ASK_ORDER);
+    if (rail === "qualify") return all.filter((q) => AUTO_QUALIFY_KEYS.has(q.key));
+    if (rail === "details") return all.filter((q) => AUTO_DETAIL_KEYS.has(q.key));
+    return all;
+  }
   if (caseType === "prem") return inAskOrder(GPI_QUESTIONS, GPI_ASK_ORDER);
   if (caseType === "criminal") return CRIMINAL_QUESTIONS;
   if (caseType === "family") return FAMILY_QUESTIONS;
@@ -715,5 +753,5 @@ export function questionsFor(caseType: CaseTypeKey): Question[] {
 }
 
 export function questionByKey(caseType: CaseTypeKey, key: string): Question | undefined {
-  return questionsFor(caseType).find((q) => q.key === key);
+  return questionsFor(caseType, "all").find((q) => q.key === key);
 }

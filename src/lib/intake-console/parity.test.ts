@@ -85,8 +85,12 @@ const MVA_CASES: Record<string, Answers> = {
   "given forms and signed them": { ins_forms: "yes", ins_forms_signed: "yes" },
   "given forms, did not sign": { ins_forms: "yes", ins_forms_signed: "no" },
   "no insurer forms": { ins_forms: "no" },
+  "currently represented (closes dual-rep Q2/Q3)": { attorney: "yes" },
+  "not represented (opens dual-rep Q2/Q3)": { attorney: "no" },
   "fully answered file": {
-    authority: "self", role: "driver", attorney: "no", how_found_us: "ref_friend",
+    frame: "said",
+    authority: "self", role: "driver", attorney: "no", attorney_consult: "no", pending_legal: "no",
+    how_found_us: "ref_friend",
     referral_source: "Dana", what_happened: "Rear ended", collision_type: "rear_end",
     agent_read: "yes", date: "2026-06-01", incident_time: "8:00 AM",
     incident_city_state: "Las Vegas, NV", injured: "yes", symptoms_ongoing: "yes",
