@@ -2,7 +2,7 @@
 
 The existing password-protected `/pr-digital` report now has received-date cohorts, six summary metrics, exclusive post-signing groups, weekly/state breakdowns, sortable details, received/signed-date list filters, multiple statuses, state, uncalled-only and filtered CSV export.
 
-Report data still comes through the existing firm/campaign/source approval projection. No account, password, grants, RLS, campaign scope, signature, delivery or claimant status is changed. Extra evidence reads use the existing approved source set. Lead-level calls and unscoped notes are withheld when a lead has multiple matters; exact claim notes remain eligible. Self, plaintiff and case notes are not projected; the Notes column uses the latest file/call note or matching call-log comment.
+Report data still comes through the existing firm/campaign/source approval projection. No account, password, grants, RLS, campaign scope, signature, delivery or claimant status is changed. An owner-only preview endpoint authenticates the active owner through the existing gate, then uses the exact same active report access configuration and projection. It cannot accept a caller-supplied scope or issue a partner session cookie. Extra evidence reads use the existing approved source set. Lead-level calls and unscoped notes are withheld when a lead has multiple matters; exact claim notes remain eligible. Self, plaintiff and case notes are not projected; the Notes column uses the latest file/call note or matching call-log comment.
 
 Definitions:
 
@@ -17,3 +17,5 @@ Definitions:
 - CSV uses precisely the currently filtered/sorted client rows and protects formula-like values, quotes and line breaks.
 
 Validation: TypeScript passed; 16 report/filter/evidence regression tests, signature and partner isolation tests passed; MVA engine 71 and intake engine 78 passed. The report tests include wrong-firm/sibling evidence, partial-read failure, exclusive decline totals, DST date boundaries, sorting and CSV injection protection. Browser-based desktop/mobile verification was unavailable in this session.
+
+Owner toggle: Reports (`/reports?area=mva`) offers View as PR Digital only for the active owner. The original ReportsView component and its data calculations are unchanged, and remain mounted while previewing so returning preserves its filters. The public partner API and password authentication are unchanged. Three additional tests verify owner authentication, inactive/non-owner denial before privileged reads, exact source-scope parity, no writes/cookies, disabled access and read failures. Both report views and the owner toggle passed synthetic React rendering checks.

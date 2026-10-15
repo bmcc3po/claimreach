@@ -10,7 +10,7 @@ function phone(value: string) {
   const n = value.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
   return n.length === 10 ? `(${n.slice(0, 3)}) ${n.slice(3, 6)}-${n.slice(6)}` : value || 'Not recorded';
 }
-export default function PartnerSheet() {
+export default function PartnerSheet({ ownerPreview = false }: { ownerPreview?:boolean } = {}) {
   const [report, setReport] = useState<Report | null>(null);
   const [locked, setLocked] = useState(false), [loading, setLoading] = useState(true);
   const [password, setPassword] = useState(''), [error, setError] = useState('');
@@ -29,15 +29,16 @@ export default function PartnerSheet() {
     running.current = true; setLoading(true);
     const current = generation.current;
     try {
-      const response = await fetch('/api/pr-digital', { cache: 'no-store' });
+      const response = await fetch(ownerPreview ? '/api/owner/pr-digital-report' : '/api/pr-digital', { cache: 'no-store' });
       const data = await response.json();
       if (current !== generation.current) return;
+      if (ownerPreview && [401,403].includes(response.status)) { setReport(null); throw new Error('Sign in with your active owner account to preview this report.'); }
       if (response.status === 401) { setLocked(true); setReport(null); setError(''); return; }
       if (!response.ok) throw new Error(data.error || 'Could not refresh. Please try again.');
       setReport(data); setLocked(false); setError('');
     } catch (e) { if (current === generation.current) setError(e instanceof Error ? e.message : 'Could not refresh. Please try again.'); }
     finally { if (current === generation.current) { running.current = false; setLoading(false); } }
-  }, []);
+  }, [ownerPreview]);
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => { if (!document.hidden) void refresh(); }, 60000);
@@ -100,7 +101,7 @@ export default function PartnerSheet() {
       <form onSubmit={unlock}><label htmlFor="report-password">Password</label><input id="report-password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required />
         {error && <p className="pr-error" role="alert">{error}</p>}<button type="submit" disabled={loading || !password}>{loading ? 'Opening…' : 'Open live sheet'}</button></form></section> : <>
       <section className="pr-heading"><div><div className="pr-kicker">INNO MVA</div><h1>{view === 'summary' ? 'Your leads at a glance' : 'Client list'}</h1><p>{report ? 'Only your PR Digital leads' : 'Loading the latest statuses…'}</p></div>
-        <div className="pr-controls"><button className="pr-secondary" onClick={() => void refresh()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>{report && <button className="pr-text" onClick={lock}>Sign out</button>}</div></section>
+        <div className="pr-controls"><button className="pr-secondary" onClick={() => void refresh()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>{report && !ownerPreview && <button className="pr-text" onClick={lock}>Sign out</button>}</div></section>
       {error && <p className="pr-error" role="alert">{error}{report && ' Showing the last successful update below.'}</p>}
       {report && <><div className="pr-viewbar"><nav aria-label="Report views"><button className={view === 'summary' ? 'pr-selected' : 'pr-text'} aria-current={view === 'summary' ? 'page' : undefined} onClick={() => setView('summary')}>Summary</button><button className={view === 'clients' ? 'pr-selected' : 'pr-text'} aria-current={view === 'clients' ? 'page' : undefined} onClick={() => showClients()}>Client list ({summaryRows.length})</button></nav>
         <span className="pr-updated" aria-live="polite">{error ? 'Last updated' : 'Updated'} {new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(report.updatedAt))} Pacific</span></div>

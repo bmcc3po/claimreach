@@ -1,6 +1,7 @@
 import { workArea, scopeWorkArea, inWorkArea, areaHref } from '@/lib/work-area';
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
+import OwnerPartnerReport from '@/components/OwnerPartnerReport';
 import ReportsView from "@/components/ReportsView";
 import { authUser } from "@/lib/auth-user";
 export default async function StaffReports({ searchParams }: { searchParams: Promise<{ area?: string }> }) {
@@ -17,5 +18,6 @@ export default async function StaffReports({ searchParams }: { searchParams: Pro
   // picker still get only the live (active) set, exactly as before.
   const { data: catalog } = await sb.from("statuses").select("key, label, tone, lawruler_group, requires_esign, phase, active").order("sort");
   const statuses = (catalog ?? []).filter((s: any) => s.active === true);
-  return <ReportsView leads={leads ?? []} claims={claims} scope="staff" statuses={statuses} catalog={catalog ?? []} area={area} invoiceReport={area === "mva" && me?.data?.role === "owner" && me?.data?.active === true} />;
+  const ownerPreview = area === "mva" && me?.data?.role === "owner" && me?.data?.active === true;
+  return <OwnerPartnerReport enabled={ownerPreview}><ReportsView leads={leads ?? []} claims={claims} scope="staff" statuses={statuses} catalog={catalog ?? []} area={area} invoiceReport={ownerPreview} /></OwnerPartnerReport>;
 }
