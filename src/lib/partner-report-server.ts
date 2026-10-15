@@ -1,6 +1,6 @@
 import { reportPages, loadSignatureReport } from './signature-report-loader';
 import { PARTNER_REPORT_KEY, validReportAccess, type ReportAccess } from './partner-report-access';
-import { partnerReportData } from './partner-report';
+import { partnerReportData, partnerAllowedLeads } from './partner-report';
 
 export async function loadReportAccess(db: any): Promise<ReportAccess | null> {
   const result = await db.from('partner_report_access').select('report_key,firm_id,campaign_id,scope,active,password_salt,password_hash,token_secret')
@@ -13,12 +13,12 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
   const campaign = await db.from('campaigns').select('id,firm_id,firm_email')
     .eq('id', access.campaign_id).eq('firm_id', access.firm_id).eq('name', 'INNO MVA').eq('case_type', 'mva').maybeSingle();
   if (campaign.error || !campaign.data) throw new Error('Report campaign unavailable');
-  const claims = await reportPages(() => db.from('claims').select('id,lead_id,firm_id,campaign_id,claim_type')
-    .eq('firm_id', access.firm_id).eq('campaign_id', access.campaign_id).eq('claim_type', 'mva'));
-  const ids = [...new Set(claims.map(c => c.lead_id))];
+  const claims = await reportPages(() => db.from('claims').select('id,lead_id,firm_id,campaign_id,claim_type,status')
+    .eq('firm_id', access.firm_id));
+  const ids = [...new Set(claims.filter(c => c.campaign_id === access.campaign_id && c.claim_type === 'mva').map(c => c.lead_id))];
   const leads: any[] = [];
   for (let i = 0; i < ids.length; i += 100) leads.push(...await reportPages(() => db.from('leads')
-    .select('id,firm_id,claimant_name,first_name,last_name,phone,lawruler_created_at,created_at,first_dialed_at,last_called_at,archived_at,vendor_fields,lawruler_ref_no,source_system')
+    .select('id,firm_id,claimant_name,first_name,last_name,phone,lawruler_created_at,created_at,first_dialed_at,last_called_at,archived_at,vendor_fields,lawruler_ref_no,source_system,mail_state')
     .eq('firm_id', access.firm_id).in('id', ids.slice(i, i + 100)).is('archived_at', null)));
   let refs: any[] = [];
   if (access.scope === 'approved_sources') {
@@ -32,6 +32,21 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
       if ((result.data || []).length < 500) break;
     }
   }
-  const signatures = await loadSignatureReport(db, campaign.data);
-  return { ...partnerReportData(access, leads, claims, signatures, refs), updatedAt: new Date().toISOString() };
+  // Evidence stays inside the existing approved lead set before public projection.
+  const eligible = new Set(partnerAllowedLeads(access,leads,refs).map(l => l.id));
+  const scopedIds = ids.filter(id => eligible.has(id));
+  const evidenceRows = async (table:string, columns:string) => {
+    const rows:any[] = [];
+    for (let i=0;i<scopedIds.length;i+=100) rows.push(...await reportPages(() => db.from(table).select(columns)
+      .eq('firm_id',access.firm_id).in('lead_id',scopedIds.slice(i,i+100))));
+    return rows;
+  };
+  const [signatures,calls,notes,activities,callLogs] = await Promise.all([
+    loadSignatureReport(db,campaign.data),
+    evidenceRows('communications','id,firm_id,lead_id,channel,direction,occurred_at,duration_sec'),
+    evidenceRows('notes','id,firm_id,lead_id,claim_id,scope,body,created_at'),
+    evidenceRows('lead_activity','id,firm_id,lead_id,meta,created_at'),
+    evidenceRows('call_logs','id,firm_id,lead_id,claim_id,notes,created_at'),
+  ]);
+  return { ...partnerReportData(access, leads, claims, signatures, refs, { calls,notes,activities,callLogs }), updatedAt: new Date().toISOString() };
 }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { FakeDb } from './test-fake-db';
 import * as access from './partner-report-access';
 import { reportPages } from './signature-report-loader';
-import { partnerReportData } from './partner-report';
+import { partnerReportData, partnerAllowedLeads } from './partner-report';
 import type { SignatureReportRow } from './signature-report';
 export const REPORT_FIRM = '11111111-1111-4111-8111-111111111111';
 export const REPORT_CAMP = '22222222-2222-4222-8222-222222222222';
@@ -32,7 +32,7 @@ export async function partnerReportHarness() {
   };
   const server = compile('partner-report-server.ts', { './signature-report-loader': { reportPages, loadSignatureReport: async () => {
     if (h.loadError) throw new Error('fixture signing failure'); return h.signatures;
-  } }, './partner-report-access': access, './partner-report': { partnerReportData } });
+  } }, './partner-report-access': access, './partner-report': { partnerReportData, partnerAllowedLeads } });
   const route = compile('../app/api/pr-digital/route.ts', { 'next/server': require('next/server'), '@/lib/supabase-server': { supabaseAdmin: () => db },
     '@/lib/partner-report-server': server, '@/lib/partner-report-access': access });
   return { ...h, state: h, route, server };
