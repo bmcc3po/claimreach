@@ -37,7 +37,7 @@ test('API blocks unauthenticated access, wrong password and cross-origin login/l
   assert.equal((await h.route.DELETE(req('DELETE', undefined, undefined, 'https://evil.test'))).status, 403);
   assert.ok(!h.db.ops.some(o => o.table === 'leads'), 'no client query before authentication');
 });
-test('successful login sets a path-limited HttpOnly cookie; read-only API exposes exactly seven columns and no caches', async () => {
+test('successful login sets a path-limited HttpOnly cookie; read-only API exposes only approved report columns and no caches', async () => {
   const h = await partnerReportHarness();
   const login = await h.route.POST(req('POST', { password: REPORT_TEST_PASSWORD }));
   assert.equal(login.status, 200);
@@ -46,9 +46,9 @@ test('successful login sets a path-limited HttpOnly cookie; read-only API expose
   assert.match(login.headers.get('set-cookie'), /Path=\/api\/pr-digital/i);
   const response = await h.route.GET(req('GET', undefined, cookie.value)), data = await response.json();
   assert.equal(response.status, 200); assert.match(response.headers.get('cache-control'), /no-store/); assert.match(response.headers.get('x-robots-tag'), /noindex/);
-  assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status'].sort());
+  assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status','statusKey','deliveryGroup','speedMinutes','callDurationSeconds','state','lastActivityAt','notes'].sort());
   assert.equal(data.rows[0].signed, 'Yes'); assert.equal(data.rows[0].called, true);
-  assert.deepEqual(data.summary, { total: 1, signed: 1, unsigned: 0, verify: 0, called: 1, awaitingDelivery: 0, sentToFirm: 1, declined: 0 });
+  assert.deepEqual(data.summary, { total: 1, signed: 1, unsigned: 0, verify: 0, called: 1, awaitingDelivery: 0, sentToFirm: 1, declined: 0, inProgress:0, lost:0, signRate:1, averageSpeedMinutes:1500, speedSamples:1 });
   assert.ok(!JSON.stringify(data).includes(h.config.token_secret)); assert.ok(!h.db.ops.some(o => o.kind !== 'select'));
   const logout = await h.route.DELETE(req('DELETE')); assert.equal(logout.status, 200); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
 });
@@ -90,7 +90,7 @@ test('summary and list share source scope; delivery uses receipts or owner confi
   const variations = [
     { deliveredAt: null }, // A sent label alone is not proof.
     { deliveredAt: null, ownerSent: true },
-    { firmDecision: 'Firm declined' }, // Sent, then declined: both counts retain the truth.
+    { firmDecision: 'Firm declined' }, // Sent, then declined: exclusive declined group takes precedence.
     { deliveredAt: null, declined: true },
     { state: 'verify' },
     { state: 'unsigned' },
@@ -105,10 +105,10 @@ test('summary and list share source scope; delivery uses receipts or owner confi
   leads.push(h.lead); claims.push(h.claim); signatures.push(h.signature);
   const report = partnerReportData(h.config, leads, claims, signatures, refs);
   assert.equal(report.rows.length, 6);
-  assert.deepEqual(report.summary, { total: 6, signed: 4, unsigned: 1, verify: 1, called: 6, awaitingDelivery: 1, sentToFirm: 2, declined: 2 });
+  assert.deepEqual(report.summary, { total: 6, signed: 4, unsigned: 1, verify: 1, called: 6, awaitingDelivery: 1, sentToFirm: 1, declined: 2, inProgress:2, lost:0, signRate:4/6, averageSpeedMinutes:1500, speedSamples:6 });
   for (const change of [{ archived_at: '2026-10-01' }, { firm_id: 'foreign' }, { claimant_name: 'TEST synthetic' }]) {
     const excluded = partnerReportData(h.config, leads.map(l => ({ ...l, ...change })), claims, signatures, refs);
-    assert.equal(excluded.rows.length, 0); assert.ok(Object.values(excluded.summary).every(n => n === 0));
+    assert.equal(excluded.rows.length, 0); assert.ok(Object.values(excluded.summary).every(n => n === 0 || n === null));
   }
 });
 
