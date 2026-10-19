@@ -1,3 +1,4 @@
+import { isNetflyIntake } from './netfly-source-pdf';
 // ============================================================================
 // Firm delivery. When a matter reaches an unlocks_firm status (or someone
 // clicks "Send to firm"), assemble its campaign's chosen artifacts and email
@@ -466,7 +467,7 @@ export async function deliverLeadToFirm(opts: {
   if (netflyPacket && !d) {
     try {
       for (const [index, pdf] of (await netflyPacketBytes(db, netflyPacket.documents)).entries())
-        attachments.push({ filename: `${nameBase}_NETFLY_signed_${index + 1}.pdf`, content: toB64(pdf.bytes), kind: "retainer" });
+        attachments.push({ filename: `${nameBase}_NETFLY_${isNetflyIntake(pdf.document) ? "intake" : "signed_retainer"}_${index + 1}.pdf`, content: toB64(pdf.bytes), kind: isNetflyIntake(pdf.document) ? "supporting_pdf" : "retainer" });
     } catch (error) { return refuse(errText(error)); }
   }
   if (requirePrimary && !d && !opts.importedPacket && !netflyPacket) return refuse("No signed agreement is stored for this matter yet. MVA delivery requires its current completed DocuSeal packet and signing certificate.");

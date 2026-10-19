@@ -1,3 +1,4 @@
+import { NETFLY_INTAKE_TYPE, isNetflyIntake, netflySourceNotes, buildNetflySourcePdf } from './netfly-source-pdf';
 import { NETFLY_CAMPAIGN, NETFLY_RETAINER_TYPE, netflyFlags, validateNetflyCallClose } from './netfly-ontake';
 import { contentHash } from './resend-inbound';
 import { netflyFirmEmailProblem, validDeliveryEmail } from './netfly-delivery-settings';
@@ -7,18 +8,23 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
       lead.firm_id !== campaign.firm_id || claim.firm_id !== campaign.firm_id || claim.lead_id !== lead.id ||
       claim.campaign_id !== campaign.id || lead.campaign_id !== campaign.id || claim.claim_type !== 'mva' || lead.archived_at)
     throw new Error('NETFLY packet does not match this active file and campaign.');
-  const read = await db.from('case_documents').select('id, file_name, storage_path, created_at')
-    .eq('firm_id', campaign.firm_id).eq('lead_id', lead.id).eq('claim_id', claim.id).eq('doc_type', NETFLY_RETAINER_TYPE)
+  const read = await db.from('case_documents').select('id, file_name, storage_path, created_at, doc_type')
+    .eq('firm_id', campaign.firm_id).eq('lead_id', lead.id).eq('claim_id', claim.id).in('doc_type', [NETFLY_RETAINER_TYPE, NETFLY_INTAKE_TYPE])
     .order('created_at', { ascending: false });
   if (read.error) throw new Error('Could not check the signed PDF. Refresh and retry.');
-  const latest = read.data?.[0];
+  const retainers = (read.data || []).filter((doc: any) => !isNetflyIntake(doc));
+  const latest = retainers[0];
   const saved = claim.answers?.netfly_secondary || {};
   // A newly uploaded original replaces the prior source packet. PDFs arriving
   // together in the same authenticated email remain one packet.
   const incoming = saved.email_import?.document_ids;
   const ids = latest && Array.isArray(incoming) && incoming.includes(latest.id) ? incoming : latest ? [latest.id] : [];
-  const documents = (read.data || []).filter((row: any) => ids.includes(row.id));
+  const documents = (read.data || []).filter((row: any) => ids.includes(row.id) && !isNetflyIntake(row));
+  const sourceIntakes = (read.data || []).filter((row: any) => isNetflyIntake(row) && Array.isArray(incoming) && incoming.includes(row.id));
+  // A later manual retainer must not silently remove the vendor intake.
+  documents.push(...(sourceIntakes.length ? sourceIntakes : (read.data || []).filter(isNetflyIntake).slice(0, 1)));
   const errors: string[] = [];
+  if (saved.email_import?.attachments_complete === false || (saved.email_import?.warnings || []).some((w: string) => /^PDF not imported:/.test(w))) errors.push('An email PDF did not import. Retry the email import before sending.');
   const replacement = await db.from('esign_submissions').select('id, status, updated_at')
     .eq('firm_id', campaign.firm_id).eq('lead_id', lead.id).eq('claim_id', claim.id).eq('campaign_id', campaign.id)
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -26,10 +32,15 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
   // This review approves NETFLY's original PDFs only. A replacement must use
   // the existing corrected-agreement review, never silently swap attachments.
   if (replacement.data) errors.push('A replacement agreement is on this file. Open the case to finish and review that corrected packet.');
-  if (!documents.length || documents.length !== ids.length) errors.push('Import or upload the signed NETFLY PDF.');
+  if (!latest || ids.some((id: string) => !(read.data || []).some((doc: any) => doc.id === id))) errors.push('Import or upload the signed NETFLY PDF.');
   for (const doc of documents) {
     const path = String(doc.storage_path || '');
     if (!path.startsWith(`${campaign.firm_id}/${lead.id}/`) || /\.\.|%|\\|\/\//.test(path)) throw new Error('Signed PDF storage association is invalid.');
+  }
+  if (!documents.some(isNetflyIntake)) {
+    const note = netflySourceNotes(saved);
+    if (!note) errors.push('Import NETFLY intake PDF or original intake notes.');
+    else documents.push({ id: 'netfly-source-notes', file_name: 'NETFLY intake - email notes.pdf', doc_type: NETFLY_INTAKE_TYPE, source_note: note });
   }
   const revisions = saved.handoffs?.length || 0, fieldsRevision = saved.source_field_revisions?.length || 0;
   if (!revisions || saved.handoff_verification?.source_revision !== revisions || (saved.handoff_verification?.source_field_revision || 0) !== fieldsRevision)
@@ -55,9 +66,14 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
 }
 
 export async function netflyPacketBytes(db: any, documents: any[]) {
-  if (!documents.length || documents.length > 8) throw new Error('The NETFLY packet needs between one and eight reviewed PDFs.');
+  if (!documents.length || documents.length > 9) throw new Error('The NETFLY packet needs between one and nine reviewed PDFs.');
   const files = []; let total = 0;
   for (const doc of documents) {
+    if (doc.source_note && doc.doc_type === NETFLY_INTAKE_TYPE) {
+      const bytes = await buildNetflySourcePdf(doc.source_note); total += bytes.length;
+      if (total > 20 * 1024 * 1024) throw new Error('The NETFLY packet exceeds the 20 MB email attachment limit.');
+      files.push({ document: doc, bytes }); continue;
+    }
     const result = await db.storage.from('case-docs').download(doc.storage_path);
     if (result.error || !result.data || result.data.size > 15 * 1024 * 1024) throw new Error('The signed PDF could not be read. Retry or upload the original again.');
     const bytes = new Uint8Array(await result.data.arrayBuffer()); total += bytes.length;

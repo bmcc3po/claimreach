@@ -22,6 +22,7 @@ const modules: Record<string, any> = {
     redirect: (url: string, status: number) => ({ url, status, headers: new Headers() }) } },
   '@/lib/netfly-server': { netflyContext: async () => ({ actor: { can: (permission: string) => allowed && permission === 'leads.view' }, db, campaign: { firm_id: 'firm' } }),
     netflyMatter: async (_ctx: any, file: string) => file === 'TMP-TEST' ? { lead: { id: 'lead' }, claim: { id: 'claim' } } : null },
+  '@/lib/netfly-source-pdf': { NETFLY_INTAKE_TYPE: 'netfly_intake' },
   '@/lib/netfly-ontake': { NETFLY_RETAINER_TYPE: 'netfly_signed_retainer' },
   '@/lib/netfly-documents': { netflyDocumentKey },
 };

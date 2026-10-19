@@ -1,3 +1,4 @@
+import { NETFLY_INTAKE_TYPE, isNetflyIntake, buildNetflySourcePdf } from './netfly-source-pdf';
 import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_RETAINER_TYPE } from './netfly-ontake';
 import { emailPlainText, extractNetflyEmail } from './netfly-handoff';
 import { assertHandoffFirm, saveNetflyHandoff } from './netfly-handoff-save';
@@ -123,30 +124,37 @@ export async function importNetflyEmail(db: any, campaign: Campaign, email: Rece
   if (body.length > 20000) warnings.push('Long email: full text is in the original email document');
   if (pdfs.length > 8) warnings.push('More than eight PDFs: review the remaining attachments in Resend');
   let retry = false;
+  let retainers = 0, intakes = 0;
   for (const pdf of pdfs.slice(0, 8)) {
     try {
       const bytes = await receivedPdf(email.id, pdf.id, apiKey, fetcher);
       const safeName = (pdf.filename || 'signed-retainer.pdf').split(/[\\/]/).pop()!.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 120);
-      documentIds.push(await preserveNetflySource(db, scope, safeName, bytes, NETFLY_RETAINER_TYPE, 'application/pdf'));
+      const intake = isNetflyIntake({ file_name: safeName });
+      documentIds.push(await preserveNetflySource(db, scope, safeName, bytes, intake ? NETFLY_INTAKE_TYPE : NETFLY_RETAINER_TYPE, 'application/pdf'));
+      if (intake) intakes++; else retainers++;
     } catch { warnings.push(`PDF not imported: ${pdf.filename || 'attachment'}. Retry from Resend or upload it on the file.`); retry = true; }
   }
-  if (!documentIds.length && extraction.agreementLinks.length === 1 && fields.confirmed_name) {
+  if (!retainers && extraction.agreementLinks.length === 1 && fields.confirmed_name) {
     try {
       const pdf = await netflyAgreementPdf(extraction.agreementLinks[0], fields.confirmed_name, fetcher);
       documentIds.push(await preserveNetflySource(db, scope, pdf.filename, pdf.bytes, NETFLY_RETAINER_TYPE, 'application/pdf'));
+      retainers++;
     } catch (error: any) {
       warnings.push(`Signed agreement needs attention: ${error.message || 'Download failed'}`);
       retry = true;
     }
   }
-  if (!documentIds.length) warnings.push('Signed PDF missing');
+  if (!retainers) warnings.push('Signed PDF missing');
+  if (!intakes && body.trim()) {
+    documentIds.push(await preserveNetflySource(db, scope, 'NETFLY intake - email notes.pdf', await buildNetflySourcePdf(body), NETFLY_INTAKE_TYPE, 'application/pdf'));
+  }
   // Save the visible import receipt without replacing answers from the call.
   for (let attempt = 0; attempt < 4; attempt++) {
     const read = await db.from('claims').select('answers, updated_at').eq('id', claimId).eq('firm_id', campaign.firm_id).eq('campaign_id', campaign.id).single();
     if (read.error || !read.data) throw new Error('Could not record the email import receipt. Retry this email.');
     const answers = read.data.answers || {};
     const saved = await db.from('claims').update({ answers: { ...answers, [NETFLY_ANSWER_KEY]: { ...(answers[NETFLY_ANSWER_KEY] || {}),
-      email_import: { email_id: email.id, received_at: email.created_at, original_document_id: original, document_ids: documentIds, warnings,
+      email_import: { email_id: email.id, received_at: email.created_at, original_document_id: original, document_ids: documentIds, attachments_complete: !retry && pdfs.length <= 8, warnings,
         status: retry || warnings.length ? 'partial' : 'needs_review', narrative_helper: enrichment.available ? 'available' : 'unavailable', source: 'resend', review_required: true } } }, updated_at: new Date().toISOString() })
       .eq('id', claimId).eq('firm_id', campaign.firm_id).eq('campaign_id', campaign.id).eq('updated_at', read.data.updated_at).select('id').maybeSingle();
     if (saved.error) throw new Error('The email receipt did not save. Retry this email.');
