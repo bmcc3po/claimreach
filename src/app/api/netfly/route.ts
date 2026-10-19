@@ -1,3 +1,4 @@
+import { NETFLY_INTAKE_TYPE, isNetflyIntake } from "@/lib/netfly-source-pdf";
 import { NextRequest, NextResponse } from "next/server";
 import { netflyContext, netflyMatter } from "@/lib/netfly-server";
 import { NETFLY_ANSWER_KEY, NETFLY_CAMPAIGN, NETFLY_FIELD_IDS, NETFLY_UNAVAILABLE_IDS, activeNetflyCall, netflyFlags, validateNetflyCallClose, type NetflyCallClose } from "@/lib/netfly-ontake";
@@ -58,14 +59,14 @@ export async function GET(req: NextRequest) {
   const matter = await netflyMatter(ctx, key);
   if (!matter) return fail("NETFLY file not found.", 404);
   const { data: docs, error } = await ctx.db.from("case_documents")
-    .select("id, file_name, storage_path, created_at, uploaded_by_name")
+    .select("id, file_name, storage_path, created_at, uploaded_by_name, doc_type")
     .eq("firm_id", ctx.campaign.firm_id).eq("lead_id", matter.lead.id).eq("claim_id", matter.claim.id)
-    .eq("doc_type", "netfly_signed_retainer").order("created_at", { ascending: false });
+    .in("doc_type", ["netfly_signed_retainer", NETFLY_INTAKE_TYPE]).order("created_at", { ascending: false });
   if (error) return fail("Could not check the signed retainer. Refresh before continuing.", 503);
   const safeDocs = await Promise.all((docs ?? []).map(async (doc) => {
     const prefix = `${ctx.campaign.firm_id}/${matter.lead.id}/`;
     if (!doc.storage_path?.startsWith(prefix) || /\.\.|%|\\|\/\//.test(doc.storage_path)) return { id: doc.id, file_name: doc.file_name, created_at: doc.created_at, url: null };
-    return { id: doc.id, file_name: doc.file_name, created_at: doc.created_at, uploaded_by_name: doc.uploaded_by_name,
+    return { id: doc.id, doc_type: doc.doc_type, file_name: doc.file_name, created_at: doc.created_at, uploaded_by_name: doc.uploaded_by_name,
       url: `/api/netfly/retainer?file=${encodeURIComponent(key)}&document=${encodeURIComponent(doc.id)}` };
   }));
   let original_email_url: string | null = null;
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
   }
   return NextResponse.json({ file: { ...matter.lead, intake_agent: intakeAgentName(matter.lead, await loadIntakeAgents(ctx.db, [matter.lead])) }, original_email_url, actor_id: ctx.actor.id, actor_name: ctx.actor.name, live_call: activeNetflyCall((matter.claim.answers as any)?.[NETFLY_ANSWER_KEY]?.live_call),
     canReview: ctx.actor.can("intake.fill"), actor_role: ctx.actor.role, can_archive: archiveControlAvailable(ctx.actor.role, ctx.actor.can('leads.delete')), claim: { id: matter.claim.id, updated_at: matter.claim.updated_at, status: matter.claim.status },
-    answers: (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] ?? {}, retainer: safeDocs });
+    answers: (matter.claim.answers as any)?.[NETFLY_ANSWER_KEY] ?? {}, retainer: safeDocs.filter(doc => !isNetflyIntake(doc)), source_intake: safeDocs.filter(isNetflyIntake) });
 }
 
 export async function POST(req: NextRequest) {

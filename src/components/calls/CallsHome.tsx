@@ -8,6 +8,8 @@ import { APP_KINDS } from "@/lib/mva-call/links";
 import { DESK_TABS, type DeskTab, type DeskQueues, type DeskRow } from "@/lib/mva-call/desk-types";
 import { organizeCallNow, type CallNowSort } from "@/lib/mva-call/call-now-sort";
 
+import { receivedDate } from "@/lib/received-date";
+
 export type HomeRow = DeskRow;
 export interface HomeData {
   me: { name: string; role: string };
@@ -231,7 +233,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
               <div className="cc-grp">
                 {results.map((r) => (
                   <a key={r.id} className="cc-lrow" href={`/app/${r.id}`}>
-                    <span className="cc-lrow-main"><span className="cc-lrow-n">{r.claimant_name || "No name yet"}</span><span className="cc-lrow-s">{[fmtPhone(r.phone), r.lead_no, r.campaign].filter(Boolean).join("  ")}</span><span className="cc-lrow-s">Calls: {r.call_count == null ? "unverified" : r.call_count} · Last call: {r.last_call_at ? clock(r.last_call_at) : "none verified"}</span></span>
+                    <span className="cc-lrow-main"><span className="cc-lrow-n">{r.claimant_name || "No name yet"}</span><span className="cc-lrow-s">{[fmtPhone(r.phone), r.lead_no, r.campaign].filter(Boolean).join("  ")}</span><span className="cc-lrow-s">Received: {receivedDate(r.created_at)}</span><span className="cc-lrow-s">Calls: {r.call_count == null ? "unverified" : r.call_count} · Last call: {r.last_call_at ? clock(r.last_call_at) : "none verified"}</span></span>
                     <span className="cc-lrow-t">{r.archived_at ? "Archived" : r.status_label || statusText(r.status)}</span>
                   </a>
                 ))}
@@ -253,6 +255,7 @@ export default function CallsHome({ data }: { data: HomeData }) {
                   onClick={(ev) => { if (r.newPhone) { ev.preventDefault(); setPhone(r.newPhone); setName(""); setErr(""); setSheet(true); } }}>
                   <span className="cc-lrow-main">
                     <span className="cc-lrow-n">{r.name || fmtPhone(r.phone) || "No name yet"}{r.onPhoneBy && <span className="cc-dial-badge cc-phone-badge">On phone · {r.onPhoneBy}</span>}{r.outreach?.badge === "new" && <span className="cc-dial-badge cc-new-badge">New</span>}{r.outreach?.overdue && <span className="cc-dial-badge cc-overdue-badge">Overdue</span>}</span>
+                    <span className="cc-lrow-s">Received: {receivedDate(r.receivedAt)}</span>
                     <span className="cc-lrow-s">Intake agent: {r.intakeAgent || "Not recorded"}</span><span className="cc-lrow-s">{[r.name ? fmtPhone(r.phone) : "", r.sub].filter(Boolean).join("  ")}</span>
                     {tab !== "texts" && <span className="cc-lrow-s">{`Calls: ${r.callCount == null ? "unverified" : r.callCount} · Last call: ${r.lastCallAt ? clock(r.lastCallAt) : "none verified"}`}</span>}
                     {r.outreach && <span className={`cc-lrow-s${r.outreach.stage === "review" ? " cc-red" : ""}`}>{r.outreach.reason}{r.outreach.dueAt ? ` · Due ${leadClock(r.outreach.dueAt, r.outreach.zone)} (client time)` : ""}</span>}

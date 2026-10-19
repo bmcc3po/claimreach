@@ -28,6 +28,7 @@ const request = (body: any) => ({ json: async () => body });
 const valid = { file: 'TMP-TEST', reviewed: true, snapshot: 'a'.repeat(64) };
 let downloads: any[] = [], saves: any[] = [];
 const agreement = route('agreement-import', { ...shared,
+  '@/lib/netfly-source-pdf': {NETFLY_INTAKE_TYPE:'netfly_intake',netflySourceNotes:(saved:any)=>saved.handoffs.map((h:any)=>h.note).join(''),buildNetflySourcePdf:async(value:string)=>{assert.equal(value,note);return new Uint8Array([2]);}},
   '@/lib/netfly-handoff': { extractNetflyEmail: (value: string) => { assert.equal(value, note); return { agreementLinks: [note.split('\n').at(-1)] }; } },
   '@/lib/netfly-agreement-import': { netflyAgreementPdf: async (...args: any[]) => { downloads.push(args); return { filename: 'test.pdf', bytes: new Uint8Array([1]) }; } },
   '@/lib/netfly-email-import': { preserveNetflySource: async (...args: any[]) => { saves.push(args); return 'stored'; } },
@@ -57,6 +58,9 @@ async function main() {
   assert.equal((await agreement.POST(request({ file: 'TMP-TEST', url: 'https://evil.test' }))).status, 200);
   assert.deepEqual(downloads[0], [note.split('\n').at(-1), 'Synthetic Agent Test']);
   assert.deepEqual(saves[0][1], { firmId: 'firm', campaignId: 'netfly', leadId: 'scoped-lead', claimId: 'scoped-claim' });
+  assert.equal((await agreement.POST(request({file:'TMP-TEST',kind:'intake',note:'untrusted replacement'}))).status,200);
+  assert.equal(saves.at(-1)[4],'netfly_intake'); assert.equal(downloads.length,1,'source intake save does not re-download or replace the retainer');
+  access=['leads.view']; assert.equal((await agreement.POST(request({file:'TMP-TEST',kind:'intake'}))).status,403);
   console.log('NETFLY delivery/import routes: staff permissions, scoped file, current review, recipient/URL override refusal and uncertain send handling passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

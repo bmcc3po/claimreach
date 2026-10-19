@@ -1,3 +1,4 @@
+import * as receivedDates from "../../lib/received-date";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -32,6 +33,7 @@ const text = (tree: any): string => Array.isArray(tree) ? tree.map(text).join(""
 const events = new EventTarget();
 const fakeWindow = { location: { pathname: "/app/TMP-SYNTH", search: "?claim=exact-claim&text=1" }, dispatchEvent: events.dispatchEvent.bind(events), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), history: { replaceState() {} } };
 const modules: Record<string, any> = {
+  "@/lib/received-date": receivedDates,
   "@/lib/mva-call/call-now-sort": callNowSort,
   "@/lib/navigation": navigation,
   "@/lib/work-area": workArea,
@@ -133,3 +135,12 @@ const other = nodes(render(fresh(), FileNavigation, {})).filter(n => n.type === 
 assert.deepEqual(other.map(n => n.props.href), ["/leads?area=other", "/signed?area=other", "/leads/archive?area=other"]);
 assert.equal(navigation.activeNavigation("/reports/inno", [...navigation.primaryNavigation(true), { href: "/reports", icon: "chart", label: "Reports" }]), "/leads");
 console.log("ok file tabs keep the current view selected, distinguish invoice/work list, and preserve the separate Other work area");
+
+for (const [tab] of deskTypes.DESK_TABS) {
+ fakeWindow.location.search = `?tab=${tab}`; const instance = fresh();
+ const queues = {...data.queues, [tab]: [{id:"date-proof", name:"Synthetic", receivedAt:"2026-10-19T02:30:00Z", at:"2026-10-20T12:00:00Z"}]};
+ render(instance, Home, {data:{...data,queues}}); instance.effects.find(fn=>fn.toString().includes("requestedTab"))!();
+ assert.match(text(render(instance,Home,{data:{...data,queues}})), /Received: Oct 18, 2026 PT/, tab);
+}
+assert.equal(receivedDates.receivedDate("invalid"),"Not recorded");
+console.log("ok received date stays visible across all seven desk queues and uses lead creation, not last activity");
