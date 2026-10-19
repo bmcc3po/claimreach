@@ -13,8 +13,8 @@ import { pacificCalendarDay } from "@/lib/packet-worklist";
 import { areaHref, type WorkArea } from '@/lib/work-area';
 import { fileAgentSummary } from '@/lib/file-agents';
 
-const receivedDate = (value: string) => value && Number.isFinite(Date.parse(value))
-  ? new Date(value).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", year: "numeric" }) + " PT" : "Not recorded";
+import { receivedDate } from "@/lib/received-date";
+
 type Row = any;
 type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
 

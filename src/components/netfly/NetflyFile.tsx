@@ -21,7 +21,7 @@ import "./netfly.css";
 import "./netfly-workspace.css";
 
 type Handoff = { note: string; at: string; by_name?: string; channel?: string };
-type Detail = { actor_role: string; can_archive: boolean; claim: { id: string; status: string }; original_email_url?: string | null; file: { intake_agent?: string; id: string; lead_no: string; claimant_name: string; phone: string; email: string; mail_addr1?: string; mail_city?: string; mail_state?: string; mail_zip?: string }; actor_id: string; actor_name?: string; live_call: NetflyLiveCall | null; answers: { email_import?: { warnings?: string[]; received_at?: string }; fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; source_field_revisions?: { fields: Record<string, string>; at: string; source_id: string }[]; handoff_verification?: { status: string; note: string; source_revision: number; source_field_revision?: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; source_field_revision?: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
+type Detail = { source_intake?: {id: string; file_name: string; url: string | null}[]; actor_role: string; can_archive: boolean; claim: { id: string; status: string }; original_email_url?: string | null; file: { intake_agent?: string; id: string; lead_no: string; claimant_name: string; phone: string; email: string; mail_addr1?: string; mail_city?: string; mail_state?: string; mail_zip?: string }; actor_id: string; actor_name?: string; live_call: NetflyLiveCall | null; answers: { email_import?: { warnings?: string[]; received_at?: string }; fields?: Record<string, string>; review?: any; handoffs?: Handoff[]; source_field_revisions?: { fields: Record<string, string>; at: string; source_id: string }[]; handoff_verification?: { status: string; note: string; source_revision: number; source_field_revision?: number; at: string; by_name?: string }; call_close?: NetflyCallClose & { source_revision: number; source_field_revision?: number; at: string; by_name?: string; followup_required: boolean } }; retainer: { id: string; file_name: string; created_at: string; url: string | null }[]; canReview: boolean };
 
 const fieldById = new Map(NETFLY_FIELDS.map((field) => [field.id, field]));
 const emptyCallClose: NetflyCallClose = { closeout_version: 2, completion: "" as NetflyCallClose["completion"], disposition: "" as NetflyCallClose["disposition"], dq_reason_key: "", assessment_reason: "", transfer_destination: "", transfer_outcome: "not_attempted", transfer_note: "", client_notified_48_business_hours: false, callback_promised_24_48_hours: false };
@@ -149,10 +149,10 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "review", file: fileKey, status, document_id, note: reviewNote }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); await load(); }
     catch (e: any) { setError(e.message || "Review did not save."); }
   }
-  async function importAgreement() {
+  async function importAgreement(kind = "retainer") {
     setUploading(true); setError("");
     try {
-      const response = await fetch('/api/netfly/agreement-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: fileKey }) });
+      const response = await fetch('/api/netfly/agreement-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: fileKey, kind }) });
       const body = await response.json(); if (!response.ok) throw new Error(body.error);
       await load();
     } catch (error: any) { setError(error.message || 'PDF import failed. Retry or upload the original.'); }
@@ -283,6 +283,9 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
         {callClose.disposition && <p className="nf-muted">Record the call result below.</p>}
       </div>}
       {stepIndex === 4 && <div className="nf-call-block nf-finish-call"><strong>After the call: record the result</strong><label className="nf-inline-confirm"><input type="checkbox" checked={callClose.callback_promised_24_48_hours === true} onChange={(e) => updateCallClose("callback_promised_24_48_hours", e.target.checked)} /> I told the client we will call back within 24–48 hours.</label><button type="button" className="nf-primary" disabled={callCloseBusy || !callClose.disposition || !callClose.callback_promised_24_48_hours} onClick={() => void recordCallClose()}>{callCloseBusy ? "Recording…" : callRecorded ? "Update call result" : "Record call result"}</button>{callRecorded && <p className="nf-saved">Call result saved. A callback is needed within 24–48 hours. {callClose.completion === "incomplete" ? "Finish the missing details on the next call." : "Review the intake and signed PDF, then send to the firm below."}</p>}<p className="nf-muted">{callClose.completion === "incomplete" ? "This file stays open for the callback." : "The signed retainer, verified note, and call result stay together for review."}</p></div>}
+      {stepIndex === 4 && <section className="nf-call-block" aria-label="NETFLY source intake PDF"><h3>NETFLY intake PDF</h3>
+        {detail.source_intake?.length ? detail.source_intake.map(doc => <p key={doc.id}><a className="nf-secondary" href={doc.url || undefined} target="_blank" rel="noopener noreferrer">Open {doc.file_name}</a></p>) : <><p>Save NETFLY’s original email notes as a separate intake PDF. Your completed ontake and signed retainer stay separate.</p><button type="button" className="nf-secondary" disabled={uploading || !handoffs.length} onClick={() => void importAgreement("intake")}>{uploading ? "Saving intake PDF…" : "Save NETFLY intake PDF"}</button></>}
+      </section>}
       {stepIndex === 4 && <section className="nf-inline-retainer" aria-label="Original signed retainer">
         <h3>Already signed — review the NETFLY retainer</h3>
         <p>NETFLY collected this before the welcome call. Review the signed PDF, then send the completed packet below.</p>

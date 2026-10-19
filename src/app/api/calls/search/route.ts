@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   const digits = normPhone(q);
   let query = sb.from("leads")
-    .select("id, lead_no, claimant_name, phone, campaign_id, campaign, updated_at, archived_at, external_id")
+    .select("id, lead_no, claimant_name, phone, campaign_id, campaign, created_at, updated_at, archived_at, external_id")
     .is("archived_at", null).order("updated_at", { ascending: false }).limit(30);
   if (secondaryIds.length) query = query.or(`campaign_id.is.null,campaign_id.not.in.(${secondaryIds.join(",")})`);
   if (digits.length === 10) query = query.eq("phone_norm", digits);
