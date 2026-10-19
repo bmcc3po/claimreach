@@ -58,7 +58,7 @@ sender@netflydigital.com` }, 'test-key', (async () => { throw new Error('A viewe
   assert.equal(linked.partial, true);
   assert.ok(linked.warnings.includes('Signed PDF missing'));
   assert.ok(linked.warnings.some(warning => /representation note/.test(warning)));
-  assert.equal(linkedDb.tables.case_documents.length, 1, 'viewer link is source evidence, not an attached signed PDF');
+  assert.equal(linkedDb.tables.case_documents.length, 2, 'viewer link is source evidence, not an attached signed PDF');
   assert.equal(linkedDb.tables.claims[0].answers.netfly_secondary.review.status, 'in_progress');
   const db = database();
   assert.equal((await netflyEmailCampaign(db)).id, 'camp');
@@ -68,11 +68,11 @@ sender@netflydigital.com` }, 'test-key', (async () => { throw new Error('A viewe
   assert.equal(first.created, true); assert.equal(first.partial, true); assert.equal(first.retry_required, false);
   assert.equal(db.tables.leads[0].phone, null, 'missing client phone does not reject the lead');
   assert.equal(db.tables.leads[0].perm_text, false, 'incoming mail does not consent to texts');
-  assert.equal(db.tables.case_documents.length, 2, 'both original email and PDF preserved');
+  assert.equal(db.tables.case_documents.length, 3, 'both original email and PDF preserved');
   assert.equal(db.tables.claims[0].answers.netfly_secondary.fields.accident_date, '2026-09-04');
   assert.equal(db.tables.claims[0].answers.netfly_secondary.review.status, 'in_progress', 'PDF never auto-approved');
   const again = await importNetflyEmail(db, campaign, email, 'test-key', fetcher);
-  assert.equal(again.lead_id, first.lead_id); assert.equal(db.tables.leads.length, 1); assert.equal(db.tables.case_documents.length, 2);
+  assert.equal(again.lead_id, first.lead_id); assert.equal(db.tables.leads.length, 1); assert.equal(db.tables.case_documents.length, 3);
   const forwarded = await importNetflyEmail(db, campaign, { ...email, id: 'email-2', message_id: 'forward-2' }, 'test-key', fetcher);
   assert.equal(forwarded.lead_id, first.lead_id, 'exact repeated case note reuses file');
   assert.equal(db.tables.case_documents.filter(d => d.doc_type === 'netfly_signed_retainer').length, 1);
@@ -80,7 +80,7 @@ sender@netflydigital.com` }, 'test-key', (async () => { throw new Error('A viewe
   const failed = await importNetflyEmail(partialDb, campaign, email, 'test-key', (async () => new Response('outage', { status: 503 })) as typeof fetch);
   assert.equal(failed.retry_required, true); assert.equal(partialDb.tables.leads.length, 1, 'PDF failure keeps visible partial lead');
   const retry = await importNetflyEmail(partialDb, campaign, email, 'test-key', fetcher);
-  assert.equal(retry.retry_required, false); assert.equal(partialDb.tables.leads.length, 1); assert.equal(partialDb.tables.case_documents.length, 2);
+  assert.equal(retry.retry_required, false); assert.equal(partialDb.tables.leads.length, 1); assert.equal(partialDb.tables.case_documents.length, 3);
   partialDb.tables.leads[0].archived_at = '2026-10-02T01:00:00Z';
   await assert.rejects(() => importNetflyEmail(partialDb, campaign, email, 'test-key', fetcher), /archived/);
   const failedDb = database();
@@ -133,7 +133,30 @@ sender@netflydigital.com` }, 'test-key', (async () => { throw new Error('A viewe
   assert.ok([...outlookDb.blobs.values()].some(bytes => new TextDecoder().decode(bytes).includes(outlookBody)), 'the complete forwarded source is preserved');
   await importNetflyEmail(outlookDb, campaign, outlookEmail, 'test-key', viewerFetcher, enrich);
   assert.equal(outlookDb.tables.leads.length, 1); assert.equal(outlookDb.tables.claims.length, 1);
-  assert.equal(outlookDb.tables.case_documents.length, 2, 'replay preserves one source email and one completed PDF');
+  assert.equal(outlookDb.tables.case_documents.length, 3, 'replay preserves one source email and one completed PDF');
+  const packetDb = database();
+  const twoPdfs = { ...email, attachments: [
+    { id: 'intake', filename: 'NETFLY intake.pdf', content_type: 'application/pdf' },
+    { id: 'signed', filename: 'Signed retainer.pdf', content_type: 'application/pdf' },
+  ] };
+  const distinctFetcher = (async (url: any) => String(url).startsWith('https://api.resend.com/')
+    ? Response.json({ download_url: `https://inbound-cdn.resend.com/${String(url).split('/').at(-1)}.pdf`, size: pdf.length })
+    : new Response(pdf.replace('Synthetic test only', String(url).includes('intake') ? 'Original vendor intake' : 'Original signed retainer'))) as typeof fetch;
+  await importNetflyEmail(packetDb, campaign, twoPdfs, 'test-key', distinctFetcher);
+  assert.equal(packetDb.tables.case_documents.filter(d => d.doc_type === 'netfly_intake').length, 1);
+  assert.equal(packetDb.tables.case_documents.filter(d => d.doc_type === 'netfly_signed_retainer').length, 1);
+  const originals = packetDb.tables.case_documents.filter(d => d.doc_type !== 'other');
+  assert.equal(originals.length, 2);
+  await importNetflyEmail(packetDb, campaign, twoPdfs, 'test-key', distinctFetcher);
+  assert.equal(packetDb.tables.case_documents.length, 3, 'two original attachments and source email remain idempotent');
+  const intakeOnly = database();
+  let linkLookups = 0;
+  await importNetflyEmail(intakeOnly, campaign, { ...email, text: viewerBody, attachments: [twoPdfs.attachments[0]] }, 'test-key', (async (url: any, init: any) => {
+    if (String(url).includes('resend.com/')) return distinctFetcher(url, init);
+    linkLookups++; return viewerFetcher(url, init);
+  }) as typeof fetch, enrich);
+  assert.ok(linkLookups > 0, 'an attached intake must not suppress the linked signed agreement');
+  assert.equal(intakeOnly.tables.case_documents.filter(d => d.doc_type === 'netfly_signed_retainer').length, 1);
   const isolation = database();
   isolation.tables.leads.push({ id: 'foreign', firm_id: 'different', campaign_id: 'camp', lawruler_ref_no: '123', claimant_name: 'Synthetic Test' });
   const scoped = await importNetflyEmail(isolation, campaign, { ...email, text: email.text + '\nLawRuler Lead ID: 123' }, 'test-key', fetcher);

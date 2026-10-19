@@ -13,6 +13,8 @@ import { pacificCalendarDay } from "@/lib/packet-worklist";
 import { areaHref, type WorkArea } from '@/lib/work-area';
 import { fileAgentSummary } from '@/lib/file-agents';
 
+const receivedDate = (value: string) => value && Number.isFinite(Date.parse(value))
+  ? new Date(value).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", year: "numeric" }) + " PT" : "Not recorded";
 type Row = any;
 type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
 
@@ -360,8 +362,8 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
               {cities.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
-          <label className="cl-lab">Created from<input className="cl-input" type="date" value={fCreatedFrom} onChange={(e) => setFCreatedFrom(e.target.value)} /></label>
-          <label className="cl-lab">Created to<input className="cl-input" type="date" value={fCreatedTo} onChange={(e) => setFCreatedTo(e.target.value)} /></label>
+          <label className="cl-lab">Received from<input className="cl-input" type="date" value={fCreatedFrom} onChange={(e) => setFCreatedFrom(e.target.value)} /></label>
+          <label className="cl-lab">Received to<input className="cl-input" type="date" value={fCreatedTo} onChange={(e) => setFCreatedTo(e.target.value)} /></label>
           <label className="cl-lab">Signed from<input className="cl-input" type="date" value={fSignedFrom} onChange={(e) => setFSignedFrom(e.target.value)} /></label>
           <label className="cl-lab">Signed to<input className="cl-input" type="date" value={fSignedTo} onChange={(e) => setFSignedTo(e.target.value)} /></label>
         </div>
@@ -407,6 +409,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                         <Link className="cl-t1" href={fileHref(r)} onClick={(e) => e.stopPropagation()} style={{ color: "var(--ink)", textDecoration: "none" }}>{r.name || "No name yet"}</Link>
                         <span className="cl-mobile-file-meta cl-t2">{r.lead_no} · {r.caseLabel || "No campaign"}</span>
                         <span className="cl-t2">{prettyPhone(r.phone) || "No phone"}</span>
+                        <span className="cl-t2">Received: {receivedDate(r.created)}</span>
                         {!isFirm && <strong className="cl-t2">{r.agent}</strong>}
                         {!isFirm && r.callCount !== undefined && <span className="cl-t2">Calls: {r.callCount == null ? "unverified" : r.callCount} · Last call: {r.lastCallAt ? new Date(r.lastCallAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "none verified"}</span>}
                       </div>
@@ -513,6 +516,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                       </div>
                       <div style={{ fontWeight: 600, fontSize: 14, margin: "3px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name || "No name yet"}{r.clock && <ClockChip clock={r.clock} />}</div>
                       <div className="muted" style={{ fontSize: 12 }}>{[r.caseLabel, r.state].filter(Boolean).join(", ")}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>Received: {receivedDate(r.created)}</div>
                       <div className="row" style={{ marginTop: 7, justifyContent: "space-between" }}>
                         <span className={`cl-status cl-tone-${r.tone}`} style={{ fontSize: 12 }}>{r.statusLabel}</span>
                         <span className="muted" style={{ fontSize: 11 }}>{Math.floor((Date.now() - new Date(r.updated).getTime()) / 86400000)}d</span>

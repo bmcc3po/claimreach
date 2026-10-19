@@ -252,8 +252,29 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.deepEqual(d.sent[0].cc, ['bmc@innovativeintake.com']);
     assert(d.sent[0].attachments.some(a => /intake.pdf$/.test(a.filename)));
     assert(d.sent[0].attachments.some(a => /NETFLY_signed/.test(a.filename)));
+    assert(d.sent[0].attachments.some(a => /NETFLY_intake/.test(a.filename)), 'vendor intake is separate from our ontake');
+    assert.equal(d.sent[0].attachments.filter(a => /\.pdf$/.test(a.filename)).length, 3);
     assert.equal(w.claim.status, 'delivered'); assert(w.claim.firm_sent_at);
     assert((await deliverLeadToFirm(options, d)).skipped); assert.equal(d.sent.length, 1);
+  });
+  await t('NETFLY original intake and signed attachment bytes survive delivery unchanged', async () => {
+    const w = netflyWorld();
+    const intake = { ...w.original, id: 'nf-intake', file_name: 'NETFLY intake.pdf', doc_type: 'netfly_intake', storage_path: `${FIRM}/${L}/intake.pdf` };
+    w.db.tables.case_documents.push(intake);
+    (w.claim.answers.netfly_secondary as any).email_import = { document_ids: [w.original.id, intake.id], attachments_complete: true };
+    const originalDownload = w.db.storage.from;
+    const intakeBytes = bytes('%PDF-1.7\n' + 'UNCHANGED VENDOR INTAKE '.repeat(15) + '\n%%EOF');
+    w.db.storage.from = (bucket: string) => { const original = originalDownload(bucket); return { ...original, download: async (path: string) => path === intake.storage_path ? { data: new Blob([intakeBytes as BlobPart]), error: null } : original.download(path) }; };
+    const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
+    const d = deps(w.db), result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot }, d);
+    assert.equal(result.ok, true, result.error);
+    assert.equal(d.sent[0].attachments.length, 3);
+    assert.deepEqual(Buffer.from(d.sent[0].attachments.find(a => /NETFLY_intake/.test(a.filename))!.content, 'base64'), Buffer.from(intakeBytes));
+    const retainerBytes = await originalDownload('case-docs').download(w.original.storage_path);
+    assert.deepEqual(Buffer.from(d.sent[0].attachments.find(a => /NETFLY_signed/.test(a.filename))!.content, 'base64'), Buffer.from(await retainerBytes.data.arrayBuffer()));
+    const missing = netflyWorld();
+    (missing.claim.answers.netfly_secondary as any).email_import = { attachments_complete: false };
+    assert.ok((await netflyPacketReview(missing.db, missing.lead, missing.claim, missing.campaign)).errors.some(e => /did not import/.test(e)));
   });
   await t('NETFLY refuses stale review, incomplete calls, missing or foreign PDFs and generic bypass', async () => {
     for (const mutate of [

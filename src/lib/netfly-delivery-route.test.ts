@@ -21,7 +21,7 @@ const shared = {
 };
 let deliveries: any[] = [], deliveryResult: any = { ok: true }, deliveryThrows = false;
 const delivery = route('delivery', { ...shared,
-  '@/lib/netfly-packet': {}, '@/lib/firm-delivery-dispatch': {}, '@/lib/intake-render': {},
+  '@/lib/netfly-source-pdf': {}, '@/lib/netfly-packet': {}, '@/lib/firm-delivery-dispatch': {}, '@/lib/intake-render': {},
   '@/lib/firm-delivery': { deliverLeadToFirm: async (opts: any) => { deliveries.push(opts); if (deliveryThrows) throw new Error('provider uncertain'); return deliveryResult; } },
 });
 const request = (body: any) => ({ json: async () => body });

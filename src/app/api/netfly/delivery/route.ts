@@ -1,3 +1,4 @@
+import { netflySourceNotes, buildNetflySourcePdf } from '@/lib/netfly-source-pdf';
 import { NextRequest, NextResponse } from 'next/server';
 import { netflyContext, netflyMatter } from '@/lib/netfly-server';
 import { netflyPacketReview } from '@/lib/netfly-packet';
@@ -13,6 +14,10 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url), matter = await netflyMatter(ctx, url.searchParams.get('file') || '');
   if (!matter) return fail('NETFLY file not found.', 404);
   try {
+    if (url.searchParams.get('pdf') === 'source') {
+      const bytes = await buildNetflySourcePdf(netflySourceNotes(matter.claim.answers?.netfly_secondary));
+      return new Response(bytes as BodyInit, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': 'inline; filename=NETFLY-source-intake.pdf', 'Cache-Control': 'no-store' } });
+    }
     if (url.searchParams.get('pdf') === 'intake') {
       const bundle = await loadIntakeBundle(ctx.db, matter.lead.id, matter.claim.id);
       if (!bundle) return fail('The intake could not be read.', 503);
