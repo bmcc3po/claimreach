@@ -13,7 +13,7 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
   const campaign = await db.from('campaigns').select('id,firm_id,firm_email')
     .eq('id', access.campaign_id).eq('firm_id', access.firm_id).eq('name', 'INNO MVA').eq('case_type', 'mva').maybeSingle();
   if (campaign.error || !campaign.data) throw new Error('Report campaign unavailable');
-  const claims = await reportPages(() => db.from('claims').select('id,lead_id,firm_id,campaign_id,claim_type,status')
+  const claims = await reportPages(() => db.from('claims').select('id,lead_id,firm_id,campaign_id,claim_type,status,dq_reason_key,dq_explanation')
     .eq('firm_id', access.firm_id));
   const ids = [...new Set(claims.filter(c => c.campaign_id === access.campaign_id && c.claim_type === 'mva').map(c => c.lead_id))];
   const leads: any[] = [];
@@ -41,12 +41,13 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
       .eq('firm_id',access.firm_id).in('lead_id',scopedIds.slice(i,i+100))));
     return rows;
   };
-  const [signatures,calls,notes,activities,callLogs] = await Promise.all([
+  const [signatures,calls,callLogs,reasons,statuses] = await Promise.all([
     loadSignatureReport(db,campaign.data),
     evidenceRows('communications','id,firm_id,lead_id,channel,direction,occurred_at,duration_sec'),
-    evidenceRows('notes','id,firm_id,lead_id,claim_id,scope,body,created_at'),
-    evidenceRows('lead_activity','id,firm_id,lead_id,meta,created_at'),
-    evidenceRows('call_logs','id,firm_id,lead_id,claim_id,notes,created_at'),
+    evidenceRows('call_logs','id,firm_id,lead_id,claim_id,created_at'),
+    db.from('dq_reasons').select('key,label'),
+    db.from('statuses').select('key,label,qualify,phase,track'),
   ]);
-  return { ...partnerReportData(access, leads, claims, signatures, refs, { calls,notes,activities,callLogs }), updatedAt: new Date().toISOString() };
+  if (reasons.error || statuses.error) throw new Error('Report reason catalog unavailable');
+  return { ...partnerReportData(access, leads, claims, signatures, refs, { calls,callLogs,reasons:reasons.data || [],statuses:statuses.data || [] }), updatedAt: new Date().toISOString() };
 }

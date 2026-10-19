@@ -1,4 +1,5 @@
 "use client";
+import { validDqExplanation } from "@/lib/dq-explanation";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { INTAKE, intakeForType, segmentsForType, segmentsFrom, fieldVisible } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
@@ -221,6 +222,7 @@ export default function ClaimIntake({
   }
 
   const [dqPick, setDqPick] = useState(false);
+  const [dqExplanation, setDqExplanation] = useState("");
   const [dqReasons, setDqReasons] = useState<any[]>([]);
   useEffect(() => {
     (async () => {
@@ -237,13 +239,13 @@ export default function ClaimIntake({
     // memory, which is unusable on a live call and worse for an agent working in
     // a second language: a typo silently became an invalid reason. It is a list
     // now, and the list is the only way through.
-    if (status === "dq" && !dqReasonKey) return;
+    if (status === "dq" && (!dqReasonKey || !validDqExplanation(dqExplanation))) return;
     setSaving(true);
     await save(false);
     try {
       const r = await fetch("/api/claims", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "status", claim_id: claimId, status, dq_reason_key: dqReasonKey }),
+        body: JSON.stringify({ op: "status", claim_id: claimId, status, dq_reason_key: dqReasonKey, dq_explanation: dqExplanation }),
       });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
@@ -515,8 +517,9 @@ export default function ClaimIntake({
                 <div>
                   <div className="section-title" style={{ marginTop: 0 }}>Why is it disqualified?</div>
                   <div className="outcome-grid">
+                    <label>Explanation for the marketer<textarea value={dqExplanation} onChange={e=>setDqExplanation(e.target.value)} maxLength={2000} placeholder="Required: 10–2000 characters. Keep private notes out." /></label>
                     {dqReasons.map((r: any) => (
-                      <button key={r.key} className="outcome bad" disabled={saving}
+                      <button key={r.key} className="outcome bad" disabled={saving || !validDqExplanation(dqExplanation)}
                         onClick={() => finishWithStatus("dq", r.key)}>
                         <b>{r.label}</b><span>{r.category}</span>
                       </button>

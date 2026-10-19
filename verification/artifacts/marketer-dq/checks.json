@@ -1,0 +1,36 @@
+{
+  "baseline_commit": "947c9a9deed75de6fc23226b2e4ebfdc3f669c6f",
+  "baseline": {
+    "passed": 185,
+    "total": 202
+  },
+  "final": {
+    "passed": 187,
+    "total": 203
+  },
+  "new_failures": [],
+  "preexisting_failures": [
+    "src/components/CaseOverview.test.tsx",
+    "src/components/FileHeader.test.tsx",
+    "src/components/calls/agreement-choice.test.tsx",
+    "src/components/calls/console-hydration.test.tsx",
+    "src/components/calls/desk-note-draft.test.ts",
+    "src/components/calls/intake-parity.test.tsx",
+    "src/components/home/home-navigation.test.tsx",
+    "src/lib/case-history-route.test.ts",
+    "src/lib/lawruler-acquisition-pages.test.tsx",
+    "src/lib/legacy-list-readiness.test.tsx",
+    "src/lib/linked-files.test.tsx",
+    "src/lib/netfly-forwarded-contact.test.ts",
+    "src/lib/signed-sent-status.test.tsx",
+    "verification/netfly-new-call-test.cjs",
+    "verification/pilot-boundary-sql-test.cjs",
+    "verification/signing-routes-test.cjs"
+  ],
+  "repaired_baseline_failures": [
+    "src/lib/mva-call/dispo-route.test.ts"
+  ],
+  "focused_tests_passed": 33,
+  "postgres_transaction": "passed",
+  "iphone_browser": "passed"
+}

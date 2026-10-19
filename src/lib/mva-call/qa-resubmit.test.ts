@@ -35,6 +35,7 @@ function fixture() {
     "@/lib/file-agents": fileAgents,
     "@/lib/archive-control": archiveControl,
     "next/server": { NextResponse: { json: (body: any, opts: any = {}) => ({ body, status: opts.status || 200 }) } },
+    "./dq-explanation": require("../dq-explanation"),
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => { state.admin++; return db; } },
     "@/lib/statuses": statuses,
     "@/lib/matter": matter,

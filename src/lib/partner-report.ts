@@ -1,6 +1,7 @@
 import { isActiveFile, isTestFile } from './file-visibility';
 import { sourceRefMatchesLead, speedToLeadMinutes, type PartnerSourceRef } from './partner-access';
 import { summarizePartnerRows } from './partner-report-view';
+import { validDqExplanation } from './dq-explanation';
 import { resolveFileStatus } from './statuses';
 import type { SignatureReportRow } from './signature-report';
 import type { ReportAccess } from './partner-report-access';
@@ -11,6 +12,8 @@ export type PartnerReportRow = {
   statusKey: string; deliveryGroup: 'awaiting' | 'sent' | 'declined' | null;
   speedMinutes: number | null; callDurationSeconds: number | null; state: string | null;
   lastActivityAt: string | null; notes: string | null;
+  dqKind: 'Current intake DQ' | 'Historical DQ' | 'Firm turn-down' | null;
+  dqReason: string | null; dqReview: string | null; campaign: string;
 };
 export type PartnerReportSummary = {
   total: number; signed: number; unsigned: number; verify: number; called: number;
@@ -18,18 +21,8 @@ export type PartnerReportSummary = {
   inProgress: number; lost: number; signRate: number; averageSpeedMinutes: number | null; speedSamples: number;
 };
 const date = (v: unknown): string | null => typeof v === 'string' && Number.isFinite(Date.parse(v)) ? v : null;
-/** Recover the original date from the exact source snapshot, never its sync timestamp. */
-export function partnerReceivedDate(lead: any): string | null {
-  if (date(lead.lawruler_created_at)) return lead.lawruler_created_at;
-  if (lead.source_system !== 'lawruler') return date(lead.created_at);
-  const source = lead.vendor_fields?.sources?.lawruler;
-  if (source?.LeadID !== lead.lawruler_ref_no || String(source?.CaseType || '').trim().toLowerCase() !== 'inno mva') return null;
-  const value = String(source?.LeadCreated || '').trim();
-  const us = value.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  const iso = us ? `${us[3]}-${us[1].padStart(2,'0')}-${us[2].padStart(2,'0')}` : value;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || !date(iso) || new Date(iso).toISOString().slice(0,10) !== iso) return null;
-  return iso;
-}
+/** Receipt cohorts use the lead's ClaimReach creation timestamp. */
+export function partnerReceivedDate(lead: any): string | null { return date(lead.created_at); }
 export function partnerAllowedLeads(access: Pick<ReportAccess, 'firm_id' | 'scope'>, leads:any[], refs:PartnerSourceRef[]) {
   return leads.filter(l => l.firm_id === access.firm_id && isActiveFile(l) && !isTestFile(l) &&
     (access.scope === 'campaign' || refs.some(r => r.partner_key === 'pr-digital' && sourceRefMatchesLead(r,l))));
@@ -37,7 +30,7 @@ export function partnerAllowedLeads(access: Pick<ReportAccess, 'firm_id' | 'scop
 /** The only public projection. Never spread a lead, signature row, or document. */
 export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campaign_id' | 'scope'>,
   leads: any[], claims: any[], signatures: SignatureReportRow[], refs: PartnerSourceRef[],
-  evidence: { calls?: any[]; notes?: any[]; activities?: any[]; callLogs?: any[] } = {}) {
+  evidence: { calls?: any[]; notes?: any[]; activities?: any[]; callLogs?: any[]; reasons?: any[]; statuses?: any[] } = {}) {
   const allowed = partnerAllowedLeads(access,leads,refs);
   const rows: PartnerReportRow[] = allowed.flatMap(lead => {
     const matters = claims.filter(c => c.lead_id === lead.id && c.firm_id === access.firm_id &&
@@ -60,13 +53,9 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
       .filter((v): v is string => !!v).sort((a,b) => Date.parse(a)-Date.parse(b))[0] || null;
     const called = !!(first || logs.some(r => date(r.created_at)) || sole && date(lead.last_called_at));
     const receivedAt = partnerReceivedDate(lead);
-    const notes = [...(evidence.notes || []).filter(r => scoped(r) && ['file','call'].includes(r.scope)).map(r => ({ at:r.created_at, body:r.body })),
-      ...logs.map(r => ({ at:r.created_at, body:r.notes }))]
-      .filter(r => date(r.at) && typeof r.body === 'string' && r.body.trim())
-      .sort((a,b) => Date.parse(b.at)-Date.parse(a.at));
     const activities = (evidence.activities || []).filter(r => r.firm_id === access.firm_id && r.lead_id === lead.id &&
       (r.meta?.claim_id === claim.id || !r.meta?.claim_id && sole));
-    const lastActivityAt = [...comms.map(r => date(r.occurred_at)), sole ? date(lead.last_called_at) : null, ...logs.map(r => date(r.created_at)), ...notes.map(r => date(r.at)),
+    const lastActivityAt = [...comms.map(r => date(r.occurred_at)), sole ? date(lead.last_called_at) : null, ...logs.map(r => date(r.created_at)),
       ...activities.map(r => date(r.created_at)), date(sig.signedAt), date(sig.deliveredAt), date(sig.decisionAt)]
       .filter((v): v is string => !!v).sort((a,b) => Date.parse(b)-Date.parse(a))[0] || null;
     const durations = calls.filter(r => r.channel === 'call' && typeof r.duration_sec === 'number' && r.duration_sec >= 0);
@@ -79,9 +68,15 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     const state = /^[a-z]{2}$/i.test(rawState) ? rawState.toUpperCase() : rawState || null;
     const deliveryGroup = sig.state !== 'signed' ? null : declined ? 'declined' as const :
       date(sig.deliveredAt) || sig.ownerSent === true ? 'sent' as const : 'awaiting' as const;
+    const isDq = resolveFileStatus({ status: key }, evidence.statuses).qualify === 'disqualify';
+    const dqKind = declined || key === 'signed_dropped' || key === 'dq_billable' ? 'Firm turn-down' as const : isDq ? 'Current intake DQ' as const : claim.dq_reason_key || claim.dq_explanation ? 'Historical DQ' as const : null;
+    const reason = (evidence.reasons || []).find(r => r.key === claim.dq_reason_key);
+    const explanation = validDqExplanation(claim.dq_explanation) ? claim.dq_explanation.trim() : null;
+    const dqReason = dqKind ? reason?.label || 'Reason missing' : null;
+    const dqReview = dqKind ? !reason && !explanation ? 'Review required: reason and explanation missing' : !reason ? 'Review required: reason missing' : !explanation ? 'Review required: explanation missing' : 'Reviewed explanation recorded' : null;
     return [{ name: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not recorded',
       phone: lead.phone || '', receivedAt,
-      statusKey, deliveryGroup, state, lastActivityAt, notes: notes[0]?.body.trim() || null,
+      statusKey, deliveryGroup, state, lastActivityAt, notes: dqKind ? explanation : null, dqKind, dqReason, dqReview, campaign: 'INNO MVA',
       speedMinutes: receivedAt && !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt) ? speedToLeadMinutes(receivedAt, first) : null,
       callDurationSeconds: durations.length ? durations.reduce((sum,r) => sum + r.duration_sec, 0) : null,
       called,

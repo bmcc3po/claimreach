@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
         leadIds: ids, leadWide: true,
         status: b.status,
         dqReasonKey: b.dq_reason_key ?? null,
-        dqNote: b.dq_note ?? null,
+        dqNote: b.dq_note ?? null, manualDq: true, dqExplanation: b.dq_explanation,
         actorId: auth.user.id,
         actorName: meName?.full_name ?? "User",
       });

@@ -261,7 +261,16 @@ test("active INNO agent changes only resolved claim using the session database a
   assert.equal((await h.status()).status,200);assert.equal(h.db.tables.claims[0].status,"contacting");
   assert.equal(h.db.tables.claims[1].status,"new");assert.deepEqual(h.transitions[0].claimIds,["claim"]);
   assert.equal((await h.status({status:"dq"})).status,400);assert.equal(h.db.tables.claims[0].status,"contacting");
-  assert.equal((await h.status({status:"dq",dq_reason_key:"criteria"})).status,200);assert.equal(h.db.tables.claims[0].status,"dq");
+  assert.equal((await h.status({status:"dq",dq_reason_key:"criteria",dq_explanation:"Client does not meet campaign eligibility."})).status,200);assert.equal(h.db.tables.claims[0].status,"dq");
+});
+
+test("manual DQ API rejects whitespace and unknown reasons without changing the matter", async()=>{
+  for(const dq_explanation of [undefined,"  \n\t  ","short",123]) {
+    const h=harness();const r=await h.status({status:"dq",dq_reason_key:"criteria",dq_explanation});
+    assert.equal(r.status,400);assert.equal(h.db.tables.claims[0].status,"new");
+  }
+  const h=harness();const r=await h.status({status:"dq",dq_reason_key:"unknown",dq_explanation:"Client does not meet campaign eligibility."});
+  assert.equal(r.status,400);assert.equal(h.db.tables.claims[0].status,"new");
 });
 
 test("status keeps owner access and denies inactive staff or external roles", async () => {
@@ -276,7 +285,7 @@ test("status retains hidden sibling QA and WIP without returning or mutating tha
   for (const siblingStatus of ["signed_grievous", "signed_wip"]) {
     const h = harness();
     h.hiddenClaims.push({ id: "hidden-matter", lead_id: "lead", campaign_id: "other-campaign", status: siblingStatus });
-    const r = await h.status({ status: "dq", dq_reason_key: "criteria" });
+    const r = await h.status({ status: "dq", dq_reason_key: "criteria", dq_explanation: "Client does not meet campaign eligibility." });
     assert.equal(r.status, 200);
     assert.equal(h.row().qa_pending, siblingStatus === "signed_grievous");
     assert.equal(h.row().wip_pending, siblingStatus === "signed_wip");
@@ -300,7 +309,7 @@ test("failed sibling aggregate preserves prior queue flags and reports an incomp
 
 test("manual status cannot fabricate signatures, QA, WIP, approval, or delivery even for the owner", async () => {
   for (const role of ["agent", "owner"]) for (const status of ["esign_sent", "signed_grievous", "signed_qa", "signed_wip", "signed_approved", "signed_dropped", "grievous", "qa", "wip", "approved", "delivered", "retained"]) {
-    const h = harness(role);const r = await h.status({ status, dq_reason_key: "criteria" });
+    const h = harness(role);const r = await h.status({ status, dq_reason_key: "criteria", dq_explanation: "Client does not meet campaign eligibility." });
     assert.equal(r.status, 409, `${role} ${status}`);assert.equal(h.transitions.length, 0);assert.equal(h.writes().length, 0);
   }
   const custom = harness();custom.db.tables.statuses.push({ ...DEFAULT_STATUSES[0], key: "custom_complete", requires_esign: true });
@@ -322,7 +331,7 @@ test("manual status cannot downgrade signed, QA, or firm milestones for agents o
   for (const role of ["agent", "owner"]) for (const prior of ["signed_qa", "signed_wip", "signed_approved", "delivered", "retained", "qa", "wip", "approved", "external_signed_review"])
     for (const status of ["new", "contacting", "dq"]) {
       const h = harness(role); h.db.tables.claims[0].status = prior;
-      const r = await h.status({ status, dq_reason_key: "criteria" });
+      const r = await h.status({ status, dq_reason_key: "criteria", dq_explanation: "Client does not meet campaign eligibility." });
       assert.equal(r.status, 409, `${role} ${prior} to ${status}`);
       assert.equal(h.transitions.length, 0); assert.equal(h.writes().length, 0); assert.equal(h.db.tables.claims[0].status, prior);
     }

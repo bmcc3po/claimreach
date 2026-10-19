@@ -72,7 +72,8 @@ t("dispo validation", () => {
   assert.ok(ok.ok && ok.value.reasons.length === 1 && ok.value.notify[0] === "bmc@innovativeintake.com");
   assert.equal(validateDispo({ dispo: "dq", reasons: ["DROP TABLE"] }).ok, false);
   assert.equal(validateDispo({ dispo: "signed", notify: ["bad"] }).ok, false);
-  assert.ok(validateDispo({ dispo: "dnc" }).ok);
+  assert.equal(validateDispo({ dispo: "dnc" }).ok,false);
+  assert.ok(validateDispo({ dispo: "dnc", note: "Client requested no further contact." }).ok);
   assert.equal(DISPO_STATUS.signed, null);
   assert.equal(DISPO_FIXED_DQ_KEY.ni, "declined");
 });

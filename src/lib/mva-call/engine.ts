@@ -12,6 +12,7 @@
 // every flow. The boundary (CallProps, CallApi, renderVals) is typed where the
 // React wrapper and the API routes meet it.
 // @ts-nocheck
+import { validDqExplanation } from "../dq-explanation";
 /* eslint-disable */
 import { SOL, stateCodeOf, injuryYears as injuryYearsFor } from './state';
 import { agreementChoice, agreementKey } from './agreement-choice';
@@ -1757,7 +1758,8 @@ export class CallEngine {
       return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][t.getDay()] + ' ' + (t.getMonth() + 1) + '/' + t.getDate() + ' at ' + ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' AM' : ' PM');
     })();
     var whenText = d.when === 'Pick a time' ? atText : d.when;
-    var saveLabel = !dd ? 'Pick how it ended' : (needWhy && !d.why.length) ? 'Pick a reason' : (dd.needWhen && !whenText) ? 'Pick a time' : 'Save the call';
+    var needsExplanation = ['dq','ni','dnc'].includes(d.pick);
+    var saveLabel = needsExplanation && !validDqExplanation(d.note) ? 'Write an explanation' : !dd ? 'Pick how it ended' : (needWhy && !d.why.length) ? 'Pick a reason' : (dd.needWhen && !whenText) ? 'Pick a time' : 'Save the call';
     var dispoSummary = dd ? [{ k: 'Dispo', v: dd.label }] : [];
     if (d.why.length) dispoSummary.push({ k: 'Why', v: d.why.map((k: string) => ((dd && dd.why ? dd.why : []).find((r: any) => r.key === k) || { label: k }).label).join(', ') });
     if (dd && dd.when && whenText) dispoSummary.push({ k: dd.whenHead, v: whenText });
@@ -2156,7 +2158,7 @@ export class CallEngine {
         when: WHEN.map((w, i) => ({ label: w, on: d.when === w, cls: 'drow' + (d.when === w ? ' on' : '') + (i === WHEN.length - 1 ? ' end' : ''), pick: () => this.pick('dispo', 'when', w) })),
         pickTime: d.when === 'Pick a time',
         at: this.field('dispo', 'at'),
-        isSigned: d.pick === 'signed', isDnc: d.pick === 'dnc',
+        needsExplanation, isSigned: d.pick === 'signed', isDnc: d.pick === 'dnc',
         notify: d.notify.map((n, i) => ({
           who: n.who, how: n.how, on: n.on,
           cls: 'drow' + (n.on ? ' on' : '') + (i === d.notify.length - 1 ? ' end' : ''),
