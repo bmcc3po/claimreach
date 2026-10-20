@@ -147,6 +147,7 @@ function world(seed: { claims?: any[]; subs?: any[]; retainers?: any[]; signable
     }) },
   };
   const route = loadRoute("src/app/api/qa/route.ts", {
+    "@/lib/dq-explanation": require("./dq-explanation"),
     "next/server": { NextResponse: { json: (body: any, init?: any) => ({ status: init?.status ?? 200, body }) } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => db },
     "@/lib/claim-status": { setClaimStatusForLeads: async (x: any) => { statusCalls.push(x); return { ok: true }; } },

@@ -1,4 +1,5 @@
 "use client";
+import { validDqExplanation } from "@/lib/dq-explanation";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import StatusBadge from "./ui/StatusBadge";
@@ -17,6 +18,8 @@ export default function FileStatusControl({ leadId, current, currentLabel, role,
   // where one more click committed instantly. That is how a signed file
   // silently became "Signed: WIP" with nobody meaning to change anything.
   const [confirming, setConfirming] = useState<StatusDef | null>(null);
+  const [dqReason, setDqReason] = useState("");
+  const [explanation, setExplanation] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [declining, setDeclining] = useState(false);
@@ -29,7 +32,7 @@ export default function FileStatusControl({ leadId, current, currentLabel, role,
   // status, not the one this control mounted with — the next change targets
   // the newly selected claim (Astra round 5: claim A's badge over claim B).
   useEffect(() => { setStatus(current); setMsg(""); }, [claimId, current]);
-  useEffect(() => { setOpen(false); setDeclining(false); setPicking(null); setConfirming(null); }, [claimId]);
+  useEffect(() => { setOpen(false); setDeclining(false); setPicking(null); setConfirming(null); setDqReason(""); setExplanation(""); }, [claimId]);
 
   useEffect(() => {
     if (!open) return;
@@ -48,11 +51,11 @@ export default function FileStatusControl({ leadId, current, currentLabel, role,
     try {
       const r = await fetch("/api/leads", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "status", lead_id: leadId, claim_id: claimId ?? null, status: statusKey, dq_reason_key: dqReasonKey ?? null }),
+        body: JSON.stringify({ op: "status", lead_id: leadId, claim_id: claimId ?? null, status: statusKey, dq_reason_key: dqReasonKey ?? null, dq_explanation: explanation }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) { setMsg(d.error || "Could not update status"); return; }
-      setStatus(statusKey); setOpen(false); setPicking(null); setConfirming(null);
+      setStatus(statusKey); setDqReason(""); setExplanation(""); setOpen(false); setPicking(null); setConfirming(null);
       onChanged?.(statusKey);
     } catch {
       setMsg("Could not reach ClaimReach. The status was not changed; try again.");
@@ -124,9 +127,10 @@ export default function FileStatusControl({ leadId, current, currentLabel, role,
           <div className="modal" style={{ maxWidth: 420, padding: "18px 20px" }}>
             <h3 style={{ marginTop: 0 }}>Disqualification reason</h3>
             <p className="muted" style={{ marginTop: 0 }}>Choose a reason for "{picking.label}". This is required.</p>
+            <label>Explanation for the marketer<textarea value={explanation} onChange={e => setExplanation(e.target.value)} maxLength={2000} required placeholder="Explain the decision in 10–2000 characters. Keep private notes out." /></label>
             <div className="status-reasons">
               {reasons.map((r) => (
-                <button key={r.key} className="status-reason" disabled={busy} onClick={() => commit(picking.key, r.key)}>
+                <button key={r.key} className="status-reason" disabled={busy} aria-pressed={dqReason === r.key} onClick={() => setDqReason(r.key)}>
                   {r.label}<span className="status-reason-cat">{r.category}</span>
                 </button>
               ))}
@@ -134,6 +138,7 @@ export default function FileStatusControl({ leadId, current, currentLabel, role,
             {msg && <div className="status-menu-msg">{msg}</div>}
             <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
               <button className="btn ghost" disabled={busy} onClick={() => { setPicking(null); }}>Cancel status change</button>
+              <button className="btn" disabled={busy || !dqReason || !validDqExplanation(explanation)} onClick={() => commit(picking.key, dqReason)}>Save disqualification</button>
             </div>
           </div>
         </div>

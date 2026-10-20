@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       claimIds: [p.claim_id],
       status: p.status,
       dqReasonKey: p.dq_reason_key ?? null,
-      dqNote: p.dq_reason ?? null,
+      dqNote: p.dq_reason ?? null, manualDq: true, dqExplanation: p.dq_explanation,
       actorId: u.id,
       actorName: u.full_name ?? "User",
     });

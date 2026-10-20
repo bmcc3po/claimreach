@@ -8,12 +8,13 @@
 // from all of the person's claims after every transition. The outbound
 // webhook and firm delivery run per CHANGED claim, with that claim's own
 // answers and campaign, and name a signing only when a signing happened.
+import { validDqExplanation, DQ_EXPLANATION_ERROR } from "./dq-explanation";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { isSignedDeclined, type SignedDecline } from "./signed-decline";
 import { needsQaReview, resolveStatus, type StatusDef } from "@/lib/statuses";
 import { resolveMatter } from "@/lib/matter";
 
-export interface SetStatusResult { ok: boolean; error?: string; claimIds?: string[]; deliveryWarning?: string; }
+export interface SetStatusResult { ok: boolean; error?: string; claimIds?: string[]; deliveryWarning?: string; callId?: string; }
 
 export async function loadStatuses(db?: any): Promise<StatusDef[]> {
   const { data } = await (db ?? supabaseAdmin()).from("statuses").select("*").order("sort");
@@ -96,6 +97,11 @@ export async function setClaimStatusForLeads(opts: {
   status: string;
   dqReasonKey?: string | null;
   dqNote?: string | null;
+  /** Only explicit human-reviewed text may enter public marketer reporting. */
+  dqExplanation?: string | null;
+  manualDq?: boolean;
+  /** Atomic call close for the authorized manual DQ route. */
+  dqCall?: { id: string | null; row: Record<string, unknown> };
   actorId?: string | null;
   actorName?: string | null;
   statuses?: StatusDef[];
@@ -126,6 +132,11 @@ export async function setClaimStatusForLeads(opts: {
   if (def.qualify === "disqualify" && !opts.dqReasonKey && !missingImportedReason) {
     return { ok: false, error: "A disqualification reason is required for this status." };
   }
+  if (def.qualify === "disqualify" && opts.manualDq) {
+    if (!validDqExplanation(opts.dqExplanation)) return { ok: false, error: DQ_EXPLANATION_ERROR };
+    const reason = await db.from('dq_reasons').select('key').eq('key', opts.dqReasonKey).maybeSingle();
+    if (reason.error || !reason.data) return { ok: false, error: 'Select a valid disqualification reason.' };
+  }
   if (!opts.leadIds?.length) return { ok: false, error: "No file named." };
 
   // ---- Which claims, exactly. Never widen silently. ----
@@ -139,7 +150,7 @@ export async function setClaimStatusForLeads(opts: {
 
   // Prior state of every target, read BEFORE the write: ownership checks, and
   // the prior status decides whether this is a signing event.
-  let pq = db.from("claims").select("id, lead_id, status, campaign_id, campaign, answers, claim_type");
+  let pq = db.from("claims").select("id, lead_id, firm_id, status, updated_at, campaign_id, campaign, answers, claim_type");
   pq = targetIds ? pq.in("id", targetIds) : pq.in("lead_id", opts.leadIds);
   const { data: priorRows, error: priorErr } = await pq;
   if (priorErr) return { ok: false, error: priorErr.message };
@@ -172,15 +183,34 @@ export async function setClaimStatusForLeads(opts: {
     patch.dq_reason_key = opts.dqReasonKey ?? null;
     if (opts.dqNote != null) patch.dq_reason = opts.dqNote;
     patch.qualification = "dq";
+    // Imported/source narratives remain private. Never carry an old reviewed
+    // explanation forward onto a new imported DQ decision.
+    patch.dq_explanation = opts.manualDq ? opts.dqExplanation!.trim() : null;
   } else if (def.qualify === "qualify") {
     patch.qualification = "clear";
   }
 
+  let savedCallId: string | undefined;
+  let writeResult: any;
+  if (opts.dqCall) {
+    if (!opts.manualDq || def.qualify !== 'disqualify' || prior.length !== 1) return { ok: false, error: 'Choose one DQ matter.' };
+    const c = prior[0];
+    const result = await db.rpc('cr_save_dq_call', {
+      p_claim_id: c.id, p_lead_id: c.lead_id, p_firm_id: c.firm_id,
+      p_expected_updated_at: c.updated_at, p_status: opts.status,
+      p_reason: opts.dqReasonKey, p_explanation: opts.dqExplanation!.trim(),
+      p_call_id: opts.dqCall.id, p_call: opts.dqCall.row,
+    });
+    savedCallId = result.data || undefined;
+    writeResult = { data: result.error ? null : [{id:c.id,lead_id:c.lead_id}], error: result.error };
+  } else {
   let cq = db.from("claims").update(patch);
   cq = targetIds ? cq.in("id", targetIds) : cq.in("lead_id", opts.leadIds);
   if (compareStatus) cq = opts.expectedStatus == null ? cq.is("status", null) : cq.eq("status", opts.expectedStatus);
   if (opts.expectedUpdatedAt) cq = cq.eq("updated_at", opts.expectedUpdatedAt);
-  const { data: changed, error } = await cq.select("id, lead_id");
+  writeResult = await cq.select("id, lead_id");
+  }
+  const { data: changed, error } = writeResult;
   if (error) return { ok: false, error: error.message };
   if (!changed?.length) {
     return { ok: false, error: "No claim was updated — this file may have no claim, or it was just removed. Refresh and try again." };
@@ -267,5 +297,5 @@ export async function setClaimStatusForLeads(opts: {
   if (flagErrors.length) {
     return { ok: false, claimIds: Array.from(changedIds), error: `Status changed, but the queue flags did not update: ${flagErrors[0]}. Refresh the file; the QA queue may be out of step.` };
   }
-  return { ok: true, claimIds: Array.from(changedIds), ...(deliveryWarnings.length ? { deliveryWarning: deliveryWarnings.join(" ") } : {}) };
+  return { ok: true, callId: savedCallId, claimIds: Array.from(changedIds), ...(deliveryWarnings.length ? { deliveryWarning: deliveryWarnings.join(" ") } : {}) };
 }

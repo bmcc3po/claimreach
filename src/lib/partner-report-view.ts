@@ -12,6 +12,7 @@ function shiftDay(day: string, count: number) {
 }
 export function datePreset(preset: string, now: string) {
   const today = reportDay(now);
+  if (preset === 'Last 14 days') return { from:shiftDay(today,-13),to:today };
   if (preset === 'Last 7 days') return { from:shiftDay(today,-6),to:today };
   if (preset === 'Last 30 days') return { from:shiftDay(today,-29),to:today };
   if (preset === 'This month') return { from:today.slice(0,7)+'-01',to:today };
@@ -80,7 +81,7 @@ export const REPORT_COLUMNS: { key:ReportSortKey; label:string }[] = [
   {key:'called',label:'Called'},{key:'signed',label:'Signed'},{key:'signedAt',label:'Date signed'},
   {key:'status',label:'Current status'},{key:'speedMinutes',label:'Speed to lead'},
   {key:'callDurationSeconds',label:'Call duration'},{key:'state',label:'State'},
-  {key:'lastActivityAt',label:'Last activity'},{key:'notes',label:'Notes'},
+  {key:'lastActivityAt',label:'Last activity'},{key:'dqKind',label:'DQ outcome'},{key:'dqReason',label:'DQ reason'},{key:'notes',label:'Marketer explanation'},{key:'dqReview',label:'Review status'},
 ];
 export function reportCell(row:PartnerReportRow,key:ReportSortKey) {
   if (['receivedAt','signedAt','lastActivityAt'].includes(key)) return reportDate(row[key] as string|null);

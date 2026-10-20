@@ -565,7 +565,8 @@ function Dispo({ v }: { v: any }) {
 </>)}
 {!!(v.dispo.hasPick) && (<>
 <div className="cc-sec-h">Note</div>
-<textarea className="cc-area" rows={2} placeholder="Optional" aria-label="Dispo note" value={v.dispo.note.value ?? ""} onChange={v.dispo.note.set}></textarea>
+<p className="cc-cue">{v.dispo.needsExplanation ? "Shared with the marketer. Explain the decision without private medical or call notes." : "Internal call note"}</p>
+<textarea className="cc-area" rows={2} maxLength={2000} required={v.dispo.needsExplanation} placeholder={v.dispo.needsExplanation ? "Required: explain the decision for the marketer (10–2000 characters)" : "Optional"} aria-label="Dispo note" value={v.dispo.note.value ?? ""} onChange={v.dispo.note.set}></textarea>
 </>)}
 </>)}
 {!!(v.dispo.saved) && (<>

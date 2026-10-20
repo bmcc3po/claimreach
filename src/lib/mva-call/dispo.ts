@@ -14,6 +14,8 @@
 // dq_reasons (dq). Owners add more there; nothing here changes.
 // ============================================================================
 
+import { validDqExplanation, DQ_EXPLANATION_ERROR } from "../dq-explanation";
+
 export const DISPO_CODES = ["signed", "esign", "dq", "callback", "ni", "dnc"] as const;
 export type DispoCode = (typeof DISPO_CODES)[number];
 
@@ -118,6 +120,7 @@ export function validateDispo(raw: any): { ok: true; value: DispoInput } | { ok:
     if (!isNaN(t.getTime())) cb = t.toISOString();
   }
   const note = raw?.note == null ? null : String(raw.note).slice(0, 2000).trim() || null;
+  if (['dq', 'ni', 'dnc'].includes(dispo) && !validDqExplanation(raw?.note)) return { ok: false, error: DQ_EXPLANATION_ERROR };
   const notify = Array.isArray(raw?.notify) ? raw.notify.map((e: unknown) => String(e).trim().toLowerCase()) : [];
   if (notify.length > 10 || notify.some((e: string) => !EMAIL.test(e))) return { ok: false, error: "One of the emails is not valid." };
   return { ok: true, value: { dispo, reasons: Array.from(new Set(reasons)), callbackAt: cb, note, notify: Array.from(new Set(notify)) } };

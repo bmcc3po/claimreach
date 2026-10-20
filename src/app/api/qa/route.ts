@@ -1,3 +1,4 @@
+import { validDqExplanation, DQ_EXPLANATION_ERROR } from "@/lib/dq-explanation";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 import { setClaimStatusForLeads } from "@/lib/claim-status";
@@ -155,6 +156,7 @@ export async function POST(req: NextRequest) {
 
   // Submit a QA review + route the file.
   if (b.op === "submit") {
+    if (b.decision === "decline" && !validDqExplanation(b.dq_explanation)) return NextResponse.json({ error: DQ_EXPLANATION_ERROR }, { status: 400 });
     const agentReady = b.agent_ready === true && u.role === "agent" && can(u.role, u.perm_overrides, "claims.status");
     // Routing a file takes the QA capability — the role defaults, honoring an
     // explicit per-user grant or denial (Astra round 5: an explicit
@@ -313,7 +315,7 @@ export async function POST(req: NextRequest) {
     const res = agentReady && ["signed_approved", "delivered", "retained"].includes(claim.status)
       ? { ok: true as const }
       : await setClaimStatusForLeads({
-      leadIds: [lead_id], claimIds: [claim.id], status: nextStatus, dqReasonKey: b.dq_reason_key ?? null,
+      leadIds: [lead_id], claimIds: [claim.id], status: nextStatus, dqReasonKey: b.dq_reason_key ?? null, manualDq: true, dqExplanation: b.dq_explanation,
       actorId: u.uid, actorName: u.full_name ?? "QA",
       suppressAutoDelivery: agentReady,
     });

@@ -37,12 +37,18 @@ function route(db: FakeDb, intakeAvailable = true) {
       buildIntakePdfAttachment: async () => ({ filename: "Synthetic_PNC_intake.pdf", content: "JVBERi0=" }),
     },
     "@/lib/mva-call/dispo": dispo,
-    "@/lib/claim-status": { setClaimStatusForLeads: async (p: any) => { statuses.push(p); return { ok: true }; } },
+    "@/lib/claim-status": { setClaimStatusForLeads: async (p: any) => { statuses.push(p);
+      if (p.dqCall) {
+        Object.assign(db.tables.intake_calls[0],p.dqCall.row);
+        if (p.status==='dnc') Object.assign(db.tables.leads[0],{perm_call:false,perm_text:false,perm_email:false});
+        return {ok:true,callId:'call'};
+      } return { ok: true }; } },
     "@/lib/mva-call/signing-matter": { ...signing,
       resolveSigningMatter: (session: any, leadId: string, options: any = {}) => signing.resolveSigningMatter(session, leadId, { ...options, authoritativeDb: db }),
     },
     "@/lib/audit": { recordAudit: async () => {} },
     "@/lib/webhook-deliver": { fireEvent: async () => {} },
+    "@/lib/office-clock": { officeDateTime: (s: string) => s },
     "@/lib/email": { sendEmail: async (p: any) => { emails.push(p); return { ok: true }; } },
   };
   const source = fs.readFileSync(path.resolve(__dirname, "../../app/api/calls/dispo/route.ts"), "utf8");
@@ -57,13 +63,13 @@ async function main() {
   await check("agent cannot export a signed case to an arbitrary address through disposition", async () => {
     const db = world(), r = route(db);
     const result = await r.post({ notify: ["outside@example.invalid"] });
-    assert.equal(result.status, 403); assert.equal(r.emails.length, 0);
+    assert.equal(result.status, 409); assert.equal(r.emails.length, 0);
     assert.equal(db.tables.intake_calls[0].status, undefined); assert.equal(r.statuses.length, 0);
   });
   await check("owner-recipient lookup failure holds the call before any write or email", async () => {
     const db = world(); db.failOn = (op) => op.table === "app_users" ? "lookup unavailable" : null;
     const r = route(db), result = await r.post({ notify: ["synthetic@example.invalid"] });
-    assert.equal(result.status, 503); assert.equal(r.emails.length, 0);
+    assert.equal(result.status, 409); assert.equal(r.emails.length, 0);
     assert.equal(db.tables.intake_calls[0].status, undefined); assert.equal(r.statuses.length, 0);
   });
   await check("newer provisional emergency prevents old primary signed disposition and notification", async () => {
@@ -73,7 +79,7 @@ async function main() {
   });
   await check("DNC does not depend on agreement reads and disables every contact permission", async () => {
     const db = world(); db.failOn = (op) => op.table === "esign_submissions" ? "synthetic agreement read failure" : null;
-    const r = route(db), result = await r.post({ dispo: "dnc" });
+    const r = route(db), result = await r.post({ dispo: "dnc",note:"Client requested no further contact." });
     assert.equal(result.status, 200); assert.equal(r.statuses[0].status, "dnc");
     for (const key of ["perm_call", "perm_text", "perm_email"]) assert.equal(db.tables.leads[0][key], false);
     assert.ok(!db.ops.some((op) => op.table === "esign_submissions"));
@@ -82,17 +88,15 @@ async function main() {
     const db = world(); db.tables.claims.push({ ...db.tables.claims[0], id: B }); const r = route(db);
     assert.equal((await r.post({ claim_id: B })).status, 409); assert.equal(r.emails.length, 0); assert.equal(r.statuses.length, 0);
   });
-  await check("own-matter signed disposition closes call and scoped report uses its answers", async () => {
-    const db = world(), r = route(db); const result = await r.post({ notify: ["synthetic@example.invalid"] });
-    assert.equal(result.status, 200); assert.equal(db.tables.intake_calls[0].status, "ended");
-    assert.equal(r.emails.length, 1); assert.match(r.emails[0].text, /Selected claim/); assert.match(r.emails[0].text, new RegExp(C));
-    assert.deepEqual(r.emails[0].attachments, [{ filename: "Synthetic_PNC_intake.pdf", content: "JVBERi0=" }]);
-    assert.match(r.emails[0].html, /intake PDF is attached/);
+  await check("own-matter signed disposition closes call without exporting a packet", async () => {
+    const db=world(),r=route(db);const result=await r.post();
+    assert.equal(result.status,200);assert.equal(db.tables.intake_calls[0].status,'ended');assert.equal(r.emails.length,0);
   });
-  await check("PDF failure is reported and no incomplete signed-call notice goes out", async () => {
-    const db = world(), r = route(db, false); const result = await r.post({ notify: ["synthetic@example.invalid"] });
-    assert.equal(result.status, 200); assert.equal(r.emails.length, 0);
-    assert.match(result.body.email_error, /No signed-call notice was emailed/);
+  await check("DQ API bypass rejects missing explanation before status or call writes", async()=>{
+    for(const note of [undefined,'  \n\t  ','short']) {
+      const db=world(),r=route(db);const result=await r.post({dispo:'dq',reasons:['other'],note});
+      assert.equal(result.status,400);assert.equal(r.statuses.length,0);assert.equal(db.tables.intake_calls[0].status,undefined);
+    }
   });
   await check("unreadable signature evidence refuses signed disposition before writes", async () => {
     const db = world(); db.failOn = (op) => op.table === "esign_submissions" ? "synthetic failure" : null;

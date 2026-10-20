@@ -8,14 +8,9 @@ const req = (method = 'GET', body?: unknown, token?: string, origin = 'https://c
   ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
 });
 
-test('historical receipt uses original source date only when identity and date are valid', () => {
-  const source = { LeadID: '100', CaseType: 'INNO MVA', LeadCreated: '10-08-2026' };
-  const lead = { source_system: 'lawruler', lawruler_ref_no: '100', created_at: '2026-10-10T12:00:00Z', vendor_fields: { sources: { lawruler: source } } };
-  assert.equal(partnerReceivedDate(lead), '2026-10-08');
-  assert.equal(partnerReceivedDate({ ...lead, lawruler_created_at: '2026-10-07T13:00:00Z' }), '2026-10-07T13:00:00Z');
-  for (const invalid of ['02-30-2026', '13-01-2026', '', 'yesterday']) { source.LeadCreated = invalid; assert.equal(partnerReceivedDate(lead), null); }
-  source.LeadCreated = '10/8/2026'; assert.equal(partnerReceivedDate(lead), '2026-10-08');
-  source.LeadID = '101'; assert.equal(partnerReceivedDate(lead), null);
+test('receipt date is lead created_at regardless of imported source dates', () => {
+  assert.equal(partnerReceivedDate({created_at:'2026-10-10T12:00:00Z',lawruler_created_at:'2026-09-01T12:00:00Z'}),'2026-10-10T12:00:00Z');
+  assert.equal(partnerReceivedDate({lawruler_created_at:'2026-09-01T12:00:00Z'}),null);
 });
 test('password hash and signed cookie fail closed for wrong password, tampering, expiry, rotation and scope changes', async () => {
   const h = await partnerReportHarness(), now = Date.now();
@@ -46,9 +41,9 @@ test('successful login sets a path-limited HttpOnly cookie; read-only API expose
   assert.match(login.headers.get('set-cookie'), /Path=\/api\/pr-digital/i);
   const response = await h.route.GET(req('GET', undefined, cookie.value)), data = await response.json();
   assert.equal(response.status, 200); assert.match(response.headers.get('cache-control'), /no-store/); assert.match(response.headers.get('x-robots-tag'), /noindex/);
-  assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status','statusKey','deliveryGroup','speedMinutes','callDurationSeconds','state','lastActivityAt','notes'].sort());
+  assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status','statusKey','deliveryGroup','speedMinutes','callDurationSeconds','state','lastActivityAt','notes','dqKind','dqReason','dqReview','campaign'].sort());
   assert.equal(data.rows[0].signed, 'Yes'); assert.equal(data.rows[0].called, true);
-  assert.deepEqual(data.summary, { total: 1, signed: 1, unsigned: 0, verify: 0, called: 1, awaitingDelivery: 0, sentToFirm: 1, declined: 0, inProgress:0, lost:0, signRate:1, averageSpeedMinutes:1500, speedSamples:1 });
+  assert.deepEqual(data.summary, { total: 1, signed: 1, unsigned: 0, verify: 0, called: 1, awaitingDelivery: 0, sentToFirm: 1, declined: 0, inProgress:0, lost:0, signRate:1, averageSpeedMinutes:60, speedSamples:1 });
   assert.ok(!JSON.stringify(data).includes(h.config.token_secret)); assert.ok(!h.db.ops.some(o => o.kind !== 'select'));
   const logout = await h.route.DELETE(req('DELETE')); assert.equal(logout.status, 200); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
 });
@@ -105,7 +100,7 @@ test('summary and list share source scope; delivery uses receipts or owner confi
   leads.push(h.lead); claims.push(h.claim); signatures.push(h.signature);
   const report = partnerReportData(h.config, leads, claims, signatures, refs);
   assert.equal(report.rows.length, 6);
-  assert.deepEqual(report.summary, { total: 6, signed: 4, unsigned: 1, verify: 1, called: 6, awaitingDelivery: 1, sentToFirm: 1, declined: 2, inProgress:2, lost:0, signRate:4/6, averageSpeedMinutes:1500, speedSamples:6 });
+  assert.deepEqual(report.summary, { total: 6, signed: 4, unsigned: 1, verify: 1, called: 6, awaitingDelivery: 1, sentToFirm: 1, declined: 2, inProgress:2, lost:0, signRate:4/6, averageSpeedMinutes:60, speedSamples:6 });
   for (const change of [{ archived_at: '2026-10-01' }, { firm_id: 'foreign' }, { claimant_name: 'TEST synthetic' }]) {
     const excluded = partnerReportData(h.config, leads.map(l => ({ ...l, ...change })), claims, signatures, refs);
     assert.equal(excluded.rows.length, 0); assert.ok(Object.values(excluded.summary).every(n => n === 0 || n === null));
@@ -115,7 +110,7 @@ test('summary and list share source scope; delivery uses receipts or owner confi
 test('imported owner-approved signature retains Yes with unknown original date; no invented historical receipt or calls', async () => {
   const h = await partnerReportHarness(); h.lead.lawruler_created_at = null; h.lead.first_dialed_at = null; h.signature.signedAt = null;
   const [row] = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, []);
-  assert.equal(row.signed, 'Yes'); assert.equal(row.signedAt, null); assert.equal(row.receivedAt, null); assert.equal(row.called, false);
+  assert.equal(row.signed, 'Yes'); assert.equal(row.signedAt, null); assert.equal(row.receivedAt, h.lead.created_at); assert.equal(row.called, false);
   h.lead.last_called_at = '2026-10-02T12:00:00Z';
   assert.equal(partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, [])[0].called, true);
 });

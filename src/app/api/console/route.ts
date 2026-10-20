@@ -230,6 +230,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "The current agreement on this matter has not been signed. Refresh and review the agreement before closing as signed." }, { status: 409 });
       }
     }
+    if (nextStatus.qualify === "disqualify") return NextResponse.json({ error: "Open the file status control to select a DQ reason and write its marketer explanation." }, { status: 409 });
     if (Array.isArray(b.modifiers)) {
       await admin.from("leads").update({ modifiers: b.modifiers }).eq("id", b.lead_id);
     }

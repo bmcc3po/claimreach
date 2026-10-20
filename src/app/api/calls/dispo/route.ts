@@ -90,22 +90,6 @@ export async function POST(req: NextRequest) {
     labels = d.reasons.map((k) => byKey.get(k) as string);
   }
 
-  // Status FIRST, through the one setter, on THIS matter only. A failure here
-  // leaves the call open so the agent can fix it and press Save again —
-  // it used to close the call and then fail (Astra round 5). Signed is left
-  // alone: the signature moved it.
-  const status = DISPO_STATUS[d.dispo];
-  if (status) {
-    const dqKey = d.dispo === "dq" ? d.reasons[0] : DISPO_FIXED_DQ_KEY[d.dispo] ?? null;
-    const res = await setClaimStatusForLeads({
-      leadIds: [lead.id], claimIds: [claimId], status, dqReasonKey: dqKey,
-      dqNote: labels.length ? labels.join(", ") : null,
-      actorId: me.id, actorName: me.name ?? "Agent",
-    });
-    if (!res.ok) return NextResponse.json({ error: `Nothing was closed; the status did not change: ${res.error}` }, { status: 500 });
-  }
-
-  // Close the call session (create it if autosave never got one in).
   const now = new Date().toISOString();
   const close = {
     disposition: d.dispo,
@@ -118,12 +102,33 @@ export async function POST(req: NextRequest) {
     updated_at: now,
   };
   let callId: string | null = raw?.call_id ? String(raw.call_id) : null;
-  if (callId) {
+  // DQ status, dedicated explanation, and call close commit together through
+  // the central setter. Signed status remains owned by the signing workflow.
+  const status = DISPO_STATUS[d.dispo];
+  if (status) {
+    const dqKey = d.dispo === "dq" ? d.reasons[0] : DISPO_FIXED_DQ_KEY[d.dispo] ?? null;
+    const res = await setClaimStatusForLeads({
+      leadIds: [lead.id], claimIds: [claimId], status, dqReasonKey: dqKey,
+      dqNote: labels.length ? labels.join(", ") : null,
+      manualDq: ['dq','ni','dnc'].includes(d.dispo), dqExplanation: d.note,
+      ...(['dq','ni','dnc'].includes(d.dispo) ? { dqCall: { id: callId, row: {
+        ...close, firm_id: lead.firm_id, campaign_id: campaignId, lead_id: lead.id,
+        agent_id: me.id, agent_name: me.name, caller_id: lead.phone || lead.lead_no || 'unknown',
+        first_name: lead.first_name, call_type: 'mva_console', claim_id: claimId, answers: {},
+      } } } : {}),
+      actorId: me.id, actorName: me.name ?? "Agent",
+    });
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 500 });
+    if (res.callId) callId = res.callId;
+  }
+
+  // Close the call session (create it if autosave never got one in).
+  if (callId && !["dq","ni","dnc"].includes(d.dispo)) {
     const { data: upd, error } = await sb.from("intake_calls").update(close).eq("id", callId).eq("lead_id", lead.id).select("id").maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!upd) return NextResponse.json({ error: "The status was saved, but this call is no longer available. Refresh the file before trying again." }, { status: 409 });
   }
-  if (!callId) {
+  if (!callId && !["dq","ni","dnc"].includes(d.dispo)) {
     const { data: ins, error } = await sb.from("intake_calls").insert({
       firm_id: lead.firm_id, campaign_id: campaignId, lead_id: lead.id,
       agent_id: me.id, agent_name: me.name, caller_id: lead.phone || lead.lead_no || "unknown",
@@ -134,13 +139,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `The status changed, but the call record did not close: ${error.message}${hint}` }, { status: 500 });
     }
     callId = ins.id;
-  }
-
-  // DNC: every channel off, today.
-  if (d.dispo === "dnc") {
-    const { error } = await admin.from("leads").update({ perm_call: false, perm_text: false, perm_email: false }).eq("id", lead.id);
-    if (error) return NextResponse.json({ error: `Status is DNC, but contact permissions did not turn off: ${error.message}`, call_id: callId }, { status: 500 });
-    await admin.from("contact_points").update({ status: "opted_out" }).eq("lead_id", lead.id).in("kind", ["mobile", "landline"]);
   }
 
   const when = d.callbackAt ? officeDateTime(d.callbackAt) : "";

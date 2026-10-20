@@ -348,7 +348,7 @@ export async function POST(req: NextRequest) {
     const res = await setClaimStatusForLeads({
       leadIds: [context.lead.id], claimIds: [context.matter.claim.id],
       expectedStatus: snapshot.data.status, expectedUpdatedAt: snapshot.data.updated_at,
-      status, dqReasonKey: dq_reason_key ?? null, dqNote: dq_note ?? null,
+      status, dqReasonKey: dq_reason_key ?? null, dqNote: dq_note ?? null, manualDq: true, dqExplanation: payload.dq_explanation,
       actorId: u.uid, actorName: u.full_name ?? "User", statuses: catalog.data,
     }, { db: sb, queueReadDb: trustedDb });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: /changed after|No claim was updated/.test(res.error || "") ? 409 : 400 });

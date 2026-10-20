@@ -263,7 +263,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
   async function finishWith(o: Outcome, ans: Answers) {
     setOutcome(o); setOutcomeSource("questions"); setStage("outcome");
     setSignStage(o.disposition === "SIGN" ? "intro" : null);
-    if (!file || !caseType) return;
+    if (!file || !caseType || o.disposition === "DISQUALIFY") return;
     const summary = buildSummary(caseType, ans, o, client.first_name || firstName);
     try {
       await api({
@@ -386,7 +386,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         disposition: outcome.disposition, reason: outcome.reason, close_key: outcome.closeKey,
         flags: outcome.flags, status_key: statusKey,
       });
-    } catch (e: any) { setErr(e?.message || "could not close the file"); }
+    } catch (e: any) { setErr(e?.message || "could not close the file"); setBusy(false); return; }
     setBusy(false); setDone(true);
   }
 
@@ -401,7 +401,7 @@ export default function IntakeConsole({ agentName }: { agentName: string }) {
         // Only a real signature moves the file onto the signed track.
         status_key: actuallySigned ? "signed_wip" : undefined,
       });
-    } catch (e: any) { setErr(e?.message || "could not close the file"); }
+    } catch (e: any) { setErr(e?.message || "could not close the file"); setBusy(false); return; }
     setBusy(false); setDone(true);
   }
 
@@ -844,6 +844,7 @@ function OutcomeView(p: any) {
 
         {d === "DISQUALIFY" && (
           <>
+            {file && <a className="ic-btn" href={`/leads/${file.lead_id}`}>Open file to record DQ reason and explanation</a>}
             <Spoken>{fill(DQ_CLOSES[outcome.closeKey ?? ""]?.close ?? DQ_CLOSES.presence.close)}</Spoken>
             {DQ_CLOSES[outcome.closeKey ?? ""]?.note && <Note>{DQ_CLOSES[outcome.closeKey ?? ""]!.note}</Note>}
           </>

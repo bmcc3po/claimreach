@@ -64,6 +64,7 @@ export default function QaPanel({
   const [reply, setReply] = useState("");
   const [reasons, setReasons] = useState<DqReason[]>(DEFAULT_DQ_REASONS);
   const [declineReason, setDeclineReason] = useState<string | null>(null);
+  const [dqExplanation, setDqExplanation] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -127,7 +128,7 @@ export default function QaPanel({
       body: JSON.stringify({
         op: "submit", lead_id: leadId, claim_id: claimId,
         g_qa_pass: gQa, g_esign: gEsign, g_criteria: gCrit, c_leading: cLead, c_complete: cComplete,
-        qa_note: qaNote, agent_note: agentNote, decision, dq_reason_key: dqReasonKey ?? null, dup_ack: dupAck ?? false,
+        qa_note: qaNote, agent_note: agentNote, decision, dq_explanation: dqExplanation, dq_reason_key: dqReasonKey ?? null, dup_ack: dupAck ?? false,
       }),
     });
     const d = await r.json();
@@ -252,9 +253,10 @@ export default function QaPanel({
           <div className="modal" style={{ maxWidth: 420, padding: "18px 20px" }}>
             <h3 style={{ marginTop: 0 }}>Decline reason</h3>
             <p className="muted" style={{ marginTop: 0 }}>Signed but does not qualify. Choose a reason (required); the firm will be told to send a drop letter.</p>
+            <label>Explanation for the marketer<textarea value={dqExplanation} maxLength={2000} onChange={e=>setDqExplanation(e.target.value)} placeholder="Required: 10–2000 characters. Keep private notes out." /></label>
             <div className="status-reasons">
               {reasons.map((r) => (
-                <button key={r.key} className="status-reason" disabled={busy} onClick={() => submit("decline", r.key)}>
+                <button key={r.key} className="status-reason" disabled={busy || dqExplanation.trim().length < 10} onClick={() => submit("decline", r.key)}>
                   {r.label}<span className="status-reason-cat">{r.category}</span>
                 </button>
               ))}

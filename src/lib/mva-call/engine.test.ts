@@ -229,8 +229,10 @@ t("saved signed disposition can move between answer review and final QA without 
   assert.equal(e.persistable().story.text, before);
 });
 
-t("dispo: DNC saves with no reason", () => {
+t("dispo: DNC requires written explanation", () => {
   const e = mk(); e.openDispo(); e.dispoPick("dnc");
+  assert.ok(e.renderVals().dispo.cantSave);
+  e.set("dispo", "note", "Client requested no further contact.");
   assert.ok(!e.renderVals().dispo.cantSave);
 });
 

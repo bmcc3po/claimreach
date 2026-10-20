@@ -1,4 +1,5 @@
 "use client";
+import { validDqExplanation } from "@/lib/dq-explanation";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { STAGES, STAGE_LABELS } from "@/lib/questionnaire";
@@ -40,6 +41,9 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [dqBulk, setDqBulk] = useState("");
+  const [dqBulkReason, setDqBulkReason] = useState("");
+  const [dqBulkExplanation, setDqBulkExplanation] = useState("");
   const [bulkMsg, setBulkMsg] = useState("");
   const [bulkErr, setBulkErr] = useState(false);
 
@@ -216,19 +220,12 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
 
   async function runBulkStatus(statusKey: string) {
     const def = statusList.find((s) => s.key === statusKey);
-    let dq_reason_key: string | undefined;
+
     if (def?.qualify === "disqualify") {
-      // Mandatory, non-dismissable: keep prompting until a valid reason is chosen.
-      const choices = dqList.map((r, i) => `${i + 1}. ${r.label}`).join("\n");
-      let pick: string | null = null;
-      while (!dq_reason_key) {
-        pick = window.prompt(`Disqualification reason (required) for "${def.label}":\n${choices}\n\nEnter the number:`);
-        if (pick === null) return; // cancel aborts the whole status change
-        const idx = parseInt(pick.trim(), 10) - 1;
-        if (idx >= 0 && idx < dqList.length) dq_reason_key = dqList[idx].key;
-      }
+      setDqBulk(statusKey); return;
+
     }
-    runBulk({ op: "set_status", status: statusKey, dq_reason_key });
+    runBulk({ op: "set_status", status: statusKey });
   }
 
   function th(k: string, label: string, cls = "") {
@@ -565,6 +562,14 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         </div>
       )}
 
+      {dqBulk && <div className="modal-back"><div className="modal" role="dialog" aria-modal="true" aria-label="Bulk disqualification" style={{maxWidth:440}}>
+        <h3>Explain this disqualification</h3><p>This reason and explanation will be shared with the marketer for every selected file. Apply separately if their circumstances differ.</p>
+        <label>Reason<select value={dqBulkReason} onChange={e=>setDqBulkReason(e.target.value)}><option value="">Select a reason</option>{dqList.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}</select></label>
+        <label>Explanation for the marketer<textarea value={dqBulkExplanation} onChange={e=>setDqBulkExplanation(e.target.value)} maxLength={2000} placeholder="Required: 10–2000 characters. Keep private notes out." /></label>
+        {bulkMsg && <p role="status">{bulkMsg}</p>}
+        <button className="btn ghost" disabled={busy} onClick={()=>setDqBulk("")}>Cancel</button>
+        <button className="btn" disabled={busy || !dqBulkReason || !validDqExplanation(dqBulkExplanation)} onClick={()=>runBulk({op:"set_status",status:dqBulk,dq_reason_key:dqBulkReason,dq_explanation:dqBulkExplanation})}>Save disqualifications</button>
+      </div></div>}
     </div>
   );
 }

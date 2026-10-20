@@ -31,17 +31,17 @@ test('declined delivery partition and weekly/state totals reconcile with filtere
   assert.equal(groupPartnerRows(rows,'week')[0].signed,3);
 });
 
-test('evidence is firm/matter scoped; latest agent note and recorded durations never include sibling or foreign evidence',async()=>{
+test('evidence is firm/matter scoped; private notes are excluded and recorded durations never include sibling or foreign evidence',async()=>{
   const h=await partnerReportHarness(); h.lead.first_dialed_at=null;h.lead.mail_state='al';h.signature.state='unsigned';h.signature.statusKey='new';h.signature.status='New';
   const c={id:'call1',firm_id:REPORT_FIRM,lead_id:h.lead.id,channel:'call',occurred_at:'2026-09-30T12:02:00Z',duration_sec:120};
   const n={firm_id:REPORT_FIRM,lead_id:h.lead.id,claim_id:h.claim.id,scope:'file',body:'Agent follow-up',created_at:'2026-10-03T12:00:00Z'};
   const evidence={calls:[c,{...c,id:'foreign',firm_id:'foreign',duration_sec:999}],notes:[n,{...n,claim_id:'sibling',body:'secret',created_at:'2026-10-04T12:00:00Z'}]};
   const row=partnerReportData(h.config,[h.lead],[h.claim],h.signatures,[],evidence).rows[0];
-  assert.equal(row.speedMinutes,2);assert.equal(row.callDurationSeconds,120);assert.equal(row.notes,'Agent follow-up');assert.equal(row.lastActivityAt,'2026-10-03T12:00:00Z');
+  assert.equal(row.speedMinutes,null);assert.equal(row.callDurationSeconds,120);assert.equal(row.notes,null);assert.equal(row.lastActivityAt,'2026-10-02T13:00:00Z');
   assert.equal(row.status,'Contacting');assert.equal(row.state,'AL');
   const sibling={...h.claim,id:'other',campaign_id:'other'};
   const ambiguous=partnerReportData(h.config,[h.lead],[h.claim,sibling],h.signatures,[],evidence).rows[0];
-  assert.equal(ambiguous.speedMinutes,null);assert.equal(ambiguous.callDurationSeconds,null);assert.equal(ambiguous.called,false);assert.equal(ambiguous.notes,n.body);
+  assert.equal(ambiguous.speedMinutes,null);assert.equal(ambiguous.callDurationSeconds,null);assert.equal(ambiguous.called,false);assert.equal(ambiguous.notes,null);
   h.lead.lawruler_created_at=null;h.lead.vendor_fields={sources:{lawruler:{LeadID:'100',CaseType:'INNO MVA',LeadCreated:'9/30/2026'}}};
   assert.equal(partnerReportData(h.config,[h.lead],[h.claim],h.signatures,[],evidence).rows[0].speedMinutes,null);
 });
@@ -56,7 +56,7 @@ test('all sort types keep unknowns last and export preserves exactly supplied fi
 });
 
 test('additional evidence failures fail the complete report, and queries remain scoped to authorized source leads',async()=>{
-  const h=await partnerReportHarness();h.db.failOn=op=>op.table==='notes'?'read failed':null;
+  const h=await partnerReportHarness();h.db.failOn=op=>op.table==='communications'?'read failed':null;
   await assert.rejects(()=>h.server.loadPartnerReport(h.db,h.config));
   for(const op of h.db.ops.filter(op=>['notes','communications','lead_activity','call_logs'].includes(op.table))){
     assert.ok(op.filters.some(([kind,col,value])=>kind==='eq'&&col==='firm_id'&&value===REPORT_FIRM));
