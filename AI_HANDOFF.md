@@ -20,21 +20,23 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current state
 
-- Main: `947c9a9deed75de6fc23226b2e4ebfdc3f669c6f`.
+- Main: `247e78d2a1c4d7eff62a4896bb566a3ae4945189`.
+- PRs #200 and #201 merged October 19. Lead list/board and all Call Desk queues/search show received dates; NETFLY source intake attachments or preserved original email notes remain separate from the signed retainer and join the final packet. Existing-file save is scoped/idempotent, and adding intake refreshes packet preview. Main Cloudflare check completed successfully at 23:52 UTC. Live existing-file backfill and actual owner acceptance remain unverified; do not test with real sends.
+- PR #199 adds dedicated marketer-facing DQ explanations, reason drilldown and atomic call/status closure. Preview checks pass, but migration 0130 is written, NOT applied. Runtime source is 1 ahead/5 behind main. Reconcile and repeat focused synthetic gates before separately approved migration-before-code release. Payroll 0128 is already released, not a dependency hold.
 - PR #198 merged and deployed October 15 with PR Digital receipt-date cohorts, revised progress/loss and conversion metrics, filtered client detail/CSV, and an owner-only exact-scope report toggle. The release changes no partner grants, RLS, schema, records, messages, or delivery clocks. Actual signed-in desktop/mobile acceptance remains pending.
 - The earlier PR #197 owner-decline fix is released; actual authorized owner-session submission/acceptance still lacks recorded confirmation.
 - Payroll PR #162 is released. Migration 0128 was explicitly approved, applied, and verified with owner-only RLS, no anonymous table/function access, an invoker close transaction, and empty history before release. Production deployment completed successfully with 236 Edge Function Routes.
 - Payroll is count-only: no dollar amounts in the UI; prior-period chargebacks are separate and stay with the originally paid agent. No real payroll period, invoice, payment, credit, chargeback, or client decision was processed. Physical Safari and actual owner acceptance remain unverified.
-- Current main remains deployed, but Crissi has 12 consecutive failed crissi-health runs since October 17 at 11:46 AM Pacific. The eight newest runs in the October 18 review window all returned HTTP 200 with empty direct/proxy answers and direct.error=relay_530, replacing the earlier relay_525 symptom. Latest failure: October 18 at 6:50 PM Pacific, run 39187206770. All 12 drain jobs succeeded; no recovery is recorded. Do not describe AI service health as verified or infer a PR #198 cause/fix.
+- Current main's Cloudflare deployment passes, but Crissi has 16 consecutive failed health runs since October 17 at 11:46 AM Pacific. Four additional checks failed in this window: first relay_530, then three relay_525. Latest failed run 39343740636 at October 19, 4:47 PM Pacific used pre-#201 main 87e8a4b. HTTP 200 from the outer endpoint still had both answers empty; drain passed in all four. No later recovery, or heartbeat on latest main 247e78d2, is recorded. Do not infer that the NETFLY release caused or fixed the relay.
 - PR Digital migration 0129 remains previously recorded as applied/RLS-verified. PR #198 adds reporting and owner preview, not new access grants. Production report assets loaded and unauthenticated APIs denied access; approved audience/source scope and authenticated partner behavior must be verified rather than inferred from the deployment. Preview APIs returned 503 in the recorded rehearsal, while production unauthenticated APIs returned 401.
-- Draft PR #136 remains the exact-matter firm security hold, 5 commits ahead and 96 behind main, with conflicts. Production RLS, bounded old API/write/storage paths, released packet paths, and controlled actual firm-role denial/download acceptance remain incomplete.
-- Draft PR #80, the app-wide call-ready sound and green pulse, is 2 commits ahead and 178 behind main. Its historical hosted checks do not prove compatibility with the current queue and cadence.
-- This documentation-only correction remains in draft PR #118, now 122 commits behind main and conflicted. Main's AI_HANDOFF.md is stale because it still describes earlier saved-agent work as pending even though PRs #195-#198 are merged; Git evidence and this correction are authoritative for current state.
+- Draft PR #136 remains the exact-matter firm security hold, 5 commits ahead and 101 behind main, with conflicts. Production RLS, bounded old API/write/storage paths, released packet paths, and controlled actual firm-role denial/download acceptance remain incomplete.
+- Draft PR #80, the app-wide call-ready sound and green pulse, is 2 commits ahead and 183 behind main. Its historical hosted checks do not prove compatibility with the current queue and cadence.
+- This documentation-only correction remains in draft PR #118, now 127 commits behind main and conflicted. Main's AI_HANDOFF.md is stale because it still describes earlier saved-agent work as pending even though PRs #195-#198 are merged; Git evidence and this correction are authoritative for current state.
 - Smithers draft PR #14 has no runtime movement. It remains two commits behind InnoDash main; its exact-head reported checks have no failure, but a canceled preview status is not proof of a working protected deployment. Protected authenticated acceptance, live Supabase setup, and security reconciliation remain unapproved or unverified.
 
 ## Work completed
 
-- PR #198 was merged and deployed with 237 Edge Function Routes after separately recorded release approval. This review did not perform that release.
+- PRs #200/#201 merged; exact-head previews and main 247e78d2 Cloudflare deployment succeeded. PR #200 records 237 routes. PR #201 still requires live backfill acceptance; preview/build success is not permission to save or send real files. This review did not perform either release.
 - Released count-only weekly payroll with separate prior-period chargebacks after applying and verifying migration 0128.
 - Added broad mobile/readiness and honest-failure feedback so forms, file actions, communications, PDF editing, archive/admin tools, and questionnaire workflows preserve drafts and report success only after confirmed writes.
 - Kept saved intake-agent attribution visible across file views, queues, dashboard, firm delivery, email, PDF, and CSV artifacts.
@@ -42,37 +44,38 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Files and systems changed
 
-- See merged ClaimReach PR #198 for the latest report/owner-preview change set and earlier PRs for intake, delivery, decline and payroll releases.
+- See merged PRs #200/#201 for received dates and NETFLY original-source packets; open PR #199 for marketer-safe DQ explanation work. PR #198 remains the released report/owner-preview baseline.
 - See draft PR #136 for firm matter scoping and security boundaries.
 - See draft PR #80 for the isolated app-wide alert implementation.
 - See InnoDash draft PR #14 for the Smithers continuity control plane.
 
 ## Verification performed
 
-- Reviewed current branch tips, open PR heads, recent commits, workflow runs and all eight newly failed Crissi job logs. Only the prior review's documentation commits appeared in the rolling window; no new runtime code or recorded live-owner acceptance was found.
+- Reviewed all connected default-branch commits, branch tips, open PR heads and workflows; read all four newly failed Crissi job logs, new PR descriptions and PR #199 synthetic verification artifacts. No runtime source tests were rerun during this docs-only review.
 - Read src/lib/ai-relay.ts: relay_<status> is returned when the direct relay HTTP response is not successful. This localizes relay_530 to that upstream hop; it does not establish its root cause, current configured URL, or recovery.
 - PR #198 records clean TypeScript, 19 reporting/filter/preview regressions, signature-report 17, partner isolation, MVA engine 71 and intake engine 78, synthetic rendering checks, and successful Cloudflare packaging/production deployment. These source tests were not rerun by this documentation review. No open PR head has a failed or stalled reported check; older untouched heads without CI status are not failed runs.
-- Main `947c9a9d` has eight additional heartbeat failures limited to crissi-health. The latest 12 runs failed that job while all drain jobs passed. Open PR heads have no failed or stalled reported check; absent CI statuses do not prove pending runs. These facts are separate from main workflow failures.
+- PR #199's recorded TypeScript, Cloudflare 237-route build, 33 focused checks, PGlite transaction and iPhone synthetic browser gates passed. Full runner was 187/203 versus baseline 185/202, with 16 documented pre-existing failures, not an all-green suite. Exact-head hosted checks have no failure. Main workflows remain separately failed on Crissi while drains pass.
 - Actual owner decline submission, owner payroll acceptance, a real payroll close, PR Digital partner activation, actual firm-role portal acceptance, alert behavior on current main, and live Smithers integration remain unverified or intentionally held.
 
 ## Active blockers or open questions
 
-- Crissi's outage is sustained across 12 checks, now with relay_530 in all eight newest logs despite HTTP 200 from the outer health endpoint and successful drains. Relay/upstream cause and recovery remain unverified; do not replay queues, submit client prompts, rotate credentials or change configuration without approval.
+- Crissi health has 16 consecutive failures, now back to relay_525 after relay_530, with drain unaffected. Upstream cause and recovery remain unverified; no queue replay, client prompts, credentials or configuration changes without approval.
+- PR #199 requires current-main reconciliation and re-verification, then Brett's separate approval for migration 0130 before runtime release. Historical private notes must not be copied into marketer explanations.
 - The released owner-decline fix still requires submission and confirmation through the actual authorized owner session. Do not impersonate an owner or submit a real decision during automated verification.
 - Payroll requires an actual owner-session visual acceptance on the released page. Do not close a real period or process money during acceptance.
 - PR Digital needs actual owner and authorized-partner desktop/mobile acceptance of identical date/list/CSV scope, toggle return behavior, and denied non-owner access. This report release does not itself approve or widen audience/source scope.
-- PR #136 must reconcile 96 newer main commits, finish the production RLS/API/storage and packet boundary, and pass controlled firm-login denial/download acceptance before reviewer provisioning.
+- PR #136 must reconcile 101 newer main commits, finish the production RLS/API/storage and packet boundary, and pass controlled firm-login denial/download acceptance before reviewer provisioning.
 - PR #80 must be re-applied to the current queue/cadence behavior before release verification.
 - Smithers still requires separate protected authenticated preview and security approval before live configuration.
 
 ## Next safe action
 
-- First inspect relay/upstream connectivity and deployment logs read-only from an approved environment, beginning with https://github.com/bmcc3po/claimreach/actions/runs/39187206770 and the relay HTTP 530 response; establish a successful answer before declaring recovery. No queue replay, live client prompt, permissions or configuration change is authorized by this review. PR Digital's synthetic authenticated desktop/mobile acceptance remains the separate next product gate; retain owner decline/payroll and firm-security/call-alert/Smithers holds.
+- First inspect relay/upstream connectivity and deployment logs read-only from an approved environment, beginning with https://github.com/bmcc3po/claimreach/actions/runs/39343740636 and its relay HTTP 525 response; establish a successful answer before declaring recovery. No queue replay, live client prompt, permissions or configuration change is authorized by this review. PR Digital's synthetic authenticated desktop/mobile acceptance remains the separate next product gate; retain owner decline/payroll and firm-security/call-alert/Smithers holds.
 
 ## Session log
 
+- 2026-10-19 PT - Codex - reconciled NETFLY/received-date releases #200/#201 and held marketer DQ #199; recorded four further Crissi failures with drain unaffected; next: read-only relay diagnostics, while DQ needs current-main re-verification before migration approval.
 - 2026-10-18 PT - Codex - recorded eight more Crissi failures, all relay_530, bringing the streak to 12 while drains pass; read relay status mapping without invoking it; next: approved read-only upstream diagnostics and verified successful answer.
 - 2026-10-17 19:53 PT - Codex - recorded four consecutive recurring relay_525 Crissi failures with drain unaffected; corrected the stale recovered-health state; next: read-only relay/upstream diagnostics before claiming recovery.
 - 2026-10-15 19:22 PT - Codex - reconciled the PR Digital #198 release and exact owner preview; recorded two earlier relay_525 failures followed by four successful heartbeats without inferring a causal fix; next: secure authenticated desktop/mobile report acceptance.
 - 2026-10-10 19:24 PT - Codex - reconciled continuity after PR #197 restored authorized owner-decline persistence without weakening the private dispatch-table boundary; main is deployed and healthy, but actual owner submission remains pending; next: verify the decline through the real owner session.
-- 2026-10-09 19:48 PT — Codex — reconciled continuity after 27 ClaimReach merges; payroll and migration 0128 are released with green production evidence but no real owner acceptance, while PR Digital remains inactive pending scope approval; next: controlled owner payroll inspection without a real close.
