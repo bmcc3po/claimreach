@@ -1,27 +1,26 @@
 # AI Handoff
 
 ## Current objective
-Make saved intake-agent attribution travel with the file: intake header, dashboard, desk/NETFLY queues, delivery worklist, email and intake PDF/CSV. Do not infer the intake agent from the current viewer, assignee or delivery sender.
+Finish marketer-safe PR Digital DQ reporting and require meaningful written explanations with atomic DQ status/call persistence. Never reuse internal narratives as marketer explanations.
 
 ## Current state
-- Branch: codex/intake-agent-everywhere, based on production 5cc5f82.
-- Added shared saved-agent name resolver and bounded name reads using the existing authorized DB context. No migrations, authentication or RLS changes.
-- Names remain visible when file headers collapse. Legacy missing IDs read Not recorded; no historical attribution is fabricated.
-- Payroll PR162 and migration0128 are RELEASED, superseding the prior stale hold. Production 5cc5f82 / deployment0ac847a6 completed Build Completed and236 Edge Function Routes. Financial tables remain empty; no real payroll closing was tested.
-- Overnight follow-up deleted at its instructed 8AM Pacific cutoff. New user work continues.
+- Runtime branch: codex/marketer-dq-explanations, source fa277dfa0f9bb8840efd8d5c1fbbdd496b21072e, PR #199.
+- Source is 1 commit ahead and 5 behind main 247e78d2a1c4d7eff62a4896bb566a3ae4945189 after #200/#201 received-date/NETFLY packet releases. Later changes in this review are documentation only.
+- Separate current intake DQ, historical DQ and firm turn-down counts/drilldowns use the existing firm/campaign/source scope. Last 14 days is today plus the prior 13 Pacific calendar days.
+- Dedicated marketer-facing explanations replace private narrative fallback. Missing history requires review, not fabricated or copied text. Manual DQ requires a selected reason and meaningful explanation, preserves drafts on error, and commits call closure/status/explanation atomically.
+- Migration 0130_marketer_dq_explanations.sql is written/appended, NOT applied. Separate explicit approval is required before migration-before-code rollout. Do not deploy ahead of it; reads/saves fail closed.
+- Payroll PR #162 / migration 0128 are already released and verified in continuity PR #118. References to held payroll in the original PR/verification README were stale; 0130 remains separately held.
+- Earlier saved-agent attribution work is released, not the current pending objective. Preserve actual-owner acceptance holds and use continuity PR #118 for other builds.
 
 ## Verification
-- TypeScript passed before final test additions; rerun before commit.
-- Intake renderer12 checks including extracted actual PDF text, escaped HTML, saved name versus assignment, and missing attribution.
-- Shared header component test passed; real React synthetic browser at375/390/768/1024/1440 has no horizontal overflow and preserves agent name when collapsed.
-- Firm delivery50, MVA engine71, intake engine78, packet worklist9 passed. NETFLY create/presence and file-agreement/QA-resubmit29 route checks passed.
-- Pending: final TypeScript, preview Cloudflare gates, production release and live test-agent verification.
-
-## Remaining limitations
-- Owner session still needed for live owner acceptance and outstanding real file actions; do not impersonate owner.
-- Hayden address discrepancy and held NETFLY destination confirmation remain unanswered.
-- Do not resend historical test deliveries TMP1262/1263/1264. No real client emails used as tests.
-- Existing sent emails and stored historical PDFs cannot be retroactively changed by this renderer fix.
+- Recorded artifacts: verification/artifacts/marketer-dq/README.md and checks.json.
+- TypeScript and Cloudflare Build Completed with 237 Edge Function Routes; 33 focused checks; synthetic PGlite transaction rollback/scope/browser-role tests; actual React iPhone drilldown/failed-save tests passed in the source task.
+- Full runner: 187/203 versus unchanged baseline 185/202. Sixteen pre-existing failures are documented; no new failing suite is recorded. Do not call the entire suite green.
+- Exact source-head Cloudflare/Netlify preview checks succeeded. Production migration, release and authenticated live-user behavior are not verified.
+- This continuity review read Git, checks, artifact records and handoffs only; it did not rerun source tests, apply SQL, merge, deploy or mutate live data.
 
 ## Next safe action
-Finish focused checks, create/review release PR, verify Cloudflare preview and production, then verify live agent header and desk.
+Reconcile the five newer main commits and repeat focused synthetic DQ/privacy/transaction/packet regression gates. Then obtain Brett's separate approval for applying 0130 before code release; do not apply migrations or widen access during an automated review.
+
+## Session log
+- 2026-10-19 PT - Codex - replaced inherited saved-agent handoff with current PR #199 evidence, retained the unapplied 0130 hold and corrected stale payroll-hold references; next: reconcile current main and reverify.
