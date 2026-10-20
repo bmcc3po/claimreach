@@ -25,6 +25,6 @@ Test tools (`tsx`, Playwright, PGlite) were installed in `/tmp/claimreach-tools`
 
 ## Release boundary
 
-Migration `0130_marketer_dq_explanations.sql` is appended to `RUN_THESE_MIGRATIONS.sql`. It does not depend on held payroll migration 0128. It adds a nullable dedicated column and an invoker function callable only by the existing server service role; it grants no browser/user role access and changes no RLS policies.
+Migration `0130_marketer_dq_explanations.sql` is appended to `RUN_THESE_MIGRATIONS.sql`. It does not depend on payroll migration 0128, which is already released and verified; 0130 remains separately unapplied and held for approval. It adds a nullable dedicated column and an invoker function callable only by the existing server service role; it grants no browser/user role access and changes no RLS policies.
 
 **Migration was not applied. No production data mutation, deployment or merge was performed.** Deploying this branch requires separately approved application of 0130 first. Without it, report reads and manual DQ saves fail closed. The screenshots are a local synthetic preview, not evidence of a live database rollout.
