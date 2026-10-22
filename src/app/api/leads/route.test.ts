@@ -85,7 +85,7 @@ function harness(role = "agent") {
 const tests: [string, () => Promise<void>][] = [];
 const test = (name: string, fn: () => Promise<void>) => tests.push([name, fn]);
 
-test("Innovative agent saves TMP contacts and status when pilot RLS hides the staff organization", async () => {
+test("Innovative agent saves TMP contacts while status uses the shared endpoint when pilot RLS hides the staff organization", async () => {
   const h = harness();
   h.db.tables.app_users[0].firm_id = "intake-team";
   h.aggregateDb.tables.firms.push({ id: "intake-team", slug: "inno" });
@@ -94,8 +94,8 @@ test("Innovative agent saves TMP contacts and status when pilot RLS hides the st
   assert.equal((await h.save(patch)).status, 200);
   for (const [key, value] of Object.entries(patch)) assert.equal(h.row()[key], value);
   assert.equal(h.audit[0].firm_id, "firm", "contact audit follows the matter, not the staff organization");
-  assert.equal((await h.status()).status, 200);
-  assert.equal(h.db.tables.claims[0].status, "contacting");
+  assert.equal((await h.status()).status, 409);
+  assert.equal(h.db.tables.claims[0].status, "new");
 });
 
 test("intake organization exception never admits a different team, firm, campaign or archived file", async () => {
@@ -235,161 +235,10 @@ test("firm role still cannot rename contacts through the staff save route", asyn
   assert.equal(r.status, 403); assert.equal(h.writes().length, 0);
 });
 
-test("hidden lead and mismatched claim never reach the status writer", async () => {
-  const hidden = harness(); hidden.db.tables.leads=[];
-  assert.equal((await hidden.status()).status,404);assert.equal(hidden.transitions.length,0);assert.equal(hidden.writes().length,0);
-  const mismatch=harness();mismatch.db.tables.claims[0].lead_id="another-lead";
-  assert.equal((await mismatch.status()).status,400);assert.equal(mismatch.transitions.length,0);assert.equal(mismatch.writes().length,0);
-});
-
-test("non-owner status rejects non-INNO, ambiguous campaign, and wrong matter scope even before RLS rollout", async () => {
-  for(const mutate of [
-    (h:any)=>h.db.tables.campaigns[0].name="Motel 6",
-    (h:any)=>h.db.tables.campaigns[0].active=false,
-    (h:any)=>h.db.tables.firms[0].slug="tmt",
-    (h:any)=>h.db.tables.claims[0].campaign_id="foreign-campaign",
-    (h:any)=>h.row().case_type="motel_trafficking",
-    (h:any)=>h.db.tables.campaigns.push({...h.db.tables.campaigns[0],id:"duplicate-campaign"}),
-  ]){
-    const h=harness();mutate(h);const r=await h.status();
-    assert.equal(r.status,403);assert.equal(h.transitions.length,0);assert.equal(h.writes().length,0);
-  }
-});
-
-test("active INNO agent changes only resolved claim using the session database and preserves DQ validation", async () => {
-  const h=harness();h.db.tables.claims.push({...h.db.tables.claims[0],id:"sibling",status:"new"});
-  assert.equal((await h.status()).status,200);assert.equal(h.db.tables.claims[0].status,"contacting");
-  assert.equal(h.db.tables.claims[1].status,"new");assert.deepEqual(h.transitions[0].claimIds,["claim"]);
-  assert.equal((await h.status({status:"dq"})).status,400);assert.equal(h.db.tables.claims[0].status,"contacting");
-  assert.equal((await h.status({status:"dq",dq_reason_key:"criteria"})).status,200);assert.equal(h.db.tables.claims[0].status,"dq");
-});
-
-test("status keeps owner access and denies inactive staff or external roles", async () => {
-  const owner=harness("owner");owner.db.tables.campaigns[0].name="Other campaign";
-  assert.equal((await owner.status()).status,200);
-  for(const role of ["firm","partner"]){const h=harness(role);assert.equal((await h.status()).status,403);assert.equal(h.transitions.length,0);}
-  const inactive=harness();inactive.db.tables.app_users[0].active=false;
-  assert.equal((await inactive.status()).status,401);assert.equal(inactive.transitions.length,0);
-});
-
-test("status retains hidden sibling QA and WIP without returning or mutating that matter", async () => {
-  for (const siblingStatus of ["signed_grievous", "signed_wip"]) {
-    const h = harness();
-    h.hiddenClaims.push({ id: "hidden-matter", lead_id: "lead", campaign_id: "other-campaign", status: siblingStatus });
-    const r = await h.status({ status: "dq", dq_reason_key: "criteria" });
-    assert.equal(r.status, 200);
-    assert.equal(h.row().qa_pending, siblingStatus === "signed_grievous");
-    assert.equal(h.row().wip_pending, siblingStatus === "signed_wip");
-    assert.equal(h.db.tables.claims[0].status, "dq");
-    assert.equal(h.hiddenClaims[0].status, siblingStatus);
-    assert.deepEqual(r.body, { ok: true });
-    assert.ok(!JSON.stringify(h.audit).includes("hidden-matter"));
-    assert.equal(h.aggregateDb.ops.filter(op => op.table === "claims").length, 1);
-    assert.deepEqual(h.aggregateDb.ops.find(op => op.table === "claims")!.filters, [["eq", "lead_id", "lead"]]);
-  }
-});
-
-test("failed sibling aggregate preserves prior queue flags and reports an incomplete update", async () => {
-  const h = harness();Object.assign(h.row(), { qa_pending: true, wip_pending: true });
-  h.aggregateDb.failOn = op => op.table === "claims" ? "Queue read unavailable" : null;
-  const r = await h.status();
-  assert.equal(r.status, 400);
-  assert.equal(h.db.tables.claims[0].status, "contacting");
-  assert.equal(h.row().qa_pending, true);assert.equal(h.row().wip_pending, true);
-});
-
-test("manual status cannot fabricate signatures, QA, WIP, approval, or delivery even for the owner", async () => {
-  for (const role of ["agent", "owner"]) for (const status of ["esign_sent", "signed_grievous", "signed_qa", "signed_wip", "signed_approved", "signed_dropped", "grievous", "qa", "wip", "approved", "delivered", "retained"]) {
-    const h = harness(role);const r = await h.status({ status, dq_reason_key: "criteria" });
-    assert.equal(r.status, 409, `${role} ${status}`);assert.equal(h.transitions.length, 0);assert.equal(h.writes().length, 0);
-  }
-  const custom = harness();custom.db.tables.statuses.push({ ...DEFAULT_STATUSES[0], key: "custom_complete", requires_esign: true });
-  assert.equal((await custom.status({ status: "custom_complete" })).status, 409);
-});
-
-test("manual contact and callback changes work; unknown, inactive, or unreadable catalog fails closed", async () => {
-  const callback = harness();callback.db.tables.statuses.push({ ...DEFAULT_STATUSES[0], key: "callback", label: "Call back" });
-  assert.equal((await callback.status({ status: "callback" })).status, 200);
-  assert.equal((await callback.status({ status: "new" })).status, 200);
-  const unknown = harness();assert.equal((await unknown.status({ status: "invented" })).status, 400);assert.equal(unknown.writes().length, 0);
-  const inactive = harness();inactive.db.tables.statuses.find((item) => item.key === "contacting")!.active = false;
-  assert.equal((await inactive.status()).status, 400);assert.equal(inactive.writes().length, 0);
-  const failed = harness();failed.db.failOn = (op) => op.table === "statuses" ? "Read unavailable" : null;
-  assert.equal((await failed.status()).status, 503);assert.equal(failed.writes().length, 0);
-});
-
-test("manual status cannot downgrade signed, QA, or firm milestones for agents or owners", async () => {
-  for (const role of ["agent", "owner"]) for (const prior of ["signed_qa", "signed_wip", "signed_approved", "delivered", "retained", "qa", "wip", "approved", "external_signed_review"])
-    for (const status of ["new", "contacting", "dq"]) {
-      const h = harness(role); h.db.tables.claims[0].status = prior;
-      const r = await h.status({ status, dq_reason_key: "criteria" });
-      assert.equal(r.status, 409, `${role} ${prior} to ${status}`);
-      assert.equal(h.transitions.length, 0); assert.equal(h.writes().length, 0); assert.equal(h.db.tables.claims[0].status, prior);
-    }
-});
-
-test("manual status cannot erase provider or emergency signatures before status sync", async () => {
-  for (const emergency of [false, true]) {
-    const h = harness();
-    if (emergency) h.aggregateDb.tables.signable_documents.push({ id: "signed-emergency", lead_id: "lead", status: "signed", signed_at: "2026-09-29T11:00:00Z", audit: { emergency: { claim_id: "claim" } } });
-    else h.aggregateDb.tables.esign_submissions.push({ id: "signed-provider", lead_id: "lead", claim_id: "claim", status: "signed", signed_at: "2026-09-29T11:00:00Z" });
-    const r = await h.status({ status: "new" });
-    assert.equal(r.status, 409); assert.equal(h.transitions.length, 0); assert.equal(h.writes().length, 0);
-    assert.match(r.body.error, /signed agreement evidence/);
-  }
-});
-
-test("unsigned closed/Done mistakes can be reopened without touching other matters", async () => {
-  for (const prior of ["dq", "dead", "not_interested", "done"]) {
-    const h = harness(); h.db.tables.claims[0].status = prior;
-    if (prior === "done") h.db.tables.statuses.push({ ...DEFAULT_STATUSES[0], key: "done", phase: "terminal", is_final: true });
-    const r = await h.status({ status: "contacting" }); assert.equal(r.status, 200, prior);
-    assert.equal(h.db.tables.claims[0].status, "contacting");
-    assert.equal(h.transitions[0].expectedStatus, prior); assert.equal(h.transitions[0].expectedUpdatedAt, "2026-09-29T10:00:00Z");
-    const update = h.db.ops.find(op => op.table === "claims" && op.kind === "update")!;
-    assert.ok(update.filters.some(([op, column, value]) => op === "eq" && column === "updated_at" && value === "2026-09-29T10:00:00Z"));
-  }
-});
-
-test("foreign sibling signatures do not bind to this matter; unbound mixed-matter evidence holds", async () => {
-  for (const unbound of [false, true]) {
-    const h = harness(); h.hiddenClaims.push({ id: "hidden-matter", lead_id: "lead", status: "signed_qa" });
-    h.aggregateDb.tables.esign_submissions.push({ id: "signed", lead_id: "lead", claim_id: unbound ? null : "hidden-matter", campaign_id: null, status: "signed" });
-    const r = await h.status(); assert.equal(r.status, unbound ? 503 : 200);
-    assert.ok(!JSON.stringify(r.body).includes("hidden-matter"));
-    if (unbound) assert.equal(h.writes().length, 0);
-  }
-});
-
-test("signature-read failures and missing claim versions fail closed", async () => {
-  for (const table of ["esign_submissions", "signable_documents"]) {
-    const h = harness(); h.aggregateDb.failOn = op => op.table === table ? "Unavailable" : null;
-    assert.equal((await h.status()).status, 503); assert.equal(h.writes().length, 0); assert.equal(h.transitions.length, 0);
-  }
-  const missing = harness(); delete missing.db.tables.claims[0].updated_at;
-  assert.equal((await missing.status()).status, 503); assert.equal(missing.writes().length, 0); assert.equal(missing.aggregateDb.ops.length, 0);
-});
-
-test("hidden or unauthorized files never reach privileged evidence reads", async () => {
-  for (const change of [(h: any) => h.db.tables.leads = [], (h: any) => h.db.tables.firms[0].slug = "other"]) {
-    const h = harness(); change(h); const r = await h.status();
-    assert.ok([403, 404].includes(r.status)); assert.equal(h.aggregateDb.ops.length, 0); assert.equal(h.transitions.length, 0);
-  }
-});
-
-test("same-status newer evidence or concurrent signed status defeats the conditional write", async () => {
-  for (const changeStatus of [false, true]) {
-    const h = harness();
-    h.db.failOn = op => {
-      if (op.table === "claims" && op.kind === "update") {
-        h.db.tables.claims[0].updated_at = "2026-09-29T12:00:00Z";
-        if (changeStatus) h.db.tables.claims[0].status = "signed_qa";
-      }
-      return null;
-    };
-    const r = await h.status(); assert.equal(r.status, 409);
-    assert.equal(h.db.tables.claims[0].status, changeStatus ? "signed_qa" : "new");
-    assert.equal(h.audit.length, 0);
+test("legacy status endpoint cannot bypass shared reasons, notes, permissions or optimistic locking", async () => {
+  for(const role of ["agent","owner","firm"])for(const status of ["new","dq","dnc","delivered","signed_grievous"]){
+    const h=harness(role),r=await h.status({status});assert.ok([403,409].includes(r.status));
+    assert.equal(h.transitions.length,0);assert.equal(h.writes().length,0);
   }
 });
 

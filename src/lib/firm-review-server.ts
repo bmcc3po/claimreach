@@ -35,7 +35,7 @@ export async function reviewerContext() {
 }
 export async function reviewerFile(db: any, scope: FirmReviewScope, claimId: string) {
   const { data: claim, error } = await db.from('claims').select(REVIEW_CLAIM_COLS).eq('id', claimId)
-    .eq('firm_id', scope.firmId).eq('campaign_id', scope.campaignId).in('status', ['delivered', 'retained', 'signed_dropped']).maybeSingle();
+    .eq('firm_id', scope.firmId).eq('campaign_id', scope.campaignId).in('status', ['delivered', 'retained', 'signed_dropped', 'firm_rejected', 'bmc_rejected']).maybeSingle();
   if (error) throw new Error('Could not read the file. Please try again.');
   if (!claim) return null;
   const leadResult = await db.from('leads').select(REVIEW_LEAD_COLS).eq('id', claim.lead_id).eq('firm_id', scope.firmId).is('archived_at', null).maybeSingle();

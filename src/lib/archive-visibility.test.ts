@@ -41,6 +41,7 @@ function load(file: string) {
     "react/jsx-runtime": require("react/jsx-runtime"), "next/server": require("next/server"),
     "next/navigation": { redirect() { throw new Error("redirect"); } },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => db },
+    "@/lib/report-signatures": { reportSignatures: async () => new Set(tables.claims.map(c => c.id)) },
     "@/lib/auth-user": { authUser: () => db.auth.getUser() },
     "@/lib/gate": { gateUser: async () => ({ id: "owner", role: "owner" }), requirePerm: async () => ({ ok: true, user: { role: "owner" } }) },
     "@/lib/mva-call/server": { requireStaff: async () => ({ id: "owner", role: "owner" }) },
@@ -74,7 +75,8 @@ function load(file: string) {
   tables.app_users[0].role = "agent";
   await assert.rejects(() => cleanup.default({searchParams: Promise.resolve({})}), /redirect/, "Cleanup requires existing owner access");
   tables.app_users[0].role = "owner";
-  const signed = await load("(internal)/signed/page.tsx").default({searchParams: Promise.resolve({})});
+  const signedPage = await load("(internal)/signed/page.tsx").default({searchParams: Promise.resolve({})});
+  const signed = signedPage.props.children.find((child:any)=>child?.props?.title==="Signed files");
   assert.equal(signed.props.title, "Signed files", "the ordinary owner link opens signed files without redirecting to reports");
   assert.deepEqual(signed.props.leads.map((r: any) => r.id), ["active"], "signed files retain signature evidence and archive filtering");
   for (const file of ["(internal)/reports/page.tsx", "(internal)/reports/status/page.tsx", "(firm)/portal/reports/page.tsx", "(firm)/portal/cases/page.tsx"]) {

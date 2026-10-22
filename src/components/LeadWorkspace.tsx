@@ -1,4 +1,5 @@
 "use client";
+import { editCurrentStatus } from "@/lib/current-status-events";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { LX } from "@/lib/lexicon";
@@ -324,15 +325,8 @@ function PipelineStrip({ status, mva = false }: { status: string; mva?: boolean 
 function WipBanner({ lead, claimId, signed }: { lead: any; claimId?: string; signed: boolean }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
-  async function resubmit() {
-    setBusy(true);
-    const status = signed ? "signed_qa" : "qa";
-    // Resubmit the MATTER being fixed, not the whole person: a sibling claim
-    // on another campaign stays where it is (Astra round 5).
-    const r = await fetch("/api/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "status", lead_id: lead.id, claim_id: claimId || undefined, status }) });
-    setBusy(false);
-    if (r.ok) { setDone(true); setTimeout(() => window.location.reload(), 700); }
-  }
+  async function resubmit() { if (claimId) editCurrentStatus(claimId); }
+
   return (
     <div className="wip-banner">
       <div>

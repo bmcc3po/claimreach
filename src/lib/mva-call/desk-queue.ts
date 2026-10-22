@@ -58,7 +58,10 @@ export function buildDeskQueues(opts: {
         callCount: summary?.total_dials ?? null, lastCallAt: summary?.last_call_at ?? null,
         onPhoneBy: activeCallPresence(claim.answers?.mva_live_call)?.by_name ?? null };
       let bucket: DeskTab;
-      if (claim.status === SIGNED_QA_RETURN_STATUS) {
+      if (claim.status === 'scheduled_callback' && claim.status_callback_at && lead.perm_call !== false) {
+        bucket = 'callbacks'; row.tag = 'Call back'; row.due = claim.status_callback_at; row.at = claim.status_callback_at;
+        row.sub = claim.status_note || 'Agent-scheduled call back';
+      } else if (claim.status === SIGNED_QA_RETURN_STATUS) {
         bucket = "wip"; row.tag = "QA returned"; row.sub = "Signed file returned by QA for corrections";
       } else if (active && ["signed", "completed"].includes(active.status)) {
         bucket = "signed"; row.at = active.signed_at || active.sent_at || row.at;

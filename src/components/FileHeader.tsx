@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import './file-header.css';
+import GlobalFileSearch from './GlobalFileSearch';
 
 /** One header across file tabs, intake layouts and device sizes. Collapse never
  * unmounts a form or discards its draft. Only the UI preference is stored. */
@@ -23,6 +24,7 @@ export default function FileHeader({ name, leadNo, backHref, status, intakeAgent
       <div className="file-header-identity"><strong title={name}>{name || 'Unnamed client'}</strong><span>{leadNo}</span>{intakeAgent && <small className="file-header-agent">Intake agent: {intakeAgent}</small>}</div>
       <button type="button" className="file-header-toggle" aria-expanded={!collapsed} aria-controls={id} onClick={toggle}>{collapsed ? 'Show header' : 'Hide header'} <span aria-hidden="true">{collapsed ? '⌄' : '⌃'}</span></button>
       <div className="file-header-status">{status}</div>
+      <div className="file-header-mobile-search"><GlobalFileSearch /></div>
     </div>
     <div id={id} className="file-header-content" hidden={collapsed}>{children}</div>
   </header>;

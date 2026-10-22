@@ -124,3 +124,6 @@ test("failed acquisition dependencies pause calling but preserve signed service 
   console.log(`${passed} Desk queue checks passed`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
+
+const scheduled:any=lead('agent-callback','scheduled_callback');scheduled.claims[0].status_callback_at='2026-10-30T15:00:00Z';scheduled.claims[0].status_note='The caller requested Friday.';
+assert.equal(classify([scheduled]).callbacks[0].due,scheduled.claims[0].status_callback_at,'header scheduling does not fabricate a call event');

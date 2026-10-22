@@ -1,4 +1,5 @@
 "use client";
+import { currentStatusLabel } from "@/lib/current-status";
 import { areaHref, type WorkArea } from '@/lib/work-area';
 import { useMemo, useState } from "react";
 import { isSignedKey, type SignedCatalogRow } from "@/lib/statuses";
@@ -16,7 +17,7 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
 
   // Join claims to their lead for the drill-down list.
   const leadById = useMemo(() => Object.fromEntries(leads.map((l) => [l.id, l])), [leads]);
-  const statusLabel = useMemo(() => Object.fromEntries(statuses.map((s) => [s.key, s.label])), [statuses]);
+  const statusLabel = useMemo(() => Object.fromEntries(statuses.map((s) => [s.key, currentStatusLabel(s.key,s.label)])), [statuses]);
   const caseTypes = useMemo(() => Array.from(new Set(claims.map((c) => c.claim_type).filter(Boolean))).sort(), [claims]);
 
   const pivotRows = useMemo(() => {
@@ -44,12 +45,9 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
     }
     const total = cl.length;
     const qualified = byStatus["qualified"] ?? 0;
-    // The ONE signed-status definition lives in statuses.ts (isSignedKey),
-    // the same call the Leads and Signed pages make. No report-only fallback:
-    // retired and unlisted signed_* keys already count there (Astra 7b).
-    const signedCatalog = catalog ?? statuses;
-    const signed = Object.entries(byStatus).reduce((n, [k, v]) => (isSignedKey(k, signedCatalog) ? n + (v as number) : n), 0);
-    const convRate = total ? Math.round(((qualified + signed) / total) * 100) : 0;
+    // Historical signing evidence remains independent of the saved current status.
+    const signed = cl.filter(c=>c.ever_signed_confirmed===true).length;
+    const convRate = total ? Math.round((signed / total) * 100) : 0;
     return { total, qualified, signed, convRate, byStatus, byType, byCampaign, byTier };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claims, range, statuses, catalog]);
@@ -152,8 +150,8 @@ export default function ReportsView({ leads, claims, scope = "staff", statuses =
         <div className="cl-kpis">
           <div className="cl-kpi"><div className="cl-kpi-l">Total claims</div><div className="cl-kpi-v">{data.total}</div><div className="cl-kpi-f">in range</div></div>
           <div className="cl-kpi"><div className="cl-kpi-l">Qualified</div><div className="cl-kpi-v">{data.qualified}</div><div className="cl-kpi-f">ready for the firm</div></div>
-          <div className="cl-kpi"><div className="cl-kpi-l">Signed</div><div className="cl-kpi-v">{data.signed}</div><div className="cl-kpi-f">retained</div></div>
-          <div className="cl-kpi"><div className="cl-kpi-l">Conversion</div><div className="cl-kpi-v">{data.convRate}%</div><div className="cl-kpi-f">qualified + signed of total</div></div>
+          <div className="cl-kpi"><div className="cl-kpi-l">Ever signed · verified</div><div className="cl-kpi-v">{data.signed}</div><div className="cl-kpi-f">historical signature evidence</div></div>
+          <div className="cl-kpi"><div className="cl-kpi-l">Conversion</div><div className="cl-kpi-v">{data.convRate}%</div><div className="cl-kpi-f">verified signing of total</div></div>
         </div>
       </div>
 

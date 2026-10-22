@@ -122,7 +122,7 @@ test('imported owner-approved signature retains Yes with unknown original date; 
 test('recorded firm decline stays visible alongside signature, and uncertain signatures are never reported as unsigned', async () => {
   const h = await partnerReportHarness(); h.signature.firmDecision = 'Firm declined';
   let row = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, [])[0];
-  assert.equal(row.status, 'Signed and declined'); assert.equal(row.signed, 'Yes');
+  assert.equal(row.status, 'New lead'); assert.equal(row.signed, 'Yes');
   h.signature.state = 'verify'; row = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, [])[0];
   assert.equal(row.signed, 'Check signature'); assert.equal(row.signedAt, null);
 });

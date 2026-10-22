@@ -5,8 +5,7 @@ import { requireStaff, LEAD_CALL_COLS } from "@/lib/mva-call/server";
 import { caseReport, caseReportHtml, caseReportText } from "@/lib/mva-call/report";
 import { signedPdfAttachment } from "@/lib/signed-docs";
 import { loadIntakeBundle, hasIntakeQuestions, buildIntakePdfAttachment } from "@/lib/intake-render";
-import { validateDispo, DISPO_STATUS, DISPO_FIXED_DQ_KEY, DISPO_LABEL, DEFAULT_CALL_REASONS } from "@/lib/mva-call/dispo";
-import { setClaimStatusForLeads } from "@/lib/claim-status";
+import { validateDispo, DISPO_LABEL, DEFAULT_CALL_REASONS } from "@/lib/mva-call/dispo";
 import { resolveSigningMatter, getMatterAgreement, agreementIsVoided, getMatterEmergency, emergencySupersedes } from "@/lib/mva-call/signing-matter";
 import { recordAudit } from "@/lib/audit";
 import { fireEvent } from "@/lib/webhook-deliver";
@@ -17,9 +16,8 @@ export const runtime = "edge";
 
 // POST /api/calls/dispo
 //   { lead_id, call_id?, dispo, reasons[], callback_at?, note?, notify[] }
-// Closes the call: writes the dispo on the call session, moves the claim to the
-// matching status through the one status setter, fires call.dispositioned, and
-// for a signed file emails the case and its intake PDF to selected owners.
+// Records a historical call outcome and fires call.dispositioned.
+// Current Status is independently agent-set in the shared header.
 export async function POST(req: NextRequest) {
   const sb = await supabaseServer();
   const me = await requireStaff(sb);
@@ -90,21 +88,8 @@ export async function POST(req: NextRequest) {
     labels = d.reasons.map((k) => byKey.get(k) as string);
   }
 
-  // Status FIRST, through the one setter, on THIS matter only. A failure here
-  // leaves the call open so the agent can fix it and press Save again —
-  // it used to close the call and then fail (Astra round 5). Signed is left
-  // alone: the signature moved it.
-  const status = DISPO_STATUS[d.dispo];
-  if (status) {
-    const dqKey = d.dispo === "dq" ? d.reasons[0] : DISPO_FIXED_DQ_KEY[d.dispo] ?? null;
-    const res = await setClaimStatusForLeads({
-      leadIds: [lead.id], claimIds: [claimId], status, dqReasonKey: dqKey,
-      dqNote: labels.length ? labels.join(", ") : null,
-      actorId: me.id, actorName: me.name ?? "Agent",
-    });
-    if (!res.ok) return NextResponse.json({ error: `Nothing was closed; the status did not change: ${res.error}` }, { status: 500 });
-  }
-
+  // Disposition records this call's outcome only. Current Status is saved in
+  // the shared header, independently of historical call outcomes.
   // Close the call session (create it if autosave never got one in).
   const now = new Date().toISOString();
   const close = {
@@ -139,8 +124,9 @@ export async function POST(req: NextRequest) {
   // DNC: every channel off, today.
   if (d.dispo === "dnc") {
     const { error } = await admin.from("leads").update({ perm_call: false, perm_text: false, perm_email: false }).eq("id", lead.id);
-    if (error) return NextResponse.json({ error: `Status is DNC, but contact permissions did not turn off: ${error.message}`, call_id: callId }, { status: 500 });
-    await admin.from("contact_points").update({ status: "opted_out" }).eq("lead_id", lead.id).in("kind", ["mobile", "landline"]);
+    if (error) return NextResponse.json({ error: `The DNC call outcome is saved, but contact permissions did not turn off: ${error.message}`, call_id: callId }, { status: 500 });
+    const points=await admin.from("contact_points").update({ status: "opted_out" }).eq("lead_id", lead.id).in("kind", ["mobile", "landline"]);
+    if(points.error)return NextResponse.json({error:"The DNC call outcome is saved; contact-point suppression needs retry.",call_id:callId},{status:503});
   }
 
   const when = d.callbackAt ? officeDateTime(d.callbackAt) : "";
@@ -155,7 +141,7 @@ export async function POST(req: NextRequest) {
       lead_id: lead.id, claim_id: claimId, lead_no: lead.lead_no, call_id: callId, dispo: d.dispo, dispo_label: DISPO_LABEL[d.dispo],
       reasons: d.reasons, reason_labels: labels, callback_at: d.callbackAt, note: d.note,
       agent: me.name, claimant_name: lead.claimant_name, phone: lead.phone, email: lead.email,
-      campaign: matter.claim.campaign, status: status ?? null,
+      campaign: matter.claim.campaign, status: matter.claim.status ?? null,
     }, { campaignId });
   } catch (e) { console.error("call.dispositioned webhook failed", e); }
 

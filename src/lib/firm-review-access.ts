@@ -28,7 +28,7 @@ export function releasedToReviewer(scope: FirmReviewScope, claim: any, lead: any
   const decline = signedDecline(claim);
   // Keep previously released files available after a decline, never introduce
   // an undelivered file into the restricted firm inbox.
-  const wasReleased = ['delivered', 'retained'].includes(claim?.status) ||
+  const wasReleased = (['delivered', 'retained'].includes(claim?.status) || ['firm_rejected','bmc_rejected'].includes(claim?.status) && !!claim.firm_sent_at) ||
     !!decline && ['delivered', 'retained'].includes(decline.previousStatus);
   return !!claim && !!lead && claim.lead_id === lead.id && claim.firm_id === scope.firmId && lead.firm_id === scope.firmId &&
     claim.campaign_id === scope.campaignId && !lead.archived_at && wasReleased &&
@@ -52,7 +52,7 @@ export function reviewState(events: any[], claim?: any) {
   const valid = [...events, ...snapshot].filter(e => REVIEW_ACTIONS.includes(e.meta?.action)).sort((a, b) =>
     String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(b.id || '').localeCompare(String(a.id || '')));
   const received = valid.find(e => e.meta.action === 'received');
-  const decision = snapshot[0] || valid.find(e => e.meta.action !== 'received');
+  const decision = valid.find(e => e.meta.action !== 'received');
   return { receivedAt: received?.created_at || null, decision: decision?.meta.action || null,
     decisionAt: decision?.created_at || null, explanation: decision?.meta.explanation || '',
     reviewer: decision?.meta.reviewer_name || received?.meta.reviewer_name || '' };

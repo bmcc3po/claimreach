@@ -1,3 +1,7 @@
+import { verifiedDeliveryReceipts } from './delivery-evidence';
+import { loadHistoricalSignatures } from './historical-signatures';
+import { currentStatusLabel, currentStatusMapping } from "./current-status";
+import { reconcileClaimStatus } from "./status-reconciliation";
 import { inWorkArea } from './work-area';
 // ============================================================================
 // STANDARD FIELDS (Brett, Sep 28 2026): one name and one source for every
@@ -52,6 +56,7 @@ export interface StdField {
 export const STANDARD_FIELDS: StdField[] = [
   // The file
   { key: "lead_id", label: "Lead id (internal)", group: "file", source: "leads.id", access: "protected" },
+  { key: "lead_no_aliases", label: "Previous lead numbers", group: "file", source: "leads.lead_no_aliases", access: "protected" },
   { key: "lead_no", label: "Lead number", group: "file", source: "leads.lead_no", access: "protected" },
   { key: "claim_id", label: "Matter id (internal)", group: "file", source: "claims.id", access: "protected", matter: true },
   { key: "external_id", label: "Source system id", group: "file", source: "leads.external_id", access: "writable", column: "external_id", inbound: "external_id" },
@@ -110,6 +115,30 @@ export const STANDARD_FIELDS: StdField[] = [
   { key: "callback_at", label: "Call back at", group: "status", source: "latest closed call on this matter", kind: "datetime", access: "derived", matter: true },
   { key: "dq_reason", label: "Disqualified reason", group: "status", source: "claims.dq_reason", access: "protected", matter: true },
 
+  { key: "status_reason_category", label: "status reason category", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "status_descriptor", label: "status descriptor", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "status_note", label: "status note", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "current_callback_at", label: "current callback at", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "status_changed_at", label: "status changed at", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "outcome_at", label: "outcome at", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "firm_decision", label: "firm decision", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "firm_decision_reason", label: "firm decision reason", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "firm_decision_at", label: "firm decision at", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "firm_decision_source", label: "firm decision source", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "ever_signed", label: "ever signed", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "first_signed_at", label: "first signed at", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "signature_source", label: "signature source", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "delivery_source", label: "delivery source", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "proposed_status", label: "proposed status", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "conflict_flags", label: "conflict flags", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "expected_updated_at", label: "expected updated at", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "mapping_required", label: "mapping required", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "as_of", label: "as of", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "scope", label: "scope", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "filter", label: "filter", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "row_count", label: "row count", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+  { key: "next_action_owner", label: "next action owner", group: "status", source: "claim status and scoped evidence", access: "derived", matter: true },
+
   // The agreement: the matter's newest main agreement that is not voided.
   { key: "agreement", label: "Agreement", group: "agreement", source: "the matter's current agreement (newest main one, not voided)", access: "derived", matter: true },
   { key: "esign_sent_date", label: "E-sign sent", group: "agreement", source: "esign_submissions.sent_at", kind: "datetime", access: "derived", matter: true },
@@ -131,16 +160,16 @@ export const MATTER_KEYS = STANDARD_FIELDS.filter((f) => f.matter).map((f) => f.
 
 /** Every column the standard record reads from leads, for one select. */
 export const STD_LEAD_COLS = [
-  "id", "firm_id", "lead_no", "external_id", "lawruler_ref_no", "lawruler_url", "campaign", "campaign_id", "case_type",
+  "id", "firm_id", "lead_no", "lead_no_aliases", "external_id", "lawruler_ref_no", "lawruler_url", "campaign", "campaign_id", "case_type",
   "handling_attorney", "marketing_source", "first_name", "last_name", "claimant_name", "dob", "ssn_last4", "dl_number",
   "gender", "preferred_language", "language", "phone", "home_phone", "work_phone", "phone_alt", "email",
   "mail_addr1", "mail_addr2", "mail_city", "mail_state", "mail_zip", "client_time_zone",
   "ec_name", "ec_phone", "ec_relationship", "incident_start", "incident_city", "incident_state",
   "case_summary", "case_description", "signed_at", "created_at", "first_opened_at", "first_dialed_at", "last_called_at", "firm_sent_at",
 ].join(", ");
-export const STD_CLAIM_COLS = "id, lead_id, campaign, campaign_id, claim_type, status, dq_reason, case_summary, answers, firm_sent_at, created_at";
+export const STD_CLAIM_COLS = "id, firm_id, updated_at, status_reason_category, status_descriptor, status_note, status_callback_at, status_changed_at, lead_id, campaign, campaign_id, claim_type, status, dq_reason, case_summary, answers, firm_sent_at, created_at";
 /** Main (non-passenger) agreements, voided ones included: history decides the sign date fallback. */
-export const STD_SUB_COLS = "id, lead_id, claim_id, campaign_id, pax_index, template_key, status, sent_at, signed_at, completed_at, sent_by, call_id, created_at";
+export const STD_SUB_COLS = "id, firm_id, voided_at, replacement_requested_at, lead_id, claim_id, campaign_id, pax_index, template_key, status, sent_at, signed_at, completed_at, sent_by, call_id, created_at";
 /** The matter's calls. Only the Story of each call's answers is read. */
 export const STD_CALL_COLS = "id, lead_id, claim_id, campaign_id, status, disposition, reason, callback_at, agent_name, ended_at, created_at, story:answers->story";
 
@@ -246,8 +275,10 @@ export function standardFromRows(input: {
     : sole ? { city: v(L.incident_city), state: v(L.incident_state) } : { city: null, state: null };
   const signed = S && (S.status === "completed" || S.status === "signed");
   return {
+    ...Object.fromEntries(STANDARD_KEYS.map(k=>[k,null])),
     lead_id: v(L.id),
     lead_no: v(L.lead_no),
+    lead_no_aliases: L.lead_no_aliases?.length ? L.lead_no_aliases.join("; ") : null,
     claim_id: v(C?.id),
     external_id: v(L.external_id),
     lawruler_id: v(L.lawruler_ref_no),
@@ -293,7 +324,10 @@ export function standardFromRows(input: {
     other_driver_insurance: C && carrier && carrier !== "Pick one" ? carrier : null,
 
     status: v(C?.status),
-    status_label: C ? v(input.statusLabel) ?? v(C.status) : null,
+    status_label: C ? currentStatusLabel(C.status,input.statusLabel || undefined) : null,
+    status_reason_category: v(C?.status_reason_category), status_descriptor:v(C?.status_descriptor), status_note:v(C?.status_note),
+    current_callback_at:v(C?.status_callback_at),status_changed_at:v(C?.status_changed_at),outcome_at:v(K?.ended_at),
+    mapping_required:C ? String(currentStatusMapping(C.status).mapping_required) : null,
     outcome: v(dispo),
     outcome_reason: v(K?.reason),
     callback_at: v(K?.callback_at),
@@ -387,13 +421,15 @@ export async function buildStandardRecord(
 
   const none = { data: null, error: null };
   const filter = claim ? matterRowsFilter({ claim: { id: claim.id, campaign_id: claim.campaign_id ?? null }, sole }) : "";
-  const [firmRes, statusRes, subRes, callRes] = await Promise.all([
+  const [firmRes, statusRes, subRes, callRes,reviewRes,deliveryRes] = await Promise.all([
     lead.firm_id ? db.from("firms").select("name").eq("id", lead.firm_id).maybeSingle() : Promise.resolve(none),
     claim?.status ? db.from("statuses").select("label").eq("key", claim.status).maybeSingle() : Promise.resolve(none),
     claim ? db.from("esign_submissions").select(STD_SUB_COLS).eq("lead_id", leadId).is("pax_index", null).or(filter).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
     claim ? db.from("intake_calls").select(STD_CALL_COLS).eq("lead_id", leadId).or(filter).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
+    claim ? db.from('lead_activity').select('id,firm_id,lead_id,created_at,meta').eq('lead_id',leadId).eq('firm_id',lead.firm_id).eq('meta->>claim_id',claim.id).eq('meta->>event','firm_file_review') : Promise.resolve({data:[],error:null}),
+    claim ? db.from('firm_deliveries').select('id,firm_id,lead_id,claim_id,campaign_id,ok,to_email,cc_email,created_at,triggered_by').eq('lead_id',leadId).eq('firm_id',lead.firm_id).eq('claim_id',claim.id) : Promise.resolve({data:[],error:null}),
   ]);
-  for (const [r, what] of [[firmRes, "the firm"], [statusRes, "the status list"], [subRes, "the agreements"], [callRes, "the calls"]] as const) {
+  for (const [r, what] of [[reviewRes,'firm decisions'],[deliveryRes,'delivery receipts'],[firmRes, "the firm"], [statusRes, "the status list"], [subRes, "the agreements"], [callRes, "the calls"]] as const) {
     if (r?.error) return { ok: false, error: `Could not read ${what}: ${r.error.message}` };
   }
   const subs: any[] = subRes?.data ?? [];
@@ -420,6 +456,12 @@ export async function buildStandardRecord(
     staffName: (id) => staff.get(id) ?? null,
     agentOfCall: (id) => callAgent.get(id) ?? null,
   });
+  if(claim){try{deliveryRes.data=await verifiedDeliveryReceipts(db,[claim],deliveryRes.data||[]);}catch{return {ok:false,error:'Delivery evidence is unavailable.'};}}
+  if(claim){const {delivered_at,...fields}=reconcileClaimStatus(claim,reviewRes.data || [],subs,deliveryRes.data || []);Object.assign(record,fields,{sent_to_firm_at:delivered_at || record.sent_to_firm_at});}
+  if(claim){
+    try { const signing=(await loadHistoricalSignatures(db,[claim])).get(claim.id);if(signing){Object.assign(record,signing);if(signing.ever_signed==='confirmed')record.conflict_flags=String(record.conflict_flags||'').split('; ').filter(f=>f!=='signature_evidence_unresolved').join('; ');} }
+    catch {return {ok:false,error:'Historical signature evidence is unavailable.'};}
+  }
   return { ok: true, record, matter };
 }
 
@@ -527,6 +569,7 @@ export function exportRows(input: {
   statusLabels: Map<string, string>;
   firmNames: Map<string, string>;
   staffNames: Map<string, string>;
+  reviews?: any[]; deliveries?: any[];
 }): Record<string, string | null>[] {
   const group = (rows: any[]) => {
     const m = new Map<string, any[]>();
@@ -537,7 +580,7 @@ export function exportRows(input: {
   return input.matters.map(({ lead, claim, sole }) => {
     const calls = callsBy.get(String(lead.id)) ?? [];
     const agent = new Map<string, string | null>(calls.map((c) => [String(c.id), c.agent_name ?? null]));
-    return standardForMatter({
+    const record = standardForMatter({
       lead, claim, sole,
       firmName: input.firmNames.get(String(lead.firm_id)) ?? null,
       statusLabel: claim?.status ? input.statusLabels.get(String(claim.status)) ?? null : null,
@@ -546,6 +589,10 @@ export function exportRows(input: {
       staffName: (id) => input.staffNames.get(id) ?? null,
       agentOfCall: (id) => agent.get(id) ?? null,
     });
+    if (!claim) return record;
+    const evidence=reconcileClaimStatus(claim,input.reviews || [],input.submissions,input.deliveries || []);
+    const {delivered_at,...fields}=evidence;
+    return {...record,...fields,sent_to_firm_at:delivered_at || record.sent_to_firm_at};
   });
 }
 
@@ -609,29 +656,38 @@ export async function loadStandardExport(db: any, f: ExportFilter, chunk = 150):
   const keptLeads = Array.from(new Set(matters.filter((m) => m.claim).map((m) => String(m.lead.id))));
   const firmIds = Array.from(new Set(matters.map((m) => m.lead.firm_id).filter(Boolean).map(String)));
 
-  const [subs, calls, statuses, firms] = await Promise.all([
+  const [subs, calls, statuses, firms, reviews, deliveries] = await Promise.all([
     readAllIn(keptLeads, chunk, (part) => db.from("esign_submissions").select(STD_SUB_COLS, { count: "exact" }).in("lead_id", part).is("pax_index", null)
       .order("id", { ascending: true }), "the agreements"),
     readAllIn(keptLeads, chunk, (part) => db.from("intake_calls").select(STD_CALL_COLS, { count: "exact" }).in("lead_id", part)
       .order("id", { ascending: true }), "the calls"),
     readAll(() => db.from("statuses").select("key, label", { count: "exact" }).order("key", { ascending: true }), "the status list"),
     readAllIn(firmIds, chunk, (part) => db.from("firms").select("id, name", { count: "exact" }).in("id", part).order("id", { ascending: true }), "the firms"),
+    readAllIn(keptLeads, chunk, part => db.from("lead_activity").select("id,firm_id,lead_id,created_at,meta", {count:"exact"}).in("lead_id",part).eq("meta->>event","firm_file_review").order("id",{ascending:true}), "firm decisions"),
+    readAllIn(keptLeads, chunk, part => db.from("firm_deliveries").select("id,firm_id,lead_id,claim_id,campaign_id,ok,created_at,to_email,cc_email,triggered_by", {count:"exact"}).in("lead_id",part).order("id",{ascending:true}), "delivery receipts"),
   ]);
-  for (const r of [subs, calls, statuses, firms]) if (!r.ok) return r;
+  for (const r of [subs, calls, statuses, firms, reviews, deliveries]) if (!r.ok) return r;
   const ok = (r: Read) => (r as { ok: true; rows: any[] }).rows;
 
   const staffIds = Array.from(new Set(ok(subs).map((s) => s.sent_by).filter(Boolean).map(String)));
   const staff = await readAllIn(staffIds, chunk, (part) => db.from("app_users").select("id, full_name", { count: "exact" }).in("id", part).order("id", { ascending: true }), "who sent the agreements");
   if (!staff.ok) return staff;
 
+  let verifiedReceipts:any[];
+  try {verifiedReceipts=await verifiedDeliveryReceipts(db,matters.map(m=>m.claim).filter(Boolean),ok(deliveries));}
+  catch{return {ok:false,error:'Delivery evidence is unavailable.'};}
   const records = exportRows({
     matters,
-    submissions: ok(subs),
+    submissions: ok(subs), reviews:ok(reviews), deliveries:verifiedReceipts,
     calls: ok(calls),
     statusLabels: new Map(ok(statuses).map((s) => [String(s.key), s.label])),
     firmNames: new Map(ok(firms).map((x) => [String(x.id), x.name])),
     staffNames: new Map(staff.rows.map((u) => [String(u.id), u.full_name])),
   });
+  try {
+    const signing=await loadHistoricalSignatures(db,matters.map(m=>m.claim).filter(Boolean));
+    for(const record of records){const evidence=signing.get(String(record.claim_id));if(evidence){Object.assign(record,evidence);if(evidence.ever_signed==='confirmed')record.conflict_flags=String(record.conflict_flags||'').split('; ').filter(f=>f!=='signature_evidence_unresolved').join('; ');}}
+  } catch {return {ok:false,error:'Historical signature evidence is unavailable.'};}
   // Signing belongs to the exported matter, not its person's lead-level copy.
   // Filter only after resolving each record's own agreement evidence/date.
   const signedFrom = f.signedFrom ?? null;
@@ -640,17 +696,21 @@ export async function loadStandardExport(db: any, f: ExportFilter, chunk = 150):
     const signed = record.sign_date ? pacificCalendarDay(record.sign_date) : null;
     return signed !== null && (signedFrom === null || signed >= signedFrom) && (signedUntil === null || signed <= signedUntil);
   });
-  return { ok: true, records: filtered };
+  const asOf=new Date().toISOString();
+  return { ok: true, records: filtered.map(r=>({...r,as_of:asOf,scope:"authorized active files",filter:JSON.stringify(f),row_count:String(filtered.length),next_action_owner:null})) };
 }
 
 function csvEscape(x: any): string {
-  const s = x === null || x === undefined ? "" : String(x);
+  const raw = x === null || x === undefined ? "" : String(x);
+  const s = /^[\s]*[=+@-]/.test(raw) ? "'"+raw : raw;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /** Header row of standard names, then one row per record, in the standard order. */
-export function standardCsv(records: Record<string, string | null>[]): string {
-  const lines = [STANDARD_KEYS.join(",")];
-  for (const rec of records) lines.push(STANDARD_KEYS.map((k) => csvEscape(rec[k])).join(","));
+export const OPERATIONAL_KEYS = ["lead_no","lead_no_aliases","claim_id","full_name","campaign","status","status_label","status_reason_category","status_descriptor","status_note","current_callback_at","status_changed_at","outcome","outcome_reason","outcome_at","ever_signed","first_signed_at","signature_source","sent_to_firm_at","delivery_source","firm_decision","firm_decision_reason","firm_decision_at","firm_decision_source","proposed_status","conflict_flags","mapping_required","expected_updated_at","next_action_owner","as_of","scope","filter","row_count"];
+export function standardCsv(records: Record<string, string | null>[], operational=false): string {
+  const keys=operational ? OPERATIONAL_KEYS : STANDARD_KEYS;
+  const lines = [keys.join(",")];
+  for (const rec of records) lines.push(keys.map((k) => csvEscape(rec[k])).join(","));
   return lines.join("\n");
 }

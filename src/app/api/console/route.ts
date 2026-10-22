@@ -207,49 +207,18 @@ export async function POST(req: NextRequest) {
     const visible = await sb.from("leads").select("id").eq("id", b.lead_id).maybeSingle();
     if (visible.error) return NextResponse.json({ error: "Could not verify this file's access. Refresh and try again." }, { status: 503 });
     if (!visible.data) return NextResponse.json({ error: "This file is unavailable to this account." }, { status: 403 });
-    const map: Record<string, string> = {
-      SIGN: "contacting", REFER: "contacting", DISQUALIFY: "dq",
-      SECONDARY_REVIEW: "flag", CALLBACK: "contacting", TRANSFER: "contacting",
-    };
-    const status = b.status_key || map[b.disposition] || "contacting";
-    const catalog = await sb.from("statuses").select("*");
-    if (catalog.error || !Array.isArray(catalog.data)) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
-    const nextStatus = catalog.data.find((item: any) => item.key === status);
-    if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
-    if (!manualIntakeStatusAllowed(nextStatus)) {
-      // The older call console closes a genuinely signed call as signed_wip.
-      // Keep that route, but verify the provider evidence on this matter.
-      if (status !== "signed_wip") return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
-      const context = await resolveSigningMatter(sb, b.lead_id, { callId: b.call_id ?? null });
-      if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
-      const agreement = await getMatterAgreement(sb, context.lead, context.matter);
-      if (!agreement.ok) return NextResponse.json({ error: agreement.error }, { status: agreement.status });
-      const emergency = await getMatterEmergency(sb, context.lead, context.matter);
-      if (!emergency.ok) return NextResponse.json({ error: emergency.error }, { status: emergency.status });
-      if (!agreement.row || agreementIsVoided(agreement.row) || !["signed", "completed"].includes(agreement.row.status) || emergencySupersedes(agreement.row, emergency.row)) {
-        return NextResponse.json({ error: "The current agreement on this matter has not been signed. Refresh and review the agreement before closing as signed." }, { status: 409 });
-      }
-    }
+    // Call history does not assign Current Status. Use the caller's RLS and
+    // bind the supplied call to the already authorized file.
     if (Array.isArray(b.modifiers)) {
-      await admin.from("leads").update({ modifiers: b.modifiers }).eq("id", b.lead_id);
+      const changed=await sb.from("leads").update({modifiers:b.modifiers}).eq("id",b.lead_id);
+      if(changed.error)return NextResponse.json({error:"File changes were not saved."},{status:503});
     }
-    try {
-      const { setClaimStatusForLeads } = await import("@/lib/claim-status");
-      const res = await setClaimStatusForLeads({
-        leadIds: [b.lead_id], status,
-        dqReasonKey: b.disposition === "DISQUALIFY" ? (b.dq_reason_key || "criteria") : null,
-        dqNote: b.reason ?? null, actorId: g.id, actorName: g.name ?? "Agent",
-      });
-      if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
-    } catch (e: any) {
-      return NextResponse.json({ error: e?.message || "status failed" }, { status: 500 });
-    }
-    if (b.call_id) {
-      await admin.from("intake_calls").update({
-        disposition: b.disposition ?? null, reason: b.reason ?? null, close_key: b.close_key ?? null,
-        flags: Array.isArray(b.flags) ? b.flags : [], summary: b.summary ?? null,
-        post_sign: b.post_sign ?? null,
-      }).eq("id", b.call_id);
+    if(b.call_id){
+      const changed=await sb.from("intake_calls").update({
+        disposition:b.disposition ?? null,reason:b.reason ?? null,close_key:b.close_key ?? null,
+        flags:Array.isArray(b.flags)?b.flags:[],summary:b.summary ?? null,post_sign:b.post_sign ?? null,
+      }).eq("id",b.call_id).eq("lead_id",b.lead_id).select("id").maybeSingle();
+      if(changed.error || !changed.data)return NextResponse.json({error:"This call is unavailable on this file; nothing was dispositioned."},{status:409});
     }
     return NextResponse.json({ ok: true });
   }

@@ -189,7 +189,7 @@ const rec = (r: any) => { assert.ok(r.ok, r.ok ? "" : r.error); return r.record 
     assert.ok(r.ok && r.matter === "named");
     const x = rec(r);
     assert.equal(x.claim_id, "a1"); assert.equal(x.police_report_number, "REPORT-A"); assert.equal(x.agreement, "Nevada tiered");
-    assert.equal(x.status_label, "New");
+    assert.equal(x.status_label, "New lead");
   });
 
   await t("4+ claims with two on the lead's campaign is ambiguous and borrows nothing", async () => {
@@ -327,7 +327,7 @@ const rec = (r: any) => { assert.ok(r.ok, r.ok ? "" : r.error); return r.record 
     assert.ok(out.ok);
     const csvA = out.ok ? out.records.find((r) => r.claim_id === "a1")! : null;
     const hook = rec(await buildStandardRecord(fakeDb(tb), "L", { claimId: "a1" }));
-    assert.deepEqual(csvA, hook);
+    assert.deepEqual({ ...csvA, as_of: null, scope: null, filter: null, row_count: null }, hook);
     assert.equal(csvA?.agreement, "Nevada tiered", "the voided newer Texas agreement is ignored by both");
     const csv = standardCsv(out.ok ? out.records : []);
     assert.equal(csv.split("\n")[0], STANDARD_KEYS.join(","));

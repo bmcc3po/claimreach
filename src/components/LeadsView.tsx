@@ -27,7 +27,7 @@ type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
 export default function LeadsView({ leads, basePath = "/leads", addPath = "/intake", title = "Leads", agents = [], firms = [], canBulk = false, ownerWorklist = false, statuses = [], dqReasons = [], variant = "staff", area = "mva" }: { leads: Row[]; basePath?: string; addPath?: string; title?: string; agents?: { id: string; full_name: string }[]; firms?: { id: string; name: string }[]; canBulk?: boolean; ownerWorklist?: boolean; statuses?: StatusDef[]; dqReasons?: DqReason[]; variant?: "staff" | "firm"; area?: WorkArea }) {
   const isFirm = variant === "firm";
   const showBulk = canBulk && !isFirm;
-  const statusList = statuses.length ? statuses : DEFAULT_STATUSES;
+  const statusList = (statuses.length ? statuses : DEFAULT_STATUSES).map(s=>({...s,label:resolveStatus(s.key,statuses).label}));
   const dqList = dqReasons.length ? dqReasons : DEFAULT_DQ_REASONS;
   const [q, setQ] = useState("");
   const [view, setView] = useState<"table" | "board" | "gantt">("table");
@@ -212,23 +212,6 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
     } catch {
       setBulkErr(true); setBulkMsg("Could not reach the server. Nothing was changed.");
     } finally { setBusy(false); }
-  }
-
-  async function runBulkStatus(statusKey: string) {
-    const def = statusList.find((s) => s.key === statusKey);
-    let dq_reason_key: string | undefined;
-    if (def?.qualify === "disqualify") {
-      // Mandatory, non-dismissable: keep prompting until a valid reason is chosen.
-      const choices = dqList.map((r, i) => `${i + 1}. ${r.label}`).join("\n");
-      let pick: string | null = null;
-      while (!dq_reason_key) {
-        pick = window.prompt(`Disqualification reason (required) for "${def.label}":\n${choices}\n\nEnter the number:`);
-        if (pick === null) return; // cancel aborts the whole status change
-        const idx = parseInt(pick.trim(), 10) - 1;
-        if (idx >= 0 && idx < dqList.length) dq_reason_key = dqList[idx].key;
-      }
-    }
-    runBulk({ op: "set_status", status: statusKey, dq_reason_key });
   }
 
   function th(k: string, label: string, cls = "") {
@@ -461,10 +444,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
           {!allMatching && allPageSelected && rows.length > sel.size && (
             <button onClick={() => setAllMatching(true)}>Select all {rows.length}</button>
           )}
-          <select className="cl-select" defaultValue="" aria-label="Change status" onChange={(e) => { if (e.target.value) { runBulkStatus(e.target.value); e.target.value = ""; } }}>
-            <option value="">Change status</option>
-            {statusList.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-          </select>
+          <span>Open each file to change Current Status with its reason and note.</span>
           {area === "other" && <select className="cl-select" defaultValue="" aria-label="Change stage" onChange={(e) => { if (e.target.value) { runBulk({ op: "set_stage", stage: e.target.value }); e.target.value = ""; } }}>
             <option value="">Change stage</option>
             {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABELS[s] ?? s}</option>)}
