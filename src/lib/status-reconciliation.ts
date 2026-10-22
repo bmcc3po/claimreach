@@ -1,3 +1,4 @@
+import { ownerConfirmedDelivery } from './owner-file-confirmation';
 import { historicalSignature } from './historical-signatures';
 /** Read-only evidence reconciliation. Never converts missing evidence into a negative fact.
  * A proposed correction is not applied until an owner approves an exact version. */
@@ -28,6 +29,6 @@ export function reconcileClaimStatus(claim:any, events:any[] = [], submissions:a
   return {proposed_status:proposed,firm_decision:latest?.meta.action || null,firm_decision_reason:latest?.meta.explanation || null,
     firm_decision_at:latest?.created_at || null,firm_decision_source:latest?`${latest.meta.source==='signed_decline_snapshot'?'claims.answers.signed_decline':'lead_activity'}:${latest.id}`:null,
     ...signing,
-    delivered_at:sentAt,delivery_source:claim.firm_sent_at?'claims.firm_sent_at':receipt?`firm_deliveries:${receipt.id}`:null,
+    delivered_at:sentAt,delivery_source:claim.firm_sent_at?'claims.firm_sent_at':receipt?`firm_deliveries:${receipt.id}`:ownerConfirmedDelivery(claim.firm_send_result)?'claims.firm_send_result:owner_confirmation_unknown_date':null,
     conflict_flags:flags.join('; '),expected_updated_at:claim.updated_at || null};
 }

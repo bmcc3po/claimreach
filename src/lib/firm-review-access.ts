@@ -1,3 +1,4 @@
+import { ownerConfirmedDelivery } from './owner-file-confirmation';
 import { signedDecline } from './signed-decline';
 // Restricted reviewers deliberately have NO app_users or firm_access entry.
 // Only the Auth administrator can set app_metadata. Never trust user_metadata.
@@ -28,7 +29,7 @@ export function releasedToReviewer(scope: FirmReviewScope, claim: any, lead: any
   const decline = signedDecline(claim);
   // Keep previously released files available after a decline, never introduce
   // an undelivered file into the restricted firm inbox.
-  const wasReleased = (['delivered', 'retained'].includes(claim?.status) || ['firm_rejected','bmc_rejected'].includes(claim?.status) && !!claim.firm_sent_at) ||
+  const wasReleased = (['delivered', 'retained'].includes(claim?.status) || ['firm_rejected','bmc_rejected'].includes(claim?.status) && (!!claim.firm_sent_at || ownerConfirmedDelivery(claim.firm_send_result))) ||
     !!decline && ['delivered', 'retained'].includes(decline.previousStatus);
   return !!claim && !!lead && claim.lead_id === lead.id && claim.firm_id === scope.firmId && lead.firm_id === scope.firmId &&
     claim.campaign_id === scope.campaignId && !lead.archived_at && wasReleased &&

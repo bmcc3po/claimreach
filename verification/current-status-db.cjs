@@ -6,7 +6,7 @@ const {PGlite}=require('/tmp/claimreach-test-tools/node_modules/@electric-sql/pg
  create schema auth;create function auth.uid() returns uuid language sql as 'select null::uuid';
  create table app_users(id uuid primary key,role text,active boolean,perm_overrides jsonb,full_name text);
  create table leads(id uuid primary key,firm_id uuid,archived_at timestamptz,perm_call boolean,perm_text boolean,perm_email boolean,qa_pending boolean,wip_pending boolean);
- create table claims(id uuid primary key,lead_id uuid,firm_id uuid,campaign_id uuid,status text,updated_at timestamptz,firm_sent_at timestamptz,answers jsonb,dq_reason_key text,dq_reason text);
+ create table claims(id uuid primary key,lead_id uuid,firm_id uuid,campaign_id uuid,status text,updated_at timestamptz,firm_sent_at timestamptz,firm_send_result text,answers jsonb,dq_reason_key text,dq_reason text);
  create table contact_points(lead_id uuid,kind text,status text);
  create table lead_activity(id uuid default gen_random_uuid(),firm_id uuid,lead_id uuid,kind text,actor uuid,body text,meta jsonb,created_at timestamptz default now());
  create table statuses(key text primary key,label text,track text,phase text,tone text,side text,qualify text,requires_esign boolean,billable boolean,unlocks_firm boolean,is_final boolean,sort int,active boolean,system_locked boolean);
@@ -30,6 +30,11 @@ const {PGlite}=require('/tmp/claimreach-test-tools/node_modules/@electric-sql/pg
  assert.equal((await db.query('select status from claims')).rows[0].status,'retained');
  await db.query('insert into lead_activity(firm_id,lead_id,meta,created_at)values($1,$2,$3,$4)',[id(3),id(2),JSON.stringify({event:'firm_file_review',claim_id:id(4),campaign_id:id(5),action:'turned_down'}),'2026-10-11']);
  assert.equal((await db.query('select status from claims')).rows[0].status,'retained');
+ // Owner-confirmed historical delivery must support a later decline without inventing dates.
+ await db.query("insert into claims(id,lead_id,firm_id,campaign_id,status,updated_at,firm_send_result)values($1,$2,$3,$4,'delivered','2026-10-01','owner confirmed sent; original delivery date unknown')",[id(6),id(2),id(3),id(5)]);
+ await db.query('insert into lead_activity(firm_id,lead_id,meta,created_at)values($1,$2,$3,$4)',[id(3),id(2),JSON.stringify({event:'firm_file_review',claim_id:id(6),campaign_id:id(5),action:'turned_down',explanation:'Recorded firm decision.'}),'2099-01-02']);
+ const unknownDate=(await db.query('select status,firm_sent_at from claims where id=$1',[id(6)])).rows[0];
+ assert.equal(unknownDate.status,'firm_rejected');assert.equal(unknownDate.firm_sent_at,null);
  assert.equal((await db.query("select has_function_privilege('authenticated','cr_save_current_status(uuid,uuid,uuid,uuid,timestamptz,uuid,text,text,text,text,timestamptz)','EXECUTE') as allowed")).rows[0].allowed,false);
  await db.close();console.log('0130 local database: transactional history, stale save, mandatory note, DNC suppression, firm-decision chronology and service-only execution passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -167,7 +167,7 @@ export const STD_LEAD_COLS = [
   "ec_name", "ec_phone", "ec_relationship", "incident_start", "incident_city", "incident_state",
   "case_summary", "case_description", "signed_at", "created_at", "first_opened_at", "first_dialed_at", "last_called_at", "firm_sent_at",
 ].join(", ");
-export const STD_CLAIM_COLS = "id, firm_id, updated_at, status_reason_category, status_descriptor, status_note, status_callback_at, status_changed_at, lead_id, campaign, campaign_id, claim_type, status, dq_reason, case_summary, answers, firm_sent_at, created_at";
+export const STD_CLAIM_COLS = "id, firm_id, updated_at, status_reason_category, status_descriptor, status_note, status_callback_at, status_changed_at, lead_id, campaign, campaign_id, claim_type, status, dq_reason, case_summary, answers, firm_sent_at, firm_send_result, created_at";
 /** Main (non-passenger) agreements, voided ones included: history decides the sign date fallback. */
 export const STD_SUB_COLS = "id, firm_id, voided_at, replacement_requested_at, lead_id, claim_id, campaign_id, pax_index, template_key, status, sent_at, signed_at, completed_at, sent_by, call_id, created_at";
 /** The matter's calls. Only the Story of each call's answers is read. */

@@ -5091,7 +5091,7 @@ alter table public.claims add column if not exists status_callback_at timestampt
 alter table public.claims add column if not exists status_changed_at timestamptz;
 create table if not exists public.claim_status_history (
   id uuid primary key default gen_random_uuid(), firm_id uuid not null,
-  claim_id uuid not null references public.claims(id), lead_id uuid not null,
+  claim_id uuid not null references public.claims(id) on delete cascade, lead_id uuid not null,
   previous_status text, status text not null, category text, descriptor text, note text,
   callback_at timestamptz, actor_id uuid, source text not null, recorded_at timestamptz not null default now()
 );
@@ -5184,7 +5184,7 @@ begin
   select * into c from public.claims where id=(new.meta->>'claim_id')::uuid and lead_id=new.lead_id and firm_id=new.firm_id
     and campaign_id::text=new.meta->>'campaign_id' for update;
   if c.id is null then raise exception 'Firm decision does not identify this matter'; end if;
-  if c.firm_sent_at is null or c.firm_sent_at>new.created_at or (c.status_changed_at>new.created_at and not coalesce((c.status='signed_dropped' and c.answers->'signed_decline'->>'reviewEventId'=new.id::text),false)) then return new; end if;
+  if (c.firm_sent_at is null and c.firm_send_result is distinct from 'owner confirmed sent; original delivery date unknown') or c.firm_sent_at>new.created_at or (c.status_changed_at>new.created_at and not coalesce((c.status='signed_dropped' and c.answers->'signed_decline'->>'reviewEventId'=new.id::text),false)) then return new; end if;
   if exists(select 1 from public.lead_activity e where e.firm_id=new.firm_id and e.lead_id=new.lead_id
     and e.meta->>'event'='firm_file_review' and e.meta->>'claim_id'=c.id::text and e.meta->>'action' in ('accepted','turned_down')
     and e.created_at>new.created_at) then return new; end if;

@@ -27,3 +27,9 @@ assert.equal(rec.status_label,'Firm rejected');assert.equal(rec.status_note,'The
 const csv=standardCsv([rec],true);assert.ok(!csv.split('\n')[0].includes('ssn_last4'));assert.ok(!csv.split('\n')[0].includes('dob'));
 assert.ok(csv.includes('firm_decision_reason'));
 console.log('Current status validation, stable mappings, rejection chronology, signing preservation, unknown evidence and operational export passed.');
+
+const ownerDelivery=reconcileClaimStatus({...c,firm_sent_at:null,firm_send_result:'owner confirmed sent; original delivery date unknown'},[reject]);
+assert.equal(ownerDelivery.proposed_status,'firm_rejected');
+assert.equal(ownerDelivery.delivered_at,null);
+assert.equal(ownerDelivery.delivery_source,'claims.firm_send_result:owner_confirmation_unknown_date');
+assert.ok(ownerDelivery.conflict_flags.includes('delivery_date_not_recorded'));
