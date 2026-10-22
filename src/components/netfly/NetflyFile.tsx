@@ -75,6 +75,8 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   const lastSavedAnswers = useRef<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState("");
   const [verificationNote, setVerificationNote] = useState("");
   const [showIncidentCorrections, setShowIncidentCorrections] = useState(false);
   const [verificationBusy, setVerificationBusy] = useState(false);
@@ -145,9 +147,11 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
     catch (e: any) { setError(e.message || "PDF upload failed."); } finally { setUploading(false); }
   }
   async function review(status: string, document_id = "") {
-    setError("");
-    try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "review", file: fileKey, status, document_id, note: reviewNote }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); await load(); }
-    catch (e: any) { setError(e.message || "Review did not save."); }
+    if (reviewBusy) return;
+    setReviewBusy(true); setReviewError(""); setError("");
+    try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "review", file: fileKey, status, document_id, note: reviewNote }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setDetail(old => old ? { ...old, answers: { ...old.answers, review: d.review } } : old); await load(); }
+    catch (e: any) { const message = e.message || "Review did not save."; setReviewError(message); setError(message); }
+    finally { setReviewBusy(false); }
   }
   async function importAgreement(kind = "retainer") {
     setUploading(true); setError("");
@@ -160,7 +164,7 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
   }
   async function verifyHandoff(status: "matches" | "changes_recorded") {
     setVerificationBusy(true); setError("");
-    try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "verify_handoff", file: fileKey, status, note: status === "matches" ? "" : verificationNote }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); await load(); }
+    try { const r = await fetch("/api/netfly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "verify_handoff", file: fileKey, status, note: status === "matches" ? "" : verificationNote }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error); setDetail(old => old ? { ...old, answers: { ...old.answers, handoff_verification: d.verification } } : old); await load(); }
     catch (e: any) { setError(e.message || "Handoff check did not save. Your note remains here."); } finally { setVerificationBusy(false); }
   }
   const updateCallClose = <K extends keyof NetflyCallClose>(key: K, value: NetflyCallClose[K]) => {
@@ -286,7 +290,9 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
       {stepIndex === 4 && <section className="nf-call-block" aria-label="NETFLY source intake PDF"><h3>NETFLY intake PDF</h3>
         {detail.source_intake?.length ? detail.source_intake.map(doc => <p key={doc.id}><a className="nf-secondary" href={doc.url || undefined} target="_blank" rel="noopener noreferrer">Open {doc.file_name}</a></p>) : <><p>Save NETFLY’s original email notes as a separate intake PDF. Your completed ontake and signed retainer stay separate.</p><button type="button" className="nf-secondary" disabled={uploading || !handoffs.length} onClick={() => void importAgreement("intake")}>{uploading ? "Saving intake PDF…" : "Save NETFLY intake PDF"}</button></>}
       </section>}
-      {stepIndex === 4 && <section className="nf-inline-retainer" aria-label="Original signed retainer">
+      {stepIndex === 4 && <section id="nf-saved-reviews" tabIndex={-1} className="nf-inline-retainer" aria-label="Original signed retainer">
+        {!checked && <div className="nf-alert"><strong>Client-details verification is not saved.</strong><p>After checking NETFLY’s note with the client, choose Details match or Record changes.</p><button type="button" className="nf-secondary" onClick={() => { setSection(1); setViewMode("step"); }}>Go to client-details verification</button></div>}
+        {reviewError && <p className="nf-alert" role="alert">{reviewError}</p>}
         <h3>Already signed — review the NETFLY retainer</h3>
         <p>NETFLY collected this before the welcome call. Review the signed PDF, then send the completed packet below.</p>
         <HandoffEvidence note={latestHandoff?.note || ""} hasPdf={!!latest} />
@@ -301,12 +307,12 @@ export default function NetflyFile({ fileKey }: { fileKey: string }) {
           {openedOriginalId === latest.id && latest.url && <div className="nf-pdf-preview"><iframe title="NETFLY original signed retainer" src={latest.url} referrerPolicy="no-referrer" /><p className="nf-muted">If the PDF cannot display here, open it in a new tab.</p></div>}
           {detail.answers.review?.retainer_reviewed_document_id === latest.id ? <p className="nf-saved">Signed PDF reviewed. Complete the file review below.</p> : openedOriginalId === latest.id && latest.url && <>
             <label className="nf-inline-confirm"><input type="checkbox" checked={originalConfirmed} onChange={(event) => setOriginalConfirmed(event.target.checked)} /> I checked the signed name, agreement, date and signature.</label>
-            <button type="button" className="nf-primary" disabled={!originalConfirmed || !detail.canReview} onClick={() => void review("retainer_reviewed", latest.id)}>Record signed-PDF review</button>
+            <button type="button" className="nf-primary" disabled={reviewBusy || !originalConfirmed || !detail.canReview} onClick={() => void review("retainer_reviewed", latest.id)}>{reviewBusy ? "Saving review…" : "Record signed-PDF review"}</button>
           </>}
           {openedOriginalId === latest.id && <details className="nf-history nf-inline-issue"><summary>Something is wrong with the signed retainer</summary><p>Keep the original PDF. Describe the exact error for a supervisor; this is an exception to the welcome call.</p><textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="What is wrong with the name, date, signature or agreement?" /><button type="button" className="nf-secondary" disabled={reviewNote.trim().length < 5 || detail.answers.review?.retainer_reviewed_document_id !== latest.id} onClick={() => void review("correction_needed", latest.id)}>Flag original for supervisor correction</button>{detail.answers.review?.retainer_reviewed_document_id !== latest.id && <p className="nf-muted">Record that you inspected the signed PDF above first.</p>}</details>}
         </> : <div className="nf-actions"><p className="nf-alert">The signed PDF is missing. Upload NETFLY's original before marking it reviewed.</p><label className="nf-primary">{uploading ? "Uploading…" : "Upload signed PDF"}<input type="file" accept="application/pdf,.pdf" disabled={uploading} hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label></div>}
       </section>}
-      {stepIndex === 4 && <NetflySendPacket fileKey={fileKey} onField={openQaField} signedDocuments={detail.retainer} unsaved={callCloseDirty || Object.entries(values).some(([id, value]) => value.trim() !== (detail.answers.fields?.[id] || '').trim())} revision={JSON.stringify([detail.answers.fields, detail.answers.review, detail.answers.call_close, detail.answers.handoff_verification, latest?.id, detail.source_intake?.map(doc => doc.id)])} />}
+      {stepIndex === 4 && <NetflySendPacket onReviewSteps={() => { const target = document.getElementById("nf-saved-reviews"); target?.focus(); target?.scrollIntoView({ behavior: "smooth", block: "start" }); }} fileKey={fileKey} onField={openQaField} signedDocuments={detail.retainer} unsaved={callCloseDirty || Object.entries(values).some(([id, value]) => value.trim() !== (detail.answers.fields?.[id] || '').trim())} revision={JSON.stringify([detail.answers.fields, detail.answers.review, detail.answers.call_close, detail.answers.handoff_verification, latest?.id, detail.source_intake?.map(doc => doc.id)])} />}
       {viewMode === "step" && <nav className={`nf-footer${stepIndex === VERIFY_STEPS.length - 1 ? " nf-footer-last" : ""}`} aria-label="Call step navigation"><button className="nf-secondary" disabled={stepIndex === 0} onClick={() => setSection((i) => Math.max(0, i - 1))}>← Back</button><button className="nf-primary" onClick={() => setSection((i) => Math.min(VERIFY_STEPS.length - 1, i + 1))} disabled={stepIndex === VERIFY_STEPS.length - 1}>{stepIndex === 3 ? "Review & send →" : "Next →"}</button></nav>}</section>
     </div>;
   };

@@ -5,7 +5,7 @@ Run from the repository root after installing the existing project dependencies.
 Install test-only tooling in a separate directory (no project package changes):
 
 ```powershell
-npm install --prefix ../claimreach-test-tools --no-save tsx@4.20.6 @electric-sql/pglite@0.3.14
+npm install --prefix ../claimreach-test-tools --no-save tsx@4.20.6 @electric-sql/pglite@0.3.14 react-test-renderer@18.3.1
 $env:NODE_PATH=(Resolve-Path ../claimreach-test-tools/node_modules).Path
 node verification/run-tests.cjs
 node node_modules/typescript/bin/tsc --noEmit
