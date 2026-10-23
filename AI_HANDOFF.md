@@ -1,27 +1,38 @@
 # AI Handoff
 
 ## Current objective
-Make saved intake-agent attribution travel with the file: intake header, dashboard, desk/NETFLY queues, delivery worklist, email and intake PDF/CSV. Do not infer the intake agent from the current viewer, assignee or delivery sender.
+
+Unify the exact-matter Current Status editor/history across File, Call and NETFLY; add authorized global file search; and prepare collision-safe NETFLY public numbering without changing production data.
 
 ## Current state
-- Branch: codex/intake-agent-everywhere, based on production 5cc5f82.
-- Added shared saved-agent name resolver and bounded name reads using the existing authorized DB context. No migrations, authentication or RLS changes.
-- Names remain visible when file headers collapse. Legacy missing IDs read Not recorded; no historical attribution is fabricated.
-- Payroll PR162 and migration0128 are RELEASED, superseding the prior stale hold. Production 5cc5f82 / deployment0ac847a6 completed Build Completed and236 Edge Function Routes. Financial tables remain empty; no real payroll closing was tested.
-- Overnight follow-up deleted at its instructed 8AM Pacific cutoff. New user work continues.
+
+- Branch: `codex/unified-current-status`, runtime/documentation head before this handoff `035b58cebebcf9fbf874afd949d845baed45274a`.
+- Four commits ahead and zero behind main `247e78d2`; no pull request is open.
+- Draft migration 0130 adds nullable status detail/history and service-only transactional saves. Draft 0131 adds NETFLY number allocation and alias support. Neither migration is applied.
+- No deployment, backfill, renumbering, notification replay or production record write occurred.
+- Exact-matter status saves use expected-version locking and history. Browser refresh events carry IDs only; authorization remains server-side.
+- Existing PRs #202 and #203 are independent and are not replaced by this branch.
 
 ## Verification
-- TypeScript passed before final test additions; rerun before commit.
-- Intake renderer12 checks including extracted actual PDF text, escaped HTML, saved name versus assignment, and missing attribution.
-- Shared header component test passed; real React synthetic browser at375/390/768/1024/1440 has no horizontal overflow and preserves agent name when collapsed.
-- Firm delivery50, MVA engine71, intake engine78, packet worklist9 passed. NETFLY create/presence and file-agreement/QA-resubmit29 route checks passed.
-- Pending: final TypeScript, preview Cloudflare gates, production release and live test-agent verification.
 
-## Remaining limitations
-- Owner session still needed for live owner acceptance and outstanding real file actions; do not impersonate owner.
-- Hayden address discrepancy and held NETFLY destination confirmation remain unanswered.
-- Do not resend historical test deliveries TMP1262/1263/1264. No real client emails used as tests.
-- Existing sent emails and stored historical PDFs cannot be retroactively changed by this renderer fix.
+- TypeScript, focused status/search/UI/PGlite tests and both intake engines passed.
+- Local schema reconstruction covered 83 public tables, 1,222 columns, 338 constraints, 46 policies and eight existing triggers.
+- Full suite had six failures that reproduce on unchanged main; they are not claimed as fixed.
+- Hosted authentication, grants and notification integration remain unverified.
+- No authorized isolated hosted staging app/database or synthetic account set was identified.
+
+## Decisions and limitations
+
+- Brett must confirm the complete descriptor and legacy-status taxonomy.
+- Brett must choose NETFLY numbering policy: recommended active-only numbering leaves archived public numbers unchanged; the draft preview currently models all records.
+- An isolated app/database staging target and synthetic accounts must be identified or approved before hosted acceptance.
+- Migrations 0130 and 0131, any backfill/renumbering and application deployment require separate approvals.
+- Do not bulk-normalize ambiguous history, deduplicate files by shared contact details, or expose internal notes/evidence to vendor views.
 
 ## Next safe action
-Finish focused checks, create/review release PR, verify Cloudflare preview and production, then verify live agent header and desk.
+
+Identify or approve an isolated staging app/database and synthetic accounts, then run the prepared hosted auth/grant/notification and exact-matter acceptance sequence. Do not apply production migrations or rewrite records.
+
+## Session log
+
+- 2026-10-22 PT - Codex - replaced the stale inherited handoff with the unified-status/numbering branch's exact verification, decisions and isolated-staging gate.
