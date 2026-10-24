@@ -25,7 +25,7 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 - Draft PR #203 adds authorized existing-NETFLY search by name, phone and lead number while excluding archived, foreign-tenant, wrong-campaign and ambiguous records. Runtime source `ecf13112` was one ahead/zero behind main; exact-head preview/checks passed. No claimant creation, message, schema, role, RLS or permission-definition change is included. It has an explicit Brett production-approval hold. The branch handoff is corrected.
 - Branch `codex/unified-current-status` is four runtime/documentation commits ahead and zero behind main with no PR. It centralizes exact-matter current-status editing/history, authorized global file search and NETFLY numbering/alias work. Draft migrations 0130 and 0131 are NOT applied; no deployment, backfill, renumbering or production write occurred.
 - Unified-status decisions remain open: complete descriptor/legacy taxonomy, whether archived NETFLY records receive new public numbers, identification or approval of an isolated app/database staging target and synthetic accounts, then separate migration/deployment approvals. Current recommendation is active-only numbering; the draft preview logic still models all records.
-- Crissi completed six more successful health and drain runs on October 22, bringing recovery to 15 consecutive successful heartbeats after the 18-run interruption. Latest success is run 39881538185 at 6:01 PM Pacific on unchanged main. Relay/upstream cause remains unconfirmed.
+- Crissi completed six more successful health and drain runs on October 23, bringing recovery to 21 consecutive successful heartbeats after the 18-run interruption. Latest success is run 40048647810 at 6:11 PM Pacific on unchanged main. Relay/upstream cause remains unconfirmed.
 - PR #199 remains held for current-main reconciliation/re-verification and separate migration 0130 approval in its own scope. Historical private notes must not be copied into marketer explanations.
 - PR #198 reporting/owner-preview, PR #197 owner decline and payroll PR #162 are released; authenticated owner/partner or owner visual acceptance remains pending as previously recorded. No real decline, payroll close or money movement is authorized for testing.
 - PR #136 firm security and PR #80 app-wide call alerts remain unreconciled with current main and unapproved for release.
@@ -36,16 +36,16 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 - New PRs #202/#203 and the unified-current-status branch were built by other agents and remained unmerged/unreleased.
 - InnoDash published the access-list/PIN change before this review.
-- This review corrected InnoDash main and both new ClaimReach branch handoffs, then reconciled this shared record. It did not merge, deploy, run migrations, change permissions, rotate credentials, send messages, process money or alter client records.
+- The October 23 review found no runtime or branch-tip movement, verified six additional Crissi health/drain cycles and refreshed this shared record. It did not merge, deploy, run migrations, change permissions, rotate credentials, send messages, process money or alter client records.
 
 ## Verification performed
 
-- Reviewed all connected default-branch commits, 255 branch tips, 31 open PR heads and workflows. Before the documentation-only corrections, no open PR head had a failed or stalled reported check; older heads with no status are not failed runs.
+- Reviewed all connected default-branch commits, 255 branch tips, 31 open PR heads and workflows for the past 24 hours. No runtime/default-branch or branch-tip commit appeared, and no open PR head had a failed or stalled reported check; older heads with no status are not failed runs.
 - PR #202 recorded clean TypeScript, 237-route Cloudflare packaging, focused interaction suites and both engines. Full suite was 185/203; all 18 failures reproduced on untouched main.
 - PR #203 recorded clean TypeScript, 237-route Cloudflare packaging, focused route/privacy/navigation tests and both engines. Full suite was 186/203; all 17 failures matched the reproduced untouched-main baseline.
 - Unified-current-status records TypeScript, focused status/search/UI/PGlite tests, both engines and local 83-table schema reconstruction. Six full-suite failures reproduce on main. Hosted authentication, grants and notifications remain unverified; no isolated hosted target was identified.
 - Read-only Netlify evidence confirms InnoDash production is ready from exact runtime commit `71a6c33b`. Repository inspection confirms literal PIN values are shipped in client HTML; values are intentionally omitted here.
-- All six October 22 Crissi health jobs and all six matching drain jobs passed.
+- All six October 23 Crissi health jobs and all six matching drain jobs passed; recovery is now 21 consecutive successful heartbeats.
 
 ## Active blockers or open questions
 
@@ -64,8 +64,8 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Session log
 
+- 2026-10-23 PT - Codex - found no runtime or branch-tip movement, verified six more Crissi health/drain cycles for 21 consecutive successes and confirmed the InnoDash browser-credential hold remains; next: approve server-side auth/rotation and isolated staging.
 - 2026-10-22 PT - Codex - found deployed browser-visible InnoDash PIN literals, documented the security hold, reconciled PRs #202/#203 and unified-status decisions, and verified Crissi reached 15 consecutive successes; next: approve server-side auth/rotation and isolated staging.
 - 2026-10-21 PT - Codex - verified six more Crissi health and drain runs passed, bringing recovery to nine consecutive successful heartbeats; next: keep read-only watch.
 - 2026-10-20 PT - Codex - recorded Crissi recovery after two additional failures and three consecutive successful health runs; cause remains unconfirmed.
 - 2026-10-19 PT - Codex - reconciled NETFLY/received-date releases #200/#201 and held marketer DQ #199; recorded four further Crissi failures with drain unaffected.
-- 2026-10-18 PT - Codex - recorded eight more Crissi failures, all relay_530, bringing the streak to 12 while drains passed.
