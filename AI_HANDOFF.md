@@ -1,36 +1,24 @@
 # AI Handoff
 
 ## Current objective
-
-Make NETFLY's saved client-details and signed-PDF review blockers visible and actionable before firm delivery, without weakening server delivery gates or sending a packet.
+Release the NETFLY saved-review guidance (PR #202) and authorized call-center search (PR #203), keeping delivery checks and tenant boundaries intact.
 
 ## Current state
-
-- Branch: `fix/netfly-review-blockers`, head `78e57477ecdb5c999c3f380a70c29f212d3b0287`.
-- One commit ahead and zero behind main `247e78d2`; PR #202 is open and mergeable.
-- Missing client-details verification and signed-PDF review now show direct guidance/navigation. Final confirmation and Send stay disabled while required reviews are missing, while preview is refreshing, or when saved state is stale/uncertain.
-- Retainer review failures display beside the control. A server-acknowledged review remains visible if the follow-up refetch fails.
-- Server validation, actor attribution, document selection, recipient configuration and duplicate-send protection are unchanged.
-- No migration, production case write or send is included.
+- PR #202 merged as `2a0e1cc3a7c3fb9042ea32cb1b90337f9685ccbc` after explicit approval to merge both PRs and deploy to production.
+- PR #203 adds existing NETFLY records to call-center search through the existing NETFLY gate, exact firm/campaign scope and single-MVA-matter invariant. Results open the NETFLY workspace rather than the acquisition console.
+- The two runtime changes do not overlap. This reconciliation preserves both changes and combines their previously conflicting handoff notes.
+- Server delivery validation, audit actor attribution, recipient settings, duplicate-send protection, role definitions and RLS remain unchanged.
+- No migration, claimant creation, message or production case-data write is included. Do not resend any completed delivery as a test.
 
 ## Verification
-
-- TypeScript passed.
-- Cloudflare packaging completed with 237 Edge Function Routes; exact-head hosted status/checks report success or neutral.
-- New React interaction suites passed for missing reviews, navigation without writes, stale preview, uncertain delivery, permissions, persistence failure and acknowledged-save/refetch failure.
-- Intake and MVA engine suites passed.
-- Full offline suite was 185/203; all 18 failures reproduced on untouched main and are not claimed as fixed.
+- Each PR passed TypeScript, focused regression tests, engine suites and Cloudflare packaging with 237 Edge Function Routes.
+- Both current hosted preview builds passed before merge.
+- PR #202 full suite: 185/203; PR #203: 186/203. Remaining failures were reproduced on unchanged main. The search test fixture fixes one baseline failure.
+- Combined release checks and final production deployment verification are tracked in the active release session; do not infer completion from this note.
 
 ## Remaining limitations
-
-- No controlled authenticated owner-session acceptance is recorded.
-- No real packet should be sent for verification.
-- PR #203 is independent and must not be treated as part of this release.
+- Synthetic tests and successful packaging do not establish authenticated live acceptance.
+- Verify the final production commit and non-mutating smoke checks. Never send a real packet as a smoke test.
 
 ## Next safe action
-
-Run controlled synthetic owner-session acceptance for the blocker guidance and saved-review states without sending a packet, then obtain release approval.
-
-## Session log
-
-- 2026-10-22 PT - Codex - replaced the stale inherited handoff with PR #202's exact scope, verification and no-send acceptance gate.
+Complete combined checks, merge PR #203 through repository protections, then verify the production deployment for the resulting main revision.

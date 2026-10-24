@@ -36,6 +36,8 @@ function load(file: string) {
   const out = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const modules: Record<string, any> = {
     "@/lib/work-area": workArea,
+    "@/lib/netfly-server": { netflyContext: async () => null },
+    "@/lib/netfly-ontake": { NETFLY_CAMPAIGN: "NETFLY ONTAKE" },
     "@/lib/signed-list": signedList,
     "@/lib/file-fence": fileFence,
     "react/jsx-runtime": require("react/jsx-runtime"), "next/server": require("next/server"),

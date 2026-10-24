@@ -6,6 +6,7 @@ import * as React from "react";
 import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as deskTypes from "../../lib/mva-call/desk-types";
+import * as receivedDate from "../../lib/received-date";
 import * as callNowSort from "../../lib/mva-call/call-now-sort";
 
 const source = fs.readFileSync(path.join(__dirname, "CallsHome.tsx"), "utf8");
@@ -15,6 +16,7 @@ const modules: Record<string, any> = {
   "@/lib/supabase-browser": { supabaseBrowser: () => { throw new Error("Unexpected browser database access"); } },
   "@/lib/mva-call/links": { APP_KINDS: [{ key: "mva", label: "INNO MVA" }] }, "@/lib/mva-call/desk-types": deskTypes,
   "@/lib/mva-call/call-now-sort": callNowSort,
+  "@/lib/received-date": receivedDate,
 };
 const component: any = {};
 new Function("require", "exports", code)((name: string) => { assert.ok(name in modules, `Unexpected client import ${name}`); return modules[name]; }, component);
@@ -48,10 +50,15 @@ console.log("ok Desk renders due, wait, review and signed queues with Texts reac
 hook = 0;
 const searchReact = { ...React, useState: (initial: any) => {
   hook++;
-  return [hook === 2 ? "TEST" : hook === 3 ? [{ id: "test", claimant_name: "TEST signed file", status: "delivered", status_label: "Signed — sent to firm" }] : typeof initial === "function" ? initial() : initial, () => {}];
+  return [hook === 2 ? "TEST" : hook === 3 ? [{ id: "test", claimant_name: "TEST signed file", status: "delivered", status_label: "Signed — sent to firm" }, { id: "netfly", claimant_name: "NETFLY existing file", href: "/app/netfly/netfly", status: "new" }] : typeof initial === "function" ? initial() : initial, () => {}];
 } };
 const searchModule: any = {};
 new Function("require", "exports", code)((name: string) => name === "react" ? searchReact : modules[name], searchModule);
 const searchHtml = renderToStaticMarkup(jsx.jsx(searchModule.default, { data }));
 assert.match(searchHtml, /Signed — sent to firm/); assert.doesNotMatch(searchHtml, />Delivered</);
 console.log("ok Desk search renders the confirmed matter status from the server");
+
+assert.match(searchHtml, /href="\/app\/netfly\/netfly"/);
+assert.match(searchHtml, /href="\/app\/test"/);
+assert.doesNotMatch(searchHtml, /href="\/app\/netfly"/);
+console.log("ok Existing NETFLY search result opens its own workflow; acquisition fallback stays unchanged");
