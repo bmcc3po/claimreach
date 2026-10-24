@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
         'Content-Disposition': `inline; filename="${filename}"` } });
     }
     const { data: claims, error } = await c.db.from('claims').select(REVIEW_CLAIM_COLS)
-      .eq('firm_id', c.scope.firmId).eq('campaign_id', c.scope.campaignId).in('status', ['delivered', 'retained', 'signed_dropped'])
+      .eq('firm_id', c.scope.firmId).eq('campaign_id', c.scope.campaignId).in('status', ['delivered', 'retained', 'signed_dropped', 'firm_rejected', 'bmc_rejected'])
       .order('updated_at', { ascending: false }).limit(1000);
     if (error || claims?.length === 1000) throw new Error('Could not load the complete file list. Please contact ClaimReach.');
     if (!claims?.length) return json({ campaign: c.campaign, name: c.scope.name, files: [] });

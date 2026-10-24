@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
   let wrote = false;
   for (let attempt = 0; attempt < 4 && !wrote; attempt++) {
     const patch: any = { answers: merged };
-    if (START_STATUSES.has(curStatus)) patch.status = "contacting";
+    // Answer saves never change Current Status.
     let q = sb.from("claims").update(patch).eq("id", claim_id);
     q = seen === null ? q.is("updated_at", null) : q.eq("updated_at", seen);
     const { data: hit, error: cErr } = await q.select("id").maybeSingle();

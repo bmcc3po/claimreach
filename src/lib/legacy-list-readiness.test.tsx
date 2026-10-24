@@ -1,3 +1,4 @@
+import React from 'react';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,8 +8,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import * as statuses from './statuses';
 import ReadError from '../components/ReadError';
 
+(globalThis as any).React = React;
 const catalog = [...statuses.DEFAULT_STATUSES, { ...statuses.DEFAULT_STATUSES.find(s => s.key === 'signed_approved')!, key: 'custom_retainer', active: false }];
-const leads = ['new', 'contacting', 'esign_sent', 'signed_wip', 'signed_approved', 'delivered', 'signed_dropped', 'dq', 'custom_retainer', 'signed_grievous', 'external_signed_review'].map((status, i) => ({ id: `case-${i}`, lead_no: `TEST-${i}`, updated_at: '2026-09-01T00:00:00Z', claims: [{ status, supervisor_flag: status === 'dq' }] }));
+const leads = ['new', 'contacting', 'esign_sent', 'signed_wip', 'signed_approved', 'delivered', 'signed_dropped', 'dq', 'custom_retainer', 'signed_grievous', 'external_signed_review'].map((status, i) => ({ id: `case-${i}`, lead_no: `TEST-${i}`, updated_at: '2026-09-01T00:00:00Z', claims: [{ id:`claim-${i}`, status, supervisor_flag: status === 'dq' }] }));
 async function fixture(page: string, fail = '', empty = false, rows = leads) {
   const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../app', page, 'page.tsx'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const queries: any[] = [];
@@ -22,7 +24,7 @@ async function fixture(page: string, fail = '', empty = false, rows = leads) {
   const exports: any = {};
   const modules: Record<string, any> = {
     'react/jsx-runtime': jsx, '@/lib/supabase-server': { supabaseServer: async () => ({ from }) }, '@/lib/auth-user': { authUser: async () => ({ data: { user: { id: 'synthetic-user' } } }) },
-    '@/lib/statuses': statuses, '@/components/ReadError': { default: ReadError }, 'next/link': { default: ({ children, ...props }: any) => jsx.jsx('a', { ...props, children }) },
+    '@/lib/report-signatures': {reportSignatures:async()=>new Set(['claim-3','claim-4','claim-5','claim-6','claim-8','claim-9'])}, '@/lib/statuses': statuses, '@/components/ReadError': { default: ReadError }, 'next/link': { default: ({ children, ...props }: any) => jsx.jsx('a', { ...props, children }) },
     '@/components/BoardCard': { default: () => null }, '@/components/ReportsView': { default: () => null }, '@/components/LeadsView': { default: () => null },
   };
   new Function('require', 'exports', code)((id: string) => { if (!modules[id]) throw new Error(`Unexpected dependency: ${id}`); return modules[id]; }, exports);

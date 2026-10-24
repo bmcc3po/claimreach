@@ -1,143 +1,72 @@
-"use client";
-import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
-import StatusBadge from "./ui/StatusBadge";
-import SignedDecline from "./SignedDecline";
-import { SIGNED_DECLINE_STATUS } from "@/lib/signed-decline";
-import { DEFAULT_STATUSES, DEFAULT_DQ_REASONS, isSignedKey, manualIntakeStatusAllowed, statusLabel, type StatusDef, type DqReason } from "@/lib/statuses";
-
-export default function FileStatusControl({ leadId, current, currentLabel, role, claimId, signedDeclineAvailable = false, onChanged }: { leadId: string; current: string; currentLabel?: string; role?: string; claimId?: string | null; signedDeclineAvailable?: boolean; onChanged?: (status: string) => void }) {
-  const [status, setStatus] = useState(current);
-  const [open, setOpen] = useState(false);
-  const [statuses, setStatuses] = useState<StatusDef[]>(DEFAULT_STATUSES);
-  const [reasons, setReasons] = useState<DqReason[]>(DEFAULT_DQ_REASONS);
-  const [picking, setPicking] = useState<StatusDef | null>(null); // disqualify status awaiting a reason
-  // Any other status awaiting a confirm. The badge looks like a label but is a
-  // button, so it gets clicked to READ the status, which opened a full menu
-  // where one more click committed instantly. That is how a signed file
-  // silently became "Signed: WIP" with nobody meaning to change anything.
-  const [confirming, setConfirming] = useState<StatusDef | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [declining, setDeclining] = useState(false);
-
-  const canDecline = signedDeclineAvailable && !!claimId && ["owner", "admin"].includes(role || "");
-  const signed = isSignedKey(status, statuses);
-  const canEdit = role !== "firm" && (!signed || canDecline);
-
-  // Switching to another claim (or a server refresh) must show THAT claim's
-  // status, not the one this control mounted with — the next change targets
-  // the newly selected claim (Astra round 5: claim A's badge over claim B).
-  useEffect(() => { setStatus(current); setMsg(""); }, [claimId, current]);
-  useEffect(() => { setOpen(false); setDeclining(false); setPicking(null); setConfirming(null); }, [claimId]);
-
-  useEffect(() => {
-    if (!open) return;
-    (async () => {
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { CURRENT_STATUSES, STATUS_REASONS, currentStatusLabel, validateStatusEdit } from '@/lib/current-status';
+import { publishCurrentStatus, subscribeCurrentStatus, EDIT_CURRENT_STATUS_EVENT } from '@/lib/current-status-events';
+export default function FileStatusControl({leadId,claimId,current,role,onChanged}: {
+  leadId:string;claimId?:string|null;current:string;currentLabel?:string;role?:string;signedDeclineAvailable?:boolean;onChanged?:(status:string)=>void;
+}) {
+  const router=useRouter();
+  const [saved,setSaved]=useState<any>(null),[edit,setEdit]=useState<any>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const request=useRef(0),changed=useRef(onChanged), editing=useRef(false), latest=useRef('');
+  changed.current=onChanged; editing.current=!!edit;
+  useEffect(()=>{
+    setSaved(null);setEdit(null);setError('');latest.current='';
+    if(!claimId || role==='firm')return;
+    let active=true;
+    const load=async()=>{
+      const seq=++request.current;
       try {
-        const s = await (await fetch("/api/statuses")).json();
-        if (s.statuses?.length) setStatuses(s.statuses);
-        const d = await (await fetch("/api/dq-reasons")).json();
-        if (d.reasons?.length) setReasons(d.reasons.filter((r: DqReason) => r.active !== false));
-      } catch {}
-    })();
-  }, [open]);
-
-  async function commit(statusKey: string, dqReasonKey?: string) {
-    setBusy(true); setMsg("");
+        const r=await fetch(`/api/current-status?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`,{cache:'no-store'});
+        const d=await r.json();if(!r.ok)throw new Error(d.error || 'Could not load current status.');
+        if(active && seq===request.current){
+          const prior=latest.current;latest.current=d.current.updated_at;setSaved(d.current);
+          if(!editing.current)setError('');
+          if(prior && prior!==d.current.updated_at){changed.current?.(d.current.key);router.refresh();}
+        }
+      }catch(e:any){if(active && seq===request.current)setError(e.message);}
+    };
+    void load();const stop=subscribeCurrentStatus(claimId,()=>void load());
+    return()=>{active=false;request.current++;stop();};
+  },[leadId,claimId,role,router]);
+  useEffect(()=>{
+    const open=(e:Event)=>{const d=(e as CustomEvent).detail;if(d?.claimId!==claimId || !saved?.can_edit)return;
+      if(d.status && !CURRENT_STATUSES.some(([k])=>k===d.status)){setError('This legacy outcome needs a reviewed mapping. Choose Current Status above.');return;}
+      setEdit({status:d.status || saved.key,category:null,descriptor:null,note:'',callback_at:null,expected_updated_at:saved.updated_at});};
+    window.addEventListener(EDIT_CURRENT_STATUS_EVENT,open);return()=>window.removeEventListener(EDIT_CURRENT_STATUS_EVENT,open);
+  },[claimId,saved]);
+  async function save(){
+    const parsed=validateStatusEdit(edit);if(parsed.error){setError(parsed.error);return;}
+    setBusy(true);setError('');const identity=claimId;const seq=++request.current;
     try {
-      const r = await fetch("/api/leads", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "status", lead_id: leadId, claim_id: claimId ?? null, status: statusKey, dq_reason_key: dqReasonKey ?? null }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) { setMsg(d.error || "Could not update status"); return; }
-      setStatus(statusKey); setOpen(false); setPicking(null); setConfirming(null);
-      onChanged?.(statusKey);
-    } catch {
-      setMsg("Could not reach ClaimReach. The status was not changed; try again.");
-    } finally {
-      setBusy(false);
-    }
+      const r=await fetch('/api/current-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...parsed.value,lead_id:leadId,claim_id:identity,expected_updated_at:edit.expected_updated_at})});
+      const d=await r.json();if(!r.ok)throw new Error(d.error || 'Status not saved.');
+      if(seq===request.current){setSaved(d.current);latest.current=d.current.updated_at;setEdit(null);changed.current?.(d.current.key);router.refresh();}
+      if(identity)publishCurrentStatus(identity);
+    }catch(e:any){if(seq===request.current)setError(e.message || 'Status save could not be confirmed. Refresh before retrying.');}
+    finally{setBusy(false);}
   }
-
-  function choose(s: StatusDef) {
-    if (s.key === status) { setOpen(false); return; }          // already there
-    if (s.qualify === "disqualify") { setPicking(s); return; }  // require a reason
-    setConfirming(s);                                           // everything else confirms
-  }
-
-  return (
-    <div className="file-status-control">
-      <span className="file-status-label">Current status</span>
-      {canEdit ? <button type="button" className="file-status-change" aria-label={`Change status: ${status === current && currentLabel || statusLabel(status, statuses)}`} onClick={() => { setMsg(""); setOpen(true); }}>
-        <StatusBadge status={status} label={status === current ? currentLabel : undefined} live={statuses} /><span aria-hidden="true"> ▾</span>
-      </button> : <StatusBadge status={status} label={status === current ? currentLabel : undefined} live={statuses} />}
-
-      {open && canEdit && !picking && !confirming && (
-        <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}>
-          <div className="modal status-dialog" role="dialog" aria-modal="true" aria-label="Change status">
-          <div className="status-dialog-head"><strong>Change status</strong><button type="button" className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>Close</button></div>
-          <p className="muted status-dialog-note">{signed ? canDecline ? 'Choose the file outcome. Declining also requests the firm’s drop letter.' : 'This file is signed. Ask BMC to record a decline or the firm’s decision.' : 'Choose the next call status. Signatures and firm delivery update when those actions complete.'}</p>
-          <div className="status-menu-list">
-            {canDecline && <button type="button" className={`status-opt${status === SIGNED_DECLINE_STATUS ? ' on' : ''}`} onClick={() => { setOpen(false); setDeclining(true); }}>
-              <span className="sb-dot bad" /><span>{statusLabel(SIGNED_DECLINE_STATUS)}</span><span className="status-opt-tag">{status === SIGNED_DECLINE_STATUS ? 'details' : 'reason + email'}</span>
-            </button>}
-            {!signed && statuses.filter(manualIntakeStatusAllowed).map((s) => (
-              <button type="button" key={s.key} className={`status-opt ${s.key === status ? "on" : ""}`} disabled={busy} onClick={() => choose(s)}>
-                <span className={`sb-dot ${s.tone}`} />
-                <span>{s.label}</span>
-                {s.qualify === "disqualify" && <span className="status-opt-tag">reason</span>}
-              </button>
-            ))}
-          </div>
-          {msg && <div className="status-menu-msg">{msg}</div>}
-          </div>
-        </div>
-      )}
-
-      {declining && canDecline && createPortal(<div className="modal-back">
-        <div className="modal status-dialog" role="dialog" aria-modal="true" aria-label="Signed and declined" style={{ maxWidth: 480 }}>
-          <SignedDecline key={claimId} claimId={claimId!} statusAction embedded onClose={() => setDeclining(false)} onChanged={(next) => { setStatus(next); onChanged?.(next); }} />
-        </div>
-      </div>, document.body)}
-
-      {confirming && (
-        <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget && !busy) setConfirming(null); }}>
-          <div className="modal" style={{ maxWidth: 400, padding: "18px 20px" }}>
-            <h3 style={{ marginTop: 0 }}>Change status to {confirming.label}?</h3>
-            <p className="muted" style={{ marginTop: 0 }}>This is recorded on the file and on the activity log.</p>
-            {msg && <div className="status-menu-msg">{msg}</div>}
-            <div className="row" style={{ justifyContent: "flex-end", marginTop: 14, gap: 8 }}>
-              <button className="btn ghost" disabled={busy} onClick={() => setConfirming(null)}>Cancel</button>
-              <button className="btn" disabled={busy}
-                onClick={() => { void commit(confirming.key); }}>
-                {busy ? "Saving" : `Set ${confirming.label}`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {picking && (
-        <div className="modal-back" onClick={(e) => { if (e.target === e.currentTarget) { /* non-dismissable: stay */ } }}>
-          <div className="modal" style={{ maxWidth: 420, padding: "18px 20px" }}>
-            <h3 style={{ marginTop: 0 }}>Disqualification reason</h3>
-            <p className="muted" style={{ marginTop: 0 }}>Choose a reason for "{picking.label}". This is required.</p>
-            <div className="status-reasons">
-              {reasons.map((r) => (
-                <button key={r.key} className="status-reason" disabled={busy} onClick={() => commit(picking.key, r.key)}>
-                  {r.label}<span className="status-reason-cat">{r.category}</span>
-                </button>
-              ))}
-            </div>
-            {msg && <div className="status-menu-msg">{msg}</div>}
-            <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-              <button className="btn ghost" disabled={busy} onClick={() => { setPicking(null); }}>Cancel status change</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  const key=saved?.key || current;
+  const groups=STATUS_REASONS.filter(r=>(r.statuses as readonly string[]).includes(edit?.status));
+  const descriptors=groups.find(r=>r.category===edit?.category)?.descriptors || [];
+  return <div className="file-status-control" data-claim-id={claimId}>
+    <label className="current-status-picker">Current Status
+      <select aria-label="Current Status" value={edit?.status || key} disabled={busy || !saved?.can_edit || role==='firm'} onChange={e=>{setError('');setEdit({status:e.target.value,category:null,descriptor:null,note:'',callback_at:null,expected_updated_at:saved.updated_at});}}>
+        {!CURRENT_STATUSES.some(([k])=>k===key)&&<option value={key}>{currentStatusLabel(key)} · legacy mapping needed</option>}
+        {CURRENT_STATUSES.map(([k,label])=><option key={k} value={k}>{label}</option>)}
+      </select>
+    </label>
+    {saved && !edit && <button type="button" disabled={!saved.can_edit} onClick={()=>setEdit({status:key,category:saved.category,descriptor:saved.descriptor,note:'',callback_at:saved.callback_at,expected_updated_at:saved.updated_at})}>Add status note</button>}
+    {saved?.note && !edit && <small>{saved.note}</small>}
+    {edit && <div className="current-status-fields">
+      {!!groups.length && <><label>Reason category<select aria-label="Reason category" value={edit.category || ''} onChange={e=>setEdit({...edit,category:e.target.value,descriptor:null})}><option value="">Choose category</option>{groups.map(r=><option key={r.category} value={r.category}>{r.label}</option>)}</select></label>
+      <label>Specific descriptor<select aria-label="Specific descriptor" value={edit.descriptor || ''} onChange={e=>setEdit({...edit,descriptor:e.target.value})}><option value="">Choose descriptor</option>{descriptors.map(([k,label])=><option key={k} value={k}>{label}</option>)}</select></label></>}
+      {edit.status==='scheduled_callback'&&<label>Call back at<input aria-label="Call back at" type="datetime-local" onChange={e=>setEdit({...edit,callback_at:e.target.value})}/></label>}
+      <label>Agent note · one sentence required<input aria-label="Agent note" required maxLength={500} value={edit.note} onChange={e=>setEdit({...edit,note:e.target.value})}/></label>
+      {saved?.updated_at!==edit.expected_updated_at&&<p role="alert">This claim changed. Cancel and review the latest status before saving.</p>}
+      <button type="button" disabled={busy||saved?.updated_at!==edit.expected_updated_at} onClick={()=>void save()}>{busy?'Saving…':'Save status'}</button>
+      <button type="button" disabled={busy} onClick={()=>{setEdit(null);setError('');}}>Cancel</button>
+    </div>}
+    {error&&<p role="alert">{error}</p>}
+  </div>;
 }

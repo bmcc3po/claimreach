@@ -33,6 +33,7 @@ const text = (tree: any): string => Array.isArray(tree) ? tree.map(text).join(""
 const events = new EventTarget();
 const fakeWindow = { location: { pathname: "/app/TMP-SYNTH", search: "?claim=exact-claim&text=1" }, dispatchEvent: events.dispatchEvent.bind(events), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), history: { replaceState() {} } };
 const modules: Record<string, any> = {
+  "../GlobalFileSearch": { default: () => null },
   "@/lib/received-date": receivedDates,
   "@/lib/mva-call/call-now-sort": callNowSort,
   "@/lib/navigation": navigation,

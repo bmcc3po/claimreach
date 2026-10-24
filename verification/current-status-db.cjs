@@ -1,0 +1,40 @@
+const assert=require('node:assert/strict');const fs=require('node:fs');
+const {PGlite}=require('/tmp/claimreach-test-tools/node_modules/@electric-sql/pglite');
+(async()=>{
+ const db=new PGlite();
+ await db.exec(`create role anon; create role authenticated; create role service_role;
+ create schema auth;create function auth.uid() returns uuid language sql as 'select null::uuid';
+ create table app_users(id uuid primary key,role text,active boolean,perm_overrides jsonb,full_name text);
+ create table leads(id uuid primary key,firm_id uuid,archived_at timestamptz,perm_call boolean,perm_text boolean,perm_email boolean,qa_pending boolean,wip_pending boolean);
+ create table claims(id uuid primary key,lead_id uuid,firm_id uuid,campaign_id uuid,status text,updated_at timestamptz,firm_sent_at timestamptz,firm_send_result text,answers jsonb,dq_reason_key text,dq_reason text);
+ create table contact_points(lead_id uuid,kind text,status text);
+ create table lead_activity(id uuid default gen_random_uuid(),firm_id uuid,lead_id uuid,kind text,actor uuid,body text,meta jsonb,created_at timestamptz default now());
+ create table statuses(key text primary key,label text,track text,phase text,tone text,side text,qualify text,requires_esign boolean,billable boolean,unlocks_firm boolean,is_final boolean,sort int,active boolean,system_locked boolean);
+ `);
+ const sql=fs.readFileSync('RUN_THESE_MIGRATIONS.sql','utf8').split('-- 0130 Unified')[1].split('-- 0131 NETFLY')[0];await db.exec('-- 0130 Unified'+sql);
+ const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+ await db.query('insert into app_users values($1,\'agent\',true,\'{}\',\'Synthetic Agent\')',[id(1)]);
+ await db.query('insert into leads(id,firm_id,perm_call,perm_text,perm_email)values($1,$2,true,true,true)',[id(2),id(3)]);
+ await db.query('insert into claims(id,lead_id,firm_id,campaign_id,status,updated_at,firm_sent_at)values($1,$2,$3,$4,\'delivered\',\'2026-10-10\',\'2026-10-09\')',[id(4),id(2),id(3),id(5)]);
+ const save=async(version,status='firm_rejected',note='The firm declined this placement.')=>db.query('select cr_save_current_status($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as value',[id(4),id(2),id(3),id(5),version,id(1),status,status==='dnc'?'contact_request':'decision',status==='dnc'?'dnc':'other',note,null]);
+ const first=await save('2026-10-10');assert.equal(first.rows[0].value.status,'firm_rejected');
+ await assert.rejects(save('2026-10-10'),/stale/);
+ assert.equal((await db.query('select count(*)::int n from claim_status_history')).rows[0].n,1);
+ assert.equal(new Date((await db.query('select firm_sent_at from claims')).rows[0].firm_sent_at).toISOString(),'2026-10-09T00:00:00.000Z');
+ await assert.rejects(save(first.rows[0].value.updated_at,'dnc',''),/note required/);
+ const dnc=await save(first.rows[0].value.updated_at,'dnc','The caller requested no further contact.');
+ assert.equal((await db.query('select perm_call from leads')).rows[0].perm_call,false);
+ assert.equal((await db.query('select count(*)::int n from claim_status_history')).rows[0].n,2);
+ // A new authoritative decision projects; an old delayed event cannot overwrite it.
+ await db.query('insert into lead_activity(firm_id,lead_id,meta,created_at)values($1,$2,$3,$4)',[id(3),id(2),JSON.stringify({event:'firm_file_review',claim_id:id(4),campaign_id:id(5),action:'accepted'}),'2099-01-01']);
+ assert.equal((await db.query('select status from claims')).rows[0].status,'retained');
+ await db.query('insert into lead_activity(firm_id,lead_id,meta,created_at)values($1,$2,$3,$4)',[id(3),id(2),JSON.stringify({event:'firm_file_review',claim_id:id(4),campaign_id:id(5),action:'turned_down'}),'2026-10-11']);
+ assert.equal((await db.query('select status from claims')).rows[0].status,'retained');
+ // Owner-confirmed historical delivery must support a later decline without inventing dates.
+ await db.query("insert into claims(id,lead_id,firm_id,campaign_id,status,updated_at,firm_send_result)values($1,$2,$3,$4,'delivered','2026-10-01','owner confirmed sent; original delivery date unknown')",[id(6),id(2),id(3),id(5)]);
+ await db.query('insert into lead_activity(firm_id,lead_id,meta,created_at)values($1,$2,$3,$4)',[id(3),id(2),JSON.stringify({event:'firm_file_review',claim_id:id(6),campaign_id:id(5),action:'turned_down',explanation:'Recorded firm decision.'}),'2099-01-02']);
+ const unknownDate=(await db.query('select status,firm_sent_at from claims where id=$1',[id(6)])).rows[0];
+ assert.equal(unknownDate.status,'firm_rejected');assert.equal(unknownDate.firm_sent_at,null);
+ assert.equal((await db.query("select has_function_privilege('authenticated','cr_save_current_status(uuid,uuid,uuid,uuid,timestamptz,uuid,text,text,text,text,timestamptz)','EXECUTE') as allowed")).rows[0].allowed,false);
+ await db.close();console.log('0130 local database: transactional history, stale save, mandatory note, DNC suppression, firm-decision chronology and service-only execution passed.');
+})().catch(e=>{console.error(e);process.exitCode=1});

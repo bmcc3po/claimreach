@@ -1,3 +1,4 @@
+import CurrentStatusRefresh from "@/components/CurrentStatusRefresh";
 import { redirect } from "next/navigation";
 import type { Viewport } from "next";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -23,5 +24,5 @@ export default async function CallsLayout({ children }: { children: React.ReactN
   const { data: me } = await sb.from("app_users").select("role, full_name").eq("id", user.id).maybeSingle();
   if (!me) redirect("/firm-login");
   if (!isInternalRole(me.role)) redirect("/portal");
-  return <div className="cc-page cc-shelled"><KeyboardFit /><DeskChrome name={me.full_name || ""} role={me.role} />{children}</div>;
+  return <div className="cc-page cc-shelled"><CurrentStatusRefresh /><KeyboardFit /><DeskChrome name={me.full_name || ""} role={me.role} />{children}</div>;
 }

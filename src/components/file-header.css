@@ -32,3 +32,6 @@
   .file-header:not(.file-header-collapsed) .file-header-toggle{order:2;margin-left:auto}
   .file-header:not(.file-header-collapsed) .file-header-status{flex:1;max-width:calc(100% - 104px)}
 }
+
+.file-header-mobile-search{display:none}@media(max-width:700px){.file-header-mobile-search{display:block;flex-basis:100%}}
+.file-header{position:sticky;top:0;z-index:20}.current-status-picker{display:flex;flex-direction:column;font-weight:700;gap:4px}.current-status-picker select{min-width:240px;min-height:52px;font-size:20px;font-weight:700;border:2px solid #315d89;border-radius:8px;background:#fff;color:#16324f;padding:8px}.current-status-fields{flex-basis:100%;display:flex;flex-wrap:wrap;gap:10px;padding:12px;background:#f5f8fc;border-radius:8px}.current-status-fields label{display:flex;flex-direction:column;gap:4px}.current-status-fields input,.current-status-fields select{min-height:44px;font-size:16px;max-width:100%}.current-status-fields label:has(input[aria-label="Agent note"]){flex:1;min-width:230px}

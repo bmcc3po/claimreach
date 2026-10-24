@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
     // status/stage/QA flags were an alternate write path around the status
     // setter's gates and audit).
     for (const k of ["grievous_approved", "grievous_approved_at", "firm_sent_at", "firm_send_result",
-      "archived_at", "archived_by", "firm_id", "campaign_id", "campaign", "lead_no", "created_by", "signed_at",
+      "archived_at", "archived_by", "firm_id", "campaign_id", "campaign", "lead_no", "lead_no_aliases", "created_by", "signed_at",
       "status", "stage", "qa_pending", "wip_pending", "qa_entered_at", "qa_draft",
       "dq_reason_key", "dq_reason", "qualification", "esign_sent_at", "esign_date",
       "first_dialed_at", "first_opened_at", "first_opened_by", "signed_notified_at"]) delete leadPatch[k];
@@ -301,58 +301,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (op === "status") {
-    if (!isInternalRole(u.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    const { lead_id, claim_id, status, dq_reason_key, dq_note } = payload;
-    if (!lead_id || !status) return NextResponse.json({ error: "lead_id and status required" }, { status: 400 });
-    // Resolve both identities under the caller's RLS before invoking workflow
-    // side effects. A guessed hidden lead/claim must never reach an admin query.
-    const context = await resolveSigningMatter(sb, String(lead_id), { claimId: claim_id ? String(claim_id) : null });
-    if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
-    const access = await intakeFirmScope(sb, { role: u.role, firmId: u.firm_id }, context.lead.firm_id, supabaseAdmin);
-    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
-    if (u.role !== "owner") {
-      const { lead, matter } = context;
-      const [campaigns, firm] = await Promise.all([
-        sb.from("campaigns").select("id").eq("firm_id", lead.firm_id).eq("name", "INNO MVA").eq("case_type", "mva").eq("active", true),
-        sb.from("firms").select("id, slug").eq("id", lead.firm_id).maybeSingle(),
-      ]);
-      if (campaigns.error || firm.error) return NextResponse.json({ error: "Could not verify this file's pilot access. Refresh and try again." }, { status: 503 });
-      const pilot = campaigns.data?.length === 1 ? campaigns.data[0] : null;
-      if (!pilot || firm.data?.slug !== "tmp" || lead.case_type !== "mva" || matter.claim.claim_type !== "mva"
-        || lead.campaign_id !== pilot.id || matter.claim.campaign_id !== pilot.id || matter.claim.firm_id !== lead.firm_id) {
-        return NextResponse.json({ error: "Only active INNO MVA files are available during this pilot." }, { status: 403 });
-      }
-    }
-    const catalog = await sb.from("statuses").select("*");
-    if (catalog.error || !Array.isArray(catalog.data)) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
-    const nextStatus = (catalog.data ?? []).find((item: any) => item.key === status);
-    if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
-    if (!manualIntakeStatusAllowed(nextStatus)) return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
-    // Refresh the exact authorized claim under RLS and bind the write to this
-    // snapshot. Privileged signature reads happen only after all access gates.
-    const snapshot = await sb.from("claims").select("id,lead_id,firm_id,campaign_id,status,updated_at")
-      .eq("id", context.matter.claim.id).eq("lead_id", context.lead.id).maybeSingle();
-    if (snapshot.error || !snapshot.data || typeof snapshot.data.updated_at !== "string" || !Number.isFinite(Date.parse(snapshot.data.updated_at)))
-      return NextResponse.json({ error: "Could not verify this matter's current version. Refresh before changing its status." }, { status: 503 });
-    if (snapshot.data.firm_id !== context.lead.firm_id || snapshot.data.campaign_id !== context.matter.claim.campaign_id)
-      return NextResponse.json({ error: "This matter's assignment changed. Refresh before changing its status." }, { status: 409 });
-    const trustedDb = supabaseAdmin();
-    try {
-      const blocked = await intakeStatusTransitionBlock(trustedDb, {
-        lead: context.lead, claim: snapshot.data, soleClaim: context.matter.sole,
-      }, catalog.data);
-      if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
-    } catch {
-      return NextResponse.json({ error: "Could not verify this matter's signed agreement evidence. Nothing was changed; refresh and try again." }, { status: 503 });
-    }
-    const res = await setClaimStatusForLeads({
-      leadIds: [context.lead.id], claimIds: [context.matter.claim.id],
-      expectedStatus: snapshot.data.status, expectedUpdatedAt: snapshot.data.updated_at,
-      status, dqReasonKey: dq_reason_key ?? null, dqNote: dq_note ?? null,
-      actorId: u.uid, actorName: u.full_name ?? "User", statuses: catalog.data,
-    }, { db: sb, queueReadDb: trustedDb });
-    if (!res.ok) return NextResponse.json({ error: res.error }, { status: /changed after|No claim was updated/.test(res.error || "") ? 409 : 400 });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ error: "Use Current Status in the file header; a current version, reason and one-sentence note are required." }, { status: 409 });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });

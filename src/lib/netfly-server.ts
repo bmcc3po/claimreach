@@ -24,11 +24,13 @@ export async function netflyContext() {
 
 export async function netflyMatter(ctx: NonNullable<Awaited<ReturnType<typeof netflyContext>>>, key: string) {
   const identifier = String(key || "").trim();
-  if (!/^[0-9a-f-]{36}$/i.test(identifier) && !/^TMP-\d{1,9}$/i.test(identifier)) return null;
-  const field = identifier.startsWith("TMP-") ? "lead_no" : "id";
-  const { data: lead, error: leadError } = await ctx.db.from("leads")
+  if (!/^[0-9a-f-]{36}$/i.test(identifier) && !/^(?:TMP-|NF-TMP)\d{1,12}$/i.test(identifier)) return null;
+  const isNumber = /^(?:TMP-|NF-TMP)\d+$/i.test(identifier);
+  let query = ctx.db.from("leads")
     .select("id, firm_id, intake_agent_id, campaign_id, case_type, lead_no, claimant_name, phone, email, mail_addr1, mail_city, mail_state, mail_zip, archived_at")
-    .eq(field, identifier).eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).is("archived_at", null).maybeSingle();
+    .eq("firm_id", ctx.campaign.firm_id).eq("campaign_id", ctx.campaign.id).is("archived_at", null);
+  query = isNumber ? query.or(`lead_no.eq.${identifier.toUpperCase()},lead_no_aliases.cs.{${identifier.toUpperCase()}}`) : query.eq("id", identifier);
+  const { data: lead, error: leadError } = await query.maybeSingle();
   if (leadError || !lead || lead.case_type !== "mva") return null;
   const { data: claims, error: claimError } = await ctx.db.from("claims")
     .select("id, lead_id, firm_id, campaign_id, claim_type, answers, status, updated_at")

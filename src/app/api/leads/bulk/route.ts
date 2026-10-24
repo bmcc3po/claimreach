@@ -56,28 +56,9 @@ export async function POST(req: NextRequest) {
       return await moveFirm(supabaseAdmin(), ids, String(b.firmId), String(b.campaignId), auth.user.id);
     }
     if (b.op === "set_status") {
-      const catalog = await sb.from("statuses").select("*");
-      if (catalog.error || !Array.isArray(catalog.data)) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
-      const nextStatus = catalog.data.find((item: any) => item.key === b.status);
-      if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
-      if (!manualIntakeStatusAllowed(nextStatus)) return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
-      // status lives on the claim; the helper enforces the DQ-reason gate and audits.
-      const { data: meName } = await sb.from("app_users").select("full_name").eq("id", auth.user.id).maybeSingle();
-      // An explicit lead-wide command: every matter on every selected file.
-      const res = await setClaimStatusForLeads({
-        leadIds: ids, leadWide: true,
-        status: b.status,
-        dqReasonKey: b.dq_reason_key ?? null,
-        dqNote: b.dq_note ?? null,
-        actorId: auth.user.id,
-        actorName: meName?.full_name ?? "User",
-      });
-      if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
-      return NextResponse.json({ ok: true, count: ids.length });
+      return NextResponse.json({ error: "Review each selected claim in Current Status; bulk overwrites cannot preserve its reason and version." }, { status: 409 });
     }
-    // "Delete" archives. The row survives, hidden, for at least 90 days, because
-    // a mis-clicked checkbox on a bulk selection used to destroy signed files
-    // and everything attached to them with no way back.
+
     if (b.op === "delete" || b.op === "archive") {
       if (!canDelete) return NextResponse.json({ error: "no delete permission" }, { status: 403 });
       const { data: saved, error } = await sb.from("leads")

@@ -1,3 +1,4 @@
+import { CURRENT_STATUSES, currentStatusLabel } from "@/lib/current-status";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 
@@ -17,7 +18,7 @@ export async function GET() {
   const g = await gate(sb);
   if ("error" in g) return NextResponse.json({ error: g.error }, { status: g.status });
   const { data } = await sb.from("statuses").select("*").order("sort");
-  return NextResponse.json({ statuses: data ?? [] });
+  return NextResponse.json({ statuses: (data ?? []).map((s:any)=>({...s,label:currentStatusLabel(s.key,s.label)})) });
 }
 
 export async function POST(req: NextRequest) {
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
   const b = await req.json();
   const key = String(b.key || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
   if (!key) return NextResponse.json({ error: "key required" }, { status: 400 });
+  if (CURRENT_STATUSES.some(([k])=>k===key)) return NextResponse.json({error:"Core Current Status definitions are versioned; edit only legacy mappings here."},{status:409});
   if (!b.label?.trim()) return NextResponse.json({ error: "label required" }, { status: 400 });
 
   const row = {
@@ -60,6 +62,7 @@ export async function DELETE(req: NextRequest) {
   if (!["owner", "admin"].includes(g.role)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const key = new URL(req.url).searchParams.get("key");
   if (!key) return NextResponse.json({ error: "key required" }, { status: 400 });
+  if (CURRENT_STATUSES.some(([k])=>k===key)) return NextResponse.json({error:"Core Current Status definitions are versioned; edit only legacy mappings here."},{status:409});
   const { data: row } = await supabaseAdmin().from("statuses").select("system_locked").eq("key", key).maybeSingle();
   if (row?.system_locked) return NextResponse.json({ error: "this is a core status and cannot be deleted; set it inactive instead" }, { status: 400 });
   const { error } = await supabaseAdmin().from("statuses").delete().eq("key", key);

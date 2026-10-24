@@ -57,7 +57,7 @@ const body = { claim:id, confirm:true, action:'decline', reason:'Fictional treat
   assert.equal((await route.POST(request(body))).status,409);assert.equal(sends,0);db.failOn=()=>null;
   const r=await route.POST(request(body));assert.equal(r.status,200);const saved=await r.json();assert.equal(saved.notification.state,'sent');
   assert.equal(saved.decline.agentId,'agent');assert.equal(saved.decline.agentName,'Test Agent');
-  assert.equal(claim.status,'signed_dropped');assert.equal(sends,1);assert.equal(db.tables.leads[0].qa_pending,false);
+  assert.equal(claim.status,'bmc_rejected');assert.equal(sends,1);assert.equal(db.tables.leads[0].qa_pending,false);
   await route.POST(request(body));assert.equal(sends,1);
   const read=await route.GET(new NextRequest('https://claimreach.test/api/signed-decline?claim='+id));
   const view=await read.json();assert.equal(view.notification.state,'sent');assert.equal(view.notification.html,undefined);

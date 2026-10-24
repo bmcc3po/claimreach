@@ -1,3 +1,4 @@
+import { reportSignatures } from "@/lib/report-signatures";
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
 import ReportsView from "@/components/ReportsView";
@@ -9,7 +10,9 @@ export default async function FirmReports() {
   if (leadsError) return unavailable;
   const ids = (leads ?? []).map((l) => l.id);
   let claims: any[] = [];
-  if (ids.length) { const { data, error } = await sb.from("claims").select("lead_id, status, claim_type, campaign, tier, created_at").in("lead_id", ids); if (error) return unavailable; claims = data ?? []; }
+  if (ids.length) { const { data, error } = await sb.from("claims").select("id, firm_id, lead_id, status, claim_type, campaign, tier, created_at").in("lead_id", ids); if (error) return unavailable; claims = data ?? []; }
+  try { const signed=await reportSignatures(sb,claims); claims=claims.map(c=>({...c,ever_signed_confirmed:signed.has(c.id)})); }
+  catch { return <p role="alert">Signature evidence is unavailable. Refresh before relying on these report counts.</p>; }
   // Only the fields the signed rule reads (every row, retired too), so the
   // firm's signed count uses the same rule as the staff pages.
   const { data: catalog, error: catalogError } = await sb.from("statuses").select("key, phase, requires_esign");

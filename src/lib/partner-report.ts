@@ -46,7 +46,6 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     const sig = signatures.find(s => s.claimId === matters[0].id);
     if (!sig || sig.archived || sig.test) return [];
     const declined = sig.declined || sig.firmDecision === 'Firm declined';
-    const status = declined ? resolveFileStatus({ status: 'signed_dropped' }).label : sig.status;
     const sole = claims.filter(c => c.lead_id === lead.id && c.firm_id === access.firm_id).length === 1;
     const claim = matters[0];
     const scoped = (r: any) => r.firm_id === access.firm_id && r.lead_id === lead.id &&
@@ -70,11 +69,8 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
       ...activities.map(r => date(r.created_at)), date(sig.signedAt), date(sig.deliveredAt), date(sig.decisionAt)]
       .filter((v): v is string => !!v).sort((a,b) => Date.parse(b)-Date.parse(a))[0] || null;
     const durations = calls.filter(r => r.channel === 'call' && typeof r.duration_sec === 'number' && r.duration_sec >= 0);
-    const key = sig.statusKey || claim.status || 'new';
-    // A recorded call is progress even when a legacy import kept the New key.
-    // This is a read-only presentation; signed/closed statuses take precedence.
-    const statusKey = sig.state === 'unsigned' && key === 'new' && called ? 'contacting' : key;
-    const displayStatus = statusKey !== key ? resolveFileStatus({ status: statusKey }).label : status;
+    const statusKey = claim.status || 'new';
+    const displayStatus = resolveFileStatus(claim).label;
     const rawState = String(lead.mail_state || '').trim();
     const state = /^[a-z]{2}$/i.test(rawState) ? rawState.toUpperCase() : rawState || null;
     const deliveryGroup = sig.state !== 'signed' ? null : declined ? 'declined' as const :
@@ -87,7 +83,7 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
       called,
       signed: sig.state === 'signed' ? 'Yes' as const : sig.state === 'verify' ? 'Check signature' as const : 'No' as const,
       signedAt: sig.state === 'signed' ? sig.signedAt : null,
-      status: sig.state === 'verify' ? `${displayStatus} · signature needs verification` : displayStatus }];
+      status: displayStatus }];
   }).sort((a,b) => (b.receivedAt || '').localeCompare(a.receivedAt || '') || a.name.localeCompare(b.name));
   return { rows, summary: summarizePartnerRows(rows) };
 }

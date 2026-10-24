@@ -10,10 +10,10 @@ const render = (status: string, signed = false) => renderToStaticMarkup(<CaseOve
 
 assert.match(render('signed_approved'), /Signed: Approved/);
 assert.doesNotMatch(render('signed_approved'), /Signed · agent review|Generate, send for signature/);
-assert.match(render('signed_grievous'), /Signed: Finish intake/);
+assert.match(render('signed_grievous'), /Signed esign/);
 assert.match(render('signed_dropped'), /Signed and declined/);
 assert.doesNotMatch(render('signed_dropped'), /Start intake/);
-assert.match(render('delivered', true), /Signed — sent to firm/);
+assert.match(render('delivered', true), /Sent to firm/);
 assert.match(render('delivered', true), /Review the signed agreement/);
 assert.doesNotMatch(render('delivered', false), /Signed — sent to firm|Review the signed agreement/);
 console.log('File overview: canonical signed status, declined review and matter-specific signature labels passed');

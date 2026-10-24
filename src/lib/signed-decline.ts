@@ -11,10 +11,10 @@ export type SignedDecline = {
 export function declineOutcome(d: SignedDecline): string { return d.source === 'firm' ? 'Firm declined' : 'BMC declined'; }
 export function signedDecline(claim: any): SignedDecline | null {
   const d = claim?.answers?.signed_decline;
-  return isSignedDeclined(claim) && d && typeof d.id === 'string' && typeof d.reason === 'string' && typeof d.at === 'string' ? d : null;
+  return d && typeof d.id === 'string' && typeof d.reason === 'string' && typeof d.at === 'string' ? d : null;
 }
 export function isSignedDeclined(claim: any): boolean {
-  return claim?.status === SIGNED_DECLINE_STATUS;
+  return [SIGNED_DECLINE_STATUS, 'firm_rejected', 'bmc_rejected'].includes(claim?.status);
 }
 /** Form saves may neither invent nor erase owner workflow evidence. */
 export function preserveDeclineEvidence(next: any, current: any) {

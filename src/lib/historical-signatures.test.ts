@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {historicalSignature} from './historical-signatures';
+const claim={id:'c',lead_id:'l',firm_id:'f',status:'firm_rejected',answers:{netfly_secondary:{review:{retainer_reviewed_document_id:'doc'}}}};
+const signed={id:'s',claim_id:'c',lead_id:'l',firm_id:'f',signed_at:'2026-10-01T00:00:00Z',status:'voided'};
+assert.equal(historicalSignature(claim,{submissions:[signed]}).ever_signed,'confirmed','later rejection/void does not erase historical signing');
+assert.equal(historicalSignature(claim,{submissions:[{...signed,claim_id:'other'}]}).ever_signed,'unknown');
+assert.equal(historicalSignature(claim,{submissions:[{...signed,pax_index:0}]}).ever_signed,'unknown','passenger signature is not parent signing');
+const doc={id:'doc',claim_id:'c',lead_id:'l',firm_id:'f',doc_type:'netfly_signed_retainer'};
+assert.deepEqual(historicalSignature(claim,{documents:[doc]}),{ever_signed:'confirmed',first_signed_at:null,signature_source:'case_documents:doc'});
+assert.equal(historicalSignature(claim,{documents:[{...doc,id:'unreviewed'}]}).ever_signed,'unknown');
+const event={id:'e',firm_id:'f',lead_id:'l',actor:'owner',meta:{event:'owner_signed_delivery_confirmation',claim_id:'c',signature_confirmed:true,confirmation_source:'direct_owner_instruction'}};
+assert.equal(historicalSignature(claim,{events:[event],ownerIds:[]}).ever_signed,'unknown');
+assert.equal(historicalSignature(claim,{events:[event],ownerIds:['owner']}).ever_signed,'confirmed');
+console.log('Historical native, voided, rejected, reviewed NETFLY and owner-confirmed signatures preserve evidence without inventing dates or borrowing sibling signatures.');

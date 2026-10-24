@@ -21,6 +21,7 @@ function world() { return new FakeDb({
 function route(db: FakeDb, intakeAvailable = true) {
   const emails: any[] = [], statuses: any[] = [];
   const mods: Record<string, any> = {
+    "@/lib/office-clock": { officeDateTime:(s:string)=>s },
     "next/server": { NextResponse: { json: (body: any, o: any = {}) => ({ body, status: o.status ?? 200 }) } },
     "@/lib/lead-key": { leadKeyOf: (l: any) => l.id },
     "@/lib/supabase-server": { supabaseServer: async () => db, supabaseAdmin: () => db },
@@ -57,24 +58,24 @@ async function main() {
   await check("agent cannot export a signed case to an arbitrary address through disposition", async () => {
     const db = world(), r = route(db);
     const result = await r.post({ notify: ["outside@example.invalid"] });
-    assert.equal(result.status, 403); assert.equal(r.emails.length, 0);
+    assert.equal(result.status, 409); assert.equal(r.emails.length, 0);
     assert.equal(db.tables.intake_calls[0].status, undefined); assert.equal(r.statuses.length, 0);
   });
   await check("owner-recipient lookup failure holds the call before any write or email", async () => {
     const db = world(); db.failOn = (op) => op.table === "app_users" ? "lookup unavailable" : null;
     const r = route(db), result = await r.post({ notify: ["synthetic@example.invalid"] });
-    assert.equal(result.status, 503); assert.equal(r.emails.length, 0);
+    assert.equal(result.status, 409); assert.equal(r.emails.length, 0);
     assert.equal(db.tables.intake_calls[0].status, undefined); assert.equal(r.statuses.length, 0);
   });
   await check("newer provisional emergency prevents old primary signed disposition and notification", async () => {
     const db = world(); db.tables.signable_documents.push({ id: "emergency", lead_id: L, firm_id: "firm", status: "signed", created_at: "2026-09-28T12:00:00Z", audit: { emergency: { claim_id: C } } });
-    const r = route(db), result = await r.post({ notify: ["synthetic@example.invalid"] });
+    const r = route(db), result = await r.post();
     assert.equal(result.status, 409); assert.equal(r.emails.length, 0); assert.equal(db.tables.intake_calls[0].status, undefined);
   });
   await check("DNC does not depend on agreement reads and disables every contact permission", async () => {
     const db = world(); db.failOn = (op) => op.table === "esign_submissions" ? "synthetic agreement read failure" : null;
     const r = route(db), result = await r.post({ dispo: "dnc" });
-    assert.equal(result.status, 200); assert.equal(r.statuses[0].status, "dnc");
+    assert.equal(result.status, 200); assert.equal(r.statuses.length, 0, "historical DNC call outcome suppresses contact without overwriting agent-set current status");
     for (const key of ["perm_call", "perm_text", "perm_email"]) assert.equal(db.tables.leads[0][key], false);
     assert.ok(!db.ops.some((op) => op.table === "esign_submissions"));
   });
@@ -82,17 +83,14 @@ async function main() {
     const db = world(); db.tables.claims.push({ ...db.tables.claims[0], id: B }); const r = route(db);
     assert.equal((await r.post({ claim_id: B })).status, 409); assert.equal(r.emails.length, 0); assert.equal(r.statuses.length, 0);
   });
-  await check("own-matter signed disposition closes call and scoped report uses its answers", async () => {
-    const db = world(), r = route(db); const result = await r.post({ notify: ["synthetic@example.invalid"] });
-    assert.equal(result.status, 200); assert.equal(db.tables.intake_calls[0].status, "ended");
-    assert.equal(r.emails.length, 1); assert.match(r.emails[0].text, /Selected claim/); assert.match(r.emails[0].text, new RegExp(C));
-    assert.deepEqual(r.emails[0].attachments, [{ filename: "Synthetic_PNC_intake.pdf", content: "JVBERi0=" }]);
-    assert.match(r.emails[0].html, /intake PDF is attached/);
+  await check("own-matter signed disposition closes the call without changing current status or sending", async () => {
+    const db=world(),r=route(db),result=await r.post();assert.equal(result.status,200);
+    assert.equal(db.tables.intake_calls[0].status,'ended');assert.equal(r.emails.length,0);assert.equal(r.statuses.length,0);
   });
   await check("PDF failure is reported and no incomplete signed-call notice goes out", async () => {
     const db = world(), r = route(db, false); const result = await r.post({ notify: ["synthetic@example.invalid"] });
-    assert.equal(result.status, 200); assert.equal(r.emails.length, 0);
-    assert.match(result.body.email_error, /No signed-call notice was emailed/);
+    assert.equal(result.status, 409); assert.equal(r.emails.length, 0);
+    assert.match(result.body.error, /final firm-ready handoff/);
   });
   await check("unreadable signature evidence refuses signed disposition before writes", async () => {
     const db = world(); db.failOn = (op) => op.table === "esign_submissions" ? "synthetic failure" : null;
