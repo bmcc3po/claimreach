@@ -1,7 +1,14 @@
 # Unified status rollout — approval required
 
-Release candidate: codex/unified-status-release-check, integrating codex/unified-current-status with production main aeb72d7.
-PR202 and PR203 are already merged into production and are preserved in this candidate.
+Release candidate: codex/unified-status-release-check, integrating codex/unified-current-status with production main 20e011555baa2b7418f874821886b5cf2f4ddcaf.
+PR202, PR203 and PR205 are already merged into production and are preserved in this candidate.
+
+## PR205 integration verification — 2026-10-26
+The merge preserves final packet attestation and explicit missing/unverified-retainer acknowledgments, including the mandatory pre-send audit record, warning email, stale snapshot and duplicate-send protections. NetflyFile, NetflySendPacket, netfly-packet, firm-delivery and the NETFLY delivery route match production exactly; the status integration does not reinstate the old separate review gate.
+
+TypeScript and 11 focused test files pass: firm delivery, NETFLY delivery route/review/send controls, current status/model and route, file search/model and route, call search, and both intake engines. Local 0130/0131 database checks and the header interaction test pass. These tests use synthetic fixtures and mocked sends; no claimant packet was sent. Cloudflare packaging completed successfully with 240 Edge Function Routes.
+
+Authenticated hosted acceptance remains pending. The preview database binding has not been verified as isolated; never write synthetic records through it until that is confirmed. No production migration, backfill or existing-record renumbering is authorized by this integration.
 
 ## Deployment order
 1. Review the additive 0130 section of RUN_THESE_MIGRATIONS.sql. Do not run the complete historical runner. This section creates nullable status detail columns, private history, service-only transactional saving, and future firm-decision projection. It does not backfill statuses or write current_stage.

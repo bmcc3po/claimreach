@@ -45,7 +45,7 @@ async function openReview() {
 }
 async function main() {
   await openReview();
-  assert.ok(JSON.stringify(root.toJSON()).includes('Client-details verification is not saved'));
+  assert.ok(!JSON.stringify(root.toJSON()).includes('Client-details verification is not saved'), 'final screen does not demand separate prior client verification');
   await act(async () => { button('Record signed-PDF review').props.onClick(); });
   assert.deepEqual(posts[0], { op: 'review', file: 'TMP-TEST', status: 'retainer_reviewed', document_id: 'signed-pdf', note: '' });
   assert.ok(JSON.stringify(root.toJSON()).includes('Signed PDF reviewed.'), 'server-acknowledged review remains visible when refetch fails');

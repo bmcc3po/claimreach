@@ -32,7 +32,7 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
   // This review approves NETFLY's original PDFs only. A replacement must use
   // the existing corrected-agreement review, never silently swap attachments.
   if (replacement.data) errors.push('A replacement agreement is on this file. Open the case to finish and review that corrected packet.');
-  if (!latest || ids.some((id: string) => !(read.data || []).some((doc: any) => doc.id === id))) errors.push('Import or upload the signed NETFLY PDF.');
+  if (latest && ids.some((id: string) => !(read.data || []).some((doc: any) => doc.id === id))) errors.push('Import or upload the signed NETFLY PDF.');
   for (const doc of documents) {
     const path = String(doc.storage_path || '');
     if (!path.startsWith(`${campaign.firm_id}/${lead.id}/`) || /\.\.|%|\\|\/\//.test(path)) throw new Error('Signed PDF storage association is invalid.');
@@ -43,15 +43,15 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
     else documents.push({ id: 'netfly-source-notes', file_name: 'NETFLY intake - email notes.pdf', doc_type: NETFLY_INTAKE_TYPE, source_note: note });
   }
   const revisions = saved.handoffs?.length || 0, fieldsRevision = saved.source_field_revisions?.length || 0;
-  if (!revisions || saved.handoff_verification?.source_revision !== revisions || (saved.handoff_verification?.source_field_revision || 0) !== fieldsRevision)
-    errors.push('Read back NETFLY’s note and choose Details match or Record changes.');
   const close = saved.call_close;
   if (!close || close.source_revision !== revisions || (close.source_field_revision || 0) !== fieldsRevision || validateNetflyCallClose(close))
     errors.push('Record the call result and the 24–48 hour callback promise.');
   else if (close.completion !== 'complete' || close.disposition !== 'appears_qualified') errors.push('This call needs follow-up or supervisor review before firm delivery.');
   if (saved.review?.status === 'correction_needed') errors.push('Resolve the signed-agreement correction before sending.');
   if (saved.review?.status === 'needs_supervisor') errors.push('A supervisor must resolve this file’s review flag before sending.');
-  if (latest && saved.review?.retainer_reviewed_document_id !== latest.id) errors.push('Open the signed PDF and record your review.');
+  // Final delivery acknowledgment records review of this exact snapshot.
+  // Existing correction/supervisor flags above still block delivery.
+  const missing_retainer = !latest;
   if (netflyFlags(saved.fields || {}).length) errors.push('The flagged case details need supervisor attention before sending.');
   const to = String(campaign.firm_email || '').trim().toLowerCase();
   const configuredCc = String(campaign.firm_cc || '').split(/[,;]/).map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -60,9 +60,9 @@ export async function netflyPacketReview(db: any, lead: any, claim: any, campaig
   const snapshot = await contentHash(new TextEncoder().encode(JSON.stringify({
     lead: { id: lead.id, name: lead.claimant_name, phone: lead.phone, email: lead.email, address: [lead.mail_addr1, lead.mail_city, lead.mail_state, lead.mail_zip] },
     claim: claim.id, fields: saved.fields, handoffs: saved.handoffs, source: saved.source_field_revisions,
-    verification: saved.handoff_verification, close, review: saved.review, documents, to, cc,
+    verification: saved.handoff_verification, close, review: saved.review, documents, missing_retainer, to, cc,
   })));
-  return { errors, documents, to, cc, configuredCc, snapshot, case_url: `/leads/${lead.id}?claim=${claim.id}` };
+  return { errors, documents, missing_retainer, to, cc, configuredCc, snapshot, case_url: `/leads/${lead.id}?claim=${claim.id}` };
 }
 
 export async function netflyPacketBytes(db: any, documents: any[]) {

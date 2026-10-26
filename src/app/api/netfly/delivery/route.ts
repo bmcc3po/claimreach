@@ -43,10 +43,11 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); } catch { return fail('Invalid request.', 400); }
   const matter = await netflyMatter(ctx, String(body.file || ''));
   if (!matter) return fail('NETFLY file not found.', 404);
-  if (body.reviewed !== true || !/^[a-f0-9]{64}$/.test(String(body.snapshot || ''))) return fail('Open the intake and signed PDF, then confirm the final review.');
+  if (body.reviewed !== true || !/^[a-f0-9]{64}$/.test(String(body.snapshot || ''))) return fail('Review the available packet and recipients, then confirm the final review.');
+  if (!['reviewed', 'missing', 'unverified'].includes(body.retainer_decision)) return fail('Confirm the retainer review or explicitly acknowledge sending with a retainer warning.');
   try {
     const result = await deliverLeadToFirm({ leadId: matter.lead.id, claimId: matter.claim.id,
-      triggeredBy: 'manual', actorName: ctx.actor.name, includeOwner: true, netflySnapshot: body.snapshot }, { db: ctx.db });
+      triggeredBy: 'manual', actorName: ctx.actor.name, actorId: ctx.actor.id, includeOwner: true, netflySnapshot: body.snapshot, netflyRetainerDecision: body.retainer_decision }, { db: ctx.db });
     return NextResponse.json(result, { status: result.ok ? 200 : 409 });
   } catch { return fail('The delivery result could not be checked. Refresh delivery status before trying again.', 503); }
 }
