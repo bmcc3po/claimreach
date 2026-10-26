@@ -228,7 +228,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
       assert.equal(d.sent.length, mode === 'allowed' ? 1 : 0, mode);
     }
   });
-  const netflyWorld = () => {
+  const netflyWorld = (failWrite: string[] = []) => {
     const campaign = camp('ca01', { name: 'NETFLY ONTAKE', path: 'secondary', esign_required: false });
     const lead = leadRow();
     const original = { id: 'nf-doc', firm_id: FIRM, lead_id: L, claim_id: 'aaa1', doc_type: 'netfly_signed_retainer', file_name: 'NETFLY signed original.pdf', storage_path: `${FIRM}/${L}/netfly-original.pdf`, created_at: '2026-10-02T10:00:00Z' };
@@ -239,14 +239,14 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
       review: { status: 'retainer_reviewed', retainer_reviewed_document_id: original.id },
     } } });
     const db = fakeDb({ leads: [lead], claims: [claim], campaigns: [campaign], case_documents: [original], esign_submissions: [], signable_documents: [], retainers: [], qa_reviews: [], firm_deliveries: [], app_users: [{ role: 'owner', active: true, email: 'bmc@innovativeintake.com' }] },
-      { storage: { [original.storage_path]: bytes('%PDF-1.7\n' + 'SYNTHETIC ORIGINAL '.repeat(15) + '\n%%EOF') } });
+      { failWrite, storage: { [original.storage_path]: bytes('%PDF-1.7\n' + 'SYNTHETIC ORIGINAL '.repeat(15) + '\n%%EOF') } });
     return { db, lead, claim, campaign, original };
   };
   await t('NETFLY agent packet uses its reviewed original and intake, copies Brett, and sends only once', async () => {
     const w = netflyWorld(), d = deps(w.db);
     const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
     assert.deepEqual(preview.errors, []);
-    const options = { leadId: L, claimId: 'aaa1', triggeredBy: 'manual' as const, includeOwner: true, netflySnapshot: preview.snapshot };
+    const options = { leadId: L, claimId: 'aaa1', triggeredBy: 'manual' as const, includeOwner: true, netflySnapshot: preview.snapshot, actorId: 'authenticated-agent', netflyRetainerDecision: 'reviewed' as const };
     const result = await deliverLeadToFirm(options, d);
     assert.equal(result.ok, true, result.error); assert.equal(d.sent.length, 1);
     assert.deepEqual(d.sent[0].cc, ['bmc@innovativeintake.com']);
@@ -257,6 +257,76 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     assert.equal(w.claim.status, 'delivered'); assert(w.claim.firm_sent_at);
     assert((await deliverLeadToFirm(options, d)).skipped); assert.equal(d.sent.length, 1);
   });
+  await t('NETFLY final attestation replaces prior saved review without inventing PDF viewing', async () => {
+    const w = netflyWorld(), d = deps(w.db);
+    delete (w.claim.answers.netfly_secondary as any).review;
+    delete (w.claim.answers.netfly_secondary as any).handoff_verification;
+    const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
+    assert.deepEqual(preview.errors, []);
+    const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true,
+      netflySnapshot: preview.snapshot, actorId: 'authenticated-agent', netflyRetainerDecision: 'reviewed' }, d);
+    assert.equal(result.ok, true, result.error); assert.equal(d.sent.length, 1);
+    const log = w.db.tables.audit_log[0];
+    assert.equal(log.actor, 'authenticated-agent'); assert.equal(log.meta.retainer_decision, 'reviewed');
+    assert.equal(log.meta.attempt_key, result.attemptKey); assert.ok(log.meta.acknowledged_at);
+    assert.equal((w.claim.answers.netfly_secondary as any).review, undefined, 'no fabricated previous review');
+  });
+  await t('NETFLY missing/unverified retainer exceptions are explicit, audited before provider, and warned to firm', async () => {
+    for (const decision of ['missing', 'unverified'] as const) {
+      const w = netflyWorld(); if (decision === 'missing') w.db.tables.case_documents = [];
+      const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
+      assert.equal(preview.missing_retainer, decision === 'missing');
+      const d = deps(w.db), send = d.sendEmail!;
+      d.sendEmail = async mail => {
+        assert.equal(w.db.tables.audit_log[0].meta.retainer_decision, decision, 'ack persisted before provider');
+        return send(mail);
+      };
+      const opts = { leadId: L, claimId: 'aaa1', triggeredBy: 'manual' as const, includeOwner: true,
+        actorId: 'authenticated-agent', netflySnapshot: preview.snapshot, netflyRetainerDecision: decision };
+      const result = await deliverLeadToFirm(opts, d);
+      assert.equal(result.ok, true, result.error); assert.equal(d.sent.length, 1);
+      const notice = decision === 'missing' ? 'RETAINER NOT PROVIDED BY NETFLY' : 'ATTACHED RETAINER NOT VERIFIED';
+      assert.ok(d.sent[0].subject.includes(notice)); assert.ok(d.sent[0].html.includes(notice));
+      assert.ok(!d.sent[0].html.includes('new signed file'));
+      assert.equal(d.sent[0].attachments.some(a => /NETFLY_signed/.test(a.filename)), decision !== 'missing');
+      assert.deepEqual(d.sent[0].to, [w.campaign.firm_email]);
+      assert((await deliverLeadToFirm(opts, d)).skipped); assert.equal(d.sent.length, 1);
+    }
+  });
+  await t('NETFLY absent acknowledgment, changed packet, and failed audit never send', async () => {
+    for (const scenario of ['no_ack', 'audit_failure', 'arrived', 'recipients_changed', 'blocked_review']) {
+      const w = netflyWorld(scenario === 'audit_failure' ? ['audit_log'] : []);
+      w.db.tables.case_documents = [];
+      const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign), d = deps(w.db);
+      if (scenario === 'arrived') w.db.tables.case_documents.push(w.original);
+      if (scenario === 'recipients_changed') w.campaign.firm_email = 'changed@example.test';
+      if (scenario === 'blocked_review') w.claim.answers.netfly_secondary.review.status = 'needs_supervisor';
+      const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true,
+        actorId: 'authenticated-agent', netflySnapshot: preview.snapshot,
+        netflyRetainerDecision: scenario === 'no_ack' ? undefined : 'missing' }, d);
+      assert.equal(result.ok, false, scenario); assert.equal(d.sent.length, 0, scenario);
+      assert.ok(!w.claim.firm_sent_at);
+      if (scenario === 'audit_failure') assert.equal(w.db.tables.firm_delivery_dispatch[0].state, 'failed');
+    }
+  });
+  await t('NETFLY rejected send can retry; uncertain and simultaneous sends cannot duplicate', async () => {
+    for (const uncertain of [false, true]) {
+      const w = netflyWorld(); w.db.tables.case_documents = [];
+      const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
+      const d = deps(w.db, { sendEmail: async () => ({ ok: false, error: 'synthetic rejection', uncertain }) });
+      const opts = { leadId: L, claimId: 'aaa1', triggeredBy: 'manual' as const, includeOwner: true,
+        actorId: 'authenticated-agent', netflySnapshot: preview.snapshot, netflyRetainerDecision: 'missing' as const };
+      assert.equal((await deliverLeadToFirm(opts, d)).ok, false);
+      const retry = deps(w.db), result = await deliverLeadToFirm(opts, retry);
+      assert.equal(result.ok, !uncertain); assert.equal(retry.sent.length, uncertain ? 0 : 1);
+    }
+    const w = netflyWorld(); w.db.tables.case_documents = [];
+    const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign), d = deps(w.db);
+    const opts = { leadId: L, claimId: 'aaa1', triggeredBy: 'manual' as const, includeOwner: true,
+      actorId: 'authenticated-agent', netflySnapshot: preview.snapshot, netflyRetainerDecision: 'missing' as const };
+    await Promise.all([deliverLeadToFirm(opts, d), deliverLeadToFirm(opts, d)]);
+    assert.equal(d.sent.length, 1); assert.equal(w.db.tables.audit_log.length, 1);
+  });
   await t('NETFLY original intake and signed attachment bytes survive delivery unchanged', async () => {
     const w = netflyWorld();
     const intake = { ...w.original, id: 'nf-intake', file_name: 'NETFLY intake.pdf', doc_type: 'netfly_intake', storage_path: `${FIRM}/${L}/intake.pdf` };
@@ -266,7 +336,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     const intakeBytes = bytes('%PDF-1.7\n' + 'UNCHANGED VENDOR INTAKE '.repeat(15) + '\n%%EOF');
     w.db.storage.from = (bucket: string) => { const original = originalDownload(bucket); return { ...original, download: async (path: string) => path === intake.storage_path ? { data: new Blob([intakeBytes as BlobPart]), error: null } : original.download(path) }; };
     const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
-    const d = deps(w.db), result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot }, d);
+    const d = deps(w.db), result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot, actorId: 'authenticated-agent', netflyRetainerDecision: 'reviewed' as const }, d);
     assert.equal(result.ok, true, result.error);
     assert.equal(d.sent[0].attachments.length, 3);
     assert.deepEqual(Buffer.from(d.sent[0].attachments.find(a => /NETFLY_intake/.test(a.filename))!.content, 'base64'), Buffer.from(intakeBytes));
@@ -278,7 +348,6 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
   });
   await t('NETFLY refuses stale review, incomplete calls, missing or foreign PDFs and generic bypass', async () => {
     for (const mutate of [
-      (w: any) => { w.claim.answers.netfly_secondary.review.retainer_reviewed_document_id = ''; },
       (w: any) => { w.claim.answers.netfly_secondary.review.status = 'needs_supervisor'; },
       (w: any) => { w.db.tables.esign_submissions.push({ id: 'new-packet', firm_id: FIRM, lead_id: L, claim_id: 'aaa1', campaign_id: 'ca01', status: 'completed' }); },
       (w: any) => { w.claim.answers.netfly_secondary.call_close.completion = 'incomplete'; },
@@ -286,12 +355,12 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
       (w: any) => { w.claim.answers.netfly_secondary.fields.wants_cancel = 'Yes'; },
     ]) {
       const w = netflyWorld(); mutate(w); const d = deps(w.db), preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
-      const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot }, d);
+      const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot, actorId: 'authenticated-agent', netflyRetainerDecision: 'reviewed' as const }, d);
       assert.equal(result.ok, false); assert.equal(d.sent.length, 0);
     }
     const w = netflyWorld(), d = deps(w.db), preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
     w.claim.answers.netfly_secondary.fields.incident_story = 'Changed after preview';
-    assert.equal((await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot }, d)).ok, false);
+    assert.equal((await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot, actorId: 'authenticated-agent', netflyRetainerDecision: 'reviewed' as const }, d)).ok, false);
     assert.equal((await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual' }, d)).ok, false);
     assert.equal(d.sent.length, 0);
   });
@@ -299,7 +368,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
     const w = netflyWorld(), d = deps(w.db), loader = d.loadBundle!;
     const preview = await netflyPacketReview(w.db, w.lead, w.claim, w.campaign);
     d.loadBundle = async (...args) => { const bundle = await loader(...args); w.claim.answers.netfly_secondary.fields.police_report = 'CHANGED'; return bundle; };
-    const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot }, d);
+    const result = await deliverLeadToFirm({ leadId: L, claimId: 'aaa1', triggeredBy: 'manual', includeOwner: true, netflySnapshot: preview.snapshot, actorId: 'authenticated-agent', netflyRetainerDecision: 'reviewed' as const }, d);
     assert.equal(result.ok, false); assert.match(result.error || '', /changed while/); assert.equal(d.sent.length, 0);
   });
   await t("MVA handoff refuses a signed file before QA approval", async () => {
@@ -374,7 +443,7 @@ const retainerOf = (m: FirmEmail) => m.attachments.find((a) => /_retainer_signed
       w.db.tables.cr_payroll_notes=[{id:'h',firm_id:FIRM,claim_id:mode==='sibling'?'other':'aaa1',campaign_id:'ca01',kind:mode==='released'?'attorney_release':'attorney_hold',data:{reason:'Ask attorney'},created_at:'2026-10-06T12:00:00Z'}];
       if(mode==='unreadable') { const from=w.db.from.bind(w.db);w.db.from=(table:string)=>table==='cr_payroll_notes'?{select(){return this;},eq(){return this;},in(){return this;},order(){return this;},limit(){return this;},maybeSingle:async()=>({error:{message:'failed'}})}:from(table); }
       const preview=await netflyPacketReview(w.db,w.lead,w.claim,w.campaign);
-      const result=await deliverLeadToFirm({leadId:L,claimId:'aaa1',triggeredBy:'manual',includeOwner:true,netflySnapshot:preview.snapshot},d);
+      const result=await deliverLeadToFirm({leadId:L,claimId:'aaa1',triggeredBy:'manual',includeOwner:true,netflySnapshot:preview.snapshot,actorId:'authenticated-agent',netflyRetainerDecision:'reviewed' as const},d);
       assert.equal(result.ok,mode==='released'||mode==='sibling',mode);assert.equal(d.sent.length,result.ok?1:0);
       if(mode==='held')assert.match(result.error||'',/Waiting on attorney/);
       if(mode==='held') {

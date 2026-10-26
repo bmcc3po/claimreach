@@ -12,7 +12,7 @@ function route(name: string, modules: Record<string, any>) {
 }
 const campaign = { id: 'netfly', firm_id: 'firm' };
 let access: string[] | null = ['intake.fill', 'leads.view', 'docs.upload'];
-const context = () => access && ({ actor: { name: 'Synthetic Agent', can: (key: string) => access!.includes(key) }, campaign, db: {} });
+const context = () => access && ({ actor: { id: 'authenticated-agent', name: 'Synthetic Agent', can: (key: string) => access!.includes(key) }, campaign, db: {} });
 const note = 'Client: Synthetic Agent Test\nThe Signed Agreement:\nhttps://go.easyclaimcenter.com/documents/v1/00000000-0000-4000-8000-000000000001';
 const matter = { lead: { id: 'scoped-lead', claimant_name: 'Synthetic Agent Test' }, claim: { id: 'scoped-claim', answers: { netfly_secondary: { handoffs: [{ note }] } } } };
 const shared = {
@@ -25,7 +25,7 @@ const delivery = route('delivery', { ...shared,
   '@/lib/firm-delivery': { deliverLeadToFirm: async (opts: any) => { deliveries.push(opts); if (deliveryThrows) throw new Error('provider uncertain'); return deliveryResult; } },
 });
 const request = (body: any) => ({ json: async () => body });
-const valid = { file: 'TMP-TEST', reviewed: true, snapshot: 'a'.repeat(64) };
+const valid = { file: 'TMP-TEST', reviewed: true, snapshot: 'a'.repeat(64), retainer_decision: 'reviewed' };
 let downloads: any[] = [], saves: any[] = [];
 const agreement = route('agreement-import', { ...shared,
   '@/lib/netfly-source-pdf': {NETFLY_INTAKE_TYPE:'netfly_intake',netflySourceNotes:(saved:any)=>saved.handoffs.map((h:any)=>h.note).join(''),buildNetflySourcePdf:async(value:string)=>{assert.equal(value,note);return new Uint8Array([2]);}},
@@ -49,7 +49,13 @@ async function main() {
   assert.equal((await delivery.POST({ json: async () => { throw new Error('bad json'); } })).status, 400);
   assert.equal(deliveries.length, 0);
   assert.equal((await delivery.POST(request({ ...valid, force: true, claimId: 'foreign', to: 'arbitrary@example.test' }))).status, 200);
-  assert.deepEqual(deliveries[0], { leadId: 'scoped-lead', claimId: 'scoped-claim', triggeredBy: 'manual', actorName: 'Synthetic Agent', includeOwner: true, netflySnapshot: valid.snapshot });
+  assert.deepEqual(deliveries[0], { leadId: 'scoped-lead', claimId: 'scoped-claim', triggeredBy: 'manual', actorName: 'Synthetic Agent', actorId: 'authenticated-agent', includeOwner: true, netflySnapshot: valid.snapshot, netflyRetainerDecision: 'reviewed' });
+  assert.equal((await delivery.POST(request({ ...valid, retainer_decision: undefined }))).status, 409);
+  assert.equal((await delivery.POST(request({ ...valid, retainer_decision: 'missing', actorId: 'forged' }))).status, 200);
+  assert.equal(deliveries.at(-1).actorId, 'authenticated-agent');
+  assert.equal(deliveries.at(-1).netflyRetainerDecision, 'missing');
+  assert.equal((await delivery.POST(request({ ...valid, retainer_decision: 'unverified' }))).status, 200);
+  assert.equal(deliveries.at(-1).netflyRetainerDecision, 'unverified');
   deliveryResult = { ok: false, error: 'Review changed' };
   assert.equal((await delivery.POST(request(valid))).status, 409);
   deliveryThrows = true;
