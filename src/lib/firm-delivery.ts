@@ -189,6 +189,7 @@ export async function deliverLeadToFirm(opts: {
   claimId?: string | null;
   triggeredBy: "auto" | "manual" | "automation";
   actorName?: string | null;
+  actorId?: string;
   force?: boolean;
   expectedTo?: string;
   expectedCc?: string[];
@@ -199,6 +200,8 @@ export async function deliverLeadToFirm(opts: {
   importedPacket?: boolean;
   /** Authenticated NETFLY final review; snapshot includes answers, originals and recipients. */
   netflySnapshot?: string;
+  /** Only the authenticated NETFLY final review may provide this acknowledgment. */
+  netflyRetainerDecision?: 'reviewed' | 'missing' | 'unverified';
 }, deps: DeliverDeps = {}): Promise<DeliverResult> {
   const db = deps.db ?? supabaseAdmin();
   const audit = deps.audit ?? (async (row: any) => { await recordAudit(row); });
@@ -319,12 +322,17 @@ export async function deliverLeadToFirm(opts: {
   };
   const holdError = await attorneyHoldError();
   if (holdError) return {ok:false,claimId:claim.id,error:holdError};
+  if (opts.netflyRetainerDecision && !opts.netflySnapshot) return refuse('Use the NETFLY final review to acknowledge the retainer.');
   if (opts.netflySnapshot) {
     if (opts.triggeredBy !== "manual" || !opts.includeOwner || opts.importedPacket || opts.force) return refuse("Use the NETFLY final review to send this packet.");
     try { netflyPacket = await netflyPacketReview(db, lead, claim, cfg); }
     catch (error) { return refuse(errText(error)); }
     if (netflyPacket.snapshot !== opts.netflySnapshot) return refuse("The file or recipients changed. Refresh the final review before sending.");
     if (netflyPacket.errors.length) return refuse(netflyPacket.errors.join(" "));
+    if (!opts.actorId || (netflyPacket.missing_retainer
+      ? opts.netflyRetainerDecision !== 'missing'
+      : !['reviewed', 'unverified'].includes(opts.netflyRetainerDecision || '')))
+      return refuse('Confirm review of the attached retainer, or explicitly acknowledge the current missing/unverified retainer warning.');
   }
   if (!netflyPacket && String(claim.claim_type || cfg.case_type || lead.case_type || "").trim().toLowerCase() === "mva") {
     if (!["signed_approved", "delivered", "retained"].includes(String(claim.status || ""))) {
@@ -380,6 +388,12 @@ export async function deliverLeadToFirm(opts: {
 
   subject = fillTemplate(String(cfg.firm_subject_tpl || DEFAULT_SUBJECT), tokens);
   let bodyHtml = fillTemplate(String(cfg.firm_body_tpl || DEFAULT_BODY), tokens);
+  if (netflyPacket && opts.netflyRetainerDecision !== 'reviewed') {
+    const notice = opts.netflyRetainerDecision === 'missing' ? 'RETAINER NOT PROVIDED BY NETFLY' : 'ATTACHED RETAINER NOT VERIFIED';
+    // Do not reuse a campaign template that may claim this is a signed file.
+    subject = fillTemplate(`NETFLY — ${notice}: {{contact.full_name}} ({{case.lead_no}})`, tokens);
+    bodyHtml = fillTemplate(`<p><strong>${notice}</strong></p><p>The agent explicitly authorized sending the available packet with this exception. This handoff does not confirm a reviewed signed retainer. Please obtain or verify the retainer before relying on it.</p><p><strong>Client:</strong> {{contact.full_name}}<br><strong>File:</strong> {{case.lead_no}}</p>`, tokens);
+  }
   if (cfg.name === 'INNO MVA') {
     bodyHtml += '<p><a href="https://claimreach.com/firm-review-login">Open the ClaimReach firm inbox</a> to view the intake and signed packet, mark received, or record the firm’s decision. Sign in with your assigned firm account.</p>';
   }
@@ -624,7 +638,8 @@ export async function deliverLeadToFirm(opts: {
   // A delivery that is configured to carry the signed retainer must actually
   // carry one. Force bypasses the already-sent guard, never this: a "signed
   // file" email with no signed retainer in it does not go out (Astra, Sep 27).
-  if (wantRetainer && !attachments.some((a) => a.kind === "retainer")) {
+  const missingRetainerOverride = !!netflyPacket?.missing_retainer && opts.netflyRetainerDecision === 'missing';
+  if (wantRetainer && !missingRetainerOverride && !attachments.some((a) => a.kind === "retainer")) {
     return refuse("No signed agreement is stored for this matter yet.");
   }
   if (checkPacket && dsPacketShort) {
@@ -671,6 +686,31 @@ export async function deliverLeadToFirm(opts: {
     const finishError = await finishFirmDispatch(db, claim.id, attemptKey, 'failed', message);
     return { ok: false, claimId: claim.id, error: message, ...(finishError ? { warning: finishError, recoveryRequired: true } : {}) };
   }
+  if (netflyPacket) {
+    // Persist acknowledgment before contacting the provider; never use the
+    // best-effort audit helper for this mandatory record. Tied to the reserved
+    // attempt, not a fabricated prior review or signing event.
+    try {
+      const id = crypto.randomUUID();
+      const acknowledgment = await db.from('audit_log').insert({
+        id, firm_id: lead.firm_id, lead_id: lead.id, claim_id: claim.id,
+        actor: opts.actorId, actor_name: opts.actorName ?? null, category: 'system',
+        description: opts.netflyRetainerDecision === 'reviewed'
+          ? 'Agent confirmed review of the attached NETFLY retainer and final packet for this send attempt.'
+          : opts.netflyRetainerDecision === 'missing'
+            ? 'Agent acknowledged NETFLY did not provide a retainer and authorized sending the available packet with a warning to the firm.'
+            : 'Agent acknowledged the attached NETFLY retainer is unverified and authorized sending the available packet with a warning to the firm.',
+        meta: { event: 'netfly_delivery_acknowledgment', retainer_decision: opts.netflyRetainerDecision,
+          acknowledged_at: now(), snapshot: opts.netflySnapshot, attempt_key: attemptKey, to, cc,
+          document_ids: netflyPacket.documents.map((doc: any) => doc.id) },
+      }).select('id').maybeSingle();
+      if (acknowledgment.error || acknowledgment.data?.id !== id) throw new Error('Acknowledgment did not save');
+    } catch {
+      const message = 'The final review/override could not be saved. Nothing was emailed. Refresh delivery status before retrying.';
+      const finishError = await finishFirmDispatch(db, claim.id, attemptKey, 'failed', message);
+      return { ok: false, claimId: claim.id, attemptKey, error: message, ...(finishError ? { warning: finishError, recoveryRequired: true } : {}) };
+    }
+  }
   const from = (globalThis as any)?.process?.env?.EMAIL_FROM || "ClaimReach <noreply@claimreach.com>";
   let sendOk = false; let sendErr: string | undefined; let uncertain = false;
   try {
@@ -695,7 +735,7 @@ export async function deliverLeadToFirm(opts: {
       description: sendOk
         ? `Sent to firm (${to})${campName ? ` for ${campName}` : ""} with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}.`
         : `Firm send failed${campName ? ` for ${campName}` : ""}: ${sendErr}.`,
-      meta: { to, cc, attachments: attachments.map((a) => a.kind), triggered_by: opts.triggeredBy, claim_id: claim.id, campaign_id: campaignId, attempt_key: attemptKey, uncertain },
+      meta: { to, cc, attachments: attachments.map((a) => a.kind), triggered_by: opts.triggeredBy, claim_id: claim.id, campaign_id: campaignId, attempt_key: attemptKey, uncertain, ...(netflyPacket ? { retainer_decision: opts.netflyRetainerDecision } : {}) },
     });
   } catch (e) { problems.push(`the activity log entry did not save (${errText(e)})`); }
 
