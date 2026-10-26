@@ -14,6 +14,7 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 ## Current objective
 
 - Keep the October 24 NETFLY review guidance and authorized existing-client search release stable.
+- Diagnose the renewed Crissi `relay_525` interruption read-only while leaving queue draining, credentials and production data unchanged.
 - Complete the remaining hosted authorization/ACL gates for draft PR #204 without applying migrations, merging or deploying.
 - Treat InnoDash's deployed browser-visible PIN gates as a security hold until server-side authorization and post-fix rotation are approved.
 
@@ -25,7 +26,7 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 - Draft PR #204 is five commits ahead and zero behind main at runtime head `a737fa58`. It unifies current status/history, reporting evidence, authorized global file search and NETFLY numbering/aliases, while preserving the deployed #202/#203 fixes.
 - PR #204 has successful Cloudflare and Netlify previews, clean TypeScript, 240-route Cloudflare packaging and 187/192 test files passing; its five remaining failures reproduce on unchanged production main.
 - Draft migrations 0130 and 0131 are NOT applied. No production backfill, renumbering, migration, merge or deployment occurred. Remaining gates are real hosted browser tests using Auth-issued sessions and exact staging helper-function ACL reconstruction.
-- Crissi completed seven more successful health and drain runs on October 24, bringing recovery to 28 consecutive successful heartbeats after the 18-run interruption. Latest success is run 40145907631 at 5:14 PM Pacific on current main. Relay/upstream cause remains unconfirmed.
+- Crissi added five more successful health/drain cycles on October 25, extending recovery to 33 consecutive successes, then failed twice with `relay_525` at 3:26 PM and 5:37 PM Pacific. Both matching drain jobs passed. AI-service recovery is broken again; the relay/upstream cause remains unconfirmed.
 - PR #199 remains held for current-main reconciliation/re-verification and separate migration 0130 approval in its own scope. Historical private notes must not be copied into marketer explanations.
 - PR #198 reporting/owner-preview, PR #197 owner decline and payroll PR #162 are released; authenticated owner/partner or owner visual acceptance remains pending as previously recorded. No real decline, payroll close or money movement is authorized for testing.
 - PR #136 firm security and PR #80 app-wide call alerts remain unreconciled with current main and unapproved for release.
@@ -36,17 +37,18 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 - PR #202 and PR #203 merged and the resulting main revision deployed successfully to Cloudflare production.
 - Draft PR #204 integrated the production release and opened with successful hosted previews while keeping migrations 0130/0131 unapplied.
-- This review verified the release, all active branch/check evidence and seven additional Crissi cycles, then corrected documentation only. It did not merge, deploy, apply migrations, change permissions, send messages, process money or alter client records.
+- The October 25 review found no new runtime or branch-tip commits, isolated two Crissi `relay_525` failures while all drains passed and corrected documentation only. It did not merge, deploy, replay queues, alter credentials, apply migrations, change permissions, send messages, process money or alter client records.
 
 ## Verification performed
 
-- Reviewed 13 repositories, 257 branch tips, 30 open PR heads and workflows for the past 24 hours. No open PR head had a failed or stalled reported check. ClaimPoint PRs #1-#5 still have no reported checks and are not labeled as failures.
+- Reviewed 13 repositories, 257 branch tips, 30 open PR heads and workflows for the past 24 hours. No runtime/default-branch or branch-tip commit appeared, and no open PR head had a failed or stalled reported check. ClaimPoint PRs #1-#5 still have no reported checks and are not labeled as failures.
 - Exact ClaimReach main `aeb72d7` has a successful Cloudflare Pages production check.
 - PR #204 is five commits ahead/zero behind main and its exact head has successful Cloudflare and Netlify preview evidence. TypeScript and 240-route packaging passed; 187/192 test files passed and the five remaining failures match production main.
-- All seven October 24 Crissi health jobs and all seven matching drain jobs passed; recovery is now 28 consecutive successful heartbeats.
+- On October 25, the first five Crissi health jobs passed and the last two failed with `relay_525`; all seven matching drain jobs passed.
 
 ## Active blockers or open questions
 
+- Crissi is interrupted again after two consecutive `relay_525` failures; queues still drain. Cause and durable recovery are unverified.
 - Security decision: approve server-side InnoDash authorization and rotation of all exposed PIN values only after browser literals are removed and the fix is deployed.
 - PR #202/#203 need authenticated production acceptance using non-mutating, no-send paths.
 - PR #204 needs Auth-issued hosted browser tests and exact staging helper ACL reconstruction. After those gates, Brett must separately approve migrations 0130/0131, merge and production deployment.
@@ -57,12 +59,12 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 - Verify PR #202/#203 in an authenticated production session without sending a packet or altering a claimant record.
 - Reconstruct the exact staging helper ACLs and run PR #204 with synthetic Auth-issued owner/non-owner sessions; keep it draft and leave migrations unapplied until Brett's separate release approval.
 - For InnoDash, prepare the server-side authorization design and synthetic acceptance plan; rotate exposed values only after the fix is deployed.
-- Continue read-only Crissi monitoring and reopen relay diagnostics only if a failure recurs.
+- Run read-only Crissi relay/upstream diagnostics now; do not replay queues or change credentials/configuration while drain jobs remain healthy.
 
 ## Session log
 
+- 2026-10-25 PT - Codex - found no code movement, isolated two consecutive Crissi `relay_525` failures after a 33-success recovery streak and confirmed every drain job passed; next: read-only relay/upstream diagnostics with no queue replay or credential change.
 - 2026-10-24 PT - Codex - verified PRs #202/#203 merged and deployed, PR #204 opened preview-green with migrations held, and seven more Crissi cycles brought recovery to 28; next: authenticated no-send QA and exact staging ACL reconstruction before separate release approval.
 - 2026-10-23 PT - Codex - found no runtime or branch-tip movement, verified six more Crissi health/drain cycles for 21 consecutive successes and confirmed the InnoDash browser-credential hold remains; next: approve server-side auth/rotation and isolated staging.
 - 2026-10-22 PT - Codex - found deployed browser-visible InnoDash PIN literals, documented the security hold, reconciled PRs #202/#203 and unified-status decisions, and verified Crissi reached 15 consecutive successes; next: approve server-side auth/rotation and isolated staging.
 - 2026-10-21 PT - Codex - verified six more Crissi health and drain runs passed, bringing recovery to nine consecutive successful heartbeats; next: keep read-only watch.
-- 2026-10-20 PT - Codex - recorded Crissi recovery after two additional failures and three consecutive successful health runs; cause remains unconfirmed.
