@@ -1,0 +1,31 @@
+-- TEST ONLY: qcrvjwwbtqbyrbiolfkf. Never run on production.
+-- Synthetic test configuration from src/lib/statuses.ts DEFAULT_STATUSES; no production data.
+insert into public.statuses (key,label,track,phase,tone,side,qualify,requires_esign,billable,unlocks_firm,is_final,lawruler_group,sort,system_locked) values
+('new','New','intake','pre_qa','neut','agent','undetermined',false,false,false,false,'New/Open',10,true),
+('contacting','Contacting','intake','pre_qa','info','agent','undetermined',false,false,false,false,'New/Open',20,true),
+('esign_sent','e-Sign Sent','esign','pre_qa','warn','agent','undetermined',true,false,false,false,'Wanted/Chasing',30,true),
+('external_signed_review','LawRuler signing: verify packet','esign','in_qa','warn','owner','undetermined',false,false,false,true,'Wanted/Chasing',35,true),
+('external_dq_review','DQ: reason missing','terminal','terminal','bad','owner','disqualify',false,false,false,true,'Rejected',36,true),
+('signed_grievous','Signed: Finish intake','esign','in_qa','warn','system','undetermined',true,false,false,false,'Wanted/Chasing',40,true),
+('signed_qa','Signed: QA','esign','in_qa','warn','qa','undetermined',true,false,false,false,'Wanted/Chasing',50,true),
+('signed_wip','Signed: WIP','esign','in_qa','warn','agent','undetermined',true,false,false,false,'Wanted/Chasing',60,true),
+('signed_flag','Signed: Flag BMC','esign','in_qa','bad','owner','undetermined',true,false,false,false,'Wanted/Chasing',70,true),
+('signed_approved','Signed: Approved','esign','post_qa','good','firm','qualify',true,true,true,false,'Clients',80,true),
+('signed_dropped','Signed and declined','esign','terminal','bad','firm','disqualify',true,false,false,true,'Rejected',90,true),
+('grievous','Grievous','nosig','in_qa','warn','system','undetermined',false,false,false,false,'Wanted/Chasing',100,true),
+('qa','QA','nosig','in_qa','warn','qa','undetermined',false,false,false,false,'Wanted/Chasing',110,true),
+('wip','WIP','nosig','in_qa','warn','agent','undetermined',false,false,false,false,'Wanted/Chasing',120,true),
+('flag','Flag BMC','nosig','in_qa','bad','owner','undetermined',false,false,false,false,'Wanted/Chasing',130,true),
+('approved','Approved','nosig','post_qa','good','firm','qualify',false,true,true,false,'Clients',140,true),
+('dq_billable','DQ Billable','nosig','terminal','bad','firm','disqualify',false,true,false,true,'Rejected',150,true),
+('delivered','Delivered to Firm','firm','post_qa','info','firm','qualify',false,true,true,false,'Referred',160,true),
+('retained','Retained','firm','post_qa','good','firm','qualify',false,false,true,false,'Clients',170,true),
+('dq','DQ','terminal','terminal','bad','agent','disqualify',false,false,false,true,'Rejected',180,true),
+('not_interested','Not Interested','terminal','terminal','bad','agent','disqualify',false,false,false,true,'New/Open',190,true),
+('dnc','Do Not Call','terminal','terminal','bad','agent','disqualify',false,false,false,true,'New/Open',200,true),
+('duplicate','Duplicate','terminal','terminal','neut','agent','disqualify',false,false,false,true,'New/Open',210,true),
+('dead','Dead','terminal','terminal','bad','agent','disqualify',false,false,false,true,'Closed',220,true),
+('scheduled_callback','Scheduled call back','intake','pre_qa','info','agent','undetermined',false,false,false,false,'New/Open',21,true),
+('firm_rejected','Firm rejected','terminal','terminal','bad','agent','undetermined',false,false,false,true,'Closed',221,true),
+('bmc_rejected','BMC rejected','terminal','terminal','bad','agent','undetermined',false,false,false,true,'Closed',221,true)
+on conflict(key) do nothing;
