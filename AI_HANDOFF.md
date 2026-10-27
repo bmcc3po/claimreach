@@ -13,58 +13,57 @@ This file is the shared continuity record for Claude Code and ChatGPT/Codex. It 
 
 ## Current objective
 
-- Keep the October 24 NETFLY review guidance and authorized existing-client search release stable.
-- Diagnose the renewed Crissi `relay_525` interruption read-only while leaving queue draining, credentials and production data unchanged.
-- Complete the remaining hosted authorization/ACL gates for draft PR #204 without applying migrations, merging or deploying.
+- Verify the October 26 NETFLY retainer-exception release through authenticated, no-send production paths.
+- Complete the final real-Auth and dashboard-link gates for draft PR #204 without applying production migrations, merging or deploying.
+- Keep Crissi under read-only watch after recovery from two `relay_525` interruptions.
 - Treat InnoDash's deployed browser-visible PIN gates as a security hold until server-side authorization and post-fix rotation are approved.
 
 ## Current state
 
-- ClaimReach main is `aeb72d79ade80214a7dd22706e53d6b967c5916c`. PR #202 and PR #203 merged on October 24, and Cloudflare production deployment of that exact revision reports success.
-- PR #202 adds actionable saved client-details and signed-PDF review guidance before NETFLY firm delivery. PR #203 adds authorized existing-NETFLY search while preserving firm/campaign scope and exclusions for archived, wrong-campaign, foreign-tenant and ambiguous results.
-- No migration, claimant creation, message or production case-data write was part of PR #202/#203. Authenticated production acceptance remains pending and must not send a packet or mutate a claimant record.
-- Draft PR #204 is five commits ahead and zero behind main at runtime head `a737fa58`. It unifies current status/history, reporting evidence, authorized global file search and NETFLY numbering/aliases, while preserving the deployed #202/#203 fixes.
-- PR #204 has successful Cloudflare and Netlify previews, clean TypeScript, 240-route Cloudflare packaging and 187/192 test files passing; its five remaining failures reproduce on unchanged production main.
-- Draft migrations 0130 and 0131 are NOT applied. No production backfill, renumbering, migration, merge or deployment occurred. Remaining gates are real hosted browser tests using Auth-issued sessions and exact staging helper-function ACL reconstruction.
-- Crissi added five more successful health/drain cycles on October 25, extending recovery to 33 consecutive successes, then failed twice with `relay_525` at 3:26 PM and 5:37 PM Pacific. Both matching drain jobs passed. AI-service recovery is broken again; the relay/upstream cause remains unconfirmed.
-- PR #199 remains held for current-main reconciliation/re-verification and separate migration 0130 approval in its own scope. Historical private notes must not be copied into marketer explanations.
-- PR #198 reporting/owner-preview, PR #197 owner decline and payroll PR #162 are released; authenticated owner/partner or owner visual acceptance remains pending as previously recorded. No real decline, payroll close or money movement is authorized for testing.
-- PR #136 firm security and PR #80 app-wide call alerts remain unreconciled with current main and unapproved for release.
-- InnoDash main `71a6c33b` still ships literal PIN maps in browser-delivered ops/pay HTML, and the Netlify project has no site password or team-login requirement. Treat every committed/deployed PIN as exposed. Do not rely on the current client-side gates to protect payroll or operations.
-- Smithers PR #14, Casework PR #15, InnoDash signed-deal sync, NETFLY alert receipt/provenance, ClaimPoint live owner acceptance and claimreach-tmp authenticated QA retain their recorded holds.
+- ClaimReach main is `20e011555baa2b7418f874821886b5cf2f4ddcaf`. PR #205 merged on October 26 and the exact revision has a successful Cloudflare production deployment.
+- PR #205 replaces separate saved handoff/retainer review barriers with one final attestation. Missing or unverified retainers require an explicit warning decision, an honest warning email and a mandatory attempt-scoped audit. Existing tenant, role, hold, integrity, stale-snapshot and idempotency gates remain.
+- PR #205 passed TypeScript, 237-route Cloudflare packaging, both engine suites and 55 delivery tests. The full suite passed 188/205 with the same 17 documented baseline failures. Tests used synthetic data and a stubbed provider. Authenticated live no-send acceptance remains pending.
+- Draft PR #204 is nine commits ahead and zero behind main at `deff9e901db1407ab1882e568b289179dabd3693`. It includes current production, repairs the pilot middleware exception for `/api/current-status` and handles non-JSON failures safely.
+- PR #204's exact head has successful Cloudflare Pages, Netlify and `status-tests` evidence. Its isolated backend was reconstructed to the intended schema, ownership, ACL, RLS and default-privilege baseline. Migrations 0130/0131 were applied only there. Synthetic database-role/JWT tests passed.
+- No production migration, backfill, renumbering, merge or deployment occurred for PR #204. It still needs a real Auth-issued hosted browser retest and dashboard direct-link fallback review.
+- Five consecutive Crissi health and drain cycles passed on October 26 after the two October 25 `relay_525` failures. Recovery is holding, but the earlier relay/upstream cause remains unconfirmed.
+- PR #199 remains held for current-main reconciliation/re-verification and separate migration 0130 approval. PR #136 firm security and PR #80 app-wide call alerts remain unreconciled with current main and unapproved for release.
+- InnoDash main `71a6c33b` still ships literal PIN maps in browser-delivered ops/pay HTML, and the Netlify project has no site password or team-login requirement. Treat every committed/deployed PIN as exposed.
+- A new private `ii-bee` connector repository was created and security-hardened with per-app access scopes, explicit sharing, encrypted Bee login, passphrase lockout and a shared notebook/review log. It has no `AI_HANDOFF.md` and no GitHub deployment/check evidence.
 
 ## Work completed
 
-- PR #202 and PR #203 merged and the resulting main revision deployed successfully to Cloudflare production.
-- Draft PR #204 integrated the production release and opened with successful hosted previews while keeping migrations 0130/0131 unapplied.
-- The October 25 review found no new runtime or branch-tip commits, isolated two Crissi `relay_525` failures while all drains passed and corrected documentation only. It did not merge, deploy, replay queues, alter credentials, apply migrations, change permissions, send messages, process money or alter client records.
+- PR #205 merged and the resulting main revision deployed successfully to Cloudflare production.
+- PR #204 integrated current production, recovered its isolated backend, passed its current hosted checks and fixed the agent current-status route/access error path.
+- Crissi returned five clean health/drain cycles.
+- The October 26 review covered 14 repositories, 259 branch tips and 30 open PR heads. No open PR head had a failed or stalled reported check. ClaimPoint PRs #1-#5 still have no reported checks and are not labeled as failures.
+- This continuity update is documentation-only. It did not merge, deploy, replay queues, alter credentials, apply production migrations, change permissions, send messages, process money or alter client records.
 
 ## Verification performed
 
-- Reviewed 13 repositories, 257 branch tips, 30 open PR heads and workflows for the past 24 hours. No runtime/default-branch or branch-tip commit appeared, and no open PR head had a failed or stalled reported check. ClaimPoint PRs #1-#5 still have no reported checks and are not labeled as failures.
-- Exact ClaimReach main `aeb72d7` has a successful Cloudflare Pages production check.
-- PR #204 is five commits ahead/zero behind main and its exact head has successful Cloudflare and Netlify preview evidence. TypeScript and 240-route packaging passed; 187/192 test files passed and the five remaining failures match production main.
-- On October 25, the first five Crissi health jobs passed and the last two failed with `relay_525`; all seven matching drain jobs passed.
+- Exact ClaimReach main `20e0115` has a successful Cloudflare Pages production deployment.
+- PR #204 is nine commits ahead and zero behind main. Its exact head passed Cloudflare Pages, Netlify and the status/auth/intake regression workflow.
+- The isolated PR #204 database matched the intended schema, function ownership, ACL, policy and default-privilege baseline. Hosted synthetic status, permissions, tenant, history, archive, numbering and stale-save tests passed.
+- Five October 26 Crissi health jobs and all matching drain jobs passed.
 
 ## Active blockers or open questions
 
-- Crissi is interrupted again after two consecutive `relay_525` failures; queues still drain. Cause and durable recovery are unverified.
-- Security decision: approve server-side InnoDash authorization and rotation of all exposed PIN values only after browser literals are removed and the fix is deployed.
-- PR #202/#203 need authenticated production acceptance using non-mutating, no-send paths.
-- PR #204 needs Auth-issued hosted browser tests and exact staging helper ACL reconstruction. After those gates, Brett must separately approve migrations 0130/0131, merge and production deployment.
-- PR #199, PR Digital, owner decline/payroll, firm security, app-wide alerts, Smithers, Casework, signed-deal sync, ClaimPoint and claimreach-tmp retain their recorded gates.
+- PR #205 needs authenticated production acceptance through non-mutating, no-send paths.
+- PR #204 needs a real Auth-issued hosted browser retest and dashboard direct-link fallback review. After those gates, Brett must separately approve production migrations 0130/0131, merge and deployment.
+- Security decision: approve server-side InnoDash authorization and rotation of exposed PIN values only after browser literals are removed and the fix is deployed.
+- The `ii-bee` connector lacks a durable handoff and GitHub-visible deployment verification. Do not inspect or copy Bee transcript content for continuity reporting.
 
 ## Next safe action
 
-- Verify PR #202/#203 in an authenticated production session without sending a packet or altering a claimant record.
-- Reconstruct the exact staging helper ACLs and run PR #204 with synthetic Auth-issued owner/non-owner sessions; keep it draft and leave migrations unapplied until Brett's separate release approval.
-- For InnoDash, prepare the server-side authorization design and synthetic acceptance plan; rotate exposed values only after the fix is deployed.
-- Run read-only Crissi relay/upstream diagnostics now; do not replay queues or change credentials/configuration while drain jobs remain healthy.
+- Run the authenticated no-send production acceptance for PR #205.
+- Use synthetic real Auth-issued owner and non-owner sessions against the successful isolated PR #204 deployment, then review the dashboard direct-link fallback. Keep the PR draft and production migrations unapplied.
+- Continue read-only Crissi health/drain watch.
+- For `ii-bee`, perform a redacted metadata-only connector smoke test and add a durable handoff in a future approved change without reading or storing transcript content.
 
 ## Session log
 
+- 2026-10-26 PT - Codex - verified PR #205 merged/deployed, PR #204's isolated recovery and green checks, five clean Crissi cycles and the new security-hardened `ii-bee` repository; next: authenticated no-send NETFLY acceptance and real-Auth synthetic PR #204 retest.
 - 2026-10-25 PT - Codex - found no code movement, isolated two consecutive Crissi `relay_525` failures after a 33-success recovery streak and confirmed every drain job passed; next: read-only relay/upstream diagnostics with no queue replay or credential change.
 - 2026-10-24 PT - Codex - verified PRs #202/#203 merged and deployed, PR #204 opened preview-green with migrations held, and seven more Crissi cycles brought recovery to 28; next: authenticated no-send QA and exact staging ACL reconstruction before separate release approval.
 - 2026-10-23 PT - Codex - found no runtime or branch-tip movement, verified six more Crissi health/drain cycles for 21 consecutive successes and confirmed the InnoDash browser-credential hold remains; next: approve server-side auth/rotation and isolated staging.
 - 2026-10-22 PT - Codex - found deployed browser-visible InnoDash PIN literals, documented the security hold, reconciled PRs #202/#203 and unified-status decisions, and verified Crissi reached 15 consecutive successes; next: approve server-side auth/rotation and isolated staging.
-- 2026-10-21 PT - Codex - verified six more Crissi health and drain runs passed, bringing recovery to nine consecutive successful heartbeats; next: keep read-only watch.
