@@ -1,29 +1,14 @@
-import assert from "node:assert/strict";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import FileStatusControl from "./FileStatusControl";
-import { DEFAULT_STATUSES, manualIntakeStatusAllowed } from "@/lib/statuses";
-
+import assert from 'node:assert/strict';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import FileStatusControl from './FileStatusControl';
 (globalThis as any).React = React;
-
-const edit = renderToStaticMarkup(<FileStatusControl leadId="test-lead" claimId="test-claim" current="contacting" role="agent" />);
-assert.match(edit, /Current status/);
-assert.match(edit, /Contacting/);
-assert.match(edit, /Change status/);
-
-const readOnly = renderToStaticMarkup(<FileStatusControl leadId="test-lead" claimId="test-claim" current="signed_qa" role="firm" />);
-assert.match(readOnly, /Current status/);
-assert.doesNotMatch(readOnly, /Change status/);
-
-const declinedAgent = renderToStaticMarkup(<FileStatusControl leadId="test-lead" claimId="test-claim" current="signed_dropped" role="agent" signedDeclineAvailable />);
-assert.match(declinedAgent, /Signed and declined/);
-assert.match(declinedAgent, /sb bad/);
-assert.doesNotMatch(declinedAgent, /Change status/);
-
-const selectable = DEFAULT_STATUSES.filter(manualIntakeStatusAllowed).map((status) => status.key);
-for (const expected of ["new", "contacting", "dq", "not_interested", "dnc"]) assert.ok(selectable.includes(expected), `${expected} must remain manually selectable`);
-for (const workflowOnly of ["esign_sent", "signed_grievous", "signed_qa", "signed_wip", "signed_approved", "delivered", "retained", "external_signed_review"]) {
-  assert.ok(!selectable.includes(workflowOnly), `${workflowOnly} must require its evidence-backed workflow`);
-}
-
-console.log("File status control: visible action, read-only role, and manual workflow boundary passed");
+const render=(current:string,role='agent')=>renderToStaticMarkup(<AppRouterContext.Provider value={{refresh(){}} as any}><FileStatusControl leadId="test-lead" claimId="test-claim" current={current} role={role}/></AppRouterContext.Provider>);
+const pending=render('contacting');
+assert.match(pending,/Current Status/);assert.match(pending,/Still contacting/);
+assert.match(pending,/disabled/,'editing waits for authorized server version');
+assert.match(render('signed_qa'),/legacy mapping needed/,'unresolved legacy values remain explicit');
+assert.match(render('firm_rejected','firm'),/disabled/,'firm view cannot edit status');
+assert.doesNotMatch(pending,/Change status/,'the dropdown is the single editor');
+console.log('Persistent status header loading, legacy exception and read-only rendering passed.');

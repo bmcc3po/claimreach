@@ -163,7 +163,7 @@ export async function setClaimStatusForLeads(opts: {
   if (opts.signedDecline && (prior.length !== 1 || opts.status !== "signed_dropped" || !opts.expectedUpdatedAt)) {
     return { ok: false, error: "A signed decline requires one exact matter and its current version." };
   }
-  const patch: any = { status: opts.status, updated_at: new Date().toISOString() };
+  const patch: any = { status: opts.signedDecline ? (opts.signedDecline.source === 'firm' ? 'firm_rejected' : 'bmc_rejected') : opts.status, updated_at: new Date().toISOString() };
   if (opts.signedDecline) {
     patch.answers = { ...(prior[0].answers || {}), signed_decline: opts.signedDecline };
     patch.supervisor_flag = false;

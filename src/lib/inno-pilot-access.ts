@@ -8,6 +8,8 @@ export function pilotStaffPageAllowed(path: string): boolean {
 }
 
 export function pilotStaffApiAllowed(path: string, method = "GET"): boolean {
+  // The status handler independently checks staff, exact matter scope and edit permission.
+  if (path === "/api/current-status") return method === "GET" || method === "POST";
   if (path === "/api/netfly") return method === "GET" || method === "POST";
   // These exact handlers enforce the internal organization, NETFLY matter,
   // document scope and current packet review. Let agents reach those checks.

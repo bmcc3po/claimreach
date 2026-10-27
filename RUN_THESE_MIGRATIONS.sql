@@ -5080,3 +5080,180 @@ end $$;
 revoke all on function public.cr_close_payroll(jsonb,jsonb) from public,anon;
 grant execute on function public.cr_close_payroll(jsonb,jsonb) to authenticated;
 commit;
+
+-- 0130 Unified current status. REVIEW ONLY: do not run without deployment approval.
+-- Additive; no legacy status backfill and no current_stage writes.
+begin;
+alter table public.claims add column if not exists status_reason_category text;
+alter table public.claims add column if not exists status_descriptor text;
+alter table public.claims add column if not exists status_note text;
+alter table public.claims add column if not exists status_callback_at timestamptz;
+alter table public.claims add column if not exists status_changed_at timestamptz;
+create table if not exists public.claim_status_history (
+  id uuid primary key default gen_random_uuid(), firm_id uuid not null,
+  claim_id uuid not null references public.claims(id) on delete cascade, lead_id uuid not null,
+  previous_status text, status text not null, category text, descriptor text, note text,
+  callback_at timestamptz, actor_id uuid, source text not null, recorded_at timestamptz not null default now()
+);
+alter table public.claim_status_history enable row level security;
+revoke all on public.claim_status_history from public, anon, authenticated;
+grant select,insert on public.claim_status_history to service_role;
+create index if not exists claim_status_history_claim_time on public.claim_status_history(claim_id,recorded_at desc);
+-- Trigger protects history across existing workflow writers, including delivery.
+create or replace function public.cr_record_current_status() returns trigger
+language plpgsql security definer set search_path=pg_catalog,public as $$
+begin
+  if new.status is distinct from old.status or
+     row(new.status_reason_category,new.status_descriptor,new.status_note,new.status_callback_at)
+       is distinct from row(old.status_reason_category,old.status_descriptor,old.status_note,old.status_callback_at) then
+    if current_setting('claimreach.status_actor',true) is null or current_setting('claimreach.status_actor',true)='' then
+      new.status_reason_category:=null; new.status_descriptor:=null; new.status_note:=null; new.status_callback_at:=null;
+    end if;
+    new.status_changed_at:=clock_timestamp();
+    new.updated_at:=new.status_changed_at;
+    insert into public.claim_status_history(firm_id,claim_id,lead_id,previous_status,status,category,descriptor,note,callback_at,actor_id,source)
+      values(new.firm_id,new.id,new.lead_id,old.status,new.status,new.status_reason_category,new.status_descriptor,new.status_note,new.status_callback_at,
+        coalesce(nullif(current_setting('claimreach.status_actor',true),'')::uuid,auth.uid()),
+        case when nullif(current_setting('claimreach.status_actor',true),'') is null then 'workflow' else 'header' end);
+  end if;
+  return new;
+end $$;
+revoke all on function public.cr_record_current_status() from public,anon,authenticated;
+drop trigger if exists cr_current_status_history on public.claims;
+create trigger cr_current_status_history before update on public.claims for each row execute function public.cr_record_current_status();
+-- Only the authenticated application server may call this after exact-matter authorization.
+create or replace function public.cr_save_current_status(p_claim_id uuid,p_lead_id uuid,p_firm_id uuid,p_campaign_id uuid,
+ p_expected_updated_at timestamptz,p_actor_id uuid,p_status text,p_category text,p_descriptor text,p_note text,p_callback_at timestamptz)
+returns jsonb language plpgsql security invoker set search_path=pg_catalog,public as $$
+declare c public.claims; a public.app_users;
+begin
+  select * into a from public.app_users where id=p_actor_id and active is true;
+  if a.id is null or a.role::text not in ('owner','admin','manager','agent','qa') or
+    coalesce((a.perm_overrides->>'claims.status')::boolean,true)=false then raise exception 'Status permission denied'; end if;
+  if p_status not in ('new','contacting','scheduled_callback','esign_sent','signed_grievous','delivered','retained','firm_rejected','bmc_rejected','dq','dnc','wip','flag') then raise exception 'Unmapped status'; end if;
+  if p_status='bmc_rejected' and a.role::text not in ('owner','admin') then raise exception 'BMC permission denied'; end if;
+  if p_note is null or length(trim(p_note))=0 or length(p_note)>500 or p_note ~ E'[\n\r]' then raise exception 'One-sentence note required'; end if;
+  if p_status in ('dq','firm_rejected','bmc_rejected','dnc','wip','flag') and (nullif(p_category,'') is null or nullif(p_descriptor,'') is null) then raise exception 'Reason required'; end if;
+  if p_status='scheduled_callback' and p_callback_at is null then raise exception 'Callback date required'; end if;
+  select * into c from public.claims where id=p_claim_id and lead_id=p_lead_id and firm_id=p_firm_id
+    and campaign_id is not distinct from p_campaign_id for update;
+  if c.id is null or c.updated_at is distinct from p_expected_updated_at then raise exception 'stale claim'; end if;
+  perform 1 from public.leads where id=p_lead_id and firm_id=p_firm_id and archived_at is null for update;
+  if not found then raise exception 'File unavailable'; end if;
+  perform set_config('claimreach.status_actor',p_actor_id::text,true);
+  update public.claims set status=p_status,status_reason_category=p_category,status_descriptor=p_descriptor,status_note=trim(p_note),
+    status_callback_at=p_callback_at,updated_at=clock_timestamp(),
+    dq_reason_key=case when p_status='dq' then p_descriptor else dq_reason_key end,
+    dq_reason=case when p_status='dq' then trim(p_note) else dq_reason end
+    where id=p_claim_id returning * into c;
+  if p_status='dnc' then
+    update public.leads set perm_call=false,perm_text=false,perm_email=false where id=p_lead_id and firm_id=p_firm_id;
+    update public.contact_points set status='opted_out' where lead_id=p_lead_id and kind in ('mobile','landline');
+  end if;
+  update public.leads set
+    qa_pending=exists(select 1 from public.claims cl join public.statuses s on s.key=cl.status where cl.lead_id=p_lead_id and s.phase='in_qa' and cl.status not in ('wip','signed_wip')),
+    wip_pending=exists(select 1 from public.claims cl where cl.lead_id=p_lead_id and cl.status in ('wip','signed_wip'))
+    where id=p_lead_id and firm_id=p_firm_id;
+  if p_status in ('retained','firm_rejected') then
+    insert into public.lead_activity(firm_id,lead_id,kind,actor,body,meta)
+    values(p_firm_id,p_lead_id,'note',p_actor_id,trim(p_note),jsonb_build_object('event','firm_file_review','source','current_status_header',
+      'claim_id',p_claim_id,'campaign_id',p_campaign_id,'reviewer_id',p_actor_id,'reviewer_name',a.full_name,
+      'action',case when p_status='retained' then 'accepted' else 'turned_down' end,'explanation',trim(p_note)));
+  end if;
+  perform set_config('claimreach.status_actor','',true);
+  return to_jsonb(c);
+end $$;
+revoke all on function public.cr_save_current_status(uuid,uuid,uuid,uuid,timestamptz,uuid,text,text,text,text,timestamptz) from public,anon,authenticated;
+grant execute on function public.cr_save_current_status(uuid,uuid,uuid,uuid,timestamptz,uuid,text,text,text,text,timestamptz) to service_role;
+insert into public.statuses(key,label,track,phase,tone,side,qualify,requires_esign,billable,unlocks_firm,is_final,sort,active,system_locked) values
+ ('scheduled_callback','Scheduled call back','intake','pre_qa','info','agent','undetermined',false,false,false,false,25,true,true),
+ ('firm_rejected','Firm rejected','firm','terminal','bad','firm','undetermined',false,false,false,true,175,true,true),
+ ('bmc_rejected','BMC rejected','terminal','terminal','bad','owner','undetermined',false,false,false,true,176,true,true)
+on conflict(key) do nothing;
+-- Future firm decisions update the same saved status. Existing history is NOT backfilled.
+create or replace function public.cr_project_firm_decision() returns trigger
+language plpgsql security definer set search_path=pg_catalog,public as $$
+declare c public.claims; target text; actor public.app_users;
+begin
+  if new.meta->>'event' is distinct from 'firm_file_review' or not coalesce(new.meta->>'action' in ('accepted','turned_down'),false) then return new; end if;
+  if coalesce(new.meta->>'claim_id','') !~* '^[0-9a-f-]{36}$' then return new; end if;
+  if auth.uid() is not null then
+    select * into actor from public.app_users where id=auth.uid() and active is true;
+    if actor.id is null or coalesce((actor.perm_overrides->>'claims.status')::boolean,true)=false then raise exception 'Decision permission denied'; end if;
+  end if;
+  select * into c from public.claims where id=(new.meta->>'claim_id')::uuid and lead_id=new.lead_id and firm_id=new.firm_id
+    and campaign_id::text=new.meta->>'campaign_id' for update;
+  if c.id is null then raise exception 'Firm decision does not identify this matter'; end if;
+  if (c.firm_sent_at is null and c.firm_send_result is distinct from 'owner confirmed sent; original delivery date unknown') or c.firm_sent_at>new.created_at or (c.status_changed_at>new.created_at and not coalesce((c.status='signed_dropped' and c.answers->'signed_decline'->>'reviewEventId'=new.id::text),false)) then return new; end if;
+  if exists(select 1 from public.lead_activity e where e.firm_id=new.firm_id and e.lead_id=new.lead_id
+    and e.meta->>'event'='firm_file_review' and e.meta->>'claim_id'=c.id::text and e.meta->>'action' in ('accepted','turned_down')
+    and e.created_at>new.created_at) then return new; end if;
+  target:=case when new.meta->>'action'='accepted' then 'retained' else 'firm_rejected' end;
+  if c.status is distinct from target then
+    update public.claims set status=target,updated_at=clock_timestamp() where id=c.id;
+  end if;
+  return new;
+end $$;
+revoke all on function public.cr_project_firm_decision() from public,anon,authenticated;
+drop trigger if exists cr_project_firm_decision on public.lead_activity;
+create trigger cr_project_firm_decision after insert on public.lead_activity for each row execute function public.cr_project_firm_decision();
+commit;
+
+-- 0131 NETFLY public numbers. Additive; existing numbers are NOT rewritten.
+begin;
+alter table public.leads add column if not exists lead_no_aliases text[] not null default '{}';
+create index if not exists leads_number_aliases_gin on public.leads using gin(lead_no_aliases);
+create sequence if not exists public.netfly_lead_seq start with 1001;
+revoke all on sequence public.netfly_lead_seq from public,anon,authenticated;
+-- Allocate inside the insert transaction. Sequence values are unique under
+-- concurrency; failed inserts may leave gaps, never reused identities.
+create or replace function public.cr_netfly_lead_number() returns trigger
+language plpgsql security definer set search_path=pg_catalog,public as $$
+declare candidate text; is_netfly boolean;
+begin
+  select exists(select 1 from public.campaigns c join public.firms f on f.id=c.firm_id
+    where c.id=new.campaign_id and c.firm_id=new.firm_id and f.slug='tmp'
+      and c.name='NETFLY ONTAKE' and c.case_type='mva' and c.path='secondary') into is_netfly;
+  if tg_op='UPDATE' then
+    -- Old public links remain resolvable after a separately reviewed renumber.
+    new.lead_no_aliases:=array(select distinct x from unnest(old.lead_no_aliases ||
+      case when old.lead_no is distinct from new.lead_no then array[old.lead_no] else '{}'::text[] end) x where x is not null);
+    return new;
+  end if;
+  new.lead_no_aliases:='{}'::text[];
+  if not is_netfly then return new; end if;
+  loop
+    candidate:='NF-TMP'||nextval('public.netfly_lead_seq')::text;
+    exit when not exists(select 1 from public.leads l where l.lead_no=candidate or candidate=any(l.lead_no_aliases));
+  end loop;
+  if nullif(new.lead_no,'') is not null and new.lead_no<>candidate then
+    new.lead_no_aliases:=array_append(new.lead_no_aliases,new.lead_no);
+  end if;
+  new.lead_no:=candidate;
+  return new;
+end $$;
+revoke all on function public.cr_netfly_lead_number() from public,anon,authenticated;
+drop trigger if exists cr_netfly_lead_number on public.leads;
+create trigger cr_netfly_lead_number before insert or update on public.leads
+  for each row execute function public.cr_netfly_lead_number();
+-- Read-only, complete campaign preview including archived files. New imports
+-- invalidate suggested numbers: regenerate and compare before any future apply.
+create or replace function public.cr_preview_netfly_numbers(p_firm uuid,p_campaign uuid)
+returns jsonb
+language plpgsql security definer set search_path=pg_catalog,public as $$
+declare first_number bigint; result jsonb;
+begin
+  if not exists(select 1 from public.campaigns c join public.firms f on f.id=c.firm_id where c.id=p_campaign
+    and c.firm_id=p_firm and f.slug='tmp' and c.name='NETFLY ONTAKE' and c.case_type='mva' and c.path='secondary') then
+    raise exception 'Invalid NETFLY scope';
+  end if;
+  select greatest(case when is_called then last_value+1 else last_value end,
+    coalesce((select max(substring(n from '^NF-TMP([0-9]+)$')::bigint)+1 from public.leads l cross join lateral unnest(array[l.lead_no] || l.lead_no_aliases) n where n ~ '^NF-TMP[0-9]+$'),1001)) into first_number from public.netfly_lead_seq;
+  with mapping as (select l.id as lead_id,l.lead_no as old_number,'NF-TMP'||(first_number+row_number() over(order by l.created_at,l.id)-1)::text as proposed_number,l.updated_at as expected_updated_at,l.archived_at is not null as archived
+    from public.leads l where l.firm_id=p_firm and l.campaign_id=p_campaign and (l.lead_no is null or l.lead_no !~ '^NF-TMP[0-9]+$') order by l.created_at,l.id)
+  select jsonb_build_object('count',count(*),'mapping',coalesce(jsonb_agg(to_jsonb(mapping)),'[]'::jsonb)) into result from mapping;
+  return result;
+end $$;
+revoke all on function public.cr_preview_netfly_numbers(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.cr_preview_netfly_numbers(uuid,uuid) to service_role;
+commit;

@@ -1,6 +1,6 @@
 import { loadSignatureReport } from './signature-report-loader';
 import { setClaimStatusForLeads } from './claim-status';
-import { signedDecline, declineOutcome, type SignedDecline } from './signed-decline';
+import { signedDecline, isSignedDeclined, declineOutcome, type SignedDecline } from './signed-decline';
 import { notifySignedDecline, readDropRequest } from './signed-decline-notification';
 import { reviewActivity, REVIEW_EVENT } from './firm-review-access';
 import { supabaseAdmin } from './supabase-server';
@@ -19,7 +19,7 @@ export async function loadDeclineContext(db: any, id: string, firmId?: string | 
   ]);
   if (l.error || camp.error) throw new Error('Could not verify the file and firm.');
   if (!l.data || l.data.archived_at || camp.data?.name !== 'INNO MVA') throw new DeclineError('Choose an active signed INNO MVA file.');
-  const decline = signedDecline(claim);
+  const decline = isSignedDeclined(claim) ? signedDecline(claim) : null;
   const report = (await loadSignatureReport(db, camp.data)).find(row => row.claimId === claim.id);
   if (!decline && report?.state !== 'signed') throw new DeclineError('Verify the client signature before declining a signed file.');
   return { db, claim, lead: l.data, campaign: camp.data, decline,
@@ -83,5 +83,5 @@ export async function completeSignedDecline(c: Awaited<ReturnType<typeof loadDec
     else event = r.data;
   }
   const notification = await (deps.notify || notifySignedDecline)({ ...c, decline: d }, input.retryEmail === true);
-  return { decline: d, notification: publicDropReceipt(notification), event, status: 'signed_dropped' as const };
+  return { decline: d, notification: publicDropReceipt(notification), event, status: d.source === 'firm' ? 'firm_rejected' : 'bmc_rejected' };
 }

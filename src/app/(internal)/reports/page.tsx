@@ -1,3 +1,4 @@
+import { reportSignatures } from "@/lib/report-signatures";
 import { workArea, scopeWorkArea, inWorkArea, areaHref } from '@/lib/work-area';
 export const runtime = "edge";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -12,7 +13,9 @@ export default async function StaffReports({ searchParams }: { searchParams: Pro
   const { data: leads } = await scopeWorkArea(sb.from("leads").select("id, lead_no, claimant_name, stage, case_type, campaign, created_at, updated_at, first_opened_at, first_dialed_at").is("archived_at", null), area).limit(3000);
   const ids = (leads ?? []).map((l: any) => l.id);
   let claims: any[] = [];
-  if (ids.length) { const { data } = await sb.from("claims").select("lead_id, status, claim_type, campaign, tier, created_at").in("lead_id", ids); claims = (data ?? []).filter(c => inWorkArea(c.claim_type, area)); }
+  if (ids.length) { const { data } = await sb.from("claims").select("id, firm_id, lead_id, status, claim_type, campaign, tier, created_at").in("lead_id", ids); claims = (data ?? []).filter(c => inWorkArea(c.claim_type, area)); }
+  try { const signed=await reportSignatures(sb,claims); claims=claims.map(c=>({...c,ever_signed_confirmed:signed.has(c.id)})); }
+  catch { return <p role="alert">Signature evidence is unavailable. Refresh before relying on these report counts.</p>; }
   // The whole status table, retired rows too, so a retired custom signed
   // status still counts (one signed rule, isSignedKey). Labels and the status
   // picker still get only the live (active) set, exactly as before.

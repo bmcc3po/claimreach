@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   if (!out.ok) return new Response(`The export did not run. ${out.error.replace(/\.\s*$/, "")}. Nothing was downloaded.`, { status: 500 });
 
   const stamp = new Date().toISOString().slice(0, 10);
-  return new Response(standardCsv(out.records), {
-    headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="claimreach-standard-${stamp}.csv"` },
+  return new Response(standardCsv(out.records, req.nextUrl.searchParams.get("format") !== "technical"), {
+    headers: { "Cache-Control":"private, no-store", "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="claimreach-standard-${stamp}.csv"` },
   });
 }

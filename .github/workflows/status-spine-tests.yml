@@ -1,0 +1,33 @@
+name: Status spine regression checks
+on:
+  push:
+    branches: [codex/unified-status-release-check]
+permissions:
+  contents: read
+jobs:
+  status-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install isolated test tools
+        run: npm install --prefix /tmp/claimreach-test-tools --no-audit --no-fund tsx@4.20.5 react-test-renderer@18.3.1 @electric-sql/pglite@0.3.14
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Status, authorization and intake regressions
+        env:
+          NODE_PATH: /tmp/claimreach-test-tools/node_modules
+        run: |
+          set -eu
+          for file in src/lib/inno-pilot-access.test.ts src/lib/current-status.test.ts src/lib/current-status-route.test.ts src/lib/intake-console/engine.test.ts src/lib/mva-call/engine.test.ts verification/current-status-ui.cjs; do
+            node --require ./verification/test-bootstrap.cjs --import /tmp/claimreach-test-tools/node_modules/tsx/dist/loader.mjs "$file"
+          done
+          node verification/current-status-db.cjs
+          node verification/netfly-numbering-db.cjs

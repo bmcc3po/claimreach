@@ -111,7 +111,7 @@ export async function reconcileLawRulerMvaStatus(db: any, opts: {
   const [campaign, lead, claim, aliases, statuses] = await Promise.all([
     db.from('campaigns').select('id, firm_id, name, case_type, active').eq('id', opts.campaignId).maybeSingle(),
     db.from('leads').select('id, firm_id, archived_at').eq('id', opts.leadId).eq('firm_id', opts.firmId).maybeSingle(),
-    db.from('claims').select('id, lead_id, firm_id, campaign_id, claim_type, status').eq('id', opts.claimId).eq('lead_id', opts.leadId).eq('firm_id', opts.firmId).maybeSingle(),
+    db.from('claims').select('id, lead_id, firm_id, campaign_id, claim_type, status, status_changed_at').eq('id', opts.claimId).eq('lead_id', opts.leadId).eq('firm_id', opts.firmId).maybeSingle(),
     db.from('lawruler_aliases').select('alias, status_key'),
     db.from('statuses').select('*'),
   ]);
@@ -135,7 +135,8 @@ export async function reconcileLawRulerMvaStatus(db: any, opts: {
   const dqReasonCandidate = opts.dqReasonKey || EXACT_SOURCE_DQ_REASONS[labelKey(sourceStatus)] || null;
   const reviewedDq = claim.data.status === EXTERNAL_DQ_REVIEW && !!dqReasonCandidate && !!mapped && mapped.qualify === 'disqualify';
   let result: MvaStatusResult = { ...base, outcome: 'review_required', acquisition_hold: hold, mapped_status: mapped?.key || null, reason: '' };
-  if (!mapped) result.reason = 'The LawRuler label has no unambiguous active MVA-compatible mapping. An owner/admin must review it.';
+  if (claim.data.status_changed_at) result.reason = 'ClaimReach current status has been recorded; review this external source as evidence without replacing it.';
+  else if (!mapped) result.reason = 'The LawRuler label has no unambiguous active MVA-compatible mapping. An owner/admin must review it.';
   else if (claim.data.status === mapped.key) result = { ...result, outcome: 'unchanged', reason: 'The exact matter already has this status.' };
   else if (claim.data.status === EXTERNAL_SIGNED_REVIEW && externalSigned) result.reason = SIGNED_REVIEW_REASON;
   else if (claim.data.status === EXTERNAL_DQ_REVIEW && mapped.qualify === 'disqualify' && !dqReasonCandidate) result.reason = DQ_REVIEW_REASON;

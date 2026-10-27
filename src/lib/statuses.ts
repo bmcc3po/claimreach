@@ -5,6 +5,7 @@
 // provides helpers the pipeline relies on.
 // ============================================================================
 
+import { currentStatusLabel } from "./current-status";
 import { ownerConfirmedDelivery } from "./owner-file-confirmation";
 export const SIGNED_SENT_TO_FIRM = "Signed — sent to firm";
 export type StatusTone = "good" | "bad" | "warn" | "info" | "neut";
@@ -59,11 +60,16 @@ export const DEFAULT_STATUSES: StatusDef[] = [
   { key: "dead",            label: "Dead",                track: "terminal", phase: "terminal", tone: "bad",  side: "agent",  qualify: "disqualify",   requires_esign: false, billable: false, unlocks_firm: false, is_final: true,  lawruler_group: "Closed",         sort: 220, system_locked: true },
 ];
 
+for (const [key,label,base] of [['scheduled_callback','Scheduled call back','contacting'],['firm_rejected','Firm rejected','dead'],['bmc_rejected','BMC rejected','dead']] as const) {
+  const template=DEFAULT_STATUSES.find(s=>s.key===base)!;
+  DEFAULT_STATUSES.push({...template,key,label,qualify:'undetermined',sort:template.sort+1});
+}
+
 const DEFAULT_BY_KEY: Record<string, StatusDef> = Object.fromEntries(DEFAULT_STATUSES.map((s) => [s.key, s]));
 
 // Resolve a status def, preferring a live list (from DB) and falling back to
 // the default seed. Always returns something usable for rendering.
-export function resolveStatus(key?: string, live?: StatusDef[]): StatusDef {
+function resolveLegacyStatus(key?: string, live?: StatusDef[]): StatusDef {
   const k = (key || "").toLowerCase();
   // Closed DQ rows cannot be reopened or made payable by an older catalog.
   if (k === "external_dq_review" || k === "signed_dropped") return DEFAULT_BY_KEY[k];
@@ -76,6 +82,11 @@ export function resolveStatus(key?: string, live?: StatusDef[]): StatusDef {
   return DEFAULT_BY_KEY[k] ?? { ...DEFAULT_BY_KEY["new"], key: k || "new", label: words ? words[0].toUpperCase() + words.slice(1) : "New" };
 }
 
+export function resolveStatus(key?: string, live?: StatusDef[]): StatusDef {
+  const def = resolveLegacyStatus(key,live);
+  return {...def,label:currentStatusLabel(key,def.label)};
+}
+
 export function statusLabel(key?: string, live?: StatusDef[]): string {
   return resolveStatus(key, live).label;
 }
@@ -85,9 +96,7 @@ export function statusLabel(key?: string, live?: StatusDef[]): string {
  * signed must describe this matter, not another claim belonging to the person. */
 export function resolveFileStatus(claim: { status?: string | null; firm_send_result?: string | null } | null | undefined, live?: StatusDef[], signed = false): StatusDef {
   const def = resolveStatus(claim?.status || "new", live);
-  return def.key === "delivered" && (signed || ownerConfirmedDelivery(claim?.firm_send_result))
-    ? { ...def, label: SIGNED_SENT_TO_FIRM, tone: "good" }
-    : def;
+  return def;
 }
 export function statusTone(key?: string, live?: StatusDef[]): StatusTone {
   return resolveStatus(key, live).tone;

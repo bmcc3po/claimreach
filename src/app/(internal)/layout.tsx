@@ -1,3 +1,4 @@
+import CurrentStatusRefresh from "@/components/CurrentStatusRefresh";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
@@ -25,7 +26,7 @@ export default async function InternalLayout({ children }: { children: React.Rea
       role={me.role}
       topRight={me.role === "owner" ? <NotifyBell /> : null}
     >
-      {children}
+      <CurrentStatusRefresh />{children}
     </SideNav>
   );
 }

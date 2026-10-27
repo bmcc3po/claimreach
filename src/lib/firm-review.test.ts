@@ -74,3 +74,9 @@ function request(body: any, origin = 'https://claimreach.test') { return new Nex
   authenticated = false; assert.equal((await route.GET(new NextRequest(`https://claimreach.test/api/firm-review?claim=${claimId}&document=retainer`))).status, 403);
   console.log('Firm review: trusted identity, firm/campaign/release scope, archive/test exclusion, CSRF, required turn-down reason, audit retention and failure checks passed.');
 })().catch(e => { console.error(e); process.exitCode = 1; });
+
+const historical={status:'retained',answers:{signed_decline:{id:'decline',at:'2026-10-01',reason:'Prior decline',source:'firm',reviewEventId:'old'}}};
+assert.equal(access.reviewState([{id:'new',created_at:'2026-10-02',meta:{action:'accepted'}}],historical).decision,'accepted','a later acceptance outranks historical decline snapshot');
+
+assert.equal(access.releasedToReviewer(scope,{...claim,status:'firm_rejected',firm_send_result:'owner confirmed sent; original delivery date unknown'},lead),true);
+assert.equal(access.releasedToReviewer(scope,{...claim,status:'firm_rejected'},lead),false);

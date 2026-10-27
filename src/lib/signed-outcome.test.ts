@@ -10,7 +10,7 @@ test('BMC, owner firm decline and restricted reviewer decline agree on status, e
     const h=outcomeHarness(),original={sent:h.claim.firm_sent_at,receipt:h.claim.firm_send_result,signed:h.lead.signed_at};
     const r=await h[kind].POST(h.req(kind,h.body(kind==='bmc'?'bmc':'firm')));const result=await r.json();
     assert.equal(r.status,200,JSON.stringify(result));assert.equal(result.notification.state,'sent');
-    assert.equal(h.claim.status,'signed_dropped');assert.equal(resolveFileStatus(h.claim).label,'Signed and declined');
+    assert.equal(h.claim.status,kind==='bmc'?'bmc_rejected':'firm_rejected');assert.equal(resolveFileStatus(h.claim).label,kind==='bmc'?'BMC rejected':'Firm rejected');
     const d=signedDecline(h.claim)!;assert.equal(declineOutcome(d),kind==='bmc'?'BMC declined':'Firm declined');
     assert.equal(d.agentName,'Test Agent');assert.equal(h.sends.length,1);assert.equal(h.sends[0].to,'firm@example.test');
     assert.match(h.sends[0].html,new RegExp(declineOutcome(d)));assert.deepEqual(h.claim.answers.mva_call,{story:'Preserve this story'});
@@ -39,20 +39,20 @@ test('unsigned, stale, wrong campaign/firm, missing confirmation, archive and in
   h.scope.campaignId=OUTCOME_CAMP;h.scope.firmId='foreign';assert.equal((await h.firm.POST(h.req('firm',h.body()))).status,404);
 });
 test('a BMC decline before delivery stays outside firm inbox and cannot be silently approved',async()=>{
-  const h=outcomeHarness();h.claim.status='signed_qa';
+  const h=outcomeHarness();h.claim.status='signed_qa';h.claim.firm_sent_at=null;h.claim.firm_send_result=null;
   assert.equal((await h.bmc.POST(h.req('bmc',h.body('bmc')))).status,200);
   assert.equal(releasedToReviewer(h.scope,h.claim,h.lead),false);
   assert.equal(await h.server.reviewerFile(h.db,h.scope,OUTCOME_ID),null);
   const delivered=outcomeHarness();await delivered.owner.POST(delivered.req('owner',delivered.body()));
   for(const kind of ['owner','firm'] as const)assert.equal((await delivered[kind].POST(delivered.req(kind,{...delivered.body(),action:'accepted'}))).status,409);
-  assert.equal(delivered.claim.status,'signed_dropped');
+  assert.equal(delivered.claim.status,'firm_rejected');
 });
 test('claim failure saves no outcome/email; failed activity can repair without duplicate outcome or mail',async()=>{
   const h=outcomeHarness();h.db.failOn=o=>o.table==='claims'&&o.kind==='update'?'write failed':null;
   assert.equal((await h.owner.POST(h.req('owner',h.body()))).status,409);assert.equal(h.claim.status,'delivered');
   assert.equal(h.db.tables.lead_activity.length,0);assert.equal(h.sends.length,0);
   h.db.failOn=o=>o.table==='lead_activity'&&o.kind==='insert'?'audit failed':null;
-  assert.equal((await h.owner.POST(h.req('owner',h.body()))).status,503);assert.equal(h.claim.status,'signed_dropped');assert.equal(h.sends.length,0);
+  assert.equal((await h.owner.POST(h.req('owner',h.body()))).status,503);assert.equal(h.claim.status,'firm_rejected');assert.equal(h.sends.length,0);
   assert.equal(reviewState([],h.claim).decision,'turned_down','atomic snapshot supplies decision after partial history failure');
   h.db.failOn=()=>null;assert.equal((await h.owner.POST(h.req('owner',h.body()))).status,200);assert.equal(h.sends.length,1);
   assert.equal(h.db.tables.lead_activity.filter(e=>e.meta.event==='firm_file_review').length,1);
@@ -60,7 +60,7 @@ test('claim failure saves no outcome/email; failed activity can repair without d
 test('failed mail retry keeps outcome source and recipient; uncertain sends never repeat',async()=>{
   for(const uncertain of [false,true]){
     const h=outcomeHarness();h.mailResult={ok:false,error:'Synthetic provider failure',uncertain};
-    const first=await h.owner.POST(h.req('owner',h.body()));assert.equal(first.status,200);assert.equal(h.claim.status,'signed_dropped');
+    const first=await h.owner.POST(h.req('owner',h.body()));assert.equal(first.status,200);assert.equal(h.claim.status,'firm_rejected');
     h.db.tables.campaigns[0].firm_email='changed@example.test';h.mailResult={ok:true};
     assert.equal((await h.bmc.POST(h.req('bmc',{...h.body('bmc'),action:'retry_email'}))).status,200);
     assert.equal(h.sends.length,uncertain?1:2);assert.equal(h.sends.at(-1).to,'firm@example.test');
@@ -73,7 +73,7 @@ test('concurrent BMC and firm decisions cannot overwrite the winner or send twic
   assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);assert.equal(h.sends.length,1);
   const d=signedDecline(h.claim)!;
   assert.match(h.sends[0].html,new RegExp(declineOutcome(d)));
-  assert.equal(h.claim.status,'signed_dropped');
+  assert.equal(h.claim.status,d.source==='firm'?'firm_rejected':'bmc_rejected');
 });
 
 test('private dispatch guard uses only an exact server read; authenticated writes and busy guards remain enforced',async()=>{
@@ -86,7 +86,7 @@ test('private dispatch guard uses only an exact server read; authenticated write
     const r=await h[kind].POST(h.req(kind,h.body(kind==='bmc'?'bmc':'firm')));
     const blocked=['sending','uncertain','read-error'].includes(state);
     assert.equal(r.status,state==='read-error'?503:blocked?409:200,kind+' '+state);
-    assert.equal(h.claim.status,blocked?'delivered':'signed_dropped');
+    assert.equal(h.claim.status,blocked?'delivered':kind==='bmc'?'bmc_rejected':'firm_rejected');
     assert.equal(h.sends.length,blocked?0:1);
     assert.equal(h.db.ops.some(o=>o.table==='firm_delivery_dispatch'),false,'session must not read private dispatch table');
     assert.deepEqual(h.dispatchDb.ops,[{table:'firm_delivery_dispatch',kind:'select',filters:[['eq','claim_id',OUTCOME_ID],['eq','lead_id','lead']]}]);

@@ -1,3 +1,4 @@
+import { reportSignatures } from "@/lib/report-signatures";
 export const runtime = "edge";
 import { isSignedClient, signedSubmissionIdsForLeads } from "@/lib/signed-list";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -59,13 +60,15 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const claimsByLead: Record<string, any[]> = {};
   if (ids.length) {
     let claimQuery = sb.from("claims")
-      .select("id, lead_id, campaign, claim_type, status, case_summary, stage, firm_send_result").in("lead_id", ids);
+      .select("id, firm_id, lead_id, campaign, claim_type, status, case_summary, stage, firm_send_result").in("lead_id", ids);
     if (me.role !== "owner") claimQuery = claimQuery.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("claim_type", "mva");
     const { data: claims } = await scopeWorkArea(claimQuery, area, 'claim_type');
     for (const c of claims ?? []) (claimsByLead[c.lead_id] ||= []).push(c);
   }
   const withClaims = (leads ?? []).map((l) => ({ ...l, claims: claimsByLead[l.id] ?? [] }));
-  const signedSubmissionIds = await signedSubmissionIdsForLeads(sb, ids);
+  let confirmed:Set<string>;
+  try { confirmed=await reportSignatures(sb,Object.values(claimsByLead).flat()); }
+  catch {return <p role="alert">Signature history is unavailable. Refresh before relying on this list.</p>;}
 
   // Who am I + the option lists for bulk actions.
   const canBulk = isInternalRole(me?.role);
@@ -83,10 +86,11 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const statuses = (catalog ?? []).filter((s: any) => s.active === true);
   const { data: dqReasons } = await sb.from("dq_reasons").select("*").eq("active", true).order("sort");
   // A status such as "delivered" can describe an unsigned Motel 6 handoff.
-  // This list requires both a signed-track status and actual signature evidence.
+  // Keep legacy signed files visible pending evidence review; do not count them as confirmed.
   const signedOnly = (withClaims as any[]).filter(
-    (l) => isSignedClient(l, catalog, signedSubmissionIds)
+    (l) => l.claims.some((c:any)=>confirmed.has(c.id)) || isSignedClient(l,catalog,new Set())
   );
 
-  return <LeadsView leads={signedOnly} title="Signed files" basePath="/leads" addPath={areaHref("/intake", area)} area={area} agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} />;
+  const unresolved=signedOnly.filter(l=>!l.claims.some((c:any)=>confirmed.has(c.id))).length;
+  return <>{unresolved>0 && <p role="status">{unresolved} historical signed files remain visible while their signature evidence needs verification.</p>}<LeadsView leads={signedOnly} title="Signed files" basePath="/leads" addPath={areaHref("/intake", area)} area={area} agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} /></>;
 }

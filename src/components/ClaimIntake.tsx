@@ -1,4 +1,5 @@
 "use client";
+import { editCurrentStatus } from "@/lib/current-status-events";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { INTAKE, intakeForType, segmentsForType, segmentsFrom, fieldVisible } from "@/lib/questionnaire";
 import FieldRenderer from "./FieldRenderer";
@@ -231,34 +232,8 @@ export default function ClaimIntake({
     })();
   }, []);
 
-  async function finishWithStatus(status: string, dqReasonKey: string | null = null) {
-    // The status model requires a reason for any disqualifying status. It used to
-    // be a window.prompt asking the agent to TYPE one of nine english keys from
-    // memory, which is unusable on a live call and worse for an agent working in
-    // a second language: a typo silently became an invalid reason. It is a list
-    // now, and the list is the only way through.
-    if (status === "dq" && !dqReasonKey) return;
-    setSaving(true);
-    await save(false);
-    try {
-      const r = await fetch("/api/claims", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op: "status", claim_id: claimId, status, dq_reason_key: dqReasonKey }),
-      });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        setErr(d.error || "Could not set status");
-        setSaving(false);
-        return; // stay on the page so the disposition is not silently lost
-      }
-    } catch (e: any) {
-      setErr(e?.message || "Could not set status");
-      setSaving(false);
-      return;
-    }
-    setSaving(false);
-    setFinishing(false);
-    if (typeof window !== "undefined" && leadId) window.location.href = `/leads/${leadId}`;
+  async function finishWithStatus(status: string, _dqReasonKey: string | null = null) {
+    setFinishing(false); editCurrentStatus(claimId,status);
   }
 
   async function save(advance = false) {
@@ -476,7 +451,7 @@ export default function ClaimIntake({
           <button className="btn ghost" disabled={saving} onClick={() => save(false)}>{saving ? "Saving…" : "Save"}</button>
           {step < steps.length - 1
             ? <button className="btn" disabled={saving} onClick={() => save(true)}>Save &amp; next →</button>
-            : <button className="btn" disabled={saving} onClick={() => setFinishing(true)}>Finish &amp; set status</button>}
+            : <button className="btn" disabled={saving} onClick={() => editCurrentStatus(claimId)}>Update Current Status</button>}
         </div>
         )}
       </div>

@@ -126,9 +126,9 @@ t("Motel 6 secondaries: LawRuler status sets the ClaimReach status", () => {
 
 // A tiny stand-in for the database: leads by lead number.
 function fakeSb(rows: any[]) {
-  return { from: () => { let want = ""; const q: any = {
-    select: () => q, eq: (_c: string, v: string) => { want = v; return q; }, order: () => q,
-    limit: async () => ({ data: rows.filter((r) => r.lead_no === want).sort((a, b) => b.created_at.localeCompare(a.created_at)) }),
+  return { from: () => { let want = "", alias=false; const q: any = {
+    select: () => q, contains: (_c:string,v:string[])=>{alias=true;want=v[0];return q;}, eq: (_c: string, v: string) => { want = v; return q; }, order: () => q,
+    limit: async () => ({ data: rows.filter((r) => (alias ? r.lead_no_aliases?.includes(want) : r.lead_no === want)).sort((a, b) => b.created_at.localeCompare(a.created_at)) }),
   }; return q; } };
 }
 
@@ -145,6 +145,12 @@ async function lk() {
   assert.equal(await resolveLeadKey(sb, "'; drop table leads"), null);
   assert.equal(leadKeyOf({ id: "x", lead_no: "TMP-1042" }), "TMP-1042");
   assert.equal(leadKeyOf({ id: "x", lead_no: null }), "x");
+  const numbered=fakeSb([{id:'nf',lead_no:'NF-TMP1001',lead_no_aliases:['TMP-1201'],created_at:'2026-10-01'}]);
+  assert.equal(await resolveLeadKey(numbered,'TMP-1201'),'nf','old file/call URL resolves to unchanged internal identity');
+  assert.equal(await resolveLeadKey(numbered,'nf-tmp1001'),'nf');
+  assert.equal(leadKeyOf({id:'nf',lead_no:'NF-TMP1001'}),'NF-TMP1001');
+  const ambiguous=fakeSb(['a','b'].map(id=>({id,lead_no:'NF-TMP'+id,lead_no_aliases:['TMP-1201'],created_at:'2026-10-01'})));
+  assert.equal(await resolveLeadKey(ambiguous,'TMP-1201'),null,'ambiguous aliases never select a different claimant');
   pass++; console.log("ok lead URLs: /app/TMP-1042 and /leads/TMP-1042 find the file");
 }
 // A stand-in admin client for ingestLead: leads found by LawRuler id, and

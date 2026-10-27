@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { areaHref, workArea } from '@/lib/work-area';
 import Icon from "./ui/Icon";
+import GlobalFileSearch from "./GlobalFileSearch";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { primaryNavigation, activeNavigation, type PrimaryNavItem } from "@/lib/navigation";
 
@@ -198,7 +199,7 @@ export default function SideNav({
           <button className="cl-iconbtn cl-burger" onClick={() => setOpen((o) => !o)} aria-label={open ? "Close the menu" : "Open the menu"} aria-expanded={open}><Icon name="menu" size={20} /></button>
           <button className="cl-iconbtn cl-collapse" onClick={toggleMin} aria-label={min ? "Show the full menu" : "Shrink the menu"} title={min ? "Show the full menu" : "Shrink the menu"}><Icon name="sidebar" size={18} /></button>
           <span className="cl-crumb">{currentLabel}</span>
-          {!isFirm ? <LeadSearch key={area} area={area} basePath={pilot ? "/app" : "/leads"} /> : <span style={{ flex: 1 }} />}
+          {!isFirm ? <GlobalFileSearch /> : <span style={{ flex: 1 }} />}
           <div className="cl-top-r">
             {!isFirm && role !== "firm" && (
               <a className="cl-btn cl-gold" href="/app?new=1" aria-label="New call"><Icon name="headset" size={16} /><span className="cl-hide-sm">New call</span></a>
@@ -208,69 +209,6 @@ export default function SideNav({
         </header>
         <main className="cl-body">{!isFirm && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}><strong>{area === 'other' || pathname === '/other-work' ? 'Other work' : 'MVA workspace'}</strong>{(area === 'other' || pathname === '/other-work') && <a href="/dashboard">Back to MVA →</a>}</div>}{children}</main>
       </div>
-    </div>
-  );
-}
-
-function LeadSearch({ basePath, area }: { basePath: "/app" | "/leads"; area: 'mva' | 'other' }) {
-  const [q, setQ] = useState("");
-  const [hits, setHits] = useState<any[] | null>(null);
-  const [open, setOpen] = useState(false);
-  const [sel, setSel] = useState(0);
-  const box = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2) { setHits(null); return; }
-    let alive = true;
-    const t = setTimeout(async () => {
-      try {
-        const r = await fetch(`/api/calls/search?q=${encodeURIComponent(term)}&area=${area}`);
-        const d = await r.json();
-        if (alive) { setHits(d.results || []); setSel(0); }
-      } catch { if (alive) setHits([]); }
-    }, 200);
-    return () => { alive = false; clearTimeout(t); };
-  }, [q, area]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); box.current?.focus(); box.current?.select(); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const go = (r: any) => { window.location.href = areaHref(`${basePath}/${encodeURIComponent(r.lead_no || r.id)}`, area); };
-  return (
-    <div className="cl-search">
-      <Icon name="search" size={16} />
-      <input ref={box} type="search" placeholder="Search leads by name, phone or lead number" aria-label="Search leads"
-        value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") { setOpen(false); box.current?.blur(); return; }
-          if (!hits?.length) return;
-          if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(hits.length - 1, s + 1)); }
-          if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
-          if (e.key === "Enter") { e.preventDefault(); go(hits[sel]); }
-        }} />
-      <span className="cl-kbd">Ctrl K</span>
-      {open && hits && (
-        <div className="cl-hits" role="listbox" aria-label="Matching leads">
-          {hits.length === 0 && <div className="cl-hit-empty">Nothing matches that.</div>}
-          {hits.slice(0, 10).map((r, i) => (
-            <button key={r.id} role="option" aria-selected={i === sel} className={`cl-hit${i === sel ? " cl-on" : ""}`}
-              onMouseDown={(e) => e.preventDefault()} onClick={() => go(r)} onMouseEnter={() => setSel(i)}>
-              <span style={{ minWidth: 0 }}>
-                <span className="cl-hit-n">{r.claimant_name || "No name yet"}</span>
-                <span className="cl-hit-s" style={{ display: "block" }}>{[fmtPhone(r.phone), r.campaign].filter(Boolean).join("   ")}</span>
-              </span>
-              <span className="cl-mono">{r.archived_at ? "Archived" : r.lead_no}</span>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

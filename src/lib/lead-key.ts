@@ -11,7 +11,7 @@
 // ============================================================================
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const LEAD_NO_RE = /^[A-Za-z]{1,8}-\d{1,9}$/;
+export const LEAD_NO_RE = /^(?:[A-Za-z]{1,8}-\d{1,9}|NF-TMP\d{1,12})$/i;
 
 /**
  * The internal ID for whatever sits in the URL: the internal ID itself or a
@@ -24,10 +24,14 @@ export async function resolveLeadKey(sb: any, raw: string | null | undefined): P
   try { key = decodeURIComponent(key); } catch { /* keep as typed */ }
   if (UUID_RE.test(key)) return key;
   if (!LEAD_NO_RE.test(key)) return null;
-  const { data } = await sb.from("leads").select("id, archived_at, created_at")
+  const { data, error } = await sb.from("leads").select("id, archived_at, created_at")
     .eq("lead_no", key.toUpperCase()).order("created_at", { ascending: false }).limit(5);
+  if(error)return null;
   const rows = data ?? [];
-  return (rows.find((r: any) => !r.archived_at) || rows[0])?.id ?? null;
+  if(rows.length)return (rows.find((r: any) => !r.archived_at) || rows[0]).id;
+  const aliases=await sb.from('leads').select('id,archived_at,created_at').contains('lead_no_aliases',[key.toUpperCase()]).limit(2);
+  // Never guess which record an ambiguous old public number belongs to.
+  return !aliases.error && aliases.data?.length===1 ? aliases.data[0].id : null;
 }
 
 /** The address a lead should show: its lead number when it has one. */

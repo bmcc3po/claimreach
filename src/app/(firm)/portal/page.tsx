@@ -1,3 +1,4 @@
+import { reportSignatures } from "@/lib/report-signatures";
 export const runtime = "edge";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -20,7 +21,7 @@ export default async function FirmHome() {
 
   // RLS scopes to the firm.
   const { data: leads, error: leadsError } = await sb.from("leads")
-    .select("id, lead_no, firm_ref_no, stage, updated_at, claims(status, stage, supervisor_flag)")
+    .select("id, lead_no, firm_ref_no, stage, updated_at, claims(id, lead_id, firm_id, status, stage, supervisor_flag)")
     .is("archived_at", null).order("updated_at", { ascending: false }).limit(500);
   const { data: catalog, error: catalogError } = await sb.from("statuses").select("*");
   if (leadsError || catalogError) return <ReadError title="Firm cases" message="Case counts could not load. Try again before relying on this summary." href="/portal" />;
@@ -33,7 +34,10 @@ export default async function FirmHome() {
   const total = all.length;
   const intakeInProgress = all.filter((l) => (l.claims ?? []).some((c: any) => resolveStatus(c.status, catalog ?? []).phase === "pre_qa")).length;
   const qualified = all.filter((l) => (l.claims ?? []).some((c: any) => resolveStatus(c.status, catalog ?? []).qualify === "qualify")).length;
-  const signed = all.filter((l) => (l.claims ?? []).some((c: any) => isSignedKey(c.status, catalog))).length;
+  let confirmed:Set<string>;
+  try {confirmed=await reportSignatures(sb,all.flatMap(l=>l.claims || []));}
+  catch{return <ReadError title="Firm cases" message="Signature evidence could not load." href="/portal" />;}
+  const signed = all.filter(l=>(l.claims || []).some((c:any)=>confirmed.has(c.id))).length;
 
   // Holes in the boat
   const agingIntake = all.filter((l) => (l.claims ?? []).some((c: any) => resolveStatus(c.status, catalog ?? []).phase === "pre_qa") && daysAgo(l.updated_at) > 2);

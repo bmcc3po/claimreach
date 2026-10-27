@@ -32,13 +32,13 @@ test('declined delivery partition and weekly/state totals reconcile with filtere
 });
 
 test('evidence is firm/matter scoped; latest agent note and recorded durations never include sibling or foreign evidence',async()=>{
-  const h=await partnerReportHarness(); h.lead.first_dialed_at=null;h.lead.mail_state='al';h.signature.state='unsigned';h.signature.statusKey='new';h.signature.status='New';
+  const h=await partnerReportHarness(); h.lead.first_dialed_at=null;h.lead.mail_state='al';h.signature.state='unsigned';h.signature.statusKey='new';h.signature.status='New';h.claim.status='new';
   const c={id:'call1',firm_id:REPORT_FIRM,lead_id:h.lead.id,channel:'call',occurred_at:'2026-09-30T12:02:00Z',duration_sec:120};
   const n={firm_id:REPORT_FIRM,lead_id:h.lead.id,claim_id:h.claim.id,scope:'file',body:'Agent follow-up',created_at:'2026-10-03T12:00:00Z'};
   const evidence={calls:[c,{...c,id:'foreign',firm_id:'foreign',duration_sec:999}],notes:[n,{...n,claim_id:'sibling',body:'secret',created_at:'2026-10-04T12:00:00Z'}]};
   const row=partnerReportData(h.config,[h.lead],[h.claim],h.signatures,[],evidence).rows[0];
   assert.equal(row.speedMinutes,2);assert.equal(row.callDurationSeconds,120);assert.equal(row.notes,'Agent follow-up');assert.equal(row.lastActivityAt,'2026-10-03T12:00:00Z');
-  assert.equal(row.status,'Contacting');assert.equal(row.state,'AL');
+  assert.equal(row.status,'New lead');assert.equal(row.state,'AL');
   const sibling={...h.claim,id:'other',campaign_id:'other'};
   const ambiguous=partnerReportData(h.config,[h.lead],[h.claim,sibling],h.signatures,[],evidence).rows[0];
   assert.equal(ambiguous.speedMinutes,null);assert.equal(ambiguous.callDurationSeconds,null);assert.equal(ambiguous.called,false);assert.equal(ambiguous.notes,n.body);

@@ -1,4 +1,5 @@
 "use client";
+import { editCurrentStatus } from "@/lib/current-status-events";
 import { useState, useEffect } from "react";
 import { DEFAULT_DQ_REASONS, type DqReason } from "@/lib/statuses";
 import { fileMayRunQa, type FileFence } from "@/lib/file-fence";
@@ -240,10 +241,10 @@ export default function QaPanel({
 
       <div className="qa-actions">
         <button className="btn" disabled={busy || submitted || anyRed || !gatesSet} title={anyRed ? "A red hard gate blocks approval" : !gatesSet ? "Set all three hard gates first" : ""} onClick={() => submit("approve")}>Approve (unlock firm)</button>
-        <button className="btn ghost" disabled={busy || submitted} onClick={() => submit("wip")}>Back to agent (WIP)</button>
-        <button className="btn ghost" disabled={busy || submitted} onClick={() => submit("flag")}>Flag BMC</button>
+        <button className="btn ghost" disabled={busy || submitted} onClick={() => claimId && editCurrentStatus(claimId,"wip")}>Back to agent (WIP)</button>
+        <button className="btn ghost" disabled={busy || submitted} onClick={() => claimId && editCurrentStatus(claimId,"flag")}>Flag BMC</button>
         {isBmc && signedDeclineAction && <a className="btn ghost danger" href="#signed-decline">Decline signed file / request drop letter ↑</a>}
-        {isBmc && !signedDeclineAction && <button className="btn ghost danger" disabled={busy || submitted} onClick={onDecline}>Decline (drop letter)</button>}
+        {isBmc && !signedDeclineAction && <button className="btn ghost danger" disabled={busy || submitted} onClick={() => claimId && editCurrentStatus(claimId,"bmc_rejected")}>Decline (drop letter)</button>}
       </div>
       {anyRed && <p className="qa-gate-warn">A red hard gate is set. Approval is blocked. Route to WIP{isBmc ? ", Flag BMC, or Decline" : " or Flag BMC"}.</p>}
 

@@ -1,4 +1,5 @@
 "use client";
+import { currentStatusLabel } from "@/lib/current-status";
 import { useState, useMemo, useEffect } from "react";
 
 // LawRuler-style Status Report: multi-select statuses + case types + date range
@@ -17,7 +18,7 @@ export default function StatusReport({ leads, claims, statuses, agents = [] }: {
   const [msg, setMsg] = useState("");
 
   const leadById = useMemo(() => Object.fromEntries(leads.map((l) => [l.id, l])), [leads]);
-  const statusLabel = useMemo(() => Object.fromEntries(statuses.map((s) => [s.key, s.label])), [statuses]);
+  const statusLabel = useMemo(() => Object.fromEntries(statuses.map((s) => [s.key, currentStatusLabel(s.key,s.label)])), [statuses]);
   const caseTypes = useMemo(() => Array.from(new Set(claims.map((c) => c.claim_type).filter(Boolean))).sort(), [claims]);
   const sources = useMemo(() => Array.from(new Set(leads.map((l) => l.source).filter(Boolean))).sort(), [leads]);
 

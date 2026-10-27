@@ -92,35 +92,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (p.op === "status") {
-    const catalog = await sb.from("statuses").select("*");
-    if (catalog.error || !Array.isArray(catalog.data)) return NextResponse.json({ error: "Could not verify the available statuses. Refresh and try again." }, { status: 503 });
-    const nextStatus = catalog.data.find((item: any) => item.key === p.status);
-    if (!nextStatus || nextStatus.active === false) return NextResponse.json({ error: "Pick an active status from the list." }, { status: 400 });
-    if (!manualIntakeStatusAllowed(nextStatus)) return NextResponse.json({ error: "This status is set by agreement review, QA, or firm delivery. Use that workflow so its evidence stays accurate." }, { status: 409 });
-    const { data: cl } = await sb.from("claims").select("lead_id, firm_id").eq("id", p.claim_id).maybeSingle();
-    if (!cl?.lead_id) return NextResponse.json({ error: "claim has no lead" }, { status: 400 });
-    // Route through the central setter: enforces the DQ-reason gate, keeps the
-    // QA-queue flags in sync, writes the Activity Log, and fires the automation
-    // + firm-delivery triggers (so "submit to firm" actually hands off).
-    const { setClaimStatusForLeads } = await import("@/lib/claim-status");
-    const res = await setClaimStatusForLeads({
-      leadIds: [cl.lead_id],
-      claimIds: [p.claim_id],
-      status: p.status,
-      dqReasonKey: p.dq_reason_key ?? null,
-      dqNote: p.dq_reason ?? null,
-      actorId: u.id,
-      actorName: u.full_name ?? "User",
-    });
-    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
-    // On a qualifying/approved/signed status, enroll the lead into drip rules.
-    const { resolveStatus } = await import("@/lib/statuses");
-    const { loadStatuses } = await import("@/lib/claim-status");
-    const def = resolveStatus(p.status, await loadStatuses());
-    if (def.qualify === "qualify" || def.track === "esign") {
-      try { const { supabaseAdmin: adminFor } = await import("@/lib/supabase-server"); await adminFor().rpc("enroll_drips_for_lead", { p_lead: cl.lead_id, p_firm: cl.firm_id }); } catch {}
-    }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ error: "Use Current Status in the file header; a current version, reason and one-sentence note are required." }, { status: 409 });
   }
 
   return NextResponse.json({ error: "unknown op" }, { status: 400 });

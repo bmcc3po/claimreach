@@ -1,0 +1,114 @@
+Isolated status verification — 2026-10-26
+
+Application revision tested: 6b678cf (PR204; includes production PR205 at 20e0115).
+Database: qcrvjwwbtqbyrbiolfkf
+Branch: claimreach-status-test-20261026 / a0e9a480-0201-46c0-b8b0-ab8f40408eda
+Production gvtafevoisfxcfkugvoj was a read-only catalog source. No claimant rows,
+credentials, keys, vault contents or provider configurations were copied.
+
+Recovery and exact permissions
+- Confirmed empty public schema after failed automatic migration replay.
+- Applied isolated_schema_restore, then exact reviewed 0130/0131 sections.
+- Compared restored catalog before 0130/0131: 83 tables, 1,222 columns,
+  338 constraints, 230 indexes, four enums, six views, one sequence,
+  472 policies, 65 function definitions/owners/ACLs, schema ACLs and all
+  six default-privilege records match production. ACL array order normalized.
+- No production column ACLs exist. Core database role attributes/config match.
+- All 20 triggers restored; sole intentional difference is disabled
+  trg_netfly_new_lead_alert, whose source function contains a live external URL.
+  No authorization grants or RLS were weakened to make tests pass.
+
+Hosted PostgreSQL results
+- All 13 status keys, required note/reason/callback validation, unknown-key
+  rejection, exact firm scope, stale versions and one history row per save pass.
+- Inactive/permission-disabled/firm actors denied; agent BMC rejection denied;
+  owner, agent, admin, manager and QA behavior verified under service_role.
+- Under authenticated role plus synthetic JWT claims: pilot agent sees only
+  pilot matter, firm user only its own firm, inactive/password-required users
+  see none, owner sees all synthetic matters. Cross-firm update affects zero rows.
+- Actual direct authenticated RPC call and history SELECT raise permission denial.
+  Anonymous RPC/history privileges also denied.
+- Future firm acceptance/rejection projects; older delayed decisions do not win.
+  Unknown historical delivery date remains NULL; archive retains history and
+  prevents further header edits. QA/WIP flags derive from the status catalog.
+- 20 hosted sequence allocations unique; four concurrent independent requests
+  returned NF-TMP1022, 1023, 1025 and 1024. Rolled-back tests intentionally leave
+  sequence gaps. Aliases cannot be erased by ordinary updates; preview is
+  read-only, rejects wrong firm, and includes archived synthetic files.
+- Two concurrent saves with identical seeded updated_at: one committed WIP,
+  the other failed stale claim. Exactly one persistent history row remains.
+
+Fixtures and reproducibility
+- SQL fixtures live in isolated-synthetic-seed.sql, isolated-browser-fixtures.sql
+  and isolated-status-catalog-seed.sql. Apply only once to an empty isolated clone.
+- Three synthetic firms (tmp/inno/test-other), three campaigns, three files and
+  claims, nine passwordless database-test users, one clearly synthetic signature
+  evidence row, and repository DEFAULT_STATUSES configuration remain for review.
+- No provider submission ID, document URL, SMTP/call/e-sign API key or invitation
+  was created. These auth.users rows are SQL permission fixtures, not verified
+  Auth-service login accounts. A real dashboard-created test login is still needed.
+- Tests use SET LOCAL ROLE and synthetic JWT settings on the real hosted database;
+  this is not proof of browser session, GoTrue or PostgREST authentication.
+- isolated-status-tests.sql, isolated-rls-tests.sql, isolated-denial-tests.sql,
+  isolated-history-tests.sql, isolated-numbering-tests.sql and
+  isolated-propagation-tests.sql contain assertions. All mutation tests rollback,
+  except the separately executed concurrent-save check. History test expects its
+  one committed baseline row. Number tests assume the original NF-TMP1001 fixture.
+- Existing touch_updated_at uses transaction now(): multi-save tests therefore
+  use separate transactions, as HTTP RPC requests do. Do not interpret repeated
+  calls within one SQL transaction as separate request-version tests.
+
+Application checks
+- TypeScript: zero errors.
+- Cloudflare packaging: Build Completed; 240 Edge Function Routes.
+- Both engines pass (78 intake / 71 MVA).
+- Current status/model/API, file search/model/API, firm delivery, NETFLY delivery,
+  review/send controls, call search and header interaction pass (12 checks total,
+  including both engine suites and the UI script).
+- PR205 NetflyFile, NetflySendPacket, netfly-packet, firm-delivery and NETFLY
+  delivery route are byte-identical to production 20e0115.
+- No application source, migration definition or deployment config changed here.
+
+Advisors
+- No ERROR-level findings returned. INFO: seven service-only tables have RLS and
+  no client policies, including private claim_status_history (intentional).
+- WARN: inherited public/authenticated SECURITY DEFINER grants (4 anonymous,
+  23 authenticated) and disabled leaked-password protection. Grants match source;
+  these are advisor warnings, not a demonstrated privilege bypass. No auth/grant
+  changes made. Review separately before production approval.
+- References:
+  https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable
+  https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
+  https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
+
+Remaining hosted steps — NOT yet browser-ready
+1. In the separate Cloudflare Pages project claimreach-status-test, select branch
+   codex/unified-status-release-check, framework None, build
+   npx @cloudflare/next-on-pages@1, output .vercel/output/static, root blank.
+   Set compatibility date 2024-09-23 and nodejs_compat. Leave liveclaimreach alone.
+2. Copy TEST values directly from Supabase dashboard to that project's variables:
+   NEXT_PUBLIC_SUPABASE_URL=https://qcrvjwwbtqbyrbiolfkf.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY; SUPABASE_SERVICE_ROLE_KEY (server-only encrypted).
+   Never paste keys/passwords into chat. Do not configure production integrations.
+3. Create a password login through the TEST Supabase Authentication dashboard,
+   without an email invitation. Provision its matching app_users row as the
+   intended test role (owner for complete review, agent in synthetic inno for
+   pilot/NETFLY authorization checks). This action remains pending; no password
+   or service-role key was retrieved by this task. Parent can use the new user ID
+   for scoped app_users provisioning after dashboard creation.
+4. Deploy only the isolated Pages app, then test actual sign-in and File/Call/
+   NETFLY header refresh, stale browser tabs, permission denials, history and
+   reports. Do not use send/call actions. Save the resulting hosted URL/evidence.
+
+Nonsecret dashboard URLs
+https://supabase.com/dashboard/project/qcrvjwwbtqbyrbiolfkf
+https://supabase.com/dashboard/project/qcrvjwwbtqbyrbiolfkf/settings/api
+https://supabase.com/dashboard/project/qcrvjwwbtqbyrbiolfkf/auth/users
+https://dash.cloudflare.com/?to=/:account/pages
+
+Keep this paid test branch alive for user review. Do not create another, merge
+to production, deploy production, or delete it without the applicable approval.
+No approval is currently pending or denied. Hosted app deployment/login is the
+remaining external dependency, not an unresolved database restore failure.
+
+Local catalog/restore/build evidence: /workspace/claimreach-status-evidence/
