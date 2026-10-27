@@ -2,31 +2,31 @@
 
 ## Current objective
 
-Validate the October 24 NETFLY release on production without sending or changing claimant data, then complete the remaining hosted authorization and ACL gates for draft PR #204.
+Verify the October 26 NETFLY retainer-exception release on production without sending or changing claimant data, then complete the remaining real-Auth and dashboard-link gates for draft PR #204.
 
 ## Current state
 
-- ClaimReach main is `aeb72d79ade80214a7dd22706e53d6b967c5916c`.
-- PR #202 and PR #203 merged on October 24. The resulting exact main revision has a successful Cloudflare production deployment.
-- PR #202 adds actionable saved-review guidance before NETFLY delivery. PR #203 adds authorized existing-NETFLY search under existing firm/campaign gates.
-- Draft PR #204 is five commits ahead and zero behind main at `a737fa58df9a6b2f5b0d681577301c9cf46e08d0`. It integrates main and unifies current status/history, reporting evidence, authorized file search and NETFLY numbering/aliases.
-- Draft migrations 0130/0131 are NOT applied. No backfill, renumbering, production data write, merge or deployment occurred for PR #204.
+- ClaimReach main is `20e011555baa2b7418f874821886b5cf2f4ddcaf`.
+- PR #205 merged on October 26. The exact main revision has a successful Cloudflare production deployment.
+- PR #205 replaces separate saved handoff/retainer review barriers with one final attestation. Missing or unverified retainers require an explicit warning decision, honest warning email and attempt-scoped audit. Existing tenant, role, hold, integrity, stale-snapshot and idempotency gates remain.
+- Draft PR #204 is nine commits ahead and zero behind main at `deff9e901db1407ab1882e568b289179dabd3693`. It integrates current production, repairs the pilot middleware exception for `/api/current-status` and handles non-JSON failures safely.
+- The isolated PR #204 backend now matches the intended schema, function ownership, ACL, RLS and default-privilege baseline. Migrations 0130/0131 were applied only to that isolated project.
+- No production backfill, renumbering, migration, merge or deployment occurred for PR #204.
 
 ## Verification
 
-- Exact main `aeb72d7` has a successful Cloudflare Pages production check.
-- PR #204 TypeScript passed; Cloudflare packaging completed with 240 Edge Function Routes.
-- PR #204 full suite passed 187/192 test files. All five remaining failures reproduce with the same errors on unchanged production main.
-- Exact PR #204 head has successful Cloudflare and Netlify preview evidence.
-- Earlier synthetic hosted database checks passed, but the temporary test branch/data/users were removed.
+- Exact main `20e0115` has a successful Cloudflare Pages production deployment.
+- PR #205 passed TypeScript, 237-route Cloudflare packaging, both engine suites and 55 delivery tests. Its full suite passed 188/205 with the same 17 documented baseline failures. Tests were synthetic and used a stubbed provider.
+- Exact PR #204 head `deff9e9` has successful Cloudflare Pages, Netlify and `status-tests` evidence.
+- Isolated hosted synthetic status, permissions, tenant, history, archive, numbering and stale-save tests passed. Those tests used database roles/synthetic JWTs, not a real Auth-issued browser session.
 
 ## Remaining limitations
 
-- PR #202/#203 still need authenticated production acceptance through non-mutating, no-send paths.
-- PR #204 still needs real hosted browser tests with Auth-issued sessions and exact staging helper-function ACL reconstruction.
+- PR #205 still needs authenticated production acceptance through non-mutating, no-send paths.
+- PR #204 still needs a real Auth-issued hosted browser retest and dashboard direct-link fallback review.
 - Production migrations 0130/0131, merge and deployment require separate Brett approval after those gates.
 - Never send a real packet, backfill history or renumber existing records as a smoke test.
 
 ## Next safe action
 
-Run authenticated no-send production acceptance for PR #202/#203, then reconstruct exact staging helper ACLs and exercise PR #204 with synthetic Auth-issued owner and non-owner sessions. Keep PR #204 draft and leave migrations unapplied until separate release approval.
+Run authenticated no-send production acceptance for PR #205, then exercise the successful isolated PR #204 deployment with synthetic real Auth-issued owner and non-owner sessions and review the dashboard direct-link fallback. Keep PR #204 draft and leave production migrations unapplied until separate release approval.
