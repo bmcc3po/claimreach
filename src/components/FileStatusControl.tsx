@@ -3,6 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CURRENT_STATUSES, STATUS_REASONS, currentStatusLabel, validateStatusEdit } from '@/lib/current-status';
 import { publishCurrentStatus, subscribeCurrentStatus, EDIT_CURRENT_STATUS_EVENT } from '@/lib/current-status-events';
+async function readStatusResponse(response: Response, fallback: string) {
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(typeof data?.error === 'string' ? data.error
+    : response.status === 403 ? 'You do not have permission to access or change this status.'
+    : response.status === 401 ? 'Your session expired. Sign in again.'
+    : fallback);
+  if (!data?.current || typeof data.current.updated_at !== 'string' || typeof data.current.key !== 'string') throw new Error(fallback);
+  return data;
+}
 export default function FileStatusControl({leadId,claimId,current,role,onChanged}: {
   leadId:string;claimId?:string|null;current:string;currentLabel?:string;role?:string;signedDeclineAvailable?:boolean;onChanged?:(status:string)=>void;
 }) {
@@ -18,7 +27,7 @@ export default function FileStatusControl({leadId,claimId,current,role,onChanged
       const seq=++request.current;
       try {
         const r=await fetch(`/api/current-status?lead_id=${encodeURIComponent(leadId)}&claim_id=${encodeURIComponent(claimId)}`,{cache:'no-store'});
-        const d=await r.json();if(!r.ok)throw new Error(d.error || 'Could not load current status.');
+        const d=await readStatusResponse(r,'Could not load current status. Refresh and try again.');
         if(active && seq===request.current){
           const prior=latest.current;latest.current=d.current.updated_at;setSaved(d.current);
           if(!editing.current)setError('');
@@ -40,7 +49,7 @@ export default function FileStatusControl({leadId,claimId,current,role,onChanged
     setBusy(true);setError('');const identity=claimId;const seq=++request.current;
     try {
       const r=await fetch('/api/current-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...parsed.value,lead_id:leadId,claim_id:identity,expected_updated_at:edit.expected_updated_at})});
-      const d=await r.json();if(!r.ok)throw new Error(d.error || 'Status not saved.');
+      const d=await readStatusResponse(r,'Status save could not be confirmed. Refresh before retrying.');
       if(seq===request.current){setSaved(d.current);latest.current=d.current.updated_at;setEdit(null);changed.current?.(d.current.key);router.refresh();}
       if(identity)publishCurrentStatus(identity);
     }catch(e:any){if(seq===request.current)setError(e.message || 'Status save could not be confirmed. Refresh before retrying.');}

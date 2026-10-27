@@ -51,3 +51,10 @@ for (const method of ["GET", "POST", "PATCH"]) assert.equal(pilotStaffApiAllowed
 for (const method of ["HEAD", "PUT", "DELETE"]) assert.equal(pilotStaffApiAllowed("/api/netfly/documents", method), false);
 console.log("agent final review, NETFLY helper and document routes reach their own authorization checks");
 
+
+for (const method of ["GET", "POST"]) assert.equal(pilotStaffApiAllowed("/api/current-status", method), true);
+for (const method of ["HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"]) assert.equal(pilotStaffApiAllowed("/api/current-status", method), false);
+for (const path of ["/api/current-status/other", "/api/current-status-extra", "/api/current-status/"]) {
+  for (const method of ["GET", "POST"]) assert.equal(pilotStaffApiAllowed(path, method), false);
+}
+console.log("pilot current-status exception is exact and GET/POST-only");

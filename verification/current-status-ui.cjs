@@ -38,5 +38,29 @@ const settle=()=>new Promise(r=>setTimeout(r,0));
  saved={...saved,key:'flag',updated_at:'v3'};
  await act(async()=>{listeners.forEach(fn=>fn());await settle();});
  assert.equal(button().props.disabled,true,'stale edit cannot save');
+ await act(async()=>ui.unmount());
+ // Middleware and proxy responses may be plain text or HTML, not API JSON.
+ const goodFetch=global.fetch;
+ for (const status of [401,403,502,200]) {
+  global.fetch=async()=>({ok:status===200,status,json:async()=>{throw new SyntaxError('Unexpected token');}});
+  await act(async()=>{ui=create(React.createElement(Control,{leadId:'lead',claimId:'claim',current:'contacting',role:'agent'}));await settle();});
+  assert.equal(ui.root.findByProps({'aria-label':'Current Status'}).props.disabled,true);
+  const message=ui.root.findByProps({role:'alert'}).children.join('');
+  assert.match(message,status===403?/permission/:status===401?/session expired/:/Could not load current status/);
+  assert.doesNotMatch(message,/Unexpected token/);
+  await act(async()=>ui.unmount());
+ }
+ global.fetch=goodFetch;
+ saved={...saved,category:'review',descriptor:'supervisor_review'};
+ await act(async()=>{ui=create(React.createElement(Control,{leadId:'lead',claimId:'claim',current:'flag',role:'agent'}));await settle();});
+ await act(async()=>ui.root.findAllByType('button').find(b=>b.children.join('')==='Add status note').props.onClick());
+ await act(async()=>ui.root.findByProps({'aria-label':'Agent note'}).props.onChange({target:{value:'Synthetic denied save verification.'}}));
+ const beforeVersion=saved.updated_at,beforeRefreshes=refreshes;
+ global.fetch=async()=>({ok:false,status:403,json:async()=>{throw new SyntaxError('Unexpected token');}});
+ await act(async()=>{button().props.onClick();await settle();});
+ assert.match(ui.root.findByProps({role:'alert'}).children.join(''),/permission/);
+ assert.equal(saved.updated_at,beforeVersion,'denied save cannot change saved state');
+ assert.equal(refreshes,beforeRefreshes,'denied save cannot publish a success refresh');
+ assert.equal(ui.root.findByProps({'aria-label':'Agent note'}).props.value,'Synthetic denied save verification.');
  await act(async()=>ui.unmount());console.log('Header interaction: required inputs, cross-screen saved-state propagation, stale edits and refresh passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});
