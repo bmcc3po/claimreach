@@ -1,24 +1,28 @@
 # AI Handoff
 
 ## Current objective
-Release the NETFLY saved-review guidance (PR #202) and authorized call-center search (PR #203), keeping delivery checks and tenant boundaries intact.
+Restore the M6 Today queue (claimreach.com/m6), which showed "Could not load the queue: canceling statement due to statement timeout" with every gauge at 0 (Nov 2 2026).
 
 ## Current state
-- PR #202 merged as `2a0e1cc3a7c3fb9042ea32cb1b90337f9685ccbc` after explicit approval to merge both PRs and deploy to production.
-- PR #203 adds existing NETFLY records to call-center search through the existing NETFLY gate, exact firm/campaign scope and single-MVA-matter invariant. Results open the NETFLY workspace rather than the acquisition console.
-- The two runtime changes do not overlap. This reconciliation preserves both changes and combines their previously conflicting handoff notes.
-- Server delivery validation, audit actor attribution, recipient settings, duplicate-send protection, role definitions and RLS remain unchanged.
-- No migration, claimant creation, message or production case-data write is included. Do not resend any completed delivery as a test.
+- Branch `fix/m6-queue-timeout` (from main `20e0115`). Files: `supabase/migrations/0130_m6_contact_health_lateral.sql` (new) and the same SQL appended to `RUN_THESE_MIGRATIONS.sql` as 0130.
+- Cause: `lead_contact_health` built `last_touch` (DISTINCT ON) and `inbound_waiting` by scanning all of `communications` (about 420k rows, about 418k unmatched July call logs with `lead_id` null) before joining to the ~99 Motel 6 files. The view is `security_invoker`, so the RLS policies on `communications` (`cr_inno_mva_staff_wall`, `cr_pilot_password_wall`, `comm_internal`, `comm_firm`) ran on every row and blew the 8s `authenticated` statement_timeout.
+- Fix: same 24 columns, names, types and meaning; each per-file lookup is a LATERAL subquery keyed on `l.id` (uses `idx_comm_lead`, `idx_comm_twoway`, `idx_comm_failed`). `security_invoker = true` is restated because CREATE OR REPLACE VIEW resets view options.
+- APPLIED to production by Brett on Nov 2 2026 via the Supabase SQL editor (project gvtafevoisfxcfkugvoj). This branch only records it; merging changes no runtime code.
+- No TypeScript, route, RLS policy, role or permission change.
 
 ## Verification
-- Each PR passed TypeScript, focused regression tests, engine suites and Cloudflare packaging with 237 Edge Function Routes.
-- Both current hosted preview builds passed before merge.
-- PR #202 full suite: 185/203; PR #203: 186/203. Remaining failures were reproduced on unchanged main. The search test fixture fixes one baseline failure.
-- Combined release checks and final production deployment verification are tracked in the active release session; do not infer completion from this note.
+- Before applying: new query and old view compared on production data with EXCEPT ALL: 99 rows each, 0 differing rows.
+- After applying: view definition contains the LATERAL rewrite; `lead_contact_health` and `lead_contact_status` both still `security_invoker=true`.
+- The exact `/m6` page query, run as the owner account under `authenticated` with an 8s timeout: 99 rows, 36.7 ms execution (previously timed out even at 120s).
+- `tsc` and `next-on-pages` were not run: SQL-only change, no TypeScript touched.
 
-## Remaining limitations
-- Synthetic tests and successful packaging do not establish authenticated live acceptance.
-- Verify the final production commit and non-mutating smoke checks. Never send a real packet as a smoke test.
+## Open items (not started)
+- M6 letter of representation does not match Josh Bauer's Oct 28 Motel 6 SOP: single recipient (G6 Hospitality Property LLC, Plano) vs the SOP's six G6 entities at Carrollton plus per-era franchisee, deed owner and later buyer; ready-flag fires on LawRuler status instead of after verified dates (plus/minus 30 days) and attorney approval; preservation list lacks the SOP's hotel-specific items and the Georgia O.C.G.A. 33-3-28 demand. As of Nov 2: 4 files `ready`, 3 `not_sent`, none sent. Recommended to Brett: hold the send button until rebuilt. Josh must confirm the correct G6 address.
+- SOP implementation plan proposed to Brett (workflow steps and gates, roles, limitations calculator and Track B dormant board first). Waiting on Brett/Josh decisions: system of record (Neos/OneDrive vs M6), document storage, Innovative's secondary-intake turnaround and cadence owner, who gets logins.
+- The `bmcc3po/claimreach` GitHub repo is public. Flagged to Brett; not changed.
+
+## Carried over (prior objective, status not re-verified here)
+- NETFLY saved-review guidance (PR #202, merged as `2a0e1cc`) and call-center search (PR #203). Prior next safe action: complete combined checks, merge PR #203 through repository protections, then verify the production deployment for the resulting main revision. Never send a real packet as a smoke test.
 
 ## Next safe action
-Complete combined checks, merge PR #203 through repository protections, then verify the production deployment for the resulting main revision.
+Brett reviews and merges `fix/m6-queue-timeout` (records only; the database change is already live). Then confirm /m6 loads in the browser.
