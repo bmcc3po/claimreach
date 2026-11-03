@@ -20,6 +20,7 @@ Restore the M6 Today queue (claimreach.com/m6), which showed "Could not load the
 - M6 letter of representation does not match Josh Bauer's Oct 28 Motel 6 SOP: single recipient (G6 Hospitality Property LLC, Plano) vs the SOP's six G6 entities at Carrollton plus per-era franchisee, deed owner and later buyer; ready-flag fires on LawRuler status instead of after verified dates (plus/minus 30 days) and attorney approval; preservation list lacks the SOP's hotel-specific items and the Georgia O.C.G.A. 33-3-28 demand. As of Nov 2: 4 files `ready`, 3 `not_sent`, none sent. Recommended to Brett: hold the send button until rebuilt. Josh must confirm the correct G6 address.
 - SOP scope SET by Brett (Nov 2): Neos stays the system of record for SOP case work (steps, documents, deadlines). M6 is a dashboard that links out to Neos, covering the drip, client update notes, and an audit view for Josh. The earlier workflow-engine / limitations-calculator / property-workbench plan is dropped.
 - Proposed M6 audit build, awaiting Brett's approval (PLAN FIRST): Josh audit board (per-file contact recency, drip position, updates sent, SOP flags such as 60 days no contact and 90-day status email overdue, Open in Neos), per-file message audit trail with reviewed/flag stamps, Josh template approval and drip pause, outbound guard for SOP rule 3. Blockers: Neos matter link format, source of each file's Neos number (no column on `leads` today), whether paralegals see the board, and whether LOR sending leaves M6.
+- Migration-number conflict: this branch records the already-live M6 SQL as 0130, while draft PR #204 also reserves 0130/0131 for unified status and NETFLY numbering. Do not merge either branch as-is until the sequence is reconciled; do not rerun the M6 SQL against production.
 - The `bmcc3po/claimreach` GitHub repo is public. Flagged to Brett; not changed.
 
 ## Carried over
@@ -28,4 +29,4 @@ Restore the M6 Today queue (claimreach.com/m6), which showed "Could not load the
 - Never send a real packet as a smoke test.
 
 ## Next safe action
-Brett reviews and merges `fix/m6-queue-timeout` (records only; the database change is already live). Then confirm /m6 loads in the browser.
+First reconcile the migration-number collision with draft PR #204 without rerunning production SQL. Then Brett can review the record-only branch for merge and confirm /m6 loads in the browser. Keep LOR sending held until Josh confirms the correct G6 address and the recipient, date-verification, attorney-approval and preservation requirements are rebuilt.
