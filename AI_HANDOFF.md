@@ -22,8 +22,10 @@ Restore the M6 Today queue (claimreach.com/m6), which showed "Could not load the
 - Proposed M6 audit build, awaiting Brett's approval (PLAN FIRST): Josh audit board (per-file contact recency, drip position, updates sent, SOP flags such as 60 days no contact and 90-day status email overdue, Open in Neos), per-file message audit trail with reviewed/flag stamps, Josh template approval and drip pause, outbound guard for SOP rule 3. Blockers: Neos matter link format, source of each file's Neos number (no column on `leads` today), whether paralegals see the board, and whether LOR sending leaves M6.
 - The `bmcc3po/claimreach` GitHub repo is public. Flagged to Brett; not changed.
 
-## Carried over (prior objective, status not re-verified here)
-- NETFLY saved-review guidance (PR #202, merged as `2a0e1cc`) and call-center search (PR #203). Prior next safe action: complete combined checks, merge PR #203 through repository protections, then verify the production deployment for the resulting main revision. Never send a real packet as a smoke test.
+## Carried over
+- PR #202, PR #203 and PR #205 are merged in current main `20e011555baa2b7418f874821886b5cf2f4ddcaf`. Their exact production release verification is tracked in the continuity handoff branch.
+- Draft PR #204 remains separate and gated on real Auth-issued hosted owner/non-owner browser retesting, dashboard direct-link fallback review, and later explicit approval for production migrations 0130/0131, merge and deployment.
+- Never send a real packet as a smoke test.
 
 ## Next safe action
 Brett reviews and merges `fix/m6-queue-timeout` (records only; the database change is already live). Then confirm /m6 loads in the browser.
