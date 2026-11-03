@@ -19,25 +19,27 @@ export const WRONGFUL_DEATH_SCRIPT =
 // ---------------------------------------------------------------- SIGN
 export const SIGN_SCRIPTS = {
   nextStep:
-    "Alright [name], I just need a couple more details so I can be sure I put the right information on the retainer. This is something I think we can handle on a contingency basis, which is great news for you, because that means you do not need to pay any money upfront, and in fact, if there is no recovery, we charge you nothing out of pocket.",
-  nextStepNote: "Take their legal name, date of birth, email and address next, then it goes straight to their phone.",
-  // Each rung waits for a yes before the next is read.
+    "Alright [name], I just need a couple more details so I can put the right information on the retainer.",
+  nextStepNote: "Legal name, date of birth, phone, email and address go on the packet. Then the two-stop, then send. Stay on the line.",
+  // TMP two-stop. Procedure, then fee. Not a four-rung pitch. TMT must not
+  // hear acceptance language from these lines — that stays on signTransition,
+  // which is TMP-only via allowSoundsLikeACase.
+  twoStop: [
+    "If that insurance company reaches out to you, do not get on the phone with them. Send them straight to us.",
+    "You do not pay anything up front. If there is no recovery, we charge you nothing out of pocket.",
+  ],
+  twoStopNote: "Read both. Then send the packet and stay on the line through the signature.",
+  // Kept so older tests/imports do not break. The console no longer renders a ladder.
   ladder: [
-    "One important thing, [name]. If that insurance company reaches out to you, do not get on the phone with them. Send them straight to us. Is that totally clear?",
-    "Just because it is so important, do you understand why?",
-    "Insurance companies track their wins and their losses. And in the L column, they can see clearly that a represented claim with a firm like ours costs them a substantial amount more than if they just dealt with you direct. So our job is to not let them try to trick you into saying or agreeing on something you do not understand.",
-    "Did you get a chance to finish that e-sign?",
+    "If that insurance company reaches out to you, do not get on the phone with them. Send them straight to us.",
+    "You do not pay anything up front. If there is no recovery, we charge you nothing out of pocket.",
   ],
-  ladderNotes: [
-    "",
-    "Read the next line regardless of how they answer.",
-    "The statistic stays attributed to the insurance industry's own data and is NEVER applied to this caller's case.",
-    "If they balk, isolate the objection and use the three Rs: Recognize, Reframe, Reask. ALWAYS REASK.",
-  ],
-  ladderNote:
-    "Each line waits for a yes before you read the next one. The statistic stays attributed to the insurance industry's own data and is NEVER applied to this caller's case.",
+  ladderNotes: ["", ""],
+  ladderNote: "Two stops only. Then send the packet and stay on the line.",
   reassurance:
     "Got it on my end. Here is the plan from here. You put your energy into healing yourself. The paperwork and the headaches on the legal side is ours to carry for you. Sound fair?",
+  treatJournal:
+    "Keep treating if you are hurting, and write down how you feel each day — what hurts, what you cannot do, and any appointments. That journal helps the file.",
   afterSignAsk:
     "Great. A couple more details and I will get you on your way. I know you said earlier it happened in [city], can you give me a more specific intersection perhaps?",
   closing:
@@ -96,7 +98,6 @@ export const POST_SIGN_FIELDS: PostSignField[] = [
     { value: "no",  label: "No" },
   ] },
   { key: "dl_number",       label: "Driver's license number", sensitive: true, half: true },
-  { key: "dob",             label: "Date of birth", sensitive: true, kind: "date", half: true },
   { key: "ssn",             label: "SSN (9 digits)", sensitive: true, half: true, verify: "ssn" },
   { key: "passenger",       label: "Passenger name + number (if any)" },
 ];
