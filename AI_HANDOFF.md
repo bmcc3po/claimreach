@@ -20,7 +20,8 @@ M6 audit board for Josh Bauer (TMP): one place to audit the Motel 6 drip, client
 - Full test sweep (tsx per file): branch 129/140 files pass, unchanged main 128/139. The same 11 files fail on both; no regressions.
 - Firm RLS check on production as a TMP firm user (counts only): 100 files, 75 comms, 11 lead_notes, 1 open call_schedule visible; drip_rules not visible to firm (hence admin read).
 - Visual check with fake data rendered to static HTML and screenshotted at 1280 and 390 px: no horizontal overflow.
-- Not done: authenticated click-through on a deployed preview.
+- PR #206 opened. Cloudflare Pages preview for `4885e97` deployed successfully (https://39bfa091.claimreach.pages.dev).
+- Not done: authenticated click-through on the preview (this session's network cannot reach pages.dev).
 
 ## Open items
 - Brett: apply 0131, set `M6_NEOS_MATTER_URL` in Cloudflare Pages once the Neos matter URL format is known, merge both branches.
