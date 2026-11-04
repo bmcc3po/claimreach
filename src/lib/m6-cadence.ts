@@ -720,7 +720,8 @@ export type GateReason =
   | "unapproved_live"
   | "missing_sending_number"
   | "missing_justcall"
-  | "missing_resend";
+  | "missing_resend"
+  | "g6_report_claim";
 
 export type GateResult = {
   ok: boolean;
@@ -736,6 +737,29 @@ export function bodyHasForbiddenLegal(text: string | null | undefined): boolean 
   if (!text) return false;
   return FILED_RE.test(text);
 }
+
+// Josh Bauer's Motel 6 SOP, rule 3: never write that nothing was reported to
+// G6. Letters, emails, notes and pleadings. Defined once; the outbound gate,
+// the note route and the audit stamp all call this.
+const G6_TARGET = String.raw`(?:g\s?-?6(?:\s+hospitality)?|motel\s?-?6|the\s+(?:hotel|motel|brand|franchisor)|corporate)`;
+const G6_NEG = String.raw`(?:never|not|didn'?t|did\s+not|wasn'?t|was\s+not|weren'?t|were\s+not|no\s?one|nobody)`;
+const G6_VERB = String.raw`(?:report(?:ed|s)?|told|tell|notif(?:y|ied)|inform(?:ed)?|complain(?:ed)?|alert(?:ed)?|warn(?:ed)?)`;
+const G6_REPORT_RES: RegExp[] = [
+  new RegExp(String.raw`\bnothing\s+(?:(?:was|were|got|is|has\s+been|had\s+been)\s+)?(?:ever\s+)?(?:reported|said|told|disclosed|complained)\s+(?:about\s+\w+\s+)?to\s+${G6_TARGET}`, "i"),
+  new RegExp(String.raw`\b${G6_NEG}\s+(?:\w+\s+){0,3}?${G6_VERB}\s+(?:\w+\s+){0,3}?(?:to\s+)?${G6_TARGET}\b`, "i"),
+  new RegExp(String.raw`\bno\s+(?:reports?|complaints?|notice)\s+(?:(?:was|were|has\s+been|had\s+been)\s+)?(?:ever\s+)?(?:made\s+|filed\s+|sent\s+|given\s+)?(?:to|with)\s+${G6_TARGET}`, "i"),
+  new RegExp(String.raw`\b${G6_TARGET}\s+(?:was|were|is|had\s+been)\s+(?:never|not)\s+(?:\w+\s+)?(?:told|notified|informed|made\s+aware|on\s+notice|aware)\b`, "i"),
+  new RegExp(String.raw`\b${G6_TARGET}\s+(?:had|has)\s+no\s+(?:notice|knowledge)\b`, "i"),
+];
+
+export function bodySaysNothingReportedToG6(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const flat = String(text).replace(/[’‘]/g, "'").replace(/\s+/g, " ");
+  return G6_REPORT_RES.some((re) => re.test(flat));
+}
+
+export const G6_REPORT_RULE_MESSAGE =
+  "Please reword this. Josh's rule for Motel 6 files is that we never write that nothing was reported to G6.";
 
 export function normalizeSafeChannel(raw: string): string {
   const s = raw.trim().toLowerCase();
@@ -844,6 +868,11 @@ export function evaluateOutboundGates(input: OutboundGateInput): GateResult {
     if (live) blocked.push("unapproved_live");
   }
 
+  // SOP rule 3. Hard block: never sent, never logged as written.
+  if (bodySaysNothingReportedToG6(input.body) || bodySaysNothingReportedToG6(input.subject)) {
+    blocked.push("g6_report_claim");
+  }
+
   if (live && !input.approvedByFirm && !input.agentInitiated) blocked.push("unapproved_live");
   if (live && !input.sendingNumber) blocked.push("missing_sending_number");
   if (live && (input.channel === "sms" || input.channel === "call" || input.channel === "voicemail") && !input.hasJustCallKeys) {
@@ -851,7 +880,7 @@ export function evaluateOutboundGates(input: OutboundGateInput): GateResult {
   }
   if (live && input.channel === "email" && !input.hasResendKey) blocked.push("missing_resend");
 
-  const hard = blocked.some((r) => r === "opted_out" || r === "stop" || r === "safe_contact" || r === "monitored_voicemail" || r === "monitored_case_subject");
+  const hard = blocked.some((r) => r === "opted_out" || r === "stop" || r === "safe_contact" || r === "monitored_voicemail" || r === "monitored_case_subject" || r === "g6_report_claim");
   const canLog = !hard;
   const canLiveSend = live && blocked.length === 0;
   return { ok: canLog && (!live || canLiveSend), canLog, canLiveSend, blocked };
@@ -869,6 +898,7 @@ export function gateMessage(reason: GateReason): string {
     case "missing_sending_number": return "No Motel 6 sending number is set.";
     case "missing_justcall": return "JustCall keys are not in Cloudflare Pages. Logged only.";
     case "missing_resend": return "Resend is not in Pages. Logged only.";
+    case "g6_report_claim": return G6_REPORT_RULE_MESSAGE;
   }
 }
 

@@ -1,29 +1,35 @@
 # AI Handoff
 
 ## Current objective
-Restore the M6 Today queue (claimreach.com/m6), which showed "Could not load the queue: canceling statement due to statement timeout" with every gauge at 0 (Nov 2 2026).
+M6 audit board for Josh Bauer (TMP): one place to audit the Motel 6 drip, client messages and update notes, with "Open in Neos". Neos stays the system of record for SOP case work (Brett, Nov 2 2026).
 
 ## Current state
-- Branch `fix/m6-queue-timeout` (from main `20e0115`). Files: `supabase/migrations/0130_m6_contact_health_lateral.sql` (new) and the same SQL appended to `RUN_THESE_MIGRATIONS.sql` as 0130.
-- Cause: `lead_contact_health` built `last_touch` (DISTINCT ON) and `inbound_waiting` by scanning all of `communications` (about 420k rows, about 418k unmatched July call logs with `lead_id` null) before joining to the ~99 Motel 6 files. The view is `security_invoker`, so the RLS policies on `communications` (`cr_inno_mva_staff_wall`, `cr_pilot_password_wall`, `comm_internal`, `comm_firm`) ran on every row and blew the 8s `authenticated` statement_timeout.
-- Fix: same 24 columns, names, types and meaning; each per-file lookup is a LATERAL subquery keyed on `l.id` (uses `idx_comm_lead`, `idx_comm_twoway`, `idx_comm_failed`). `security_invoker = true` is restated because CREATE OR REPLACE VIEW resets view options.
-- APPLIED to production by Brett on Nov 2 2026 via the Supabase SQL editor (project gvtafevoisfxcfkugvoj). This branch only records it; merging changes no runtime code.
-- No TypeScript, route, RLS policy, role or permission change.
+- Branch `feat/m6-audit-board`, stacked on `fix/m6-queue-timeout` (which records migration 0130, already applied in production). Neither is merged to main (`20e0115`).
+- Brett approved the build on Nov 4 ("build build build"). Defaults taken without his answer: every M6 user (staff and TMP firm) sees the board; Neos number is typed in per file; Neos link format comes from env `M6_NEOS_MATTER_URL` (must contain `{no}`, https only). Unset means no button, number still saved.
+- New: `/m6/audit` (board: flag gauges, search, filters, Download for Excel, drip wording read-only) and `/m6/audit/[id]` (file audit: Mark reviewed / Flag for follow up, Neos number, at-a-glance, coming up, full timeline of texts, emails, calls, notes and audits). Nav link "Audit".
+- Logic in `src/lib/m6-audit.ts` (pure, one flag vocabulary). Loaders in `src/lib/m6-audit-server.ts`. Flags: flagged, reply waiting, 60 days no contact (SOP dormant), send failed, never reached, no written update in 90 days (SOP status email), not audited in 30 days, opted out.
+- Audit stamps are `lead_notes` rows with `source = 'audit'` (body "Audit: reviewed." / "Audit: flagged for follow up. <comment>"). No new table. Inserted with the user's client under existing `notes_firm_write` / `notes_internal` RLS.
+- `/api/m6/neos` writes one column (`leads.neos_matter_no`) with admin after `assertM6Write`, same pattern as LOR facts. Firm UPDATE guard on leads unchanged.
+- Drip wording read with admin (drip_rules is internal-only RLS), filtered `campaign = 'motel6'` AND `firm_id = TMP`. Read-only. All 13 Motel 6 drip steps are `approved_by_firm = false` in production, so nothing auto-sends; the cadence cron is a walker only.
+- SOP rule 3 guard: `bodySaysNothingReportedToG6()` in `m6-cadence.ts`. New hard gate reason `g6_report_claim` (cannot send or log). Also enforced on `/api/m6/note` and `/api/m6/audit` (422 with a friendly message).
+- Migration 0131 WRITTEN, NOT APPLIED: `alter table public.leads add column if not exists neos_matter_no text;` (in `supabase/migrations/0131_m6_neos_matter_no.sql` and `RUN_THESE_MIGRATIONS.sql`). Until applied, the board loads and says "Neos numbers are not switched on yet"; the save route returns a clear 503.
 
 ## Verification
-- Before applying: new query and old view compared on production data with EXCEPT ALL: 99 rows each, 0 differing rows.
-- After applying: view definition contains the LATERAL rewrite; `lead_contact_health` and `lead_contact_status` both still `security_invoker=true`.
-- The exact `/m6` page query, run as the owner account under `authenticated` with an 8s timeout: 99 rows, 36.7 ms execution (previously timed out even at 120s).
-- `tsc` and `next-on-pages` were not run: SQL-only change, no TypeScript touched.
+- `tsc` clean. `npx @cloudflare/next-on-pages`: Build Completed, 241 Edge Function Routes (237 + /m6/audit, /m6/audit/[id], /api/m6/audit, /api/m6/neos).
+- New `src/lib/m6-audit.test.ts`: 66 passed (flags, stamps, aggregation, Neos URL, CSV formula neutralizing, rule 3 positives and negatives, gate).
+- Full test sweep (tsx per file): branch 129/140 files pass, unchanged main 128/139. The same 11 files fail on both; no regressions.
+- Firm RLS check on production as a TMP firm user (counts only): 100 files, 75 comms, 11 lead_notes, 1 open call_schedule visible; drip_rules not visible to firm (hence admin read).
+- Visual check with fake data rendered to static HTML and screenshotted at 1280 and 390 px: no horizontal overflow.
+- Not done: authenticated click-through on a deployed preview.
 
-## Open items (not started)
-- M6 letter of representation does not match Josh Bauer's Oct 28 Motel 6 SOP: single recipient (G6 Hospitality Property LLC, Plano) vs the SOP's six G6 entities at Carrollton plus per-era franchisee, deed owner and later buyer; ready-flag fires on LawRuler status instead of after verified dates (plus/minus 30 days) and attorney approval; preservation list lacks the SOP's hotel-specific items and the Georgia O.C.G.A. 33-3-28 demand. As of Nov 2: 4 files `ready`, 3 `not_sent`, none sent. Recommended to Brett: hold the send button until rebuilt. Josh must confirm the correct G6 address.
-- SOP scope SET by Brett (Nov 2): Neos stays the system of record for SOP case work (steps, documents, deadlines). M6 is a dashboard that links out to Neos, covering the drip, client update notes, and an audit view for Josh. The earlier workflow-engine / limitations-calculator / property-workbench plan is dropped.
-- Proposed M6 audit build, awaiting Brett's approval (PLAN FIRST): Josh audit board (per-file contact recency, drip position, updates sent, SOP flags such as 60 days no contact and 90-day status email overdue, Open in Neos), per-file message audit trail with reviewed/flag stamps, Josh template approval and drip pause, outbound guard for SOP rule 3. Blockers: Neos matter link format, source of each file's Neos number (no column on `leads` today), whether paralegals see the board, and whether LOR sending leaves M6.
+## Open items
+- Brett: apply 0131, set `M6_NEOS_MATTER_URL` in Cloudflare Pages once the Neos matter URL format is known, merge both branches.
+- Not built yet (waiting on Brett): Josh approving drip wording from the board, pausing a file's drip from the board, LOR send hold.
+- LOR does not match Josh's Oct 28 SOP (single recipient at Plano vs six G6 entities at Carrollton plus franchisee/owner/buyer; ready-flag on LawRuler status; generic preservation list; Georgia 33-3-28). Nothing sent as of Nov 2. Recommended hold.
 - The `bmcc3po/claimreach` GitHub repo is public. Flagged to Brett; not changed.
 
 ## Carried over (prior objective, status not re-verified here)
-- NETFLY saved-review guidance (PR #202, merged as `2a0e1cc`) and call-center search (PR #203). Prior next safe action: complete combined checks, merge PR #203 through repository protections, then verify the production deployment for the resulting main revision. Never send a real packet as a smoke test.
+- NETFLY PR #202 merged as `2a0e1cc`; PR #203 status not re-checked. Never send a real packet as a smoke test.
 
 ## Next safe action
-Brett reviews and merges `fix/m6-queue-timeout` (records only; the database change is already live). Then confirm /m6 loads in the browser.
+Brett reviews the audit PR, applies 0131 in the Supabase SQL editor, merges, then opens claimreach.com/m6/audit signed in and marks one file reviewed to confirm the stamp shows on the file.
