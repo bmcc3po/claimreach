@@ -12,7 +12,7 @@ M6 audit board for Josh Bauer (TMP): one place to audit the Motel 6 drip, client
 - `/api/m6/neos` writes one column (`leads.neos_matter_no`) with admin after `assertM6Write`, same pattern as LOR facts. Firm UPDATE guard on leads unchanged.
 - Drip wording read with admin (drip_rules is internal-only RLS), filtered `campaign = 'motel6'` AND `firm_id = TMP`. Read-only. All 13 Motel 6 drip steps are `approved_by_firm = false` in production, so nothing auto-sends; the cadence cron is a walker only.
 - SOP rule 3 guard: `bodySaysNothingReportedToG6()` in `m6-cadence.ts`. New hard gate reason `g6_report_claim` (cannot send or log). Also enforced on `/api/m6/note` and `/api/m6/audit` (422 with a friendly message).
-- Migration 0131 WRITTEN, NOT APPLIED: `alter table public.leads add column if not exists neos_matter_no text;` (in `supabase/migrations/0131_m6_neos_matter_no.sql` and `RUN_THESE_MIGRATIONS.sql`). Until applied, the board loads and says "Neos numbers are not switched on yet"; the save route returns a clear 503.
+- Migration 0131 is WRITTEN, NOT APPLIED: `alter table public.leads add column if not exists neos_matter_no text;` (in `supabase/migrations/0131_m6_neos_matter_no.sql` and `RUN_THESE_MIGRATIONS.sql`). Until applied, the board loads and says "Neos numbers are not switched on yet"; the save route returns a clear 503. This number collides with PR #204's isolated status migration 0131; do not apply it or merge PR #206 until the shared sequence is reconciled.
 
 ## Verification
 - `tsc` clean. `npx @cloudflare/next-on-pages`: Build Completed, 241 Edge Function Routes (237 + /m6/audit, /m6/audit/[id], /api/m6/audit, /api/m6/neos).
@@ -20,17 +20,17 @@ M6 audit board for Josh Bauer (TMP): one place to audit the Motel 6 drip, client
 - Full test sweep (tsx per file): branch 129/140 files pass, unchanged main 128/139. The same 11 files fail on both; no regressions.
 - Firm RLS check on production as a TMP firm user (counts only): 100 files, 75 comms, 11 lead_notes, 1 open call_schedule visible; drip_rules not visible to firm (hence admin read).
 - Visual check with fake data rendered to static HTML and screenshotted at 1280 and 390 px: no horizontal overflow.
-- PR #206 opened. Cloudflare Pages preview for `4885e97` deployed successfully (https://39bfa091.claimreach.pages.dev).
+- PR #206 opened and is mergeable at exact head `c5fc5c2`. Netlify deploy-preview and both Cloudflare Pages checks passed; the runtime preview for `4885e97` deployed successfully (https://39bfa091.claimreach.pages.dev).
 - Not done: authenticated click-through on the preview (this session's network cannot reach pages.dev).
 
 ## Open items
-- Brett: apply 0131, set `M6_NEOS_MATTER_URL` in Cloudflare Pages once the Neos matter URL format is known, merge both branches.
+- Release hold: PR #206 carries record migration 0130 plus new migration 0131, while PR #204 already reserves 0130/0131. Reconcile the shared migration numbering first without rerunning the already-live queue SQL. Before merge or deployment, complete an authenticated synthetic owner/non-owner preview click-through and confirm the Neos matter URL format. Brett must then separately approve the migration, merge and deployment.
 - Not built yet (waiting on Brett): Josh approving drip wording from the board, pausing a file's drip from the board, LOR send hold.
-- LOR does not match Josh's Oct 28 SOP (single recipient at Plano vs six G6 entities at Carrollton plus franchisee/owner/buyer; ready-flag on LawRuler status; generic preservation list; Georgia 33-3-28). Nothing sent as of Nov 2. Recommended hold.
+- LOR does not match Josh's Oct 28 SOP (single recipient at Plano vs six G6 entities at Carrollton plus franchisee/owner/buyer; ready-flag on LawRuler status; generic preservation list; Georgia 33-3-28). Nothing sent as of Nov 2. Keep LOR sending held until Josh confirms the correct G6 address and required gates.
 - The `bmcc3po/claimreach` GitHub repo is public. Flagged to Brett; not changed.
 
 ## Carried over (prior objective, status not re-verified here)
 - NETFLY PR #202 merged as `2a0e1cc`; PR #203 status not re-checked. Never send a real packet as a smoke test.
 
 ## Next safe action
-Brett reviews the audit PR, applies 0131 in the Supabase SQL editor, merges, then opens claimreach.com/m6/audit signed in and marks one file reviewed to confirm the stamp shows on the file.
+Reconcile PR #206's 0130/0131 migration numbers with PR #204 without rerunning production SQL, then use synthetic owner and non-owner sessions for the authenticated preview click-through. Keep LOR sending held and keep PR #206 unmerged until those gates are recorded; only then bring Brett one separate migration, merge and deployment approval.
