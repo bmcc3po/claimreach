@@ -1,4 +1,6 @@
--- 0130: make the M6 Today queue fast again. APPLIED to production Nov 2 2026 (pasted in the Supabase SQL editor).
+-- 0132: make the M6 Today queue fast again. APPLIED to production Nov 2 2026 (pasted in the Supabase SQL editor).
+-- Renumbered from 0130 on Nov 4 2026: open PRs #199 and #204 already use 0130/0131. Already live; do not run it
+-- again as part of a release (it is CREATE OR REPLACE of the same view, so a rerun changes nothing).
 --
 -- Symptom (Nov 2 2026): /m6 showed "Could not load the queue: canceling
 -- statement due to statement timeout" and every gauge read 0.

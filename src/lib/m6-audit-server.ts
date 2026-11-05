@@ -24,7 +24,7 @@ export function neosTemplate(): string | null {
   return (process.env.M6_NEOS_MATTER_URL || "").trim() || null;
 }
 
-// neos_matter_no arrives with migration 0131. Read it on its own so the board
+// neos_matter_no arrives with migration 0133. Read it on its own so the board
 // still loads (and says so) if the column is not there yet. One phantom column
 // in a shared select would sink every other field.
 async function loadNeosNumbers(sb: any, tmpFirmId: string, ids: string[]): Promise<{ ready: boolean; byLead: Map<string, string | null> }> {

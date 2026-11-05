@@ -211,7 +211,7 @@ export default function AuditFile({
               {!neosLinked && <p className="m6-hint">The Open in Neos button turns on once the Neos link is set up.</p>}
             </>
           ) : (
-            <p className="m6-hint">Neos numbers are not switched on yet. Migration 0131 adds them.</p>
+            <p className="m6-hint">Neos numbers are not switched on yet. Migration 0133 adds them.</p>
           )}
         </section>
       </div>

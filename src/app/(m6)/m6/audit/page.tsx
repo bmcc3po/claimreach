@@ -29,7 +29,7 @@ export default async function AuditPage() {
 
       {board.error && <p className="m6-error">Could not load the files: {board.error}</p>}
       {!board.neosReady && (
-        <p className="m6-hint">Neos numbers are not switched on yet. Migration 0131 adds them.</p>
+        <p className="m6-hint">Neos numbers are not switched on yet. Migration 0133 adds them.</p>
       )}
 
       <AuditBoard rows={board.rows} neosLinked={board.neosLinked} nowIso={nowIso} />

@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const missing = /neos_matter_no/.test(error.message || "");
     return NextResponse.json({
       error: missing
-        ? "The Neos number field is not set up yet. Migration 0131 needs to run first."
+        ? "The Neos number field is not set up yet. Migration 0133 needs to run first."
         : error.message,
     }, { status: missing ? 503 : 500 });
   }

@@ -5080,7 +5080,9 @@ end $$;
 revoke all on function public.cr_close_payroll(jsonb,jsonb) from public,anon;
 grant execute on function public.cr_close_payroll(jsonb,jsonb) to authenticated;
 commit;
--- 0130: make the M6 Today queue fast again. APPLIED to production Nov 2 2026 (pasted in the Supabase SQL editor).
+-- 0132: make the M6 Today queue fast again. APPLIED to production Nov 2 2026 (pasted in the Supabase SQL editor).
+-- Renumbered from 0130 on Nov 4 2026: open PRs #199 and #204 already use 0130/0131. Already live; do not run it
+-- again as part of a release (it is CREATE OR REPLACE of the same view, so a rerun changes nothing).
 --
 -- Symptom (Nov 2 2026): /m6 showed "Could not load the queue: canceling
 -- statement due to statement timeout" and every gauge read 0.
@@ -5186,8 +5188,9 @@ where l.archived_at is null
   and (l.campaign = 'motel6' or l.case_type = 'motel_trafficking')
   and l.firm_id = (select firms.id from public.firms where firms.slug = 'tmp');
 
--- 0131: Neos matter number on Motel 6 files, for the M6 audit board's
+-- 0133: Neos matter number on Motel 6 files, for the M6 audit board's
 -- "Open in Neos" button. Neos stays the system of record for case work.
+-- Renumbered from 0131 on Nov 4 2026 (0130/0131 are taken by open PRs #199/#204).
 -- Additive only: one nullable text column, no backfill, no policy change.
 -- Firm users write it through /api/m6/neos (m6 write fence, then admin update
 -- of this one column), the same pattern as the LOR facts. The firm UPDATE
