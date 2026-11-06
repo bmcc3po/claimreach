@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { assertM6Write } from "@/lib/m6-scope";
+import { bodySaysNothingReportedToG6, G6_REPORT_RULE_MESSAGE } from "@/lib/m6-cadence";
 export const runtime = "edge";
 
 // One shared thread. Both firms read and write it, which is the whole point:
@@ -14,6 +15,10 @@ export async function POST(req: NextRequest) {
   const { lead_id, body } = b ?? {};
   if (!lead_id || !String(body ?? "").trim()) {
     return NextResponse.json({ error: "Write something first." }, { status: 400 });
+  }
+
+  if (bodySaysNothingReportedToG6(body)) {
+    return NextResponse.json({ error: G6_REPORT_RULE_MESSAGE }, { status: 422 });
   }
 
   const gate = await assertM6Write(sb, lead_id, "id, firm_id, campaign, case_type, archived_at");

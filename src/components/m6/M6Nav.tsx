@@ -7,6 +7,7 @@ import { useM6Crissi } from "./M6CrissiContext";
 const LINKS = [
   { href: "/m6", label: "Today" },
   { href: "/m6/cases", label: "Cases" },
+  { href: "/m6/audit", label: "Audit" },
   { href: "/m6/property", label: "Property lookup" },
   { href: "/m6/brand", label: "Brand & owner" },
   { href: "/m6/guidance", label: "Crissi" },
