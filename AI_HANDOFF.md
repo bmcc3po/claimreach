@@ -21,7 +21,7 @@ M6 audit board for Josh Bauer (TMP): one place to audit the Motel 6 drip, client
 - Full test sweep (tsx per file): branch 129/140 files pass, unchanged main 128/139. The same 11 files fail on both; no regressions.
 - Firm RLS check on production as a TMP firm user (counts only): 100 files, 75 comms, 11 lead_notes, 1 open call_schedule visible; drip_rules not visible to firm (hence admin read).
 - Visual check with fake data rendered to static HTML and screenshotted at 1280 and 390 px: no horizontal overflow.
-- PR #206 opened and is mergeable at exact head `c5fc5c2`. Netlify deploy-preview and both Cloudflare Pages checks passed; the runtime preview for `4885e97` deployed successfully (https://39bfa091.claimreach.pages.dev).
+- PR #206 is mergeable at exact head `15abc34`. Netlify deploy-preview and both Cloudflare Pages checks passed on that head after the 0132/0133 renumber; the earlier runtime preview for `4885e97` also deployed successfully (https://39bfa091.claimreach.pages.dev).
 - Not done: authenticated click-through on the preview (this session's network cannot reach pages.dev).
 
 ## Open items
