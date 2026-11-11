@@ -43,10 +43,10 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
   };
   const [signatures,calls,notes,activities,callLogs] = await Promise.all([
     loadSignatureReport(db,campaign.data),
-    evidenceRows('communications','id,firm_id,lead_id,channel,direction,occurred_at,duration_sec'),
+    evidenceRows('communications','id,firm_id,lead_id,channel,direction,occurred_at,duration_sec,provider,call_sid,external_ref,provider_call_result,outcome'),
     evidenceRows('notes','id,firm_id,lead_id,claim_id,scope,body,created_at'),
     evidenceRows('lead_activity','id,firm_id,lead_id,meta,created_at'),
-    evidenceRows('call_logs','id,firm_id,lead_id,claim_id,notes,created_at'),
+    evidenceRows('call_logs','id,firm_id,lead_id,claim_id,notes,created_at,direction,outcome,duration_min'),
   ]);
   return { ...partnerReportData(access, leads, claims, signatures, refs, { calls,notes,activities,callLogs }), updatedAt: new Date().toISOString() };
 }
