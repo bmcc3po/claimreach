@@ -46,7 +46,7 @@ test('successful login sets a path-limited HttpOnly cookie; read-only API expose
   assert.match(login.headers.get('set-cookie'), /Path=\/api\/pr-digital/i);
   const response = await h.route.GET(req('GET', undefined, cookie.value)), data = await response.json();
   assert.equal(response.status, 200); assert.match(response.headers.get('cache-control'), /no-store/); assert.match(response.headers.get('x-robots-tag'), /noindex/);
-  assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status','statusKey','deliveryGroup','speedMinutes','callDurationSeconds','state','lastActivityAt','notes'].sort());
+  assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status','statusKey','deliveryGroup','speedMinutes','callDurationSeconds','state','lastActivityAt','notes','callHistory','attemptCount','inboundCount','manualLogCount','firstOutboundAt','lastOutboundAt','responseTimeReason'].sort());
   assert.equal(data.rows[0].signed, 'Yes'); assert.equal(data.rows[0].called, true);
   assert.deepEqual(data.summary, { total: 1, signed: 1, unsigned: 0, verify: 0, called: 1, awaitingDelivery: 0, sentToFirm: 1, declined: 0, inProgress:0, lost:0, signRate:1, averageSpeedMinutes:1500, speedSamples:1 });
   assert.ok(!JSON.stringify(data).includes(h.config.token_secret)); assert.ok(!h.db.ops.some(o => o.kind !== 'select'));

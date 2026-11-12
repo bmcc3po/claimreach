@@ -54,14 +54,14 @@ export function groupPartnerRows(rows: PartnerReportRow[], by: 'week'|'state') {
   return [...groups].map(([key,items]) => ({ key,...summarizePartnerRows(items) })).sort((a,b) =>
     a.key === 'Not recorded' ? 1 : b.key === 'Not recorded' ? -1 : by === 'week' ? b.key.localeCompare(a.key) : b.total-a.total || a.key.localeCompare(b.key));
 }
-export type ReportSortKey = keyof PartnerReportRow;
+export type ReportSortKey = Exclude<keyof PartnerReportRow, 'callHistory'>;
 export function sortPartnerRows(rows: PartnerReportRow[], key: ReportSortKey, direction: 'asc'|'desc') {
   return [...rows].sort((a,b) => {
     const av = a[key], bv = b[key];
     if (av == null || av === '') return bv == null || bv === '' ? a.name.localeCompare(b.name) : 1;
     if (bv == null || bv === '') return -1;
     const cmp = typeof av === 'number' && typeof bv === 'number' ? av-bv : typeof av === 'boolean' && typeof bv === 'boolean' ? Number(av)-Number(bv) :
-      ['receivedAt','signedAt','lastActivityAt'].includes(key) ? Date.parse(String(av))-Date.parse(String(bv)) : String(av).localeCompare(String(bv));
+      ['receivedAt','signedAt','lastActivityAt','firstOutboundAt','lastOutboundAt'].includes(key) ? Date.parse(String(av))-Date.parse(String(bv)) : String(av).localeCompare(String(bv));
     return (direction === 'asc' ? cmp : -cmp) || a.name.localeCompare(b.name);
   });
 }
@@ -77,13 +77,13 @@ export function reportDuration(seconds: number | null): string {
 }
 export const REPORT_COLUMNS: { key:ReportSortKey; label:string }[] = [
   {key:'name',label:'Full name'},{key:'phone',label:'Phone #'},{key:'receivedAt',label:'Date received'},
-  {key:'called',label:'Called'},{key:'signed',label:'Signed'},{key:'signedAt',label:'Date signed'},
-  {key:'status',label:'Current status'},{key:'speedMinutes',label:'Speed to lead'},
+  {key:'attemptCount',label:'Outbound attempts'},{key:'inboundCount',label:'Inbound calls'},{key:'manualLogCount',label:'Manual logs'},{key:'firstOutboundAt',label:'First outbound call'},{key:'lastOutboundAt',label:'Latest outbound call'},{key:'called',label:'Call evidence'},{key:'signed',label:'Signed'},{key:'signedAt',label:'Date signed'},
+  {key:'status',label:'Current status'},{key:'speedMinutes',label:'Response time'},{key:'responseTimeReason',label:'Response time coverage'},
   {key:'callDurationSeconds',label:'Call duration'},{key:'state',label:'State'},
   {key:'lastActivityAt',label:'Last activity'},{key:'notes',label:'Notes'},
 ];
 export function reportCell(row:PartnerReportRow,key:ReportSortKey) {
-  if (['receivedAt','signedAt','lastActivityAt'].includes(key)) return reportDate(row[key] as string|null);
+  if (['receivedAt','signedAt','lastActivityAt','firstOutboundAt','lastOutboundAt'].includes(key)) return reportDate(row[key] as string|null);
   if (key === 'called') return row.called?'Yes':'No';
   if (key === 'speedMinutes') return reportDuration(row.speedMinutes == null?null:row.speedMinutes*60);
   if (key === 'callDurationSeconds') return reportDuration(row.callDurationSeconds);

@@ -1,3 +1,4 @@
+import { partnerCallHistory, type PartnerCall } from './partner-call-history';
 import { isActiveFile, isTestFile } from './file-visibility';
 import { sourceRefMatchesLead, speedToLeadMinutes, type PartnerSourceRef } from './partner-access';
 import { summarizePartnerRows } from './partner-report-view';
@@ -11,6 +12,8 @@ export type PartnerReportRow = {
   statusKey: string; deliveryGroup: 'awaiting' | 'sent' | 'declined' | null;
   speedMinutes: number | null; callDurationSeconds: number | null; state: string | null;
   lastActivityAt: string | null; notes: string | null;
+  callHistory: PartnerCall[]; attemptCount: number; inboundCount: number; manualLogCount: number;
+  firstOutboundAt: string | null; lastOutboundAt: string | null; responseTimeReason: string | null;
 };
 export type PartnerReportSummary = {
   total: number; signed: number; unsigned: number; verify: number; called: number;
@@ -55,11 +58,15 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     const comms = sole ? (evidence.calls || []).filter(scoped) : [];
     const calls = comms.filter(r => ['call','voicemail'].includes(r.channel));
     const logs = (evidence.callLogs || []).filter(scoped);
-    const callDates = calls.map(r => date(r.occurred_at)).filter((v): v is string => !!v);
+    const contact = partnerCallHistory(calls, logs);
+    const callDates = calls.filter(r => r.direction === 'outbound').map(r => date(r.occurred_at)).filter((v): v is string => !!v);
     const first = [sole ? date(lead.first_dialed_at) : null, ...callDates]
       .filter((v): v is string => !!v).sort((a,b) => Date.parse(a)-Date.parse(b))[0] || null;
-    const called = !!(first || logs.some(r => date(r.created_at)) || sole && date(lead.last_called_at));
+    const called = !!(first || calls.some(r => date(r.occurred_at)) || logs.some(r => date(r.created_at)) || sole && date(lead.last_called_at));
     const receivedAt = partnerReceivedDate(lead);
+    const hasReceiptTime = !!receivedAt && !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt);
+    const speedMinutes = hasReceiptTime ? speedToLeadMinutes(receivedAt, first) : null;
+    const responseTimeReason = !hasReceiptTime ? 'Original receipt time missing' : !first ? 'First outbound call time missing' : speedMinutes == null ? 'Call precedes receipt; needs review' : null;
     const notes = [...(evidence.notes || []).filter(r => scoped(r) && ['file','call'].includes(r.scope)).map(r => ({ at:r.created_at, body:r.body })),
       ...logs.map(r => ({ at:r.created_at, body:r.notes }))]
       .filter(r => date(r.at) && typeof r.body === 'string' && r.body.trim())
@@ -82,7 +89,9 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     return [{ name: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not recorded',
       phone: lead.phone || '', receivedAt,
       statusKey, deliveryGroup, state, lastActivityAt, notes: notes[0]?.body.trim() || null,
-      speedMinutes: receivedAt && !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt) ? speedToLeadMinutes(receivedAt, first) : null,
+      speedMinutes, responseTimeReason,
+      callHistory: contact.history, attemptCount: contact.attemptCount, inboundCount: contact.inboundCount, manualLogCount: contact.manualLogCount,
+      firstOutboundAt: first, lastOutboundAt: contact.lastOutboundAt,
       callDurationSeconds: durations.length ? durations.reduce((sum,r) => sum + r.duration_sec, 0) : null,
       called,
       signed: sig.state === 'signed' ? 'Yes' as const : sig.state === 'verify' ? 'Check signature' as const : 'No' as const,
