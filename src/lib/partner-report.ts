@@ -7,7 +7,7 @@ import type { SignatureReportRow } from './signature-report';
 import type { ReportAccess } from './partner-report-access';
 
 export type PartnerReportRow = {
-  name: string; phone: string; receivedAt: string | null; called: boolean;
+  name: string; phone: string; receivedAt: string | null; called: boolean; firmDeclined: boolean;
   signed: 'Yes' | 'No' | 'Check signature'; signedAt: string | null; status: string;
   statusKey: string; deliveryGroup: 'awaiting' | 'sent' | 'declined' | null;
   speedMinutes: number | null; callDurationSeconds: number | null; state: string | null;
@@ -18,7 +18,7 @@ export type PartnerReportRow = {
 export type PartnerReportSummary = {
   total: number; signed: number; unsigned: number; verify: number; called: number;
   awaitingDelivery: number; sentToFirm: number; declined: number;
-  inProgress: number; lost: number; signRate: number; averageSpeedMinutes: number | null; speedSamples: number;
+  inProgress: number; lost: number; firmDeclined: number; signRate: number; averageSpeedMinutes: number | null; speedSamples: number;
 };
 const date = (v: unknown): string | null => typeof v === 'string' && Number.isFinite(Date.parse(v)) ? v : null;
 /** Recover the original date from the exact source snapshot, never its sync timestamp. */
@@ -48,8 +48,10 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     if (matters.length !== 1) return []; // Never choose an ambiguous matter.
     const sig = signatures.find(s => s.claimId === matters[0].id);
     if (!sig || sig.archived || sig.test) return [];
-    const declined = sig.declined || sig.firmDecision === 'Firm declined';
-    const status = declined ? resolveFileStatus({ status: 'signed_dropped' }).label : sig.status;
+    const firmDeclined = sig.decisionKey === 'turned_down';
+    const declined = sig.declined || firmDeclined;
+    // Keep unsigned workflow labels separate from the recorded firm decision.
+    const status = declined && sig.state === 'signed' ? resolveFileStatus({ status: 'signed_dropped' }).label : sig.status;
     const sole = claims.filter(c => c.lead_id === lead.id && c.firm_id === access.firm_id).length === 1;
     const claim = matters[0];
     const scoped = (r: any) => r.firm_id === access.firm_id && r.lead_id === lead.id &&
@@ -80,7 +82,7 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     const key = sig.statusKey || claim.status || 'new';
     // A recorded call is progress even when a legacy import kept the New key.
     // This is a read-only presentation; signed/closed statuses take precedence.
-    const statusKey = sig.state === 'unsigned' && key === 'new' && called ? 'contacting' : key;
+    const statusKey = !declined && sig.state === 'unsigned' && key === 'new' && called ? 'contacting' : key;
     const displayStatus = statusKey !== key ? resolveFileStatus({ status: statusKey }).label : status;
     const rawState = String(lead.mail_state || '').trim();
     const state = /^[a-z]{2}$/i.test(rawState) ? rawState.toUpperCase() : rawState || null;
@@ -93,7 +95,7 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
       callHistory: contact.history, attemptCount: contact.attemptCount, inboundCount: contact.inboundCount, manualLogCount: contact.manualLogCount,
       firstOutboundAt: first, lastOutboundAt: contact.lastOutboundAt,
       callDurationSeconds: durations.length ? durations.reduce((sum,r) => sum + r.duration_sec, 0) : null,
-      called,
+      called, firmDeclined,
       signed: sig.state === 'signed' ? 'Yes' as const : sig.state === 'verify' ? 'Check signature' as const : 'No' as const,
       signedAt: sig.state === 'signed' ? sig.signedAt : null,
       status: sig.state === 'verify' ? `${displayStatus} · signature needs verification` : displayStatus }];
