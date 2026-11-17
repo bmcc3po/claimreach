@@ -1,24 +1,29 @@
 # AI Handoff
 
 ## Current objective
-Release the NETFLY saved-review guidance (PR #202) and authorized call-center search (PR #203), keeping delivery checks and tenant boundaries intact.
+Give PR Digital a scoped, useful portal view of call attempts, call histories and response-time coverage without widening tenant access or exposing raw provider data.
 
 ## Current state
-- PR #202 merged as `2a0e1cc3a7c3fb9042ea32cb1b90337f9685ccbc` after explicit approval to merge both PRs and deploy to production.
-- PR #203 adds existing NETFLY records to call-center search through the existing NETFLY gate, exact firm/campaign scope and single-MVA-matter invariant. Results open the NETFLY workspace rather than the acquisition console.
-- The two runtime changes do not overlap. This reconciliation preserves both changes and combines their previously conflicting handoff notes.
-- Server delivery validation, audit actor attribution, recipient settings, duplicate-send protection, role definitions and RLS remain unchanged.
-- No migration, claimant creation, message or production case-data write is included. Do not resend any completed delivery as a test.
+- Runtime branch `feat/pr-digital-call-history`, source commit `4084b646ca3ea7f2de4823f91f856ef1cd7f2306`, PR #207.
+- The PR Digital portal now shows outbound attempt counts, inbound calls, first/latest outbound calls and expandable dated call histories with provider results and durations.
+- Dashboard and CSV output include response-time coverage and explain when original receipt timestamps are missing.
+- Existing authentication and firm/campaign/source allowlists remain unchanged. Provider call identities are deduplicated; manual logs stay separate so calls are not double-counted.
+- Raw provider identifiers, recordings, transcripts and activity metadata are excluded.
+- No migration, production data write, claimant creation, message or permission change is included.
+- Read-only production inspection found aggregate call inventory but no populated original LawRuler receipt timestamps; import dates are intentionally not substituted for accurate historical response times.
 
 ## Verification
-- Each PR passed TypeScript, focused regression tests, engine suites and Cloudflare packaging with 237 Edge Function Routes.
-- Both current hosted preview builds passed before merge.
-- PR #202 full suite: 185/203; PR #203: 186/203. Remaining failures were reproduced on unchanged main. The search test fixture fixes one baseline failure.
-- Combined release checks and final production deployment verification are tracked in the active release session; do not infer completion from this note.
+- TypeScript passed.
+- 41 focused report/access/signature tests passed.
+- Intake engine: 78 passed. MVA engine: 71 passed.
+- Cloudflare packaging completed with 237 Edge Function Routes.
+- Synthetic desktop (1440 px) and mobile (390 px) browser checks passed for histories, filters, CSV export, failed-refresh messaging and overflow.
+- Netlify and both Cloudflare hosted checks are green on the exact runtime head.
 
 ## Remaining limitations
-- Synthetic tests and successful packaging do not establish authenticated live acceptance.
-- Verify the final production commit and non-mutating smoke checks. Never send a real packet as a smoke test.
+- Authenticated live acceptance is not verified.
+- Historical response-time values cannot be reconstructed where the original source receipt timestamp is absent.
+- Hosted build success does not authorize merge or deployment.
 
 ## Next safe action
-Complete combined checks, merge PR #203 through repository protections, then verify the production deployment for the resulting main revision.
+Use a synthetic authenticated PR Digital account on the PR #207 preview to verify tenant scope, one call-history expansion, attempt counts, CSV output and the missing-response-time explanation. Keep PR #207 unmerged and undeployed until that acceptance evidence is recorded and Brett separately approves release.

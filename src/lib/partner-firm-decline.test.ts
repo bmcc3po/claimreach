@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {partnerReportHarness} from './partner-report-test-harness';
+import {partnerReportData} from './partner-report';
+import {summarizePartnerRows,inReportRange,partnerCsv} from './partner-report-view';
+test('formal firm declines count across signature states, never infer a firm decision from BMC or unknown drops',async()=>{
+ const h=await partnerReportHarness();
+ const make=(patch:any)=>partnerReportData(h.config,[h.lead],[h.claim],[{...h.signature,...patch}],[]).rows[0];
+ const signed=make({decisionKey:'turned_down',firmDecision:'Firm declined'});
+ const unsigned=make({state:'unsigned',status:'Contacting',statusKey:'contacting',decisionKey:'turned_down',firmDecision:'Firm declined'});
+ const bmc=make({declined:true,declineSource:'bmc',decisionKey:null});
+ const unknown=make({declined:true,declineSource:null,decisionKey:null});
+ const misleadingLabel=make({firmDecision:'Firm declined',decisionKey:null});
+ assert.equal(unsigned.status,'Contacting');
+ assert.equal(summarizePartnerRows([signed,unsigned]).firmDeclined,2);
+ assert.equal(summarizePartnerRows([signed,unsigned]).declined,1);
+ assert.equal(summarizePartnerRows([bmc,unknown,misleadingLabel]).firmDeclined,0);
+ assert.equal(summarizePartnerRows([bmc,unknown]).declined,2);
+ const rows=[signed,{...unsigned,receivedAt:'2026-11-15T12:00:00Z'}];
+ const filtered=rows.filter(r=>inReportRange(r,'2026-11-15','2026-11-15'));
+ assert.equal(summarizePartnerRows(filtered).firmDeclined,1);
+ assert.equal(filtered.filter(r=>r.firmDeclined).length,1);
+ assert.match(partnerCsv(filtered),/Recorded firm decline/);
+ const foreign=partnerReportData(h.config,[{...h.lead,firm_id:'foreign'}],[h.claim],[{...h.signature,decisionKey:'turned_down'}],[]);
+ assert.equal(foreign.summary.firmDeclined,0);assert.equal(foreign.rows.length,0);
+});

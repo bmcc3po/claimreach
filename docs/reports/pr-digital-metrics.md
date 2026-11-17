@@ -1,5 +1,17 @@
 # PR Digital INNO MVA reporting
 
+## Call-history portal update — November 11, 2026
+
+The client list now opens an individual contact history with provider call times, direction, result and recorded duration. The summary shows outbound attempts, leads with linked outbound attempts, inbound calls and response-time coverage. CSV retains the complete detail columns and adds call counts and first/latest outbound timestamps.
+
+Outbound attempts are linked outbound provider records, deduplicated by provider plus call identifier (or row ID). Inbound calls are separate. Manual call logs are displayed separately, not added to provider totals, because they can describe the same call. Manual log timestamps are labeled as logging time and cannot establish response time. Unknown results are not inferred from duration; provider Answered does not establish a completed intake.
+
+Response time requires an original receipt timestamp and an outbound call/first-dial timestamp. Inbound calls no longer establish outreach response time. Date-only source receipts remain date-only. Missing or conflicting evidence gets an explicit reason. Read-only production inspection found 194 nonarchived source-approved leads, 1,284 linked provider call/voicemail records, zero manual logs, and no populated lawruler_created_at values. These are source inventory counts, not guaranteed public report totals: the existing signature, test-file and matter eligibility filters still apply.
+
+The existing firm/campaign/source allowlist and authentication gates are unchanged. Call histories use the same sole-matter restriction as the prior report. No raw activity metadata, recordings, transcripts, provider IDs or credentials are projected. Existing scoped notes and last-activity timestamps remain available. No schema changes or production writes are required.
+
+Validation: 41 focused tests pass, plus intake engine 78 and MVA engine 71. Desktop 1440px and mobile 390px synthetic browser checks verify opening histories without console errors or horizontal page overflow. Production packaging and signed-in live acceptance must be recorded separately; a fixture preview does not prove live authentication.
+
 The existing password-protected `/pr-digital` report now has received-date cohorts, six summary metrics, exclusive post-signing groups, weekly/state breakdowns, sortable details, received/signed-date list filters, multiple statuses, state, uncalled-only and filtered CSV export.
 
 Report data still comes through the existing firm/campaign/source approval projection. No account, password, grants, RLS, campaign scope, signature, delivery or claimant status is changed. An owner-only preview endpoint authenticates the active owner through the existing gate, then uses the exact same active report access configuration and projection. It cannot accept a caller-supplied scope or issue a partner session cookie. Extra evidence reads use the existing approved source set. Lead-level calls and unscoped notes are withheld when a lead has multiple matters; exact claim notes remain eligible. Self, plaintiff and case notes are not projected; the Notes column uses the latest file/call note or matching call-log comment.
