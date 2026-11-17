@@ -26,7 +26,7 @@ test('password hash and signed cookie fail closed for wrong password, tampering,
   for (const invalid of [undefined, '', token + '.extra', token.slice(0, -1) + 'x', 'invalid']) assert.equal(await verifyReportSession(invalid, h.config, now), false);
   assert.equal(await verifyReportSession(token, h.config, now + REPORT_SESSION_SECONDS * 1000), false);
   assert.equal(await verifyReportSession(token, h.config, now - 1000), false);
-  for (const change of [{ active: false }, { scope: 'approved_sources' }, { firm_id: REPORT_CAMP }, { campaign_id: REPORT_FIRM }, { token_secret: 'c'.repeat(64) }])
+  for (const change of [{ active: false }, { scope: 'campaign' }, { firm_id: REPORT_CAMP }, { campaign_id: REPORT_FIRM }, { token_secret: 'c'.repeat(64) }])
     assert.equal(await verifyReportSession(token, { ...h.config, ...change } as any, now), false);
 });
 test('API blocks unauthenticated access, wrong password and cross-origin login/logout without returning data', async () => {
@@ -46,9 +46,9 @@ test('successful login sets a path-limited HttpOnly cookie; read-only API expose
   assert.match(login.headers.get('set-cookie'), /Path=\/api\/pr-digital/i);
   const response = await h.route.GET(req('GET', undefined, cookie.value)), data = await response.json();
   assert.equal(response.status, 200); assert.match(response.headers.get('cache-control'), /no-store/); assert.match(response.headers.get('x-robots-tag'), /noindex/);
-  assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status','statusKey','deliveryGroup','speedMinutes','callDurationSeconds','state','lastActivityAt','notes','callHistory','attemptCount','inboundCount','manualLogCount','firstOutboundAt','lastOutboundAt','responseTimeReason','firmDeclined'].sort());
+  assert.deepEqual(Object.keys(data.rows[0]).sort(), ['name','phone','receivedAt','called','signed','signedAt','status','statusKey','deliveryGroup','speedMinutes','callDurationSeconds','state','lastActivityAt','notes','callHistory','attemptCount','inboundCount','manualLogCount','firstOutboundAt','lastOutboundAt','responseTimeReason','firmDeclined','claimReachReceivedAt','firstResponseOutboundAt'].sort());
   assert.equal(data.rows[0].signed, 'Yes'); assert.equal(data.rows[0].called, true);
-  assert.deepEqual(data.summary, { total: 1, signed: 1, unsigned: 0, verify: 0, called: 1, awaitingDelivery: 0, sentToFirm: 1, declined: 0, inProgress:0, lost:0, firmDeclined:0, signRate:1, averageSpeedMinutes:1500, speedSamples:1 });
+  assert.deepEqual(data.summary, { total: 1, signed: 1, unsigned: 0, verify: 0, called: 1, awaitingDelivery: 0, sentToFirm: 1, declined: 0, inProgress:0, lost:0, firmDeclined:0, signRate:1, averageSpeedMinutes:null, speedSamples:0 });
   assert.ok(!JSON.stringify(data).includes(h.config.token_secret)); assert.ok(!h.db.ops.some(o => o.kind !== 'select'));
   const logout = await h.route.DELETE(req('DELETE')); assert.equal(logout.status, 200); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
 });
@@ -73,9 +73,9 @@ test('wrong campaign/firm, disabled access and incomplete evidence queries never
 test('projection excludes foreign firms/campaigns, archived/test files and ambiguous matters', async () => {
   const h = await partnerReportHarness();
   for (const [lp, cp] of [[{ firm_id: 'foreign' }, {}], [{ archived_at: '2026-10-01' }, {}], [{ claimant_name: 'TEST rehearsal' }, {}], [{ vendor_fields: { signing_rehearsal: true } }, {}], [{}, { campaign_id: 'foreign' }], [{}, { firm_id: 'foreign' }]]) {
-    assert.equal(partnerReportRows(h.config, [{ ...h.lead, ...lp }], [{ ...h.claim, ...cp }], h.signatures, []).length, 0);
+    assert.equal(partnerReportRows(h.config, [{ ...h.lead, ...lp }], [{ ...h.claim, ...cp }], h.signatures, h.refs).length, 0);
   }
-  assert.equal(partnerReportRows(h.config, [h.lead], [h.claim, { ...h.claim, id: 'sibling' }], h.signatures, []).length, 0);
+  assert.equal(partnerReportRows(h.config, [h.lead], [h.claim, { ...h.claim, id: 'sibling' }], h.signatures, h.refs).length, 0);
 });
 test('source-only access needs exact approved source identity; marketing label or shared phone never grants it', async () => {
   const h = await partnerReportHarness(); h.config.scope = 'approved_sources';
@@ -105,7 +105,7 @@ test('summary and list share source scope; delivery uses receipts or owner confi
   leads.push(h.lead); claims.push(h.claim); signatures.push(h.signature);
   const report = partnerReportData(h.config, leads, claims, signatures, refs);
   assert.equal(report.rows.length, 6);
-  assert.deepEqual(report.summary, { total: 6, signed: 4, unsigned: 1, verify: 1, called: 6, awaitingDelivery: 1, sentToFirm: 1, declined: 2, inProgress:2, lost:0, firmDeclined:1, signRate:4/6, averageSpeedMinutes:1500, speedSamples:6 });
+  assert.deepEqual(report.summary, { total: 6, signed: 4, unsigned: 1, verify: 1, called: 6, awaitingDelivery: 1, sentToFirm: 1, declined: 2, inProgress:2, lost:0, firmDeclined:1, signRate:4/6, averageSpeedMinutes:null, speedSamples:0 });
   for (const change of [{ archived_at: '2026-10-01' }, { firm_id: 'foreign' }, { claimant_name: 'TEST synthetic' }]) {
     const excluded = partnerReportData(h.config, leads.map(l => ({ ...l, ...change })), claims, signatures, refs);
     assert.equal(excluded.rows.length, 0); assert.ok(Object.values(excluded.summary).every(n => n === 0 || n === null));
@@ -114,15 +114,15 @@ test('summary and list share source scope; delivery uses receipts or owner confi
 
 test('imported owner-approved signature retains Yes with unknown original date; no invented historical receipt or calls', async () => {
   const h = await partnerReportHarness(); h.lead.lawruler_created_at = null; h.lead.first_dialed_at = null; h.signature.signedAt = null;
-  const [row] = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, []);
+  const [row] = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, h.refs);
   assert.equal(row.signed, 'Yes'); assert.equal(row.signedAt, null); assert.equal(row.receivedAt, null); assert.equal(row.called, false);
   h.lead.last_called_at = '2026-10-02T12:00:00Z';
-  assert.equal(partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, [])[0].called, true);
+  assert.equal(partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, h.refs)[0].called, true);
 });
 test('recorded firm decline stays visible alongside signature, and uncertain signatures are never reported as unsigned', async () => {
   const h = await partnerReportHarness(); h.signature.firmDecision = 'Firm declined'; h.signature.decisionKey = 'turned_down';
-  let row = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, [])[0];
+  let row = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, h.refs)[0];
   assert.equal(row.status, 'Signed and declined'); assert.equal(row.signed, 'Yes');
-  h.signature.state = 'verify'; row = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, [])[0];
+  h.signature.state = 'verify'; row = partnerReportRows(h.config, [h.lead], [h.claim], h.signatures, h.refs)[0];
   assert.equal(row.signed, 'Check signature'); assert.equal(row.signedAt, null);
 });

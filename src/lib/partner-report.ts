@@ -1,6 +1,7 @@
+import { businessResponseMinutes, responseTimestamp } from './partner-response-time';
 import { partnerCallHistory, type PartnerCall } from './partner-call-history';
 import { isActiveFile, isTestFile } from './file-visibility';
-import { sourceRefMatchesLead, speedToLeadMinutes, type PartnerSourceRef } from './partner-access';
+import { sourceRefMatchesLead, type PartnerSourceRef } from './partner-access';
 import { summarizePartnerRows } from './partner-report-view';
 import { resolveFileStatus } from './statuses';
 import type { SignatureReportRow } from './signature-report';
@@ -10,6 +11,7 @@ export type PartnerReportRow = {
   name: string; phone: string; receivedAt: string | null; called: boolean; firmDeclined: boolean;
   signed: 'Yes' | 'No' | 'Check signature'; signedAt: string | null; status: string;
   statusKey: string; deliveryGroup: 'awaiting' | 'sent' | 'declined' | null;
+  claimReachReceivedAt: string | null; firstResponseOutboundAt: string | null;
   speedMinutes: number | null; callDurationSeconds: number | null; state: string | null;
   lastActivityAt: string | null; notes: string | null;
   callHistory: PartnerCall[]; attemptCount: number; inboundCount: number; manualLogCount: number;
@@ -66,9 +68,14 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
       .filter((v): v is string => !!v).sort((a,b) => Date.parse(a)-Date.parse(b))[0] || null;
     const called = !!(first || calls.some(r => date(r.occurred_at)) || logs.some(r => date(r.created_at)) || sole && date(lead.last_called_at));
     const receivedAt = partnerReceivedDate(lead);
-    const hasReceiptTime = !!receivedAt && !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt);
-    const speedMinutes = hasReceiptTime ? speedToLeadMinutes(receivedAt, first) : null;
-    const responseTimeReason = !hasReceiptTime ? 'Original receipt time missing' : !first ? 'First outbound call time missing' : speedMinutes == null ? 'Call precedes receipt; needs review' : null;
+    // The owner-defined clock starts when ClaimReach created/imported this lead.
+    // Source receipt remains separate for historical grouping and date filters.
+    const claimReachReceivedAt = responseTimestamp(lead.created_at);
+    const outboundDates = calls.filter(c => c.direction === 'outbound' && c.provider && c.logged_manually !== true)
+      .map(c => responseTimestamp(c.occurred_at)).filter((v): v is string => !!v).sort((a,b) => Date.parse(a)-Date.parse(b));
+    const firstResponseOutboundAt = claimReachReceivedAt ? outboundDates.find(at => Date.parse(at) >= Date.parse(claimReachReceivedAt)) || null : null;
+    const speedMinutes = businessResponseMinutes(claimReachReceivedAt, firstResponseOutboundAt);
+    const responseTimeReason = !claimReachReceivedAt ? 'ClaimReach receipt time missing' : !outboundDates.length ? 'Recorded outbound call time missing' : !firstResponseOutboundAt ? 'No recorded outbound after ClaimReach receipt' : null;
     const notes = [...(evidence.notes || []).filter(r => scoped(r) && ['file','call'].includes(r.scope)).map(r => ({ at:r.created_at, body:r.body })),
       ...logs.map(r => ({ at:r.created_at, body:r.notes }))]
       .filter(r => date(r.at) && typeof r.body === 'string' && r.body.trim())
@@ -91,7 +98,7 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     return [{ name: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not recorded',
       phone: lead.phone || '', receivedAt,
       statusKey, deliveryGroup, state, lastActivityAt, notes: notes[0]?.body.trim() || null,
-      speedMinutes, responseTimeReason,
+      speedMinutes, responseTimeReason, claimReachReceivedAt, firstResponseOutboundAt,
       callHistory: contact.history, attemptCount: contact.attemptCount, inboundCount: contact.inboundCount, manualLogCount: contact.manualLogCount,
       firstOutboundAt: first, lastOutboundAt: contact.lastOutboundAt,
       callDurationSeconds: durations.length ? durations.reduce((sum,r) => sum + r.duration_sec, 0) : null,

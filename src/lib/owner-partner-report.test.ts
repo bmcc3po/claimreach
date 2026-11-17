@@ -36,7 +36,7 @@ test('owner preview requires a real active owner session before accessing the pr
 });
 
 test('owner preview shares the exact PR Digital source allowlist and exposes no extra staff data or cookies',async()=>{
-  const h=await harness();h.report.config.scope='approved_sources';
+  const h=await harness();h.report.config.scope='approved_sources';h.report.db.tables.partner_source_leads=[];
   let response=await h.route.GET();assert.equal(response.status,200);assert.equal((await response.json()).rows.length,0,'owner cannot widen approved source scope');
   h.report.db.tables.partner_source_leads=[{partner_key:'pr-digital',firm_id:h.report.config.firm_id,source_system:'lawruler',source_lead_id:'100'}];
   response=await h.route.GET();const data=await response.json();assert.equal(data.rows.length,1);
@@ -51,4 +51,9 @@ test('owner preview shares the exact PR Digital source allowlist and exposes no 
 test('disabled external reports and failed evidence queries fail closed in owner preview',async()=>{
   const h=await harness();h.setAvailable(false);let r=await h.route.GET();assert.equal(r.status,503);assert.equal((await r.json()).rows,undefined);
   h.setAvailable(true);h.setFail(true);r=await h.route.GET();assert.equal(r.status,503);assert.equal((await r.json()).rows,undefined);
+});
+
+test('owner preview fails closed if PR Digital is misconfigured as whole campaign',async()=>{
+  const h=await harness();h.report.config.scope='campaign';const r=await h.route.GET();
+  assert.equal(r.status,503);assert.equal((await r.json()).rows,undefined);assert.equal(h.report.db.ops.length,0);
 });

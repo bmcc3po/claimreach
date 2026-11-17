@@ -5,7 +5,7 @@ import {partnerReportData} from './partner-report';
 import {summarizePartnerRows,inReportRange,partnerCsv} from './partner-report-view';
 test('formal firm declines count across signature states, never infer a firm decision from BMC or unknown drops',async()=>{
  const h=await partnerReportHarness();
- const make=(patch:any)=>partnerReportData(h.config,[h.lead],[h.claim],[{...h.signature,...patch}],[]).rows[0];
+ const make=(patch:any)=>partnerReportData(h.config,[h.lead],[h.claim],[{...h.signature,...patch}],h.refs).rows[0];
  const signed=make({decisionKey:'turned_down',firmDecision:'Firm declined'});
  const unsigned=make({state:'unsigned',status:'Contacting',statusKey:'contacting',decisionKey:'turned_down',firmDecision:'Firm declined'});
  const bmc=make({declined:true,declineSource:'bmc',decisionKey:null});
@@ -21,6 +21,6 @@ test('formal firm declines count across signature states, never infer a firm dec
  assert.equal(summarizePartnerRows(filtered).firmDeclined,1);
  assert.equal(filtered.filter(r=>r.firmDeclined).length,1);
  assert.match(partnerCsv(filtered),/Recorded firm decline/);
- const foreign=partnerReportData(h.config,[{...h.lead,firm_id:'foreign'}],[h.claim],[{...h.signature,decisionKey:'turned_down'}],[]);
+ const foreign=partnerReportData(h.config,[{...h.lead,firm_id:'foreign'}],[h.claim],[{...h.signature,decisionKey:'turned_down'}],h.refs);
  assert.equal(foreign.summary.firmDeclined,0);assert.equal(foreign.rows.length,0);
 });
