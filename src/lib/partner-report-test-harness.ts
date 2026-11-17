@@ -17,15 +17,16 @@ function compile(file: string, modules: Record<string, any>) {
 }
 export async function partnerReportHarness() {
   const config: access.ReportAccess = { report_key: 'pr-digital', firm_id: REPORT_FIRM, campaign_id: REPORT_CAMP,
-    scope: 'campaign', active: true, password_salt: 'a'.repeat(32), password_hash: '', token_secret: 'b'.repeat(64) };
+    scope: 'approved_sources', active: true, password_salt: 'a'.repeat(32), password_hash: '', token_secret: 'b'.repeat(64) };
   config.password_hash = await access.reportPasswordHash(REPORT_TEST_PASSWORD, config.password_salt);
   const lead: any = { id: 'lead', firm_id: REPORT_FIRM, claimant_name: 'Fictional Client', phone: '2025550100',
     created_at: '2026-10-01T12:00:00Z', first_dialed_at: '2026-10-01T13:00:00Z', source_system: 'lawruler', lawruler_ref_no: '100', lawruler_created_at: '2026-09-30T12:00:00Z' };
   const claim: any = { id: 'claim', lead_id: 'lead', firm_id: REPORT_FIRM, campaign_id: REPORT_CAMP, claim_type: 'mva' };
   const signature = { claimId: claim.id, state: 'signed', signedAt: '2026-10-02T12:00:00Z', deliveredAt: '2026-10-02T13:00:00Z', status: 'Signed — sent to firm', archived: false, test: false } as SignatureReportRow;
-  const db = new FakeDb({ partner_report_access: [config], leads: [lead], claims: [claim], partner_source_leads: [],
+  const refs = [{ partner_key: 'pr-digital', firm_id: REPORT_FIRM, source_system: 'lawruler', source_lead_id: '100' }];
+  const db = new FakeDb({ partner_report_access: [config], leads: [lead], claims: [claim], partner_source_leads: refs,
     campaigns: [{ id: REPORT_CAMP, firm_id: REPORT_FIRM, name: 'INNO MVA', case_type: 'mva', firm_email: 'firm@example.test' }] });
-  const h = { config, lead, claim, signature, db, signatures: [signature], attempts: 0, rateError: false, loadError: false };
+  const h = { refs, config, lead, claim, signature, db, signatures: [signature], attempts: 0, rateError: false, loadError: false };
   (db as any).rpc = async (name: string, args: any) => {
     assert.equal(name, 'consume_partner_report_attempt'); assert.equal(args.p_report_key, 'pr-digital'); assert.match(args.p_client_hash, /^[a-f0-9]{64}$/);
     h.attempts++; return { data: h.attempts <= 12, error: h.rateError ? { message: 'fixture rate failure' } : null };

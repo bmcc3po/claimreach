@@ -14,20 +14,20 @@ test('attempts deduplicate provider identity, keep same-time distinct calls, and
 });
 
 test('inbound calls and manual-log creation cannot become a verified response time',async()=>{
-  const h=await partnerReportHarness();h.lead.first_dialed_at=null;
-  const c={id:'a',firm_id:REPORT_FIRM,lead_id:h.lead.id,channel:'call',direction:'inbound',occurred_at:'2026-09-30T12:01:00Z'};
-  const evidence={calls:[c],callLogs:[{firm_id:REPORT_FIRM,lead_id:h.lead.id,claim_id:h.claim.id,direction:'outbound',created_at:'2026-09-30T12:02:00Z'}]};
-  let r=partnerReportData(h.config,[h.lead],[h.claim],h.signatures,[],evidence).rows[0];
+  const h=await partnerReportHarness();h.lead.first_dialed_at=null; h.lead.created_at='2026-09-30T15:00:00Z';
+  const c={id:'a',firm_id:REPORT_FIRM,lead_id:h.lead.id,channel:'call',provider:'justcall',direction:'inbound',occurred_at:'2026-09-30T15:01:00Z'};
+  const evidence={calls:[c],callLogs:[{firm_id:REPORT_FIRM,lead_id:h.lead.id,claim_id:h.claim.id,direction:'outbound',created_at:'2026-09-30T15:02:00Z'}]};
+  let r=partnerReportData(h.config,[h.lead],[h.claim],h.signatures,h.refs,evidence).rows[0];
   assert.equal(r.speedMinutes,null);assert.equal(r.attemptCount,0);assert.equal(r.manualLogCount,1);assert.equal(r.called,true);
-  evidence.calls.push({...c,id:'b',direction:'outbound',occurred_at:'2026-09-30T12:03:00Z'});
-  r=partnerReportData(h.config,[h.lead],[h.claim],h.signatures,[],evidence).rows[0];assert.equal(r.speedMinutes,3);
-  h.lead.lawruler_created_at=null;
-  r=partnerReportData(h.config,[h.lead],[h.claim],h.signatures,[],evidence).rows[0];assert.equal(r.speedMinutes,null);assert.equal(r.responseTimeReason,'Original receipt time missing');
+  evidence.calls.push({...c,id:'b',direction:'outbound',occurred_at:'2026-09-30T15:03:00Z'});
+  r=partnerReportData(h.config,[h.lead],[h.claim],h.signatures,h.refs,evidence).rows[0];assert.equal(r.speedMinutes,3);
+  h.lead.created_at=null;
+  r=partnerReportData(h.config,[h.lead],[h.claim],h.signatures,h.refs,evidence).rows[0];assert.equal(r.speedMinutes,null);assert.equal(r.responseTimeReason,'ClaimReach receipt time missing');
 });
 
 test('foreign and sibling histories are withheld, including raw call payloads',async()=>{
-  const h=await partnerReportHarness();const c={id:'a',firm_id:REPORT_FIRM,lead_id:h.lead.id,channel:'call',direction:'outbound',occurred_at:'2026-10-01T12:00:00Z',recording_url:'SECRET',body:'SECRET',transcript:'SECRET',outcome:'SECRET'};
-  const project=(claims:any[])=>partnerReportData(h.config,[h.lead],claims,h.signatures,[],{calls:[c,{...c,id:'foreign',firm_id:'foreign'}]}).rows[0];
+  const h=await partnerReportHarness();const c={id:'a',firm_id:REPORT_FIRM,lead_id:h.lead.id,channel:'call',provider:'justcall',direction:'outbound',occurred_at:'2026-10-01T12:00:00Z',recording_url:'SECRET',body:'SECRET',transcript:'SECRET',outcome:'SECRET'};
+  const project=(claims:any[])=>partnerReportData(h.config,[h.lead],claims,h.signatures,h.refs,{calls:[c,{...c,id:'foreign',firm_id:'foreign'}]}).rows[0];
   assert.equal(project([h.claim]).attemptCount,1);assert.ok(!JSON.stringify(project([h.claim])).includes('SECRET'));
   const r=project([h.claim,{...h.claim,id:'sibling',campaign_id:'other'}]);assert.equal(r.attemptCount,0);assert.deepEqual(r.callHistory,[]);
 });

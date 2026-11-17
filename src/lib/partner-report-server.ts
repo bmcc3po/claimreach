@@ -9,6 +9,8 @@ export async function loadReportAccess(db: any): Promise<ReportAccess | null> {
   return validReportAccess(result.data) ? result.data : null;
 }
 export async function loadPartnerReport(db: any, access: ReportAccess) {
+  // PR Digital must never expand to a whole campaign through configuration.
+  if (access.report_key !== PARTNER_REPORT_KEY || access.scope !== 'approved_sources') throw new Error('Report source approvals required');
   // A configured campaign must belong to the configured firm and be INNO MVA.
   const campaign = await db.from('campaigns').select('id,firm_id,firm_email')
     .eq('id', access.campaign_id).eq('firm_id', access.firm_id).eq('name', 'INNO MVA').eq('case_type', 'mva').maybeSingle();
@@ -43,7 +45,7 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
   };
   const [signatures,calls,notes,activities,callLogs] = await Promise.all([
     loadSignatureReport(db,campaign.data),
-    evidenceRows('communications','id,firm_id,lead_id,channel,direction,occurred_at,duration_sec,provider,call_sid,external_ref,provider_call_result,outcome'),
+    evidenceRows('communications','id,firm_id,lead_id,channel,direction,occurred_at,duration_sec,provider,call_sid,external_ref,provider_call_result,outcome,logged_manually'),
     evidenceRows('notes','id,firm_id,lead_id,claim_id,scope,body,created_at'),
     evidenceRows('lead_activity','id,firm_id,lead_id,meta,created_at'),
     evidenceRows('call_logs','id,firm_id,lead_id,claim_id,notes,created_at,direction,outcome,duration_min'),

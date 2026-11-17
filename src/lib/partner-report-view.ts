@@ -1,3 +1,4 @@
+import { RESPONSE_TIME_BASIS, RESPONSE_TIME_POLICY } from './partner-response-time';
 import type { PartnerReportRow, PartnerReportSummary } from './partner-report';
 
 export function reportDay(value: string | null): string {
@@ -73,7 +74,7 @@ export function sortPartnerRows(rows: PartnerReportRow[], key: ReportSortKey, di
     if (av == null || av === '') return bv == null || bv === '' ? a.name.localeCompare(b.name) : 1;
     if (bv == null || bv === '') return -1;
     const cmp = typeof av === 'number' && typeof bv === 'number' ? av-bv : typeof av === 'boolean' && typeof bv === 'boolean' ? Number(av)-Number(bv) :
-      ['receivedAt','signedAt','lastActivityAt','firstOutboundAt','lastOutboundAt'].includes(key) ? Date.parse(String(av))-Date.parse(String(bv)) : String(av).localeCompare(String(bv));
+      ['receivedAt','signedAt','lastActivityAt','firstOutboundAt','lastOutboundAt','claimReachReceivedAt','firstResponseOutboundAt'].includes(key) ? Date.parse(String(av))-Date.parse(String(bv)) : String(av).localeCompare(String(bv));
     return (direction === 'asc' ? cmp : -cmp) || a.name.localeCompare(b.name);
   });
 }
@@ -90,12 +91,13 @@ export function reportDuration(seconds: number | null): string {
 export const REPORT_COLUMNS: { key:ReportSortKey; label:string }[] = [
   {key:'name',label:'Full name'},{key:'phone',label:'Phone #'},{key:'receivedAt',label:'Date received'},
   {key:'attemptCount',label:'Outbound attempts'},{key:'inboundCount',label:'Inbound calls'},{key:'manualLogCount',label:'Manual logs'},{key:'firstOutboundAt',label:'First outbound call'},{key:'lastOutboundAt',label:'Latest outbound call'},{key:'called',label:'Call evidence'},{key:'signed',label:'Signed'},{key:'signedAt',label:'Date signed'},
-  {key:'status',label:'Current status'},{key:'firmDeclined',label:'Recorded firm decline'},{key:'speedMinutes',label:'Response time'},{key:'responseTimeReason',label:'Response time coverage'},
+  {key:'claimReachReceivedAt',label:'Received in ClaimReach'},{key:'firstResponseOutboundAt',label:'First outbound after ClaimReach receipt'},
+  {key:'status',label:'Current status'},{key:'firmDeclined',label:'Recorded firm decline'},{key:'speedMinutes',label:'Business-hours response time'},{key:'responseTimeReason',label:'Response time coverage'},
   {key:'callDurationSeconds',label:'Call duration'},{key:'state',label:'State'},
   {key:'lastActivityAt',label:'Last activity'},{key:'notes',label:'Notes'},
 ];
 export function reportCell(row:PartnerReportRow,key:ReportSortKey) {
-  if (['receivedAt','signedAt','lastActivityAt','firstOutboundAt','lastOutboundAt'].includes(key)) return reportDate(row[key] as string|null);
+  if (['receivedAt','signedAt','lastActivityAt','firstOutboundAt','lastOutboundAt','claimReachReceivedAt','firstResponseOutboundAt'].includes(key)) return reportDate(row[key] as string|null);
   if (key === 'firmDeclined') return row.firmDeclined?'Yes':'Not recorded';
   if (key === 'called') return row.called?'Yes':'No';
   if (key === 'speedMinutes') return reportDuration(row.speedMinutes == null?null:row.speedMinutes*60);
@@ -104,5 +106,5 @@ export function reportCell(row:PartnerReportRow,key:ReportSortKey) {
 }
 export function partnerCsv(rows:PartnerReportRow[]) {
   const escape = (v:string) => '"'+(/^[\s]*[=+@-]/.test(v)?"'":'')+v.replace(/"/g,'""')+'"';
-  return '\uFEFF'+[REPORT_COLUMNS.map(c=>c.label),...rows.map(r=>REPORT_COLUMNS.map(c=>reportCell(r,c.key)))].map(r=>r.map(escape).join(',')).join('\r\n');
+  return '\uFEFF'+[REPORT_COLUMNS.map(c=>c.key === 'speedMinutes' ? `${c.label} (${RESPONSE_TIME_POLICY}; ${RESPONSE_TIME_BASIS})` : c.label),...rows.map(r=>REPORT_COLUMNS.map(c=>reportCell(r,c.key)))].map(r=>r.map(escape).join(',')).join('\r\n');
 }

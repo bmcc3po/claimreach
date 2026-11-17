@@ -13,7 +13,7 @@ const uuid = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-
 const hex = (v: unknown, length: number) => typeof v === 'string' && new RegExp(`^[0-9a-f]{${length}}$`).test(v);
 export function validReportAccess(v: any): v is ReportAccess {
   return v?.report_key === PARTNER_REPORT_KEY && v.active === true && uuid(v.firm_id) && uuid(v.campaign_id) &&
-    ['campaign', 'approved_sources'].includes(v.scope) && hex(v.password_salt, 32) && hex(v.password_hash, 64) && hex(v.token_secret, 64);
+    v.scope === 'approved_sources' && hex(v.password_salt, 32) && hex(v.password_hash, 64) && hex(v.token_secret, 64);
 }
 const encoder = new TextEncoder();
 const toHex = (buffer: ArrayBuffer) => Array.from(new Uint8Array(buffer), b => b.toString(16).padStart(2, '0')).join('');
