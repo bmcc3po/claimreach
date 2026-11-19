@@ -65,7 +65,9 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
       const status = def.key || sourceStatus;
       const audit = c.answers?.firm_outcome_audit ? publicFirmOutcomeAudit(c.answers,l.signed_at) : null;
       const review = audit ? `30-day review: ${audit.remainingDays == null ? 'verify signing date' : `${audit.remainingDays} days left`}${audit.daysToNotice == null ? '' : ` · notice ${audit.daysToNotice} days after signing`}` : '';
-      const clock = primaryClock({
+      // A closed file or firm outcome review must not restart an outbound chase.
+      const pauseChase = def.phase === 'terminal' || audit?.reportedDecline || audit?.firmPhase === 'Pending Drop';
+      const clock = pauseChase ? null : primaryClock({
         signed_at: l.signed_at, firm_sent_at: l.firm_sent_at,
         esign_sent_at: l.esign_sent_at, esign_status: null,
         current_status: status, statusLabel: def.label ?? status,
@@ -413,7 +415,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                         <Link className="cl-t1" href={fileHref(r)} onClick={(e) => e.stopPropagation()} style={{ color: "var(--ink)", textDecoration: "none" }}>{r.name || "No name yet"}</Link>
                         <span className="cl-mobile-file-meta cl-t2">{r.lead_no} · {r.caseLabel || "No campaign"}</span>
                         <span className="cl-t2">{prettyPhone(r.phone) || "No phone"}</span>
-                        <span className="cl-t2">Received: {receivedDate(r.created)}</span>
+                        <span className="cl-t2">ClaimReach received: {receivedDate(r.created)}</span>
                         {!isFirm && <strong className="cl-t2">{r.agent}</strong>}
                         {!isFirm && r.callCount !== undefined && <span className="cl-t2">Calls: {r.callCount == null ? "unverified" : r.callCount} · Last call: {r.lastCallAt ? new Date(r.lastCallAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "none verified"}</span>}
                       </div>
@@ -438,7 +440,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                     <td className="cl-hide-sm">
                       <div className="cl-cell">
                         <span style={{ fontSize: 13.5 }} suppressHydrationWarning>{ago(r.updated)}</span>
-                        <span className="cl-t2" suppressHydrationWarning>{r.created ? `Came in ${new Date(r.created).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric" })} Pacific` : ""}</span>
+                        <span className="cl-t2" suppressHydrationWarning>{r.created ? `ClaimReach receipt ${new Date(r.created).toLocaleDateString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric" })} Pacific` : ""}</span>
                       </div>
                     </td>
                     <td className="cl-c-act" onClick={(e) => e.stopPropagation()}>
@@ -521,7 +523,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                       </div>
                       <div style={{ fontWeight: 600, fontSize: 14, margin: "3px 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{r.name || "No name yet"}{r.clock && <ClockChip clock={r.clock} />}</div>
                       <div className="muted" style={{ fontSize: 12 }}>{[r.caseLabel, r.state].filter(Boolean).join(", ")}</div>
-                      <div className="muted" style={{ fontSize: 12 }}>Received: {receivedDate(r.created)}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>ClaimReach received: {receivedDate(r.created)}</div>
                       <div className="row" style={{ marginTop: 7, justifyContent: "space-between" }}>
                         <span className={`cl-status cl-tone-${r.tone}`} style={{ fontSize: 12 }}>{r.statusLabel}</span>
                         {r.review && <small>{r.review}</small>}
