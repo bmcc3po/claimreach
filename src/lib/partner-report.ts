@@ -33,6 +33,11 @@ const date = (v: unknown): string | null => typeof v === 'string' && Number.isFi
 /** Recover the original date from the exact source snapshot, never its sync timestamp. */
 export function partnerReceivedDate(lead: any): string | null {
   if (date(lead.lawruler_created_at)) return lead.lawruler_created_at;
+  const receipt = lead.vendor_fields?.partner_receipt_audit;
+  if (receipt?.source === 'approved_partner_roster' && receipt?.partner_key === 'pr-digital' &&
+    receipt?.source_lead_id === lead.lawruler_ref_no && receipt?.firm_id === lead.firm_id &&
+    typeof receipt?.received_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(receipt.received_date) &&
+    date(receipt.received_date) && new Date(receipt.received_date).toISOString().slice(0,10) === receipt.received_date) return receipt.received_date;
   if (lead.source_system !== 'lawruler') return date(lead.created_at);
   const source = lead.vendor_fields?.sources?.lawruler;
   if (source?.LeadID !== lead.lawruler_ref_no || String(source?.CaseType || '').trim().toLowerCase() !== 'inno mva') return null;

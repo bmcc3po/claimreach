@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { historicalSignatureDate } from './historical-signature';
 import { publicFirmOutcomeAudit } from './partner-firm-outcome-audit';
-import { partnerReportData,partnerAllowedLeads } from './partner-report';
+import { partnerReportData,partnerAllowedLeads,partnerReceivedDate } from './partner-report';
 import { partnerReportHarness } from './partner-report-test-harness';
 import { resolveFileStatus } from './statuses';
 
@@ -14,6 +14,13 @@ test('certificate date needs exact same-matter original hash and owner event',()
  assert.equal(historicalSignatureDate(c,[{...doc,meta:{claim_id:'sibling',sha256:'sha'}}],[owner]),null);
  assert.equal(historicalSignatureDate(c,[{...doc,meta:{claim_id:'c',sha256:'other'}}],[owner]),null);
  assert.equal(historicalSignatureDate(c,[doc],[]),null);
+});
+test('approved roster date remains date-only and cannot cross source identity or firm',()=>{
+ const receipt={source:'approved_partner_roster',partner_key:'pr-digital',source_lead_id:'123',firm_id:'f',received_date:'2026-09-24'};
+ const l={firm_id:'f',lawruler_ref_no:'123',source_system:'lawruler',vendor_fields:{partner_receipt_audit:receipt}};
+ assert.equal(partnerReceivedDate(l),'2026-09-24');
+ assert.equal(partnerReceivedDate({...l,firm_id:'other'}),null);
+ assert.equal(partnerReceivedDate({...l,lawruler_ref_no:'other'}),null);
 });
 test('calendar countdown, notice and archive intervals stay separate at day 30 and after',()=>{
  const a={firm_outcome_audit:{phase:'Archived',phase_date:'2026-11-09',notice_date:'2026-10-27'}};

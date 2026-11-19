@@ -91,4 +91,3 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
 
   return <LeadsView leads={signedOnly} title="Signed files" basePath="/leads" addPath={areaHref("/intake", area)} area={area} agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} />;
 }
-
