@@ -89,6 +89,7 @@ export function resolveFileStatus(claim: { status?: string | null; firm_send_res
   const audit = publicFirmOutcomeAudit(claim?.answers, null);
   if (audit.firmPhase === 'Archived') return { ...def, label: 'Firm archived · cancellation date under review', tone: 'warn', phase: 'terminal' };
   if (audit.firmPhase === 'Pending Drop') return { ...def, label: 'Firm pending drop · decision unconfirmed', tone: 'warn' };
+  if (audit.reportedDecline) return { ...def, label: 'Signed · reported decline; verify firm decision', tone:'warn' };
   if (signed && def.qualify === 'disqualify') return { ...def, label: 'Signed and declined', tone: 'bad' };
   if (!signed && claim?.qualification === 'dq' && def.qualify !== 'disqualify') return resolveStatus('external_dq_review',live);
   return def.key === "delivered" && (signed || ownerConfirmedDelivery(claim?.firm_send_result))

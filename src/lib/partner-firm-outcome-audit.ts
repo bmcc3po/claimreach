@@ -15,6 +15,7 @@ export type PartnerFirmAudit = {
   concern: string | null;
   concernAt: string | null;
   concernResolvedAt: string | null;
+  reportedDecline: boolean;
 };
 const phases = new Set(['Archived','Pending Drop','Treating','Collecting Medical Records']);
 function isoDay(value: unknown): string | null {
@@ -51,12 +52,13 @@ export function publicFirmOutcomeAudit(answers: unknown, signedAt: string | null
   const concern = typeof value?.concern_key === 'string' ? concerns[value.concern_key] || null : null;
   const concernAt = concern ? isoDay(value?.concern_date) : null;
   const concernResolvedAt = concern ? isoDay(value?.concern_resolved_date) : null;
+  const reportedDecline = value?.reported_decline === true;
   const gap = eventDay && signedDay ? Math.round(
     (Date.parse(eventDay + 'T00:00:00Z') - Date.parse(signedDay + 'T00:00:00Z')) / 86400000
   ) : null;
   const daysFromSignToFirmEvent = gap != null && gap >= 0 ? gap : null;
   const firmEventBasis = eventDay ? (cancellationNoticeAt ? 'Notice date' as const : 'Archive phase date (unverified)' as const) : null;
-  const thirtyDayReview = !firmPhase ? 'Not in latest firm report'
+  const thirtyDayReview = !firmPhase ? (reportedDecline ? 'Reported post-sign decline; firm decision unverified' : 'Not in latest firm report')
     : firmPhase === 'Pending Drop' ? 'Pending drop; cancellation date unverified'
     : firmPhase !== 'Archived' ? 'No cancellation reported in firm snapshot'
     : daysFromSignToFirmEvent == null ? 'Signing or event date needs verification'
@@ -65,5 +67,5 @@ export function publicFirmOutcomeAudit(answers: unknown, signedAt: string | null
     : 'Notice after 30 days; verify effective date';
   return { firmPhase, firmPhaseAt, cancellationNoticeAt, daysFromSignToFirmEvent, firmEventBasis, thirtyDayReview, firmReportAsOf,
     windowEndsAt, remainingDays, daysToNotice:elapsed(cancellationNoticeAt), daysToArchive:firmPhase==='Archived'?elapsed(firmPhaseAt):null,
-    concern,concernAt,concernResolvedAt };
+    concern,concernAt,concernResolvedAt,reportedDecline };
 }

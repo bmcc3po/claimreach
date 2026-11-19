@@ -36,6 +36,7 @@ test('firm archive, pending drop and pre-sign qualification conflict have consis
  assert.match(resolveFileStatus({status:'delivered',answers:{firm_outcome_audit:{phase:'Pending Drop'}}}).label,/pending drop/);
  assert.equal(resolveFileStatus({status:'contacting',qualification:'dq'}).key,'external_dq_review');
  assert.equal(resolveFileStatus({status:'dq'},undefined,true).label,'Signed and declined');
+ assert.match(resolveFileStatus({status:'delivered',answers:{firm_outcome_audit:{reported_decline:true}}}).label,/reported decline/);
 });
 test('linked signed claimants do not inflate incoming leads; foreign or unapproved parents grant nothing',async()=>{
  const h=await partnerReportHarness(); h.lead.id='11111111-1111-4111-8111-111111111111';h.claim.lead_id=h.lead.id;
