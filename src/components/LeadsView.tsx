@@ -261,7 +261,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   }, [groupBy]);
 
   function laneOf(r: any) {
-    if (groupBy === "status") return phaseOf(r.status);
+    if (groupBy === "status") return r.phase;
     if (groupBy === "stage") return r.stage;
     return r.tier_letter ?? "untiered";
   }
