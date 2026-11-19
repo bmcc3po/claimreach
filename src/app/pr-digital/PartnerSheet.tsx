@@ -76,7 +76,7 @@ export default function PartnerSheet({ ownerPreview = false }: { ownerPreview?:b
   const summary = summarizePartnerRows(summaryRows);
   const rows = sortPartnerRows((invalidRange ? [] : allRows).filter(row =>
     inDateFilter(row,basis) &&
-    (!search.trim() || `${row.name} ${row.phone} ${row.status} ${row.state || ''} ${row.notes || ''}`.toLowerCase().includes(search.trim().toLowerCase())) &&
+    (!search.trim() || `${row.name} ${row.phone} ${row.status} ${row.state || ''} ${row.notes || ''} ${row.firmAudit?.firmPhase || ''} ${row.firmAudit?.thirtyDayReview || ''}`.toLowerCase().includes(search.trim().toLowerCase())) &&
     (!statusesSelected.length || statusesSelected.includes(row.status)) && (!state || (row.state || 'Not recorded') === state) &&
     (!uncalled || !row.called) &&
     (!bucket || bucket === 'progress' && row.signed !== 'Yes' && ['new','contacting','esign_sent'].includes(row.statusKey) ||
@@ -134,6 +134,12 @@ export default function PartnerSheet({ ownerPreview = false }: { ownerPreview?:b
             <div className="pr-metric"><span>Sign rate</span><strong>{percent(summary.signRate)}</strong><small>Signed / Total leads</small></div>
             <div className="pr-metric"><span title={RESPONSE_TIME_POLICY}>Average business-hours response</span><strong className="pr-speed-value">{summary.averageSpeedMinutes == null ? '—' : reportDuration(summary.averageSpeedMinutes*60)}</strong><small>{summary.speedSamples} of {summary.total} leads with ClaimReach receipt + a later recorded outbound</small></div>
           </div>
+          <div className="pr-metrics">
+            <div className="pr-metric"><span>Firm reported archived</span><strong>{summaryRows.filter(r=>r.firmAudit?.firmPhase==='Archived').length}</strong><small>Firm workflow status; cancellation date reviewed separately</small></div>
+            <div className="pr-metric"><span>Firm pending drop</span><strong>{summaryRows.filter(r=>r.firmAudit?.firmPhase==='Pending Drop').length}</strong><small>Not a confirmed cancellation</small></div>
+            <div className="pr-metric"><span>30-day review pending</span><strong>{summaryRows.filter(r=>r.firmAudit?.firmPhase==='Archived' && !r.firmAudit?.cancellationNoticeAt).length}</strong><small>Archive date is not the cancellation notice date</small></div>
+          </div>
+          <p className="pr-data-note">Firm outcome records are from Hayden’s November 12, 2026 referral export, not a continuous firm-system feed. Historical archived phases are not automatically treated as effective cancellations. The 30-day calculation uses verified signing and available dated notices; missing dates remain unresolved. This shared report contains no private billing reconciliation.</p>
           <p className="pr-data-note">Recorded firm declines count only formal decisions recorded in ClaimReach for your authorized leads in this receipt-date range. Historical outcomes reported outside ClaimReach are not included. Missing decisions are not treated as approvals; internal drops are not firm declines.</p>
           <section className="pr-contact-strip" aria-label="Contact performance"><div><span>Outbound attempts</span><strong>{summaryRows.reduce((n,r)=>n+r.attemptCount,0).toLocaleString()}</strong><small>Linked provider calls</small></div><div><span>Leads with outbound attempts</span><strong>{summaryRows.filter(r=>r.attemptCount>0).length} / {summary.total}</strong><small>Within the selected received-date range</small></div><div><span>Inbound calls</span><strong>{summaryRows.reduce((n,r)=>n+r.inboundCount,0).toLocaleString()}</strong><small>Shown separately from outreach</small></div></section>
           <p className="pr-data-note">{RESPONSE_TIME_BASIS}. {RESPONSE_TIME_POLICY}. After-hours receipts start at the next opening; calls made before then count as 0 business minutes. Historical calls before ClaimReach import are excluded from this metric. Date filters still use original source receipt.</p>
