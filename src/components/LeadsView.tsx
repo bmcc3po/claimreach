@@ -14,6 +14,7 @@ import { areaHref, type WorkArea } from '@/lib/work-area';
 import { fileAgentSummary } from '@/lib/file-agents';
 
 import { receivedDate } from "@/lib/received-date";
+import { publicFirmOutcomeAudit } from '@/lib/partner-firm-outcome-audit';
 
 type Row = any;
 type Phase = "all" | "action" | "pre_qa" | "in_qa" | "post_qa" | "terminal";
@@ -59,8 +60,11 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const base = useMemo(() => {
     let r = leads.map((l) => {
       const c = (l.claims ?? [])[0] ?? {};
-      const status = c.status ?? "new";
+      const sourceStatus = c.status ?? "new";
       const def = resolveFileStatus(c, statusList, l.claims?.length === 1 && !!l.signed_at);
+      const status = def.key || sourceStatus;
+      const audit = c.answers?.firm_outcome_audit ? publicFirmOutcomeAudit(c.answers,l.signed_at) : null;
+      const review = audit ? `30-day review: ${audit.remainingDays == null ? 'verify signing date' : `${audit.remainingDays} days left`}${audit.daysToNotice == null ? '' : ` · notice ${audit.daysToNotice} days after signing`}` : '';
       const clock = primaryClock({
         signed_at: l.signed_at, firm_sent_at: l.firm_sent_at,
         esign_sent_at: l.esign_sent_at, esign_status: null,
@@ -77,7 +81,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
         stage: l.stage ?? "referral_received",
         tier: c.tier ?? "", tier_letter: c.tier_letter, tier_number: c.tier_number,
         summary: c.case_summary ?? "", created: l.created_at, updated: l.updated_at,
-        flag: l.supervisor_flag, clock,
+        flag: l.supervisor_flag, clock, review,
         agent: fileAgentSummary(l, agents),
         needsAction: status === "new" || status === "contact_attempted" || l.supervisor_flag,
       };
@@ -423,6 +427,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                     <td className="cl-c-status">
                       <div className="cl-cell">
                         <span className="cl-status"><span className={`cl-dot cl-${r.tone}`} />{r.statusLabel}{r.tier_letter && tierLabel(r.tier_letter, r.tier_number, r.type) !== "\u2014" ? <span className="cl-mono" title="Tier" style={{ marginLeft: 4 }}>{tierLabel(r.tier_letter, r.tier_number, r.type)}</span> : null}</span>
+                        {r.review && <span className="cl-t2">{r.review}</span>}
                         {r.clock
                           ? <span className={`cl-t2 ${clockTone(r.clock.tone)}`} title={r.clock.kind === "esign_chase" ? "Agreement sent. Get her back on the line within 72 hours." : "Signed. Deliver to the firm within 72 hours."}>{r.clock.kind === "esign_chase" ? "Agreement out, " : "To the firm, "}{String(r.clock.countdownText).replace(/^OVERDUE/i, "overdue")}</span>
                           : r.flag ? <span className="cl-flag"><Icon name="flag" size={13} />Flagged</span> : null}
@@ -519,6 +524,7 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
                       <div className="muted" style={{ fontSize: 12 }}>Received: {receivedDate(r.created)}</div>
                       <div className="row" style={{ marginTop: 7, justifyContent: "space-between" }}>
                         <span className={`cl-status cl-tone-${r.tone}`} style={{ fontSize: 12 }}>{r.statusLabel}</span>
+                        {r.review && <small>{r.review}</small>}
                         <span className="muted" style={{ fontSize: 11 }}>{Math.floor((Date.now() - new Date(r.updated).getTime()) / 86400000)}d</span>
                       </div>
                       </Link>

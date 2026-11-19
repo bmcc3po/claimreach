@@ -3,14 +3,18 @@ import { partnerCallHistory, type PartnerCall } from './partner-call-history';
 import { isActiveFile, isTestFile } from './file-visibility';
 import { sourceRefMatchesLead, type PartnerSourceRef } from './partner-access';
 import { summarizePartnerRows } from './partner-report-view';
-import { resolveFileStatus } from './statuses';
+import { resolveFileStatus, DEFAULT_DQ_REASONS } from './statuses';
 import { publicFirmOutcomeAudit, type PartnerFirmAudit } from './partner-firm-outcome-audit';
 import type { SignatureReportRow } from './signature-report';
 import type { ReportAccess } from './partner-report-access';
+import { paxParentId } from './linked-files';
 
 export type PartnerReportRow = {
   // Firm phase and cancellation evidence, independently sourced from the source-system status.
   firmAudit?: PartnerFirmAudit;
+  recordType?: 'original_lead' | 'additional_claimant';
+  signatureProof?: string;
+  dqReason?: string | null;
   name: string; phone: string; receivedAt: string | null; called: boolean; firmDeclined: boolean;
   signed: 'Yes' | 'No' | 'Check signature'; signedAt: string | null; status: string;
   statusKey: string; deliveryGroup: 'awaiting' | 'sent' | 'declined' | null;
@@ -24,11 +28,17 @@ export type PartnerReportSummary = {
   total: number; signed: number; unsigned: number; verify: number; called: number;
   awaitingDelivery: number; sentToFirm: number; declined: number;
   inProgress: number; lost: number; firmDeclined: number; signRate: number; averageSpeedMinutes: number | null; speedSamples: number;
+  signedClaims?: number; additionalClaimants?: number;
 };
 const date = (v: unknown): string | null => typeof v === 'string' && Number.isFinite(Date.parse(v)) ? v : null;
 /** Recover the original date from the exact source snapshot, never its sync timestamp. */
 export function partnerReceivedDate(lead: any): string | null {
   if (date(lead.lawruler_created_at)) return lead.lawruler_created_at;
+  const receipt = lead.vendor_fields?.partner_receipt_audit;
+  if (receipt?.source === 'approved_partner_roster' && receipt?.partner_key === 'pr-digital' &&
+    receipt?.source_lead_id === lead.lawruler_ref_no && receipt?.firm_id === lead.firm_id &&
+    typeof receipt?.received_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(receipt.received_date) &&
+    date(receipt.received_date) && new Date(receipt.received_date).toISOString().slice(0,10) === receipt.received_date) return receipt.received_date;
   if (lead.source_system !== 'lawruler') return date(lead.created_at);
   const source = lead.vendor_fields?.sources?.lawruler;
   if (source?.LeadID !== lead.lawruler_ref_no || String(source?.CaseType || '').trim().toLowerCase() !== 'inno mva') return null;
@@ -39,8 +49,11 @@ export function partnerReceivedDate(lead: any): string | null {
   return iso;
 }
 export function partnerAllowedLeads(access: Pick<ReportAccess, 'firm_id' | 'scope'>, leads:any[], refs:PartnerSourceRef[]) {
-  return leads.filter(l => l.firm_id === access.firm_id && isActiveFile(l) && !isTestFile(l) &&
+  const originals = leads.filter(l => l.firm_id === access.firm_id && isActiveFile(l) && !isTestFile(l) &&
     (access.scope === 'campaign' || refs.some(r => r.partner_key === 'pr-digital' && sourceRefMatchesLead(r,l))));
+  const ids = new Set(originals.map(l=>l.id));
+  return leads.filter(l => ids.has(l.id) || l.firm_id === access.firm_id && isActiveFile(l) && !isTestFile(l) &&
+    !!paxParentId(l.external_id) && ids.has(paxParentId(l.external_id)));
 }
 /** The only public projection. Never spread a lead, signature row, or document. */
 export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campaign_id' | 'scope'>,
@@ -48,11 +61,13 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
   evidence: { calls?: any[]; notes?: any[]; activities?: any[]; callLogs?: any[] } = {}) {
   const allowed = partnerAllowedLeads(access,leads,refs);
   const rows: PartnerReportRow[] = allowed.flatMap(lead => {
+    const original = access.scope === 'campaign' || refs.some(r=>r.partner_key === 'pr-digital' && sourceRefMatchesLead(r,lead));
     const matters = claims.filter(c => c.lead_id === lead.id && c.firm_id === access.firm_id &&
       c.campaign_id === access.campaign_id && c.claim_type === 'mva');
     if (matters.length !== 1) return []; // Never choose an ambiguous matter.
     const sig = signatures.find(s => s.claimId === matters[0].id);
     if (!sig || sig.archived || sig.test) return [];
+    if (!original && sig.state !== 'signed') return [];
     const firmDeclined = sig.decisionKey === 'turned_down';
     const declined = sig.declined || firmDeclined;
     // Keep unsigned workflow labels separate from the recorded firm decision.
@@ -70,7 +85,8 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     const first = [sole ? date(lead.first_dialed_at) : null, ...callDates]
       .filter((v): v is string => !!v).sort((a,b) => Date.parse(a)-Date.parse(b))[0] || null;
     const called = !!(first || calls.some(r => date(r.occurred_at)) || logs.some(r => date(r.created_at)) || sole && date(lead.last_called_at));
-    const receivedAt = partnerReceivedDate(lead);
+    const parent = !original ? allowed.find(l=>l.id===paxParentId(lead.external_id) && l.firm_id===lead.firm_id) : null;
+    const receivedAt = partnerReceivedDate(parent || lead);
     // The owner-defined clock starts when ClaimReach created/imported this lead.
     // Source receipt remains separate for historical grouping and date filters.
     const claimReachReceivedAt = responseTimestamp(lead.created_at);
@@ -98,13 +114,17 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     // A firm archive is not proof of a formal, effective cancellation date.
     const auditedStatus = declined ? displayStatus : firmAudit.firmPhase === 'Archived' ? 'Firm archived · cancellation date under review' :
       firmAudit.firmPhase === 'Pending Drop' ? 'Firm pending drop' : displayStatus;
+    const safeNotes = notes.filter(n=>!/(?:claimpoint|\binvoice|\bbilling|\bmargin|\bAR\b|\b7[ -]*day|seven[ -]*day|2[,.]?000)/i.test(n.body));
     const rawState = String(lead.mail_state || '').trim();
     const state = /^[a-z]{2}$/i.test(rawState) ? rawState.toUpperCase() : rawState || null;
     const deliveryGroup = sig.state !== 'signed' ? null : declined ? 'declined' as const :
       date(sig.deliveredAt) || sig.ownerSent === true ? 'sent' as const : 'awaiting' as const;
-    return [{ name: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not recorded',
+    const dqReason = sig.state !== 'signed' && (sig.disqualified || ['not_interested','dead'].includes(statusKey)) ?
+      DEFAULT_DQ_REASONS.find(r=>r.key===claim.dq_reason_key)?.label || (claim.dq_reason_key==='declined'?'Declined, not interested':'Reason not documented') : null;
+    return [{ recordType:original?'original_lead' as const:'additional_claimant' as const, signatureProof:sig.detail || 'Signature evidence report', dqReason,
+      name: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not recorded',
       phone: lead.phone || '', receivedAt, firmAudit,
-      statusKey, deliveryGroup, state, lastActivityAt, notes: notes[0]?.body.trim() || null,
+      statusKey, deliveryGroup, state, lastActivityAt, notes: safeNotes[0]?.body.trim() || null,
       speedMinutes, responseTimeReason, claimReachReceivedAt, firstResponseOutboundAt,
       callHistory: contact.history, attemptCount: contact.attemptCount, inboundCount: contact.inboundCount, manualLogCount: contact.manualLogCount,
       firstOutboundAt: first, lastOutboundAt: contact.lastOutboundAt,

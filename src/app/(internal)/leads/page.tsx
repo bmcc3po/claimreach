@@ -1,5 +1,5 @@
 export const runtime = "edge";
-import { isSignedClient, signedSubmissionIdsForLeads } from "@/lib/signed-list";
+import { isSignedClient, signedSubmissionIdsForLeads, attachSignatureEvidence } from "@/lib/signed-list";
 import { supabaseServer } from "@/lib/supabase-server";
 import { authUser } from "@/lib/auth-user";
 import { redirect } from "next/navigation";
@@ -69,12 +69,13 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const claimsByLead: Record<string, any[]> = {};
   if (ids.length) {
     let claimQuery = sb.from("claims")
-      .select("id, lead_id, campaign, claim_type, status, case_summary, stage, firm_send_result").in("lead_id", ids);
+      .select("id, lead_id, campaign, claim_type, status, case_summary, stage, firm_send_result, answers, qualification").in("lead_id", ids);
     if (me.role !== "owner") claimQuery = claimQuery.eq("firm_id", me.firm_id).eq("campaign_id", pilotCampaignId).eq("claim_type", "mva");
     const { data: claims } = await scopeWorkArea(claimQuery, area, 'claim_type');
     for (const c of claims ?? []) (claimsByLead[c.lead_id] ||= []).push(c);
   }
   const withClaims = (leads ?? []).map((l) => ({ ...l, claims: claimsByLead[l.id] ?? [] }));
+  await attachSignatureEvidence(sb, withClaims);
   const signedSubmissionIds = await signedSubmissionIdsForLeads(sb, ids);
 
   // Who am I + the option lists for bulk actions.
@@ -99,4 +100,3 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
 
   return <LeadsView leads={openOnly} basePath="/leads" addPath={areaHref("/intake", area)} area={area} agents={agents ?? []} firms={firms ?? []} canBulk={canBulk} ownerWorklist={me.role === "owner"} statuses={statuses} dqReasons={dqReasons ?? []} />;
 }
-

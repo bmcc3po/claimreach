@@ -19,8 +19,10 @@ export function isSignedDeclined(claim: any): boolean {
 /** Form saves may neither invent nor erase owner workflow evidence. */
 export function preserveDeclineEvidence(next: any, current: any) {
   const answers = { ...(next && typeof next === 'object' && !Array.isArray(next) ? next : {}) };
-  delete answers.signed_decline;
-  if (current?.signed_decline) answers.signed_decline = current.signed_decline;
+  for (const key of ['signed_decline','firm_outcome_audit','signature_date_audit']) {
+    delete answers[key];
+    if (current?.[key]) answers[key] = current[key];
+  }
   return answers;
 }
 export const DROP_EMAIL_STATES = ['sending', 'sent', 'failed', 'uncertain'] as const;

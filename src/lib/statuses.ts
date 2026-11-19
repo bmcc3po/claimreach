@@ -6,6 +6,7 @@
 // ============================================================================
 
 import { ownerConfirmedDelivery } from "./owner-file-confirmation";
+import { publicFirmOutcomeAudit } from './partner-firm-outcome-audit';
 export const SIGNED_SENT_TO_FIRM = "Signed — sent to firm";
 export type StatusTone = "good" | "bad" | "warn" | "info" | "neut";
 export type StatusPhase = "pre_qa" | "in_qa" | "post_qa" | "terminal";
@@ -83,8 +84,14 @@ export function statusLabel(key?: string, live?: StatusDef[]): string {
 /** One visible result for a signed, delivered matter. Keep the existing status
  * key and routing; an unsigned firm handoff must never acquire a signature label.
  * signed must describe this matter, not another claim belonging to the person. */
-export function resolveFileStatus(claim: { status?: string | null; firm_send_result?: string | null } | null | undefined, live?: StatusDef[], signed = false): StatusDef {
+export function resolveFileStatus(claim: { status?: string | null; firm_send_result?: string | null; answers?: unknown; qualification?: string | null } | null | undefined, live?: StatusDef[], signed = false): StatusDef {
   const def = resolveStatus(claim?.status || "new", live);
+  const audit = publicFirmOutcomeAudit(claim?.answers, null);
+  if (audit.firmPhase === 'Archived') return { ...def, label: 'Firm archived · cancellation date under review', tone: 'warn', phase: 'terminal' };
+  if (audit.firmPhase === 'Pending Drop') return { ...def, label: 'Firm pending drop · decision unconfirmed', tone: 'warn' };
+  if (audit.reportedDecline) return { ...def, label: 'Signed · reported decline; verify firm decision', tone:'warn' };
+  if (signed && def.qualify === 'disqualify') return { ...def, label: 'Signed and declined', tone: 'bad' };
+  if (!signed && claim?.qualification === 'dq' && def.qualify !== 'disqualify') return resolveStatus('external_dq_review',live);
   return def.key === "delivered" && (signed || ownerConfirmedDelivery(claim?.firm_send_result))
     ? { ...def, label: SIGNED_SENT_TO_FIRM, tone: "good" }
     : def;

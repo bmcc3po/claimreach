@@ -9,6 +9,7 @@ import { resolveFileStatus, isDisqualify } from "@/lib/statuses";
 import { isTestFile } from "@/lib/file-visibility";
 import { fileAgentSummary } from './file-agents';
 import { reviewState, REVIEW_EVENT, FIRM_DECISION_LABELS } from './firm-review-access';
+import { historicalSignatureDate } from './historical-signature';
 
 export type SignatureState = "signed" | "unsigned" | "verify";
 export type SignatureReportRow = {
@@ -60,7 +61,8 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
     const netflyOriginal = !current && !superseded && netflyReview?.status !== 'correction_needed' &&
       !!netflyDocuments[0] && netflyDocuments[0].id === netflyReview?.retainer_reviewed_document_id;
     const state: SignatureState = signed && !held || ownerSigned || netflyOriginal ? "signed" : uncertain ? "verify" : "unsigned";
-    const signedAt = state === "signed" && validDate(current?.signed_at) ? current.signed_at : null;
+    const signedAt = state === "signed" && validDate(current?.signed_at) ? current.signed_at :
+      ownerSigned ? historicalSignatureDate(c, input.originals, input.confirmations) : null;
     const deliveredAt = confirmedFirmDeliveryAt(input.deliveries.filter(own), input.firmEmail, input.ownerEmail);
     const window = returnWindow(deliveredAt);
     const packet = netflyOriginal ? "NETFLY original reviewed" : ownerSigned ? "Imported — owner approved" : state !== "signed" ? "—" : current.status === "completed" && current.agent_reviewed_at && current.completed_pdf_path && current.cert_pdf_path
@@ -72,10 +74,10 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
     return {
       claimId: c.id, leadNo: l.lead_no || "File", name: l.claimant_name || "Name missing",
       leadId: l.id, firmId: c.firm_id, campaignId: c.campaign_id,
-      statusKey: c.status, disqualified: isDisqualify(c.status), decisionKey: decision.decision, decisionAt: decision.decisionAt,
+      statusKey: state !== 'signed' && c.qualification === 'dq' ? 'external_dq_review' : c.status, disqualified: isDisqualify(c.status) || c.qualification === 'dq', decisionKey: decision.decision, decisionAt: decision.decisionAt,
       href: "/leads/" + encodeURIComponent(l.id) + "?claim=" + encodeURIComponent(c.id),
       state, signedAt, deliveredAt, returnEndsAt: window?.endsAt || null, packet,
-      detail: netflyOriginal ? "NETFLY signed original reviewed; signing date needs confirmation" : ownerSigned ? "Signed — confirmed by owner; original date not supplied" : state === "signed" ? "Client signature confirmed" : held ? "Agreement correction or replacement needs review" :
+      detail: netflyOriginal ? "NETFLY signed original reviewed; signing date needs confirmation" : ownerSigned ? (signedAt ? "Historical signature confirmed by owner; date verified from original signature certificate" : "Signed — confirmed by owner; original date not supplied") : state === "signed" ? "Client signature confirmed" : held ? "Agreement correction or replacement needs review" :
         imported || c.status === "external_signed_review" ? "Imported agreement — verify the original and signing date" :
         uncertain ? "Signature history needs review" : "No current verified signature",
       status: resolveFileStatus(c, undefined, state === "signed").label,
@@ -83,7 +85,7 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
       agentId, agentName,
       firmDecision: decision.decision ? FIRM_DECISION_LABELS[decision.decision as keyof typeof FIRM_DECISION_LABELS] : 'Awaiting firm decision',
       firmReason: decision.explanation,
-      declined: isSignedDeclined(c), declineReason: signedDecline(c)?.reason || c.dq_reason || "",
+      declined: isSignedDeclined(c) || state === 'signed' && isDisqualify(c.status), declineReason: signedDecline(c)?.reason || c.dq_reason || "",
       declinedAt: signedDecline(c)?.at || null, badSignAgent: signedDecline(c)?.agentName || "",
       declineOutcome: signedDecline(c) ? declineOutcome(signedDecline(c)!) : '',
       declineSource: signedDecline(c) ? signedDecline(c)!.source || 'bmc' : null,

@@ -35,21 +35,24 @@ export function receiptAgeCohorts(rows: PartnerReportRow[], now: string) {
   };
 }
 export function summarizePartnerRows(rows: PartnerReportRow[]): PartnerReportSummary {
-  const summary: PartnerReportSummary = { total:rows.length,signed:0,unsigned:0,verify:0,called:0,awaitingDelivery:0,sentToFirm:0,declined:0,
+  const summary: PartnerReportSummary = { total:rows.filter(r=>r.recordType!=='additional_claimant').length,signed:0,signedClaims:0,additionalClaimants:0,unsigned:0,verify:0,called:0,awaitingDelivery:0,sentToFirm:0,declined:0,
     inProgress:0,lost:0,firmDeclined:0,signRate:0,averageSpeedMinutes:null,speedSamples:0 };
   let speed = 0;
   for (const r of rows) {
+    const additional = r.recordType === 'additional_claimant';
+    if (additional) summary.additionalClaimants!++;
     if (r.called) summary.called++;
     if (r.firmDeclined) summary.firmDeclined++;
     if (r.signed === 'Yes') {
-      summary.signed++;
+      summary.signedClaims!++;
+      if (!additional) summary.signed++;
       if (r.deliveryGroup === 'declined') summary.declined++;
       else if (r.deliveryGroup === 'sent') summary.sentToFirm++;
       else summary.awaitingDelivery++;
     } else {
       if (r.signed === 'Check signature') summary.verify++; else summary.unsigned++;
       if (['new','contacting','esign_sent'].includes(r.statusKey)) summary.inProgress++;
-      if (['dq','external_dq_review','not_interested'].includes(r.statusKey)) summary.lost++;
+      if (['dq','external_dq_review','not_interested','dead'].includes(r.statusKey)) summary.lost++;
     }
     if (r.speedMinutes != null && Number.isFinite(r.speedMinutes) && r.speedMinutes >= 0) { speed += r.speedMinutes; summary.speedSamples++; }
   }
@@ -94,7 +97,7 @@ export const REPORT_COLUMNS: { key:ReportSortKey; label:string }[] = [
   {key:'claimReachReceivedAt',label:'Received in ClaimReach'},{key:'firstResponseOutboundAt',label:'First outbound after ClaimReach receipt'},
   {key:'status',label:'Current status'},{key:'firmDeclined',label:'Recorded firm decline'},{key:'speedMinutes',label:'Business-hours response time'},{key:'responseTimeReason',label:'Response time coverage'},
   {key:'callDurationSeconds',label:'Call duration'},{key:'state',label:'State'},
-  {key:'lastActivityAt',label:'Last activity'},{key:'notes',label:'Notes'},
+  {key:'lastActivityAt',label:'Last activity'},{key:'dqReason',label:'Primary pre-sign DQ reason'},{key:'notes',label:'Notes'},
 ];
 export function reportCell(row:PartnerReportRow,key:ReportSortKey) {
   if (['receivedAt','signedAt','lastActivityAt','firstOutboundAt','lastOutboundAt','claimReachReceivedAt','firstResponseOutboundAt'].includes(key)) return reportDate(row[key] as string|null);
@@ -106,8 +109,9 @@ export function reportCell(row:PartnerReportRow,key:ReportSortKey) {
 }
 export function partnerCsv(rows:PartnerReportRow[]) {
   const escape = (v:string) => '"'+(/^[\\s]*[=+@-]/.test(v)?"'":'')+v.replace(/"/g,'""')+'"';
-  const firmAuditHeaders = ['Firm phase','Firm phase date','Cancellation notice date','Days from signing to firm event','Event date basis','30-day cancellation review','Firm report as of'];
+  const firmAuditHeaders = ['Record type','Signature proof','Firm phase','Firm phase date','Cancellation notice date','Days from signing to firm event','Event date basis','30-day cancellation review','Firm report as of','30-day window ends','Days remaining','Days to notice','Days to archive (unverified)','Firm concern','Concern date','Concern resolved date'];
   const auditCells = (row:PartnerReportRow) => [
+    row.recordType || 'original_lead', row.signatureProof || '',
     row.firmAudit?.firmPhase || 'Not reported',
     row.firmAudit?.firmPhaseAt || '',
     row.firmAudit?.cancellationNoticeAt || '',
@@ -115,6 +119,9 @@ export function partnerCsv(rows:PartnerReportRow[]) {
     row.firmAudit?.firmEventBasis || '',
     row.firmAudit?.thirtyDayReview || 'Not reported',
     row.firmAudit?.firmReportAsOf || '',
+    row.firmAudit?.windowEndsAt || '', row.firmAudit?.remainingDays == null ? '' : String(row.firmAudit.remainingDays),
+    row.firmAudit?.daysToNotice == null ? '' : String(row.firmAudit.daysToNotice), row.firmAudit?.daysToArchive == null ? '' : String(row.firmAudit.daysToArchive),
+    row.firmAudit?.concern || '',row.firmAudit?.concernAt || '',row.firmAudit?.concernResolvedAt || '',
   ];
   const headers = [...REPORT_COLUMNS.map(c=>c.key === 'speedMinutes' ? `${c.label} (${RESPONSE_TIME_POLICY}; ${RESPONSE_TIME_BASIS})` : c.label),...firmAuditHeaders];
   const data = rows.map(r=>[...REPORT_COLUMNS.map(c=>reportCell(r,c.key)),...auditCells(r)]);
