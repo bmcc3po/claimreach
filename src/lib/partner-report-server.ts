@@ -43,12 +43,14 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
       .eq('firm_id',access.firm_id).in('lead_id',scopedIds.slice(i,i+100))));
     return rows;
   };
-  const [signatures,calls,notes,activities,callLogs] = await Promise.all([
+  const [signatures,calls,notes,activities,callLogs,dqCatalog] = await Promise.all([
     loadSignatureReport(db,campaign.data),
     evidenceRows('communications','id,firm_id,lead_id,channel,direction,occurred_at,duration_sec,provider,call_sid,external_ref,provider_call_result,outcome,logged_manually'),
     evidenceRows('notes','id,firm_id,lead_id,claim_id,scope,body,created_at'),
     evidenceRows('lead_activity','id,firm_id,lead_id,meta,created_at'),
     evidenceRows('call_logs','id,firm_id,lead_id,claim_id,notes,created_at,direction,outcome,duration_min'),
+    db.from('dq_reasons').select('key,label'),
   ]);
-  return { ...partnerReportData(access, leads, claims, signatures, refs, { calls,notes,activities,callLogs }), updatedAt: new Date().toISOString() };
+  if (dqCatalog.error) throw new Error('Recorded DQ reasons unavailable');
+  return { ...partnerReportData(access, leads, claims, signatures, refs, { calls,notes,activities,callLogs,dqReasons:dqCatalog.data || [] }), updatedAt: new Date().toISOString() };
 }

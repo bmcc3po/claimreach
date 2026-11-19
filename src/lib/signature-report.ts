@@ -10,6 +10,7 @@ import { isTestFile } from "@/lib/file-visibility";
 import { fileAgentSummary } from './file-agents';
 import { reviewState, REVIEW_EVENT, FIRM_DECISION_LABELS } from './firm-review-access';
 import { historicalSignatureDate } from './historical-signature';
+import { publicFirmOutcomeAudit, type PartnerFirmAudit } from './partner-firm-outcome-audit';
 
 export type SignatureState = "signed" | "unsigned" | "verify";
 export type SignatureReportRow = {
@@ -18,6 +19,7 @@ export type SignatureReportRow = {
   deliveredAt: string | null; returnEndsAt: string | null;
   packet: string; status: string; agent: string; archived: boolean; test: boolean; ownerSent: boolean;
   firmDecision?: string; firmReason?: string;
+  firmAudit?: PartnerFirmAudit;
   leadId?: string; firmId?: string; campaignId?: string; agentId?: string | null; agentName?: string | null;
   statusKey?: string; disqualified?: boolean; decisionKey?: string | null; decisionAt?: string | null;
   declined?: boolean; declineReason?: string; declinedAt?: string | null; badSignAgent?: string; declineOutcome?: string;
@@ -85,6 +87,7 @@ export function signatureReport(input: SignatureReportInput): SignatureReportRow
       agentId, agentName,
       firmDecision: decision.decision ? FIRM_DECISION_LABELS[decision.decision as keyof typeof FIRM_DECISION_LABELS] : 'Awaiting firm decision',
       firmReason: decision.explanation,
+      firmAudit: c.answers?.firm_outcome_audit ? publicFirmOutcomeAudit(c.answers, signedAt) : undefined,
       declined: isSignedDeclined(c) || state === 'signed' && isDisqualify(c.status), declineReason: signedDecline(c)?.reason || c.dq_reason || "",
       declinedAt: signedDecline(c)?.at || null, badSignAgent: signedDecline(c)?.agentName || "",
       declineOutcome: signedDecline(c) ? declineOutcome(signedDecline(c)!) : '',

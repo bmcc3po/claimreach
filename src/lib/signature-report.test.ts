@@ -31,6 +31,15 @@ test("confirmed signatures count independently of workflow status; no receipt me
   assert.equal(row.state, "signed"); assert.equal(row.deliveredAt, null); assert.equal(row.returnEndsAt, null);
   assert.equal(row.packet, "Office step needs review");
 });
+
+test('signature report retains firm snapshot and notice audit independently of formal decision and signature history',()=>{
+ const f=fixture();f.claims[0].answers={firm_outcome_audit:{phase:'Archived',phase_date:'2026-10-29',notice_date:'2026-10-20',source_as_of:'2026-11-12'}};
+ f.submissions[0].signed_at='2026-09-30T20:00:00Z';
+ const [r]=signatureReport(f);
+ assert.equal(r.state,'signed');assert.match(r.status,/Firm archived/);assert.equal(r.decisionKey,null);
+ assert.equal(r.firmAudit?.firmPhaseAt,'2026-10-29');assert.equal(r.firmAudit?.daysToNotice,20);
+ assert.equal(r.firmAudit?.windowEndsAt,'2026-10-30');assert.equal(r.declined,false,'an archive phase does not create a formal post-sign decline');
+});
 test("a claimed signed status or timestamp cannot create provider evidence", () => {
   const f = fixture(); f.submissions = []; f.claims[0].status = "signed_qa";
   assert.equal(signatureReport(f)[0].state, "unsigned");

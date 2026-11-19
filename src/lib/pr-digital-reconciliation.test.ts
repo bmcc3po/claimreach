@@ -56,3 +56,19 @@ test('private commercial notes never enter partner JSON or exports',async()=>{
  const r=partnerReportData(h.config,[h.lead],[h.claim],[h.signature],h.refs,{notes});
  assert.equal(r.rows[0].notes,null);assert.equal(JSON.stringify(r).includes('private canary'),false);
 });
+
+test('live loader resolves primary pre-sign DQ keys from the current catalog, including historical reasons',async()=>{
+ const h=await partnerReportHarness();
+ h.claim.status='dq';h.claim.qualification='dq';
+ h.state.signatures=[{...h.signature,state:'unsigned',disqualified:true}];
+ h.db.tables.dq_reasons=[{key:'at_fault',label:'Caller at fault',active:false},{key:'treatment_gap',label:'30+ day treatment gap'}];
+ for (const [key,label] of [['at_fault','Caller at fault'],['treatment_gap','30+ day treatment gap'],['declined','Declined, not interested'],['missing','Reason not documented']]) {
+  h.claim.dq_reason_key=key;
+  const r=await h.server.loadPartnerReport(h.db,h.config);
+  assert.equal(r.rows[0].dqReason,label);
+ }
+ h.state.signatures=[h.signature];
+ assert.equal((await h.server.loadPartnerReport(h.db,h.config)).rows[0].dqReason,null,'post-sign outcomes do not acquire a pre-sign DQ reason');
+ h.db.failOn=op=>op.table==='dq_reasons'?'catalog unavailable':null;
+ await assert.rejects(()=>h.server.loadPartnerReport(h.db,h.config),/DQ reasons unavailable/);
+});

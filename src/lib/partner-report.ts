@@ -58,7 +58,7 @@ export function partnerAllowedLeads(access: Pick<ReportAccess, 'firm_id' | 'scop
 /** The only public projection. Never spread a lead, signature row, or document. */
 export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campaign_id' | 'scope'>,
   leads: any[], claims: any[], signatures: SignatureReportRow[], refs: PartnerSourceRef[],
-  evidence: { calls?: any[]; notes?: any[]; activities?: any[]; callLogs?: any[] } = {}) {
+  evidence: { calls?: any[]; notes?: any[]; activities?: any[]; callLogs?: any[]; dqReasons?: { key: string; label: string }[] } = {}) {
   const allowed = partnerAllowedLeads(access,leads,refs);
   const rows: PartnerReportRow[] = allowed.flatMap(lead => {
     const original = access.scope === 'campaign' || refs.some(r=>r.partner_key === 'pr-digital' && sourceRefMatchesLead(r,lead));
@@ -120,7 +120,7 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     const deliveryGroup = sig.state !== 'signed' ? null : declined ? 'declined' as const :
       date(sig.deliveredAt) || sig.ownerSent === true ? 'sent' as const : 'awaiting' as const;
     const dqReason = sig.state !== 'signed' && (sig.disqualified || ['not_interested','dead'].includes(statusKey)) ?
-      DEFAULT_DQ_REASONS.find(r=>r.key===claim.dq_reason_key)?.label || (claim.dq_reason_key==='declined'?'Declined, not interested':'Reason not documented') : null;
+      (evidence.dqReasons ?? DEFAULT_DQ_REASONS).find(r=>r.key===claim.dq_reason_key)?.label || (claim.dq_reason_key==='declined'?'Declined, not interested':'Reason not documented') : null;
     return [{ recordType:original?'original_lead' as const:'additional_claimant' as const, signatureProof:sig.detail || 'Signature evidence report', dqReason,
       name: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not recorded',
       phone: lead.phone || '', receivedAt, firmAudit,
