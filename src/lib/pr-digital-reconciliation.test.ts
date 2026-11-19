@@ -7,10 +7,13 @@ import { partnerReportHarness } from './partner-report-test-harness';
 import { resolveFileStatus } from './statuses';
 
 test('certificate date needs exact same-matter original hash and owner event',()=>{
- const c:any={id:'c',lead_id:'l',firm_id:'f',answers:{signature_date_audit:{claim_id:'c',source:'signed_original_certificate',signed_date:'2026-09-24',certificate_sha256:'sha',original_event_id:'doc',owner_event_id:'owner'}}};
+ const c:any={id:'c',lead_id:'l',firm_id:'f',answers:{signature_date_audit:{claim_id:'c',source:'signed_original_certificate',signed_date:'2026-09-24',certificate_signed_at:'2026-09-24T21:49:46Z',certificate_sha256:'sha',original_event_id:'doc',owner_event_id:'owner'}}};
  const doc={id:'doc',lead_id:'l',firm_id:'f',meta:{claim_id:'c',sha256:'sha'}};
  const owner={id:'owner',lead_id:'l',firm_id:'f',meta:{claim_id:'c'}};
- assert.equal(historicalSignatureDate(c,[doc],[owner]),'2026-09-24');
+ assert.equal(historicalSignatureDate(c,[doc],[owner]),'2026-09-24T21:49:46Z');
+ c.answers.signature_date_audit.certificate_signed_at='2026-09-25T08:00:00Z';
+ assert.equal(historicalSignatureDate(c,[doc],[owner]),null);
+ c.answers.signature_date_audit.certificate_signed_at='2026-09-24T21:49:46Z';
  assert.equal(historicalSignatureDate(c,[{...doc,meta:{claim_id:'sibling',sha256:'sha'}}],[owner]),null);
  assert.equal(historicalSignatureDate(c,[{...doc,meta:{claim_id:'c',sha256:'other'}}],[owner]),null);
  assert.equal(historicalSignatureDate(c,[doc],[]),null);
