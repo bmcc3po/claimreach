@@ -19,7 +19,7 @@ export default function SignatureReport({ rows, firm, generatedAt }: { rows: Sig
   const currentMonday = mondayOf(pacificDay(generatedAt));
   const available = rows.filter(r => (archived || !r.archived) && (tests || !r.test));
   const matchesState = (r: SignatureReportRow, key: SignatureState | "declined") => key === "declined" ? r.declined : !r.declined && r.state === key;
-  const viewLabel = state === "declined" ? "Declined / bad signs" : labels[state];
+  const viewLabel = state === "declined" ? "Post-sign declines" : state === 'signed' ? 'Signed, no recorded decline' : labels[state];
   const hasSigningDates = state === "signed" || state === "declined";
   const counts = (key: SignatureState | "declined") => available.filter(r => matchesState(r, key)).length;
   const matching = available.filter(r => matchesState(r, state) && (r.name + " " + r.leadNo).toLowerCase().includes(query.toLowerCase().trim()));
@@ -41,10 +41,10 @@ export default function SignatureReport({ rows, firm, generatedAt }: { rows: Sig
   }
   return <main className="signature-report">
     <header className="sr-heading"><div><p className="sr-eyebrow">{firm} · INNO MVA</p><h1>Invoice report</h1>
-      <p>See who signed. Choose your files. Export your invoice list.</p></div></header>
+      <p>See who signed. Choose your files. Export your invoice list.</p><p>{available.filter(r=>r.state==='signed').length} verified signed files across this workspace, including {available.filter(r=>r.state==='signed' && r.declined).length} with a recorded post-sign decline. PR Digital is a source-specific subset.</p></div></header>
     <nav className="sr-tabs" aria-label="Signature status">
       {(["signed", "unsigned", "verify", "declined"] as const).map(key => <button key={key} type="button" aria-pressed={key === state} onClick={() => { setState(key); setSelected([]); }}>
-        <span>{key === "declined" ? "Declined / bad signs" : labels[key]}</span><strong>{counts(key)}</strong></button>)}
+        <span>{key === "declined" ? "Post-sign declines" : key === 'signed' ? 'Signed, no recorded decline' : labels[key]}</span><strong>{counts(key)}</strong></button>)}
     </nav>
     <section className="sr-list" aria-label="Signature report">
       <div className="sr-controls">
@@ -72,9 +72,9 @@ export default function SignatureReport({ rows, firm, generatedAt }: { rows: Sig
         {visible.map(r => <div className="sr-row" key={r.claimId}>
           <label className="sr-check"><input type="checkbox" aria-label={"Select " + r.name} checked={selected.includes(r.claimId)} onChange={e => setSelected(old => e.target.checked ? [...old, r.claimId] : old.filter(id => id !== r.claimId))} /></label>
           <div className="sr-client"><a href={r.href}>{r.name}</a><small>{r.leadNo}{r.archived ? " · Archived" : ""}{r.test ? " · TEST" : ""}</small>{state !== "signed" && <small>{r.status}</small>}</div>
-          <div className="sr-signature"><b className={"sr-state sr-" + r.state}>{r.declined ? "Declined · no commission" : r.state === "signed" && (r.deliveredAt || r.ownerSent) ? SIGNED_SENT_TO_FIRM : labels[r.state]}</b><small>{r.state === "signed" ? date(r.signedAt) : r.detail}</small>{r.state === "signed" && !r.signedAt && <small>Owner confirmed</small>}</div>
+          <div className="sr-signature"><b className={"sr-state sr-" + r.state}>{r.firmAudit?.firmReportAsOf ? r.status : r.declined ? "Declined · no commission" : r.state === "signed" && (r.deliveredAt || r.ownerSent) ? SIGNED_SENT_TO_FIRM : labels[r.state]}</b><small>{r.state === "signed" ? date(r.signedAt) : r.detail}</small>{r.state === "signed" && !r.signedAt && <small>Owner confirmed</small>}</div>
           <div className="sr-delivery"><b>{r.deliveredAt || r.ownerSent ? "Sent to firm" : "Delivery not recorded"}</b><small>{r.deliveredAt ? date(r.deliveredAt) : r.ownerSent ? "Owner confirmed · date unknown" : "Check before resending"}</small>{r.returnEndsAt && <small>Return window ends {date(r.returnEndsAt)}</small>}</div>
-          <div className="sr-packet"><b>{r.agent}</b><small>{r.packet}</small>{r.declined && <><strong>{r.declineOutcome || 'Declined'} · Bad sign: {r.declineReason}</strong><small>Recorded for: {r.badSignAgent || r.agentName || 'Agent not recorded'}</small></>}<strong style={{ color: r.firmDecision === 'Firm declined' ? '#a12525' : undefined }}>{r.firmDecision}</strong>{r.firmReason && <small>{r.firmReason}</small>}</div>
+          <div className="sr-packet"><b>{r.agent}</b><small>{r.packet}</small>{r.declined && <><strong>{r.declineOutcome || 'Post-sign decline'}: {r.declineReason || 'Reason needs verification'}</strong><small>Recorded for: {r.badSignAgent || r.agentName || 'Agent not recorded'}</small></>}<strong style={{ color: r.firmDecision === 'Firm declined' ? '#a12525' : undefined }}>{r.firmAudit && !r.decisionKey ? 'Formal firm decision not recorded' : r.firmDecision}</strong>{r.firmReason && <small>{r.firmReason}</small>}{r.firmAudit && <><small>Firm snapshot {r.firmAudit.firmReportAsOf || 'date unknown'}: {r.firmAudit.firmPhase || 'Not found'}</small><small>{r.firmAudit.thirtyDayReview}</small><small>Partner 30-day review: {r.firmAudit.remainingDays ?? 'Unknown'} days left · ends {r.firmAudit.windowEndsAt || 'Unverified'}</small>{r.firmAudit.cancellationNoticeAt && <small>Notice {r.firmAudit.cancellationNoticeAt} · {r.firmAudit.daysToNotice} days after signing</small>}{r.firmAudit.concern && <small>{r.firmAudit.concern}{r.firmAudit.concernResolvedAt ? ` · resolved ${r.firmAudit.concernResolvedAt}` : ''}</small>}</>}</div>
         </div>)}
         {!visible.length && <p className="sr-empty">No files match these filters.</p>}
       </div>
