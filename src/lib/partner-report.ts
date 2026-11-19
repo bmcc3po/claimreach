@@ -4,10 +4,13 @@ import { isActiveFile, isTestFile } from './file-visibility';
 import { sourceRefMatchesLead, type PartnerSourceRef } from './partner-access';
 import { summarizePartnerRows } from './partner-report-view';
 import { resolveFileStatus } from './statuses';
+import { publicFirmOutcomeAudit, type PartnerFirmAudit } from './partner-firm-outcome-audit';
 import type { SignatureReportRow } from './signature-report';
 import type { ReportAccess } from './partner-report-access';
 
 export type PartnerReportRow = {
+  // Firm phase and cancellation evidence, independently sourced from the source-system status.
+  firmAudit?: PartnerFirmAudit;
   name: string; phone: string; receivedAt: string | null; called: boolean; firmDeclined: boolean;
   signed: 'Yes' | 'No' | 'Check signature'; signedAt: string | null; status: string;
   statusKey: string; deliveryGroup: 'awaiting' | 'sent' | 'declined' | null;
@@ -91,12 +94,16 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     // This is a read-only presentation; signed/closed statuses take precedence.
     const statusKey = !declined && sig.state === 'unsigned' && key === 'new' && called ? 'contacting' : key;
     const displayStatus = statusKey !== key ? resolveFileStatus({ status: statusKey }).label : status;
+    const firmAudit = publicFirmOutcomeAudit(claim.answers, sig.state === 'signed' ? sig.signedAt : null);
+    // A firm archive is not proof of a formal, effective cancellation date.
+    const auditedStatus = declined ? displayStatus : firmAudit.firmPhase === 'Archived' ? 'Firm archived · cancellation date under review' :
+      firmAudit.firmPhase === 'Pending Drop' ? 'Firm pending drop' : displayStatus;
     const rawState = String(lead.mail_state || '').trim();
     const state = /^[a-z]{2}$/i.test(rawState) ? rawState.toUpperCase() : rawState || null;
     const deliveryGroup = sig.state !== 'signed' ? null : declined ? 'declined' as const :
       date(sig.deliveredAt) || sig.ownerSent === true ? 'sent' as const : 'awaiting' as const;
     return [{ name: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not recorded',
-      phone: lead.phone || '', receivedAt,
+      phone: lead.phone || '', receivedAt, firmAudit,
       statusKey, deliveryGroup, state, lastActivityAt, notes: notes[0]?.body.trim() || null,
       speedMinutes, responseTimeReason, claimReachReceivedAt, firstResponseOutboundAt,
       callHistory: contact.history, attemptCount: contact.attemptCount, inboundCount: contact.inboundCount, manualLogCount: contact.manualLogCount,
@@ -105,7 +112,7 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
       called, firmDeclined,
       signed: sig.state === 'signed' ? 'Yes' as const : sig.state === 'verify' ? 'Check signature' as const : 'No' as const,
       signedAt: sig.state === 'signed' ? sig.signedAt : null,
-      status: sig.state === 'verify' ? `${displayStatus} · signature needs verification` : displayStatus }];
+      status: sig.state === 'verify' ? `${auditedStatus} · signature needs verification` : auditedStatus }];
   }).sort((a,b) => (b.receivedAt || '').localeCompare(a.receivedAt || '') || a.name.localeCompare(b.name));
   return { rows, summary: summarizePartnerRows(rows) };
 }
