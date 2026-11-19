@@ -3,7 +3,7 @@ import { partnerCallHistory, type PartnerCall } from './partner-call-history';
 import { isActiveFile, isTestFile } from './file-visibility';
 import { sourceRefMatchesLead, type PartnerSourceRef } from './partner-access';
 import { summarizePartnerRows } from './partner-report-view';
-import { resolveFileStatus } from './statuses';
+import { resolveFileStatus, DEFAULT_DQ_REASONS } from './statuses';
 import { publicFirmOutcomeAudit, type PartnerFirmAudit } from './partner-firm-outcome-audit';
 import type { SignatureReportRow } from './signature-report';
 import type { ReportAccess } from './partner-report-access';
@@ -14,6 +14,7 @@ export type PartnerReportRow = {
   firmAudit?: PartnerFirmAudit;
   recordType?: 'original_lead' | 'additional_claimant';
   signatureProof?: string;
+  dqReason?: string | null;
   name: string; phone: string; receivedAt: string | null; called: boolean; firmDeclined: boolean;
   signed: 'Yes' | 'No' | 'Check signature'; signedAt: string | null; status: string;
   statusKey: string; deliveryGroup: 'awaiting' | 'sent' | 'declined' | null;
@@ -118,7 +119,9 @@ export function partnerReportData(access: Pick<ReportAccess, 'firm_id' | 'campai
     const state = /^[a-z]{2}$/i.test(rawState) ? rawState.toUpperCase() : rawState || null;
     const deliveryGroup = sig.state !== 'signed' ? null : declined ? 'declined' as const :
       date(sig.deliveredAt) || sig.ownerSent === true ? 'sent' as const : 'awaiting' as const;
-    return [{ recordType:original?'original_lead' as const:'additional_claimant' as const, signatureProof:sig.detail || 'Signature evidence report',
+    const dqReason = sig.state !== 'signed' && (sig.disqualified || ['not_interested','dead'].includes(statusKey)) ?
+      DEFAULT_DQ_REASONS.find(r=>r.key===claim.dq_reason_key)?.label || (claim.dq_reason_key==='declined'?'Declined, not interested':'Reason not documented') : null;
+    return [{ recordType:original?'original_lead' as const:'additional_claimant' as const, signatureProof:sig.detail || 'Signature evidence report', dqReason,
       name: lead.claimant_name || [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Name not recorded',
       phone: lead.phone || '', receivedAt, firmAudit,
       statusKey, deliveryGroup, state, lastActivityAt, notes: safeNotes[0]?.body.trim() || null,

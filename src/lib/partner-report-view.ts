@@ -97,7 +97,7 @@ export const REPORT_COLUMNS: { key:ReportSortKey; label:string }[] = [
   {key:'claimReachReceivedAt',label:'Received in ClaimReach'},{key:'firstResponseOutboundAt',label:'First outbound after ClaimReach receipt'},
   {key:'status',label:'Current status'},{key:'firmDeclined',label:'Recorded firm decline'},{key:'speedMinutes',label:'Business-hours response time'},{key:'responseTimeReason',label:'Response time coverage'},
   {key:'callDurationSeconds',label:'Call duration'},{key:'state',label:'State'},
-  {key:'lastActivityAt',label:'Last activity'},{key:'notes',label:'Notes'},
+  {key:'lastActivityAt',label:'Last activity'},{key:'dqReason',label:'Primary pre-sign DQ reason'},{key:'notes',label:'Notes'},
 ];
 export function reportCell(row:PartnerReportRow,key:ReportSortKey) {
   if (['receivedAt','signedAt','lastActivityAt','firstOutboundAt','lastOutboundAt','claimReachReceivedAt','firstResponseOutboundAt'].includes(key)) return reportDate(row[key] as string|null);

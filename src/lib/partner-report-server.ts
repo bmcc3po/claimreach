@@ -15,7 +15,7 @@ export async function loadPartnerReport(db: any, access: ReportAccess) {
   const campaign = await db.from('campaigns').select('id,firm_id,firm_email')
     .eq('id', access.campaign_id).eq('firm_id', access.firm_id).eq('name', 'INNO MVA').eq('case_type', 'mva').maybeSingle();
   if (campaign.error || !campaign.data) throw new Error('Report campaign unavailable');
-  const claims = await reportPages(() => db.from('claims').select('id,lead_id,firm_id,campaign_id,claim_type,status,answers')
+  const claims = await reportPages(() => db.from('claims').select('id,lead_id,firm_id,campaign_id,claim_type,status,answers,dq_reason_key,qualification')
     .eq('firm_id', access.firm_id));
   const ids = [...new Set(claims.filter(c => c.campaign_id === access.campaign_id && c.claim_type === 'mva').map(c => c.lead_id))];
   const leads: any[] = [];

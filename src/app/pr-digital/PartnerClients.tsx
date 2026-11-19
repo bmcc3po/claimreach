@@ -15,7 +15,7 @@ export default function PartnerClients({ rows }: { rows:PartnerReportRow[] }) {
       const id = `contact-history-${index}`;
       return <Fragment key={`${row.name}-${row.phone}-${index}`}><tr>
         <td data-label="Client" className="pr-name">{row.name}<small>{row.phone || 'Phone not recorded'}</small><small>Received {reportDate(row.receivedAt)}</small></td>
-        <td data-label="Status" className="pr-status"><span>{row.status}</span></td>
+        <td data-label="Status" className="pr-status"><span>{row.status}</span>{row.dqReason && <small>{row.dqReason}</small>}</td>
         <td data-label="Firm phase"><strong>{row.firmAudit?.firmPhase || 'Not reported'}</strong><small>Phase date: {reportDate(row.firmAudit?.firmPhaseAt || null)}</small><small>Notice date: {reportDate(row.firmAudit?.cancellationNoticeAt || null)}</small></td>
         <td data-label="30-day audit"><strong>{row.firmAudit?.thirtyDayReview || 'Not reported'}</strong>{row.firmAudit?.daysFromSignToFirmEvent != null && <small>{row.firmAudit.daysFromSignToFirmEvent} days after signing · {row.firmAudit.firmEventBasis}</small>}</td>
         <td data-label="Outbound attempts"><strong className="pr-attempt-number">{row.attemptCount}</strong><small>{row.inboundCount} inbound · {row.manualLogCount} manual logs</small></td>
