@@ -67,7 +67,7 @@ export function groupPartnerRows(rows: PartnerReportRow[], by: 'week'|'state') {
   return [...groups].map(([key,items]) => ({ key,...summarizePartnerRows(items) })).sort((a,b) =>
     a.key === 'Not recorded' ? 1 : b.key === 'Not recorded' ? -1 : by === 'week' ? b.key.localeCompare(a.key) : b.total-a.total || a.key.localeCompare(b.key));
 }
-export type ReportSortKey = Exclude<keyof PartnerReportRow, 'callHistory'>;
+export type ReportSortKey = Exclude<keyof PartnerReportRow, 'callHistory' | 'firmAudit'>;
 export function sortPartnerRows(rows: PartnerReportRow[], key: ReportSortKey, direction: 'asc'|'desc') {
   return [...rows].sort((a,b) => {
     const av = a[key], bv = b[key];
@@ -105,6 +105,18 @@ export function reportCell(row:PartnerReportRow,key:ReportSortKey) {
   return String(row[key] ?? 'Not recorded');
 }
 export function partnerCsv(rows:PartnerReportRow[]) {
-  const escape = (v:string) => '"'+(/^[\s]*[=+@-]/.test(v)?"'":'')+v.replace(/"/g,'""')+'"';
-  return '\uFEFF'+[REPORT_COLUMNS.map(c=>c.key === 'speedMinutes' ? `${c.label} (${RESPONSE_TIME_POLICY}; ${RESPONSE_TIME_BASIS})` : c.label),...rows.map(r=>REPORT_COLUMNS.map(c=>reportCell(r,c.key)))].map(r=>r.map(escape).join(',')).join('\r\n');
+  const escape = (v:string) => '"'+(/^[\\s]*[=+@-]/.test(v)?"'":'')+v.replace(/"/g,'""')+'"';
+  const firmAuditHeaders = ['Firm phase','Firm phase date','Cancellation notice date','Days from signing to firm event','Event date basis','30-day cancellation review','Firm report as of'];
+  const auditCells = (row:PartnerReportRow) => [
+    row.firmAudit?.firmPhase || 'Not reported',
+    row.firmAudit?.firmPhaseAt || '',
+    row.firmAudit?.cancellationNoticeAt || '',
+    row.firmAudit?.daysFromSignToFirmEvent == null ? '' : String(row.firmAudit.daysFromSignToFirmEvent),
+    row.firmAudit?.firmEventBasis || '',
+    row.firmAudit?.thirtyDayReview || 'Not reported',
+    row.firmAudit?.firmReportAsOf || '',
+  ];
+  const headers = [...REPORT_COLUMNS.map(c=>c.key === 'speedMinutes' ? `${c.label} (${RESPONSE_TIME_POLICY}; ${RESPONSE_TIME_BASIS})` : c.label),...firmAuditHeaders];
+  const data = rows.map(r=>[...REPORT_COLUMNS.map(c=>reportCell(r,c.key)),...auditCells(r)]);
+  return '\\uFEFF'+[headers,...data].map(r=>r.map(escape).join(',')).join('\\r\\n');
 }
