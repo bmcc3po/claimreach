@@ -29,9 +29,9 @@ test('no verified signing date and pending drop fail closed',()=>{
 test('does not pass through unexpected source fields or private commercial values',()=>{
   const result=publicFirmOutcomeAudit({firm_outcome_audit:{
     phase:'Archived',phase_date:'2026-11-04',notice_date:'2026-11-04',
-    hidden_commercial_term:'must never appear',unapproved:2000
+    hidden_commercial_term:'must never appear',unapproved:'private canary'
   }},'2026-09-18T18:00:00Z');
   assert.equal(result.daysFromSignToFirmEvent,47);
   assert.equal(Object.keys(result).includes('hidden_commercial_term'),false);
-  assert.equal(JSON.stringify(result).includes('2000'),false);
+  assert.equal(JSON.stringify(result).includes('private canary'),false);
 });
