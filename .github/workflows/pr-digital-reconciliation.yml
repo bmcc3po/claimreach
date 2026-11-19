@@ -1,0 +1,27 @@
+name: PR Digital reconciliation checks
+on:
+  pull_request:
+  push:
+    branches: [fix/pr-digital-reconciliation]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: build-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npx --yes tsx@4.20.6 --test src/lib/pr-digital-reconciliation.test.ts src/lib/partner-report.test.ts src/lib/partner-report-view.test.ts src/lib/partner-firm-outcome-audit.test.ts src/lib/signature-report.test.ts src/lib/owner-partner-report.test.ts src/lib/signed-list.test.ts src/lib/statuses.test.ts
+      - run: npx --yes tsx@4.20.6 src/lib/mva-call/engine.test.ts
+      - run: npx --yes tsx@4.20.6 src/lib/intake-console/engine.test.ts
+      - run: npx @cloudflare/next-on-pages

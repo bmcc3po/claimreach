@@ -59,8 +59,9 @@ export default function LeadsView({ leads, basePath = "/leads", addPath = "/inta
   const base = useMemo(() => {
     let r = leads.map((l) => {
       const c = (l.claims ?? [])[0] ?? {};
-      const status = c.status ?? "new";
+      const sourceStatus = c.status ?? "new";
       const def = resolveFileStatus(c, statusList, l.claims?.length === 1 && !!l.signed_at);
+      const status = def.key || sourceStatus;
       const clock = primaryClock({
         signed_at: l.signed_at, firm_sent_at: l.firm_sent_at,
         esign_sent_at: l.esign_sent_at, esign_status: null,

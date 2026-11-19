@@ -8,6 +8,13 @@ export type PartnerFirmAudit = {
   firmEventBasis: 'Notice date' | 'Archive phase date (unverified)' | null;
   thirtyDayReview: string;
   firmReportAsOf: string | null;
+  windowEndsAt: string | null;
+  remainingDays: number | null;
+  daysToNotice: number | null;
+  daysToArchive: number | null;
+  concern: string | null;
+  concernAt: string | null;
+  concernResolvedAt: string | null;
 };
 const phases = new Set(['Archived','Pending Drop','Treating','Collecting Medical Records']);
 function isoDay(value: unknown): string | null {
@@ -26,7 +33,7 @@ function pacificDay(value: string | null): string | null {
   const part = (key:string) => parts.find(x=>x.type===key)?.value;
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
-export function publicFirmOutcomeAudit(answers: unknown, signedAt: string | null): PartnerFirmAudit {
+export function publicFirmOutcomeAudit(answers: unknown, signedAt: string | null, now = new Date().toISOString()): PartnerFirmAudit {
   const value = answers && typeof answers === 'object'
     ? (answers as { firm_outcome_audit?: Record<string, unknown> }).firm_outcome_audit : null;
   const rawPhase = value?.phase;
@@ -36,6 +43,14 @@ export function publicFirmOutcomeAudit(answers: unknown, signedAt: string | null
   const firmReportAsOf = isoDay(value?.source_as_of);
   const eventDay = firmPhase === 'Archived' ? cancellationNoticeAt || firmPhaseAt : null;
   const signedDay = pacificDay(signedAt);
+  const elapsed = (event:string|null) => event && signedDay && event >= signedDay ? Math.round((Date.parse(event)-Date.parse(signedDay))/86400000) : null;
+  const windowEndsAt = signedDay ? new Date(Date.parse(signedDay)+30*86400000).toISOString().slice(0,10) : null;
+  const today = pacificDay(now);
+  const remainingDays = windowEndsAt && today && signedDay && today >= signedDay ? Math.max(0,Math.round((Date.parse(windowEndsAt)-Date.parse(today))/86400000)) : null;
+  const concerns:Record<string,string> = { unreachable:'Firm unable to contact client', police_report_review:'Firm requested police report; possible decline', prior_payment_review:'Firm raised prior-payment concern' };
+  const concern = typeof value?.concern_key === 'string' ? concerns[value.concern_key] || null : null;
+  const concernAt = concern ? isoDay(value?.concern_date) : null;
+  const concernResolvedAt = concern ? isoDay(value?.concern_resolved_date) : null;
   const gap = eventDay && signedDay ? Math.round(
     (Date.parse(eventDay + 'T00:00:00Z') - Date.parse(signedDay + 'T00:00:00Z')) / 86400000
   ) : null;
@@ -48,5 +63,7 @@ export function publicFirmOutcomeAudit(answers: unknown, signedAt: string | null
     : !cancellationNoticeAt ? 'Archive date only; verify cancellation notice'
     : daysFromSignToFirmEvent <= 30 ? 'Notice within 30 days; verify effective date'
     : 'Notice after 30 days; verify effective date';
-  return { firmPhase, firmPhaseAt, cancellationNoticeAt, daysFromSignToFirmEvent, firmEventBasis, thirtyDayReview, firmReportAsOf };
+  return { firmPhase, firmPhaseAt, cancellationNoticeAt, daysFromSignToFirmEvent, firmEventBasis, thirtyDayReview, firmReportAsOf,
+    windowEndsAt, remainingDays, daysToNotice:elapsed(cancellationNoticeAt), daysToArchive:firmPhase==='Archived'?elapsed(firmPhaseAt):null,
+    concern,concernAt,concernResolvedAt };
 }
